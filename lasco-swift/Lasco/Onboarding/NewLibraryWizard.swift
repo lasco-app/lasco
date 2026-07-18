@@ -1,0 +1,693 @@
+import SwiftUI
+#if os(iOS)
+import Photos
+#endif
+
+struct NewLibraryWizard: View {
+    @EnvironmentObject var libraryModel: LibraryModel
+    @AppStorage("devMode") private var devMode = false
+
+    var onBack: () -> Void
+    var onComplete: () -> Void
+
+    @State private var step: Int
+    @State private var slideForward = true
+    @State private var name = ""
+    @State private var username = ""
+    @State private var password = ""
+    @State private var confirmPassword = ""
+    @State private var showAddS3Sheet = false
+    @State private var showAddLocalFSSheet = false
+    @State private var masterKeyCopied = false
+
+    init(initialStep: Int = 0, onBack: @escaping () -> Void, onComplete: @escaping () -> Void) {
+        _step = State(initialValue: initialStep)
+        self.onBack = onBack
+        self.onComplete = onComplete
+    }
+
+    #if os(iOS)
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var libraryScan: PhotoLibraryImporter.LibraryScan? = nil
+    @State private var scanLoading = false
+    @State private var isBulkImporting = false
+    @State private var importResult: (photos: Int, videos: Int)? = nil
+    @State private var photoPermissionDenied = false
+    #endif
+
+    private var pageSlide: AnyTransition {
+        .asymmetric(
+            insertion: .move(edge: slideForward ? .trailing : .leading),
+            removal: .move(edge: slideForward ? .leading : .trailing)
+        )
+    }
+
+    #if os(iOS)
+    private var totalSteps: Int { 7 }
+    #else
+    private var totalSteps: Int { 3 }
+    #endif
+
+    private var canCreate: Bool {
+        !name.isEmpty && !username.isEmpty && password.count >= 5 && password == confirmPassword
+    }
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            Color.Lasco.bg.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                topBar(dots: totalSteps, current: step, back: backAction)
+
+                logo()
+
+                ZStack {
+                    Group {
+                        switch step {
+                        case 0: createStep
+                        case 1: masterKeyStep
+                        case 2: remoteStep
+                        #if os(iOS)
+                        case 3: askImportStep
+                        case 4: permissionStep
+                        case 5: importOrSuccessStep
+                        default: autoImportStep
+                        #else
+                        default: remoteStep
+                        #endif
+                        }
+                    }
+                    .id(step)
+                    .transition(pageSlide)
+                }
+                .clipped()
+            }
+
+            bottomBar {
+                stepButtons
+            }
+        }
+        .onChange(of: step) { _, newValue in
+            if let libId = libraryModel.lib?.libraryId() {
+                libraryModel.setOnboardingStep(newValue, libraryId: libId)
+            }
+        }
+        #if os(iOS)
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active && step == 4 && photoPermissionDenied {
+                requestPhotoPermission()
+            }
+        }
+        #endif
+    }
+
+    // MARK: - Step buttons
+
+    @ViewBuilder
+    private var stepButtons: some View {
+        if step == 0 {
+            Button("Create Library") {
+                libraryModel.error = nil
+                libraryModel.create(name: name, username: username, password: password)
+                if libraryModel.error == nil {
+                    slideForward = true
+                    withAnimation(.easeInOut(duration: 0.3)) { step = 1 }
+                }
+            }
+            .buttonStyle(LascoPrimaryButtonStyle())
+            .frame(maxWidth: .infinity)
+            .disabled(!canCreate)
+            .opacity(canCreate ? 1 : 0.45)
+        } else if step == 1 {
+            Button("I've saved my key") {
+                libraryModel.pendingMasterKey = nil
+                slideForward = true
+                withAnimation(.easeInOut(duration: 0.3)) { step = 2 }
+            }
+            .buttonStyle(LascoPrimaryButtonStyle())
+            .frame(maxWidth: .infinity)
+        } else if step == 2 {
+            VStack(spacing: 12) {
+                Button("Add S3-compatible remote") { showAddS3Sheet = true }
+                    .buttonStyle(LascoPrimaryButtonStyle())
+                    .frame(maxWidth: .infinity)
+                if devMode {
+                    Button("Add local filesystem remote") { showAddLocalFSSheet = true }
+                        .buttonStyle(LascoDevButtonStyle())
+                        .frame(maxWidth: .infinity)
+                }
+                Button("Skip for now") { advanceFromRemote() }
+                    .buttonStyle(LascoSecondaryButtonStyle())
+                    .frame(maxWidth: .infinity)
+            }
+            .sheet(isPresented: $showAddS3Sheet, onDismiss: {
+                if !libraryModel.remotes.isEmpty { advanceFromRemote() }
+            }) {
+                AddS3RemoteView()
+                    .environmentObject(libraryModel)
+            }
+            .sheet(isPresented: $showAddLocalFSSheet, onDismiss: {
+                if !libraryModel.remotes.isEmpty { advanceFromRemote() }
+            }) {
+                AddLocalFSRemoteView()
+                    .environmentObject(libraryModel)
+            }
+        } else {
+            #if os(iOS)
+            if step == 3 {
+                askImportButtons
+            } else if step == 4 {
+                permissionButtons
+            } else if step == 5 {
+                importOrSuccessButtons
+            } else {
+                autoImportButtons
+            }
+            #endif
+        }
+    }
+
+    private func finish() {
+        if let libId = libraryModel.lib?.libraryId() {
+            libraryModel.clearOnboardingIncomplete(libraryId: libId)
+        }
+        libraryModel.isOpen = true
+        onComplete()
+    }
+
+    private func advanceFromRemote() {
+        #if os(iOS)
+        slideForward = true
+        withAnimation(.easeInOut(duration: 0.3)) { step = 3 }
+        #else
+        finish()
+        #endif
+    }
+
+    private var backAction: (() -> Void)? {
+        if step == 0 {
+            return {
+                slideForward = false
+                onBack()
+            }
+        }
+        #if os(iOS)
+        if step == 3 && libraryModel.remotes.isEmpty {
+            return {
+                slideForward = false
+                withAnimation(.easeInOut(duration: 0.3)) { step = 2 }
+            }
+        }
+        if step == 4 {
+            return {
+                slideForward = false
+                withAnimation(.easeInOut(duration: 0.3)) { step = 3 }
+            }
+        }
+        #endif
+        return nil
+    }
+
+    // MARK: - Chrome
+
+    private func topBar(dots: Int, current: Int, back: (() -> Void)?) -> some View {
+        HStack {
+            if let back {
+                Button(action: back) {
+                    Text("← Back")
+                        .font(LascoFont.body(14))
+                        .foregroundStyle(Color.Lasco.inkMuted)
+                }
+                .buttonStyle(.plain)
+            } else {
+                Spacer().frame(width: 60)
+            }
+
+            Spacer()
+
+            HStack(spacing: 8) {
+                ForEach(0..<dots, id: \.self) { i in
+                    Rectangle()
+                        .fill(i == current ? Color.Lasco.ink : Color.Lasco.inkMuted.opacity(0.35))
+                        .frame(width: i == current ? 20 : 8, height: 3)
+                        .animation(.easeInOut(duration: 0.2), value: current)
+                }
+            }
+        }
+        .padding(.horizontal, 32)
+        .padding(.top, 32)
+        .padding(.bottom, 16)
+    }
+
+    private func logo() -> some View {
+        Text("LASCO")
+            .font(LascoFont.categoryLarge(28))
+            .foregroundStyle(Color.Lasco.ink)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 32)
+            .padding(.bottom, 8)
+    }
+
+    private func bottomBar<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(content: content)
+            .padding(.horizontal, 32)
+            .padding(.top, 20)
+            .padding(.bottom, 48)
+            .background(
+                LinearGradient(
+                    colors: [Color.Lasco.bg.opacity(0), Color.Lasco.bg],
+                    startPoint: .top, endPoint: .bottom
+                )
+            )
+    }
+
+    // MARK: - Steps
+
+    private var createStep: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text("Create your library.")
+                .font(LascoFont.title(26))
+                .foregroundStyle(Color.Lasco.ink)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("Your library is encrypted locally. Choose a strong password.")
+                .font(LascoFont.body(16))
+                .foregroundStyle(Color.Lasco.inkSub)
+                .fixedSize(horizontal: false, vertical: true)
+                .lineSpacing(4)
+
+            LibraryCreateForm(
+                name: $name,
+                username: $username,
+                password: $password,
+                confirmPassword: $confirmPassword,
+                error: libraryModel.error
+            )
+
+            Spacer()
+        }
+        .padding(.horizontal, 32)
+        .padding(.top, 40)
+        .padding(.bottom, 120)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var masterKeyStep: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text("Save your master key.")
+                .font(LascoFont.title(26))
+                .foregroundStyle(Color.Lasco.ink)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("This key can restore your library if you forget your password. Store it somewhere safe.")
+                .font(LascoFont.body(16))
+                .foregroundStyle(Color.Lasco.inkSub)
+                .fixedSize(horizontal: false, vertical: true)
+                .lineSpacing(4)
+
+            if let key = libraryModel.pendingMasterKey {
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack {
+                        Text(key)
+                            .font(LascoFont.mono(13))
+                            .foregroundStyle(Color.Lasco.inkSub)
+                            .lineLimit(nil)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer()
+                        Button {
+                            #if os(iOS)
+                            UIPasteboard.general.string = key
+                            #else
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(key, forType: .string)
+                            #endif
+                            masterKeyCopied = true
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                                .foregroundStyle(Color.Lasco.inkMuted)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                }
+                .lascoPanel()
+
+                if masterKeyCopied {
+                    Text("Master key copied")
+                        .font(LascoFont.body(13))
+                        .foregroundStyle(Color.Lasco.inkSub)
+                }
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 32)
+        .padding(.top, 40)
+        .padding(.bottom, 120)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var remoteStep: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text("Add your first remote.")
+                .font(LascoFont.title(26))
+                .foregroundStyle(Color.Lasco.ink)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("Connect a destination to store your photos.")
+                .font(LascoFont.body(16))
+                .foregroundStyle(Color.Lasco.inkSub)
+                .fixedSize(horizontal: false, vertical: true)
+                .lineSpacing(4)
+
+            Text("You can add another remote later.")
+                .font(LascoFont.body(16))
+                .foregroundStyle(Color.Lasco.inkSub)
+                .fixedSize(horizontal: false, vertical: true)
+                .lineSpacing(4)
+
+            Spacer()
+        }
+        .padding(.horizontal, 32)
+        .padding(.top, 40)
+        .padding(.bottom, 120)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Import steps (iOS only)
+
+    #if os(iOS)
+    private var askImportStep: some View {
+        let hasRemote = !libraryModel.remotes.isEmpty
+
+        return VStack(alignment: .leading, spacing: 20) {
+            Text(hasRemote ? "Import your device photos?" : "Can't import your current photo library yet.")
+                .font(LascoFont.title(26))
+                .foregroundStyle(Color.Lasco.ink)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if !hasRemote {
+                Text("Because there is no remote yet, it would mean that everything should be saved twice locally on your device.")
+                    .font(LascoFont.body(16))
+                    .foregroundStyle(Color.Lasco.inkSub)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineSpacing(4)
+            } else {
+                Text("Lasco can import your existing photos and videos and back them up to your remote.")
+                    .font(LascoFont.body(16))
+                    .foregroundStyle(Color.Lasco.inkSub)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineSpacing(4)
+
+                Text("Nothing is deleted from your device.")
+                    .font(LascoFont.body(16))
+                    .foregroundStyle(Color.Lasco.inkSub)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineSpacing(4)
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 32)
+        .padding(.top, 40)
+        .padding(.bottom, 120)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var askImportButtons: some View {
+        Group {
+            if libraryModel.remotes.isEmpty {
+                Button("Get started") { finish() }
+                    .buttonStyle(LascoPrimaryButtonStyle())
+                    .frame(maxWidth: .infinity)
+            } else {
+                VStack(spacing: 12) {
+                    Button("Yes, import my photos") {
+                        slideForward = true
+                        withAnimation(.easeInOut(duration: 0.3)) { step = 4 }
+                    }
+                    .buttonStyle(LascoPrimaryButtonStyle())
+                    .frame(maxWidth: .infinity)
+
+                    Button("No, not now") {
+                        slideForward = true
+                        withAnimation(.easeInOut(duration: 0.3)) { step = 6 }
+                    }
+                    .buttonStyle(LascoSecondaryButtonStyle())
+                    .frame(maxWidth: .infinity)
+                }
+            }
+        }
+    }
+
+    private var permissionStep: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text("Access your photos.")
+                .font(LascoFont.title(26))
+                .foregroundStyle(Color.Lasco.ink)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("We'll ask for permission to access your photos so Lasco can import them.")
+                .font(LascoFont.body(16))
+                .foregroundStyle(Color.Lasco.inkSub)
+                .fixedSize(horizontal: false, vertical: true)
+                .lineSpacing(4)
+
+            if photoPermissionDenied {
+                Text("Access was denied. You can grant it in Settings and come back here.")
+                    .font(LascoFont.body(16))
+                    .foregroundStyle(Color.Lasco.inkSub)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .lineSpacing(4)
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 32)
+        .padding(.top, 40)
+        .padding(.bottom, 120)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var permissionButtons: some View {
+        Group {
+            if photoPermissionDenied {
+                VStack(spacing: 12) {
+                    Button("Open Settings") {
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            UIApplication.shared.open(url)
+                        }
+                    }
+                    .buttonStyle(LascoPrimaryButtonStyle())
+                    .frame(maxWidth: .infinity)
+
+                    Button("Skip for now") {
+                        slideForward = true
+                        withAnimation(.easeInOut(duration: 0.3)) { step = 6 }
+                    }
+                    .buttonStyle(LascoSecondaryButtonStyle())
+                    .frame(maxWidth: .infinity)
+                }
+            } else {
+                Button("Continue") { requestPhotoPermission() }
+                    .buttonStyle(LascoPrimaryButtonStyle())
+                    .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    private func requestPhotoPermission() {
+        Task {
+            let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+            if status == .authorized {
+                photoPermissionDenied = false
+                slideForward = true
+                withAnimation(.easeInOut(duration: 0.3)) { step = 5 }
+            } else {
+                photoPermissionDenied = true
+            }
+        }
+    }
+
+    private var importOrSuccessStep: some View {
+        if let result = importResult {
+            return AnyView(importSuccessStep(photos: result.photos, videos: result.videos))
+        }
+        return AnyView(importStep)
+    }
+
+    private var importOrSuccessButtons: some View {
+        if importResult != nil {
+            return AnyView(
+                Button("Continue") {
+                    slideForward = true
+                    withAnimation(.easeInOut(duration: 0.3)) { step = 6 }
+                }
+                .buttonStyle(LascoPrimaryButtonStyle())
+                .frame(maxWidth: .infinity)
+            )
+        }
+        return AnyView(importButtons)
+    }
+
+    private var importStep: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text("Import your photo library?")
+                .font(LascoFont.title(26))
+                .foregroundStyle(Color.Lasco.ink)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("Lasco will import your existing photos and videos and back them up to your remote. No copy is kept on this device.")
+                .font(LascoFont.body(16))
+                .foregroundStyle(Color.Lasco.inkSub)
+                .fixedSize(horizontal: false, vertical: true)
+                .lineSpacing(4)
+
+            if scanLoading {
+                HStack(spacing: 12) {
+                    ProgressView()
+                        .tint(Color.Lasco.inkMuted)
+                    Text("Scanning library…")
+                        .font(LascoFont.body(14))
+                        .foregroundStyle(Color.Lasco.inkMuted)
+                }
+            } else if let scan = libraryScan {
+                VStack(alignment: .leading, spacing: 0) {
+                    importStatRow(label: "Photos", value: "\(scan.photoCount)")
+                    importStatRow(label: "Videos", value: "\(scan.videoCount)")
+                }
+                .lascoPanel()
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 32)
+        .padding(.top, 40)
+        .padding(.bottom, 160)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .task {
+            scanLoading = true
+            libraryScan = await libraryModel.scanPhotoLibrary()
+            scanLoading = false
+        }
+    }
+
+    private var importButtons: some View {
+        VStack(spacing: 12) {
+            if isBulkImporting {
+                let progress = libraryModel.bulkImportProgress
+                let done = progress?.done ?? 0
+                let total = max(progress?.total ?? 1, 1)
+
+                VStack(spacing: 8) {
+                    ProgressView(value: Double(done), total: Double(total))
+                        .tint(Color.Lasco.ink)
+                        .frame(maxWidth: .infinity)
+                    Text("\(done) of \(total)")
+                        .font(LascoFont.mono(13))
+                        .foregroundStyle(Color.Lasco.inkMuted)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
+                .padding(.vertical, 8)
+            } else {
+                Button("Import Now") {
+                    if let scan = libraryScan {
+                        isBulkImporting = true
+                        Task {
+                            await libraryModel.importFromPhotoLibraryWithAlbums(assets: scan.assets)
+                            isBulkImporting = false
+                            importResult = (photos: scan.photoCount, videos: scan.videoCount)
+                        }
+                    }
+                }
+                .buttonStyle(LascoPrimaryButtonStyle())
+                .frame(maxWidth: .infinity)
+                .disabled(libraryScan == nil)
+                .opacity(libraryScan == nil ? 0.45 : 1)
+
+                Button("Skip for now") {
+                    slideForward = true
+                    withAnimation(.easeInOut(duration: 0.3)) { step = 6 }
+                }
+                .buttonStyle(LascoSecondaryButtonStyle())
+                .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    private var autoImportStep: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text("Automatically import new photos?")
+                .font(LascoFont.title(26))
+                .foregroundStyle(Color.Lasco.ink)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("Lasco can check for new photos each time you open the app and import any taken after this point.")
+                .font(LascoFont.body(16))
+                .foregroundStyle(Color.Lasco.inkSub)
+                .fixedSize(horizontal: false, vertical: true)
+                .lineSpacing(4)
+
+            Spacer()
+        }
+        .padding(.horizontal, 32)
+        .padding(.top, 40)
+        .padding(.bottom, 120)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var autoImportButtons: some View {
+        VStack(spacing: 12) {
+            Button("Yes, auto-import new photos") {
+                libraryModel.setAutoImportDeviceMedia(true)
+                finish()
+            }
+            .buttonStyle(LascoPrimaryButtonStyle())
+            .frame(maxWidth: .infinity)
+
+            Button("No, not now") {
+                libraryModel.setAutoImportDeviceMedia(false)
+                finish()
+            }
+            .buttonStyle(LascoSecondaryButtonStyle())
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    private func importSuccessStep(photos: Int, videos: Int) -> some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text("All done.")
+                .font(LascoFont.title(26))
+                .foregroundStyle(Color.Lasco.ink)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("\(photos) \(photos == 1 ? "photo" : "photos") and \(videos) \(videos == 1 ? "video" : "videos") were successfully imported.")
+                .font(LascoFont.body(16))
+                .foregroundStyle(Color.Lasco.inkSub)
+                .fixedSize(horizontal: false, vertical: true)
+                .lineSpacing(4)
+
+            Spacer()
+        }
+        .padding(.horizontal, 32)
+        .padding(.top, 40)
+        .padding(.bottom, 160)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func importStatRow(label: String, value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(LascoFont.body())
+                .foregroundStyle(Color.Lasco.inkSub)
+            Spacer()
+            Text(value)
+                .font(LascoFont.mono())
+                .foregroundStyle(Color.Lasco.inkMuted)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+    #endif
+}

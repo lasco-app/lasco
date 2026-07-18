@@ -1,0 +1,151 @@
+---
+sidebar_position: 5
+sidebar_label: Sync
+---
+import React from 'react';
+
+# Sync
+
+export const Algo = ({ lines }) => (
+  <div style={{
+    background: 'var(--lasco-surface-alt)',
+    fontFamily: 'var(--ifm-font-family-monospace)',
+    fontSize: 'var(--ifm-code-font-size)',
+    lineHeight: 1.6,
+    overflowX: 'auto',
+    padding: '1rem 0',
+    margin: '0 0 1.25rem',
+    borderRadius: 'var(--ifm-pre-border-radius)',
+    boxShadow: 'var(--ifm-global-shadow-lw)',
+  }}>
+    <div style={{ minWidth: 'max-content' }}>
+      {lines.map(([indent, text], i) => (
+        <div key={i} style={{
+          display: 'flex',
+          alignItems: 'center',
+          paddingLeft: `calc(1rem + ${indent * 20}px)`,
+          paddingRight: '1rem',
+        }}>
+          <span style={{
+            whiteSpace: 'pre',
+            color: text.trimStart().startsWith('//') ? 'var(--lasco-ink-muted)' : 'var(--lasco-ink)',
+          }}>{text || ' '}</span>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+Fetch downloads operation files from the remote and merges them into the local log. Encrypted media and thumbnail blobs are not downloaded. It also pulls any `mk_*.enc` files that are present on the remote but missing locally, so that new users added from another device become available on this one.
+
+## Fetch
+
+### Algorithm
+
+**1. Sync library directory (mk files)**
+
+<Algo lines={[
+  [0, "remote_library_files = list all files in library/ on the remote"],
+  [0, "remote_uuid = parse UUID from the library_id_{uuid} filename in remote_library_files"],
+  [0, "assert remote_uuid == local library_id   // error if mismatch"],
+  [0, "remote_mk_files = files matching library/mk_*.enc on the remote"],
+  [0, "local_mk_files  = files matching mk_*.enc in local_state/library/"],
+  [0, ""],
+  [0, "for each file in remote_mk_files not in local_mk_files:"],
+  [1, "download into local_state/library/   // append-only set of immutable files"],
+]} />
+
+**2. Update last known state**
+
+<Algo lines={[
+  [0, "temp_ops = {}"],
+  [0, "for each op file listed on the remote:"],
+  [1, "if not cached in remotes/{remote_id}/state/operations/: download into temp_ops"],
+  [0, ""],
+  [0, "new_group_ids    = group ids from temp_ops"],
+  [0, "cached_group_ids = group ids from remotes/{remote_id}/state/operations/"],
+  [0, "if new_group_ids is not a superset of cached_group_ids: return error"],
+  [0, ""],
+  [0, "write temp_ops to remotes/{remote_id}/state/operations/"],
+]} />
+
+**3. Merge into local log**
+
+<Algo lines={[
+  [0, "local_ids = op_ids in operations.log"],
+  [0, ""],
+  [0, "for each op file in remotes/{remote_id}/state/operations/:"],
+  [1, "if compaction file:"],
+  [2, "for each entry in the compaction:"],
+  [3, "if op_id not in local_ids: decrypt and append to operations.log"],
+  [3, "for each MediaCreation op appended:"],
+  [4, "if the media blob exists on the remote:"],
+  [5, "record media_id as present in .../state/media/media_list.json"],
+]} />
+
+The append to `operations.log` is the sharpest step in either algorithm: it mutates the
+one domain shared by every activity in the library.
+
+**4. Rebuild local state**
+
+<Algo lines={[
+  [0, "if any ops were appended:"],
+  [1, "reload in-memory library state from operations.log"],
+]} />
+
+## Push
+
+Push uploads all files that are considered missing on the target remote, based on its last known state.
+
+For operation files, the client simply copies what it has locally. For media and thumbnail files, since they are downloaded lazily, the client may not have them on disk. Because the last known state of all remotes is stored locally, the push procedure can download the needed files directly from another remote and immediately upload them to the target, without performing a full fetch.
+
+### Algorithm
+
+**1. Sync library directory (mk files)**
+
+<Algo lines={[
+  [0, "remote_library_files = list all files in library/ on the remote"],
+  [0, "remote_uuid = parse UUID from the library_id_{uuid} filename in remote_library_files"],
+  [0, "assert remote_uuid == local library_id   // error if mismatch"],
+  [0, "local_mk_files  = files matching mk_*.enc in local_state/library/"],
+  [0, "remote_mk_files = files matching library/mk_*.enc on the remote"],
+  [0, ""],
+  [0, "for each file in local_mk_files not in remote_mk_files:"],
+  [1, "upload from local_state/library/ to library/ on the remote"],
+]} />
+
+**2. Push operations**
+
+<Algo lines={[
+  [0, "if pending.op exists:"],
+  [1, "append it to operations.log"],
+  [1, "delete pending.op"],
+  [0, ""],
+  [0, "// determine which op groups need to be uploaded"],
+  [0, "// by comparing the local log against the last known remote state"],
+  [0, "ops_to_upload = op groups in operations.log not in last known remote state"],
+  [0, ""],
+  [0, "compacted_files = compact(ops_to_upload)"],
+  [0, "upload each file in compacted_files to the remote"],
+  [0, "apply operation compaction if needed   // see Compaction in Operations"],
+  [0, ""],
+  [0, "update last known state: record every file uploaded or produced by"],
+  [0, "compaction in remotes/{remote_id}/state/operations/, and remove entries"],
+  [0, "for any files that compaction deleted on the remote"],
+]} />
+
+**3. Push media and thumbnails**
+
+<Algo lines={[
+  [0, "remote_media_list = remotes/{remote_id}/state/media/media_list.json"],
+  [0, ""],
+  [0, "for each media_id in reconstructed state not in remote_media_list:"],
+  [1, "if local_state/media/YYYY/MM/{media_id}.data exists on disk:"],
+  [2, "upload the data blob"],
+  [2, "same for thumbnail"],
+  [2, "add media_id to remotes/{remote_id}/state/media/media_list.json"],
+]} />
+
+### Duplicate operations on the remote
+
+With concurrent clients pushing to the same remote, or a single client pushing to several remotes, the same operation group can end up uploaded more than once. This is rare in practice. An op group that appears more than once is applied only once to the local log. We do not attempt to detect or remove duplicates on the remote.

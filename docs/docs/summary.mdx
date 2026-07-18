@@ -1,0 +1,79 @@
+---
+sidebar_position: 1
+sidebar_label: How It Works
+---
+import { SchemaCard, Field, CardGrid, Panel, MediaTree } from './format-specification/operations.mdx';
+
+# How It Works
+
+## General idea
+
+Lasco is just a client-side app. All the logic happens on your device. It just pushes data to remote file servers (think S3 servers, NAS, usb harddrives). There's no code running, no Docker containers to manage, and no dependencies to keep updated.
+
+<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px', margin: '20px 0', flexWrap: 'wrap' }}>
+  <div style={{ flex: '1 1 200px', maxWidth: '340px' }}>
+    <SchemaCard title="Lasco app">
+      <Field name="Logic" note="Encrypt/decrypt, apply operations, build local state" />
+    </SchemaCard>
+  </div>
+  <div style={{ textAlign: 'center', minWidth: '80px', flexShrink: 0 }}>
+    <span style={{ fontFamily: 'Jersey 10, monospace', fontSize: '32px', color: 'var(--ink)', lineHeight: 1 }}>⇄</span>
+    <div style={{ fontFamily: 'VT323, monospace', fontSize: '16px', letterSpacing: '0.06em', color: 'var(--ink-muted)', marginTop: '4px' }}>upload / download</div>
+  </div>
+  <div style={{ flex: '1 1 200px', maxWidth: '340px' }}>
+    <SchemaCard title="File Storage">
+      <Field name="Storage" note="Stores encrypted photos and videos." />
+    </SchemaCard>
+  </div>
+</div>
+
+
+### What is stored on the server
+
+The server stores encrypted blobs for media and operations, along with key material. There are three types of files stored in the remote:
+
+<Panel>
+    <SchemaCard title="Media Blobs" description="Your photos and videos, encrypted at rest">
+        <Field name="media/YYYY/MM/{UUID}.data" note="Encrypted original media" />
+        <Field name="media/YYYY/MM/{UUID}.thumb" note="Encrypted thumbnail" />
+    </SchemaCard>
+    <SchemaCard title="Operation Log" description="Tracks every change you made, for example photo names, albums etc. Works in a CRDT way to prevent conflicts">
+        <Field name="operations/{op_uuid}.op" note="Encrypted, immutable operation" />
+    </SchemaCard>
+    <SchemaCard title="Key Material" description="Encrypted keys used to unlock your library">
+        <Field name="salt.bin" note="Argon2id salt" />
+        <Field name="vkk_{user}.enc" note="Encrypted VKK" />
+        <Field name="lmk.enc" note="Encrypted LMK keychain" />
+    </SchemaCard>
+</Panel>
+
+### Concrete example
+
+When you import `"IMG_4823.jpg"` and name it `"Beach Sunset"` in the `"Summer 2026"` album, the server receives:
+
+<MediaTree items={[
+  { depth: 0, icon: '📁', name: 'media/' },
+  { depth: 1, icon: '📁', name: '2026/' },
+  { depth: 2, icon: '📁', name: '04/' },
+  { depth: 3, icon: '🔒', name: '3f2a1b4c-9d8e-4f7a-b2c3-1d5e6f7a8b9c.data', note: 'encrypted media' },
+  { depth: 3, icon: '🔒', name: '3f2a1b4c-9d8e-4f7a-b2c3-1d5e6f7a8b9c.thumb', note: 'encrypted thumbnail' },
+  { depth: 0, icon: '📁', name: 'operations/' },
+  { depth: 1, icon: '🔒', name: '9a11c2d3-4e5f-6a7b-8c9d-0e1f2a3b4c5d.op', note: 'MediaCreation' },
+  { depth: 1, icon: '🔒', name: '9a12d3e4-5f6a-7b8c-9d0e-1f2a3b4c5d6e.op', note: 'MediaPropsUpdate: name="Beach Sunset"' },
+  { depth: 1, icon: '🔒', name: '9a14e5f6-7a8b-9c0d-1e2f-3a4b5c6d7e8f.op', note: 'AlbumMediaAdd: album="Summer 2026"' },
+]} />
+
+:::note
+Operations are not stored one file per operation like in the example. They are aggregated dynamically into op files.
+:::
+
+## Remote concept
+
+Lasco interacts with remote servers through two operations:
+
+- **`fetch`** Downloads operations and media blobs from a remote server to your device.
+- **`push`** Uploads new operations and media blobs from your device to a remote server.
+
+This allows you to push to multiple file servers to achieve replication, or back up to a hard drive by simply plugging in your USB drive and pushing to it.
+
+The sync algorithm, and data representing the library, working with CRDT is such that there is no possible conflict. A correct state will always be reconstructed.

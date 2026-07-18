@@ -1,0 +1,39 @@
+---
+sidebar_position: 3
+sidebar_label: Encryption
+---
+
+# Encryption
+
+## Threat model
+
+We protect against attackers that have access to the storage. An attacker who can read the storage backend (S3 bucket, self-hosted server, Lasco Cloud) sees only ciphertext. All blobs are encrypted before upload, and no key material is stored on the remote. Without the user's password, the attacker cannot decrypt anything.
+
+## Key derivation
+
+Lasco derives all keys from a single user password using Argon2id. A 32-byte random salt (`salt`) is generated once at library initialisation, stored on the server, and shared across all users. Its purpose is to make offline dictionary attacks against the password more expensive.
+
+```
+  User password
+       │
+       │  Argon2id(password, salt)
+       ▼
+      KEK
+       │
+       │  decrypts mk_{user}_{uuid}.enc
+       ▼
+      Master Key
+       │
+       │  HKDF(MasterKey, file UUID)
+       ▼
+      File Encryption Key
+```
+
+Each user has their own `mk_{user}_{uuid}.enc` containing the master key wrapped under that user's KEK. Adding a user means an existing user decrypts their master key and re-wraps it under the new user's KEK. Changing a password means re-deriving the KEK and re-wrapping the same master key under it.
+
+## Encryption per file type
+
+| File | Algorithm | Nonce | Notes |
+|---|---|---|---|
+| `mk_{username}_{uuid}.enc` | AES-256-GCM | 12 bytes (random) | Wraps the master key. Nonce prepended to ciphertext |
+| `.data`, `.thumb`, `.op` | XChaCha20-Poly1305 | 24 bytes (random) | |

@@ -1,0 +1,881 @@
+/* Lasco Design System - Plaster Theme for Docusaurus */
+
+@import url('https://fonts.googleapis.com/css2?family=Jersey+10&family=Space+Grotesk:wght@400;600;700&family=JetBrains+Mono:wght@400;600&family=VT323&display=swap');
+@import url('https://cdn.jsdelivr.net/npm/pixelarticons@1.8.1/pixelarticons.css');
+
+/* ========================================================================
+   DESIGN TOKENS
+   ======================================================================== */
+:root {
+  /* Colors */
+  --lasco-bg:           #e6e2d4;
+  --lasco-bg-deep:      #d2cdba;
+  --lasco-surface:      #f3efe2;
+  --lasco-surface-alt:  #ffffff;
+  --lasco-ink:          #1a1a1a;
+  --lasco-ink-sub:      #4a4a48;
+  --lasco-ink-muted:    #8a8682;
+  --lasco-line:         #1a1a1a;
+  --lasco-line-soft:    #b8b3a4;
+  --lasco-accent:       #0a0f2e;
+  --lasco-accent-light: #1a2258;
+  --lasco-accent-press: #04071a;
+  --lasco-ok:           #5b8b3e;
+  --lasco-warn:         #d9a23a;
+  --lasco-error:        #c44a3e;
+  
+  /* Dither pattern for shadows */
+  --lasco-dither-shadow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect x='0' y='0' width='2' height='2' fill='%231a1a1a'/%3E%3Crect x='2' y='2' width='2' height='2' fill='%231a1a1a'/%3E%3C/svg%3E");
+  
+  /* Override Infima variables to match our design system */
+  --ifm-color-primary: var(--lasco-accent);
+  --ifm-color-primary-dark: var(--lasco-accent-light);
+  --ifm-color-primary-darker: var(--lasco-accent-press);
+  --ifm-color-primary-light: var(--lasco-accent-light);
+  --ifm-color-primary-lighter: var(--lasco-accent);
+  --ifm-color-primary-lightest: var(--lasco-accent-light);
+  --ifm-background-color: var(--lasco-bg);
+  --ifm-background-surface-color: var(--lasco-surface);
+  --ifm-background-surface-color-secondary: var(--lasco-surface-alt);
+  --ifm-font-color-base: var(--lasco-ink);
+  --ifm-font-color-base-inverse: var(--lasco-surface);
+  --ifm-font-color-secondary: var(--lasco-ink-sub);
+  --ifm-font-family-base: 'Space Grotesk', sans-serif;
+  --ifm-font-family-monospace: 'JetBrains Mono', monospace;
+  --ifm-heading-font-family: 'Jersey 10', monospace;
+  --ifm-navbar-background-color: var(--lasco-bg-deep);
+  --ifm-navbar-link-color: var(--lasco-ink-sub);
+  --ifm-navbar-link-color-active: var(--lasco-ink);
+  --ifm-sidebar-background-color: var(--lasco-bg-deep);
+  --ifm-sidebar-link-color: var(--lasco-ink-sub);
+  --ifm-sidebar-link-color-active: var(--lasco-ink);
+  --ifm-sidebar-link-background-color-active: var(--lasco-surface);
+  --ifm-code-background: var(--lasco-surface-alt);
+  --ifm-code-border-radius: 0;
+  --ifm-code-padding-horizontal: 0.75rem;
+  --ifm-code-padding-vertical: 0.75rem;
+  --ifm-pre-background: var(--lasco-surface-alt);
+  --ifm-pre-border-radius: 0;
+  --ifm-pre-padding: 1rem;
+  --ifm-paragraph-margin-bottom: 1rem;
+  --ifm-leading-desktop: 1.55;
+  --ifm-h1-font-size: 2.8rem;
+  --ifm-h2-font-size: 1.75rem;
+  --ifm-h3-font-size: 1.75rem;
+  --ifm-heading-line-height: 1;
+  --ifm-heading-margin-top: 0;
+  --ifm-heading-margin-bottom: 1rem;
+  --ifm-navbar-height: 2.75rem;
+  --ifm-global-radius: 0;
+  --ifm-global-border-width: 2px;
+  --ifm-navbar-shadow: none;
+  --ifm-menu-link-padding-vertical: 0.4375rem;
+  --ifm-menu-link-padding-horizontal: 1rem;
+}
+
+/* Dark mode token overrides */
+[data-theme='dark'] {
+  --lasco-bg: #1a1a1a;
+  --lasco-bg-deep: #252525;
+  --lasco-surface: #2d2d2d;
+  --lasco-surface-alt: #1a1a1a;
+  --lasco-ink: #f5f5f5;
+  --lasco-ink-sub: #d4d4d4;
+  --lasco-ink-muted: #989898;
+  --lasco-line: #4a4a4a;
+  --lasco-line-soft: #3a3a3a;
+  --lasco-accent: #5865f2;
+  --lasco-accent-light: #6d79f7;
+  --lasco-accent-press: #4a55e0;
+  --lasco-dither-shadow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect x='0' y='0' width='2' height='2' fill='%234a4a4a'/%3E%3Crect x='2' y='2' width='2' height='2' fill='%234a4a4a'/%3E%3C/svg%3E");
+  
+  --ifm-background-color: var(--lasco-bg);
+  --ifm-background-surface-color: var(--lasco-surface);
+  --ifm-background-surface-color-secondary: var(--lasco-surface-alt);
+  --ifm-font-color-base: var(--lasco-ink);
+  --ifm-font-color-secondary: var(--lasco-ink-sub);
+  --ifm-navbar-background-color: var(--lasco-bg-deep);
+  --ifm-sidebar-background-color: var(--lasco-bg-deep);
+}
+
+/* ========================================================================
+   LAYOUT OVERRIDES - Target Docusaurus structure with high specificity
+   ======================================================================== */
+
+/* Main grid layout */
+html[class] #__docusaurus {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  grid-template-rows: auto 1fr;
+  min-height: 100vh;
+}
+
+/* Navbar - 44px height, border bottom */
+html[class] .theme-layout-navbar.navbar {
+  grid-column: 1 / -1;
+  height: 44px;
+  min-height: 44px;
+  padding: 0 16px;
+  background: var(--lasco-bg-deep);
+  border-bottom: 2px solid var(--lasco-line);
+  box-shadow: none !important;
+}
+
+html[class] .navbar__inner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: none;
+  height: 100%;
+}
+
+/* Logo styling */
+html[class] .navbar__brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  margin: 0;
+  text-decoration: none;
+}
+
+html[class] .navbar__logo {
+  height: 36px;
+  width: auto;
+  flex-shrink: 0;
+}
+
+html[class] .navbar__logo img {
+  display: block;
+  height: 36px;
+  width: auto;
+}
+
+html[class] .navbar__title {
+  font-family: 'Jersey 10', monospace !important;
+  font-size: 26px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.06em !important;
+  color: var(--lasco-ink) !important;
+  line-height: 1 !important;
+  font-weight: normal !important;
+}
+
+/* Navbar items */
+html[class] .navbar__items {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 100%;
+}
+
+html[class] .navbar__item.navbar__link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 16px !important;
+  font-family: 'Space Grotesk', sans-serif !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  color: var(--lasco-ink-sub) !important;
+  border-left: 2px solid transparent;
+  height: 44px;
+  text-decoration: none !important;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+
+html[class] .navbar__item.navbar__link:hover {
+  background: var(--lasco-bg);
+  color: var(--lasco-ink) !important;
+}
+
+html[class] .navbar__item.navbar__link--active {
+  background: var(--lasco-surface);
+  color: var(--lasco-ink) !important;
+  border-left-color: var(--lasco-accent);
+}
+
+/* Hide search */
+html[class] .navbarSearchContainer_Bca1 {
+  display: none !important;
+}
+
+/* Hide hamburger toggle — all items fit on all screen sizes */
+html[class] .navbar__toggle {
+  display: none !important;
+}
+
+/* Always show all navbar items — Docusaurus hides these on mobile */
+html[class] .navbar__items {
+  display: flex !important;
+  align-items: center;
+}
+
+/* Always show color mode toggle */
+html[class] [class*="colorModeToggle"] {
+  display: flex !important;
+}
+
+/* Sidebar - 220px width, border right */
+html[class] aside[class*="sidebar"] {
+  background: var(--lasco-bg-deep) !important;
+  border-right: 2px solid var(--lasco-line) !important;
+  padding: 20px 0 !important;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 220px !important;
+  min-width: 220px !important;
+  align-self: stretch;
+}
+
+html[class] aside[class*="sidebar"] > div {
+  width: 100%;
+}
+
+/* Sidebar menu */
+html[class] nav[aria-label*="sidebar"] {
+  width: 100%;
+}
+
+html[class] nav[aria-label*="sidebar"] > ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+}
+
+html[class] nav[aria-label*="sidebar"] a[class*="menu__link"] {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 16px !important;
+  font-family: 'Space Grotesk', sans-serif !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  color: var(--lasco-ink-sub) !important;
+  border-left: 2px solid transparent;
+  border-radius: 0 !important;
+  text-decoration: none !important;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+
+html[class] nav[aria-label*="sidebar"] a[class*="menu__link"]:hover {
+  background: var(--lasco-bg);
+  color: var(--lasco-ink) !important;
+}
+
+html[class] nav[aria-label*="sidebar"] a[class*="--active"] {
+  background: var(--lasco-surface);
+  color: var(--lasco-ink) !important;
+  border-left-color: var(--lasco-accent);
+}
+
+html[class] nav[aria-label*="sidebar"] a[class*="menu__link"] span[class*="Label"] {
+  flex: 1;
+}
+
+/* Category buttons */
+html[class] nav[aria-label*="sidebar"] button[class*="menu__caret"],
+html[class] nav[aria-label*="sidebar"] .menu__list-item-collapsible {
+  border-radius: 0 !important;
+}
+
+/* Nested menu items */
+html[class] .theme-doc-sidebar-item-link-level-2 a[class*="menu__link"] {
+  padding-left: 32px !important;
+  font-size: 14px !important;
+}
+
+html[class] .theme-doc-sidebar-item-link-level-3 a[class*="menu__link"] {
+  padding-left: 48px !important;
+  font-size: 14px !important;
+}
+
+/* Main content area */
+html[class] .theme-layout-main.main-wrapper {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+html[class] .theme-layout-main.main-wrapper > div {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* docRoot (contains aside + main) must fill docsWrapper height */
+html[class] .theme-layout-main.main-wrapper > div > div[class] {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+/* Content container - preserve padding as requested */
+html[class] .container.padding-top--md.padding-bottom--lg {
+  padding: 32px 36px !important;
+  display: flex;
+  flex-direction: column;
+  gap: 48px;
+  max-width: none !important;
+  width: 100%;
+}
+
+/* Document markdown content */
+html[class] .theme-doc-markdown.markdown {
+  width: 100%;
+}
+
+/* ========================================================================
+   TYPOGRAPHY
+   ======================================================================== */
+
+/* h1 - Jersey 10, 42px, uppercase */
+html[class] .theme-doc-markdown h1 {
+  font-family: 'Jersey 10', monospace !important;
+  font-size: 42px !important;
+  font-weight: 400 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.04em !important;
+  line-height: 1 !important;
+  color: var(--lasco-ink) !important;
+  margin-bottom: 20px !important;
+}
+
+/* h2 - Jersey 10, 26px, uppercase with border */
+html[class] .theme-doc-markdown h2 {
+  font-family: 'Jersey 10', monospace !important;
+  font-size: 26px !important;
+  font-weight: 400 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.04em !important;
+  line-height: 1 !important;
+  color: var(--lasco-ink) !important;
+  margin: 32px 0 16px !important;
+  padding-bottom: 8px !important;
+  border-bottom: 2px solid var(--lasco-line) !important;
+}
+
+/* h3 - Jersey 10, 20px, normal weight */
+html[class] .theme-doc-markdown h3 {
+  font-family: 'Jersey 10', monospace !important;
+  font-size: 20px !important;
+  font-weight: 400 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.04em !important;
+  line-height: 1 !important;
+  color: var(--lasco-ink) !important;
+  margin: 28px 0 12px !important;
+}
+
+/* Paragraphs - preserve spacing as requested */
+html[class] .theme-doc-markdown p {
+  font-family: 'Space Grotesk', sans-serif !important;
+  font-size: 17px !important;
+  font-weight: 400 !important;
+  line-height: 1.55 !important;
+  color: var(--lasco-ink-sub) !important;
+  margin: 0 0 16px !important;
+}
+
+html[class] .theme-doc-markdown p:last-child {
+  margin-bottom: 0 !important;
+}
+
+/* Links */
+html[class] .theme-doc-markdown a {
+  color: var(--lasco-accent) !important;
+  text-decoration: none !important;
+}
+
+html[class] .theme-doc-markdown a:hover {
+  text-decoration: underline !important;
+}
+
+/* Code blocks */
+html[class] .theme-doc-markdown pre {
+  background: var(--lasco-surface-alt) !important;
+  border: 2px solid var(--lasco-line) !important;
+  border-radius: 0 !important;
+  padding: 16px !important;
+  overflow-x: auto;
+  margin: 16px 0 !important;
+}
+
+html[class] .theme-doc-markdown code {
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 14px !important;
+  color: var(--lasco-ink) !important;
+  background: var(--lasco-surface-alt) !important;
+  padding: 2px 4px !important;
+  border: 1px solid var(--lasco-line-soft) !important;
+  border-radius: 0 !important;
+}
+
+html[class] .theme-doc-markdown pre code {
+  background: none !important;
+  border: none !important;
+  padding: 0 !important;
+  font-size: 14px !important;
+}
+
+/* Lists */
+html[class] .theme-doc-markdown ul,
+html[class] .theme-doc-markdown ol {
+  margin: 0 0 16px 0 !important;
+  padding-left: 24px !important;
+}
+
+html[class] .theme-doc-markdown ul {
+  list-style: disc !important;
+}
+
+html[class] .theme-doc-markdown ol {
+  list-style: decimal !important;
+}
+
+html[class] .theme-doc-markdown li {
+  margin: 8px 0 !important;
+  line-height: 1.55 !important;
+  color: var(--lasco-ink-sub) !important;
+  font-size: 17px !important;
+}
+
+html[class] .theme-doc-markdown li p {
+  margin: 0 !important;
+}
+
+/* Tables */
+html[class] .theme-doc-markdown table {
+  width: 100% !important;
+  border-collapse: collapse !important;
+  border: 2px solid var(--lasco-line) !important;
+  margin: 16px 0 !important;
+}
+
+html[class] .theme-doc-markdown th {
+  background: var(--lasco-bg-deep) !important;
+  border-bottom: 2px solid var(--lasco-line) !important;
+  border-right: 1px solid var(--lasco-line-soft) !important;
+  padding: 8px 12px !important;
+  text-align: left !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 12px !important;
+  color: var(--lasco-ink-muted) !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.08em !important;
+}
+
+html[class] .theme-doc-markdown td {
+  padding: 9px 12px !important;
+  border-bottom: 1px solid var(--lasco-line-soft) !important;
+  border-right: 1px solid var(--lasco-line-soft) !important;
+  font-size: 15px !important;
+  color: var(--lasco-ink-sub) !important;
+}
+
+html[class] .theme-doc-markdown tr:last-child td {
+  border-bottom: none !important;
+}
+
+html[class] .theme-doc-markdown tr:hover td {
+  background: var(--lasco-bg) !important;
+}
+
+html[class] .theme-doc-markdown td:last-child,
+html[class] .theme-doc-markdown th:last-child {
+  border-right: none !important;
+  width: 100% !important;
+}
+
+/* Block quotes */
+html[class] .theme-doc-markdown blockquote {
+  border-left: 4px solid var(--lasco-accent) !important;
+  padding-left: 16px !important;
+  margin-left: 0 !important;
+  color: var(--lasco-ink-sub) !important;
+  margin: 16px 0 !important;
+}
+
+/* Breadcrumb */
+html[class] .theme-doc-breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 13px !important;
+  color: var(--lasco-ink-muted) !important;
+  margin-bottom: 20px !important;
+}
+
+html[class] .theme-doc-breadcrumbs a {
+  color: var(--lasco-accent) !important;
+  text-decoration: none !important;
+}
+
+html[class] .theme-doc-breadcrumbs a:hover {
+  text-decoration: underline !important;
+}
+
+html[class] .breadcrumbs__link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+html[class] .breadcrumbs__item--active .breadcrumbs__link {
+  color: var(--lasco-ink-muted) !important;
+}
+
+/* Footer */
+html[class] .theme-layout-footer.footer {
+  background: var(--lasco-bg-deep) !important;
+  border-top: 2px solid var(--lasco-line) !important;
+  padding: 40px 0 20px !important;
+  grid-column: 1 / -1;
+}
+
+html[class] .footer__links {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 40px;
+  margin-bottom: 32px;
+}
+
+html[class] .footer__title {
+  font-family: 'Jersey 10', monospace !important;
+  font-size: 21px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.06em !important;
+  color: var(--lasco-ink) !important;
+  margin-bottom: 12px !important;
+}
+
+html[class] .footer__items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+html[class] .footer__item {
+  margin-bottom: 8px;
+}
+
+html[class] .footer__link-item {
+  font-family: 'Space Grotesk', sans-serif !important;
+  font-size: 15px !important;
+  color: var(--lasco-ink-sub) !important;
+  text-decoration: none !important;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+html[class] .footer__link-item:hover {
+  color: var(--lasco-ink) !important;
+  text-decoration: underline !important;
+}
+
+html[class] .footer__bottom {
+  border-top: 1px solid var(--lasco-line-soft) !important;
+  padding-top: 20px !important;
+  margin-top: 20px !important;
+}
+
+html[class] .footer__copyright {
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 13px !important;
+  color: var(--lasco-ink-muted) !important;
+}
+
+/* ========================================================================
+   BUTTONS
+   ======================================================================== */
+
+html[class] .button {
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  appearance: none !important;
+  border-radius: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 7px !important;
+  font-family: 'Space Grotesk', sans-serif !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.01em !important;
+  padding: 9px 18px !important;
+  border: none !important;
+  outline: none !important;
+  user-select: none !important;
+  cursor: pointer !important;
+  transition: box-shadow 0.06s, padding 0.06s !important;
+  white-space: nowrap !important;
+  background: var(--lasco-surface) !important;
+  color: var(--lasco-ink-sub) !important;
+  box-shadow:
+    inset  1px  1px 0 0 #ffffff,
+    inset  2px  2px 0 0 #ede9dc,
+    inset  3px  3px 0 0 #d8d4c8,
+    inset -1px -1px 0 0 #4a4840,
+    inset -2px -2px 0 0 #686660,
+    inset -3px -3px 0 0 #888480 !important;
+}
+
+html[class] .button:active {
+  padding: 10px 17px 8px 19px !important;
+  box-shadow:
+    inset  1px  1px 0 0 #4a4840,
+    inset  2px  2px 0 0 #686660,
+    inset  3px  3px 0 0 #888480,
+    inset -1px -1px 0 0 #ffffff,
+    inset -2px -2px 0 0 #ede9dc,
+    inset -3px -3px 0 0 #d8d4c8 !important;
+}
+
+html[class] .button--primary {
+  background: var(--lasco-accent) !important;
+  color: #fff !important;
+  box-shadow:
+    inset  1px  1px 0 0 #2a3468,
+    inset  2px  2px 0 0 #1a2258,
+    inset  3px  3px 0 0 #111840,
+    inset -1px -1px 0 0 #020308,
+    inset -2px -2px 0 0 #04050f,
+    inset -3px -3px 0 0 #060818 !important;
+}
+
+html[class] .button--primary:active {
+  box-shadow:
+    inset  1px  1px 0 0 #020308,
+    inset  2px  2px 0 0 #04050f,
+    inset  3px  3px 0 0 #060818,
+    inset -1px -1px 0 0 #2a3468,
+    inset -2px -2px 0 0 #1a2258,
+    inset -3px -3px 0 0 #111840 !important;
+}
+
+html[class] .button--secondary {
+  background: var(--lasco-bg-deep) !important;
+  color: var(--lasco-ink) !important;
+  box-shadow:
+    inset  1px  1px 0 0 #f5f2e8,
+    inset  2px  2px 0 0 #e0dcd0,
+    inset  3px  3px 0 0 #ccc8bc,
+    inset -1px -1px 0 0 #3a3830,
+    inset -2px -2px 0 0 #504e46,
+    inset -3px -3px 0 0 #6a6860 !important;
+}
+
+html[class] .button--danger {
+  background: var(--lasco-error) !important;
+  color: #fff !important;
+  box-shadow:
+    inset  1px  1px 0 0 #e07060,
+    inset  2px  2px 0 0 #c85848,
+    inset  3px  3px 0 0 #b04038,
+    inset -1px -1px 0 0 #2a0c0a,
+    inset -2px -2px 0 0 #3e1210,
+    inset -3px -3px 0 0 #581a18 !important;
+}
+
+html[class] .button--sm {
+  font-size: 14px !important;
+  padding: 6px 12px !important;
+}
+
+html[class] .button--sm:active {
+  padding: 7px 11px 5px 13px !important;
+}
+
+/* ========================================================================
+   RESPONSIVE DESIGN
+   ======================================================================== */
+
+@media (max-width: 968px) {
+  html[class] #__docusaurus {
+    grid-template-columns: 1fr;
+  }
+
+  html[class] aside[class*="sidebar"] {
+    display: none;
+  }
+
+  html[class] .container.padding-top--md.padding-bottom--lg {
+    padding: 24px 20px !important;
+  }
+
+  html[class] .theme-layout-navbar.navbar {
+    padding: 0 12px;
+  }
+
+  /* Always keep brand (logo) visible */
+  html[class] .navbar__brand {
+    display: flex !important;
+  }
+
+  html[class] aside[class*="sidebar"][class*="show"] {
+    display: block;
+    position: fixed;
+    top: 44px;
+    left: 0;
+    bottom: 0;
+    z-index: 100;
+    width: 220px;
+  }
+}
+
+/* ========================================================================
+   ADDITIONAL COMPONENTS
+   ======================================================================== */
+
+/* Panels */
+.panel {
+  background: var(--lasco-surface-alt);
+  border: 2px solid var(--lasco-line);
+  padding: 20px;
+}
+
+.panel-hard {
+  box-shadow: 5px 5px 0 0 var(--lasco-line);
+}
+
+.panel-dither-wrap {
+  position: relative;
+  display: block;
+}
+
+.panel-dither-wrap > .panel {
+  position: relative;
+  z-index: 1;
+}
+
+.panel-dither-wrap::after {
+  content: '';
+  position: absolute;
+  bottom: -5px;
+  right: -5px;
+  width: 100%;
+  height: 100%;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect x='0' y='0' width='2' height='2' fill='%231a1a1a'/%3E%3Crect x='2' y='2' width='2' height='2' fill='%231a1a1a'/%3E%3C/svg%3E");
+  background-size: 4px 4px;
+  z-index: 0;
+}
+
+.panel-grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+.panel-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.panel-grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+
+/* Chips */
+.chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: 'Space Grotesk', sans-serif; font-size: 14px; font-weight: 600;
+  padding: 4px 10px; border-radius: 0; border: 1px solid var(--lasco-line);
+  cursor: pointer; user-select: none; letter-spacing: 0.01em;
+  color: var(--lasco-ink-sub);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect x='0' y='0' width='2' height='2' fill='%23f3efe2'/%3E%3Crect x='2' y='2' width='2' height='2' fill='%23f3efe2'/%3E%3Crect x='2' y='0' width='2' height='2' fill='%23e6e2d4'/%3E%3Crect x='0' y='2' width='2' height='2' fill='%23e6e2d4'/%3E%3C/svg%3E");
+}
+.chip.active {
+  color: #fff; border-color: var(--lasco-accent);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect x='0' y='0' width='2' height='2' fill='%230a0f2e'/%3E%3Crect x='2' y='2' width='2' height='2' fill='%230a0f2e'/%3E%3Crect x='2' y='0' width='2' height='2' fill='%231a2258'/%3E%3Crect x='0' y='2' width='2' height='2' fill='%231a2258'/%3E%3C/svg%3E");
+}
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* Tags */
+.tag {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-family: 'JetBrains Mono', monospace; font-size: 13px; padding: 2px 6px; border: 1px solid; border-radius: 0;
+}
+.tag-ok { color: var(--lasco-ok); border-color: var(--lasco-ok); background: #f0f7eb; }
+.tag-warn { color: var(--lasco-warn); border-color: var(--lasco-warn); background: #fdf6e8; }
+.tag-error { color: var(--lasco-error); border-color: var(--lasco-error); background: #fdf0ef; }
+.tag-muted { color: var(--lasco-ink-muted); border-color: var(--lasco-line-soft); background: var(--lasco-surface); }
+
+/* Inputs */
+.field { display: flex; flex-direction: column; gap: 5px; }
+.field-label {
+  font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600;
+  color: var(--lasco-ink-sub); letter-spacing: 0.05em; text-transform: uppercase;
+}
+.input {
+  -webkit-appearance: none; appearance: none;
+  background: var(--lasco-surface-alt); border: 2px solid var(--lasco-line); border-radius: 0;
+  padding: 8px 12px; font-family: 'Space Grotesk', sans-serif; font-size: 16px; color: var(--lasco-ink);
+  outline: none; width: 100%;
+}
+.input:focus { border-color: var(--lasco-accent); box-shadow: 3px 3px 0 0 var(--lasco-accent); }
+
+/* Toggle */
+.toggle-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 12px 0; border-bottom: 1px solid var(--lasco-line-soft);
+}
+.toggle-row:last-child { border-bottom: none; }
+.toggle-title { font-size: 16px; font-weight: 600; color: var(--lasco-ink); }
+.toggle-hint { font-size: 14px; color: var(--lasco-ink-muted); margin-top: 2px; }
+.toggle {
+  width: 38px; height: 18px; border: 2px solid var(--lasco-line);
+  position: relative; cursor: pointer; background: var(--lasco-surface-alt); flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s;
+}
+.toggle-knob {
+  position: absolute; top: 1px; left: 1px; width: 12px; height: 12px; background: var(--lasco-ink);
+  transition: left 0.15s, background 0.15s;
+}
+.toggle.on { background: var(--lasco-accent); border-color: var(--lasco-accent-press); }
+.toggle.on .toggle-knob { left: 21px; background: #fff; }
+
+/* Progress */
+.progress-wrap { display: flex; flex-direction: column; gap: 6px; }
+.progress-meta { display: flex; justify-content: space-between; }
+.progress-track {
+  height: 10px; border: 2px solid var(--lasco-line); background: var(--lasco-surface-alt); position: relative;
+}
+.progress-fill { position: absolute; top: 0; left: 0; bottom: 0; }
+.progress-fill-accent {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect x='0' y='0' width='2' height='2' fill='%230a0f2e'/%3E%3Crect x='2' y='2' width='2' height='2' fill='%230a0f2e'/%3E%3C/svg%3E");
+}
+
+/* Photo Grid */
+.photo-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 2px; border: 2px solid var(--lasco-line);
+}
+.photo-cell { aspect-ratio: 1; background: var(--lasco-surface); position: relative; overflow: hidden; }
+.photo-cell.selected::after {
+  content: ''; position: absolute; inset: 0; border: 3px solid var(--lasco-accent); pointer-events: none;
+}
+.photo-cell-badge {
+  position: absolute; top: 4px; right: 4px; width: 16px; height: 16px;
+  background: var(--lasco-accent); border: 1px solid #fff; display: grid; place-items: center;
+}
+.photo-cell-badge i { font-size: 10px; color: #fff; }
+
+/* Avatar */
+.avatar {
+  width: 32px; height: 32px; border: 2px solid var(--lasco-line);
+  border-radius: 999px; display: grid; place-items: center;
+  font-family: 'Space Grotesk', sans-serif; font-size: 12px; font-weight: 700;
+  flex-shrink: 0; color: #fff;
+}
+
+/* User Row */
+.user-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px; border-bottom: 1px solid var(--lasco-line-soft); background: var(--lasco-surface-alt);
+}
+.user-row:last-child { border-bottom: none; }
+.user-name { font-size: 15px; font-weight: 600; color: var(--lasco-ink); }
+.user-meta { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--lasco-ink-muted); }
+.user-row-actions { margin-left: auto; }
+
+/* Upload Zone */
+.upload-zone {
+  border: 2px dashed var(--lasco-line); background: var(--lasco-surface-alt);
+  padding: 40px 24px; display: flex; flex-direction: column; align-items: center; gap: 10px;
+  text-align: center; cursor: pointer; transition: background 0.1s, border-style 0.1s;
+}
+.upload-zone:hover { background: var(--lasco-bg); border-style: solid; }
+.upload-zone-icon { font-size: 36px; color: var(--lasco-ink-muted); }

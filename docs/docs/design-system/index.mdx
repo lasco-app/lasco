@@ -1,0 +1,465 @@
+---
+sidebar_position: 1
+---
+
+# DESIGN SYSTEM
+
+<div class="t-sub">Plaster theme — warm, original aesthetic with hard edges and pixel-perfect details.</div>
+
+---
+
+## COLORS
+
+<div class="color-swatch-grid">
+  <div class="color-swatch" style={{ background: '#e6e2d4' }}>
+    <span class="color-swatch-label">bg</span>
+    <span class="color-swatch-value">#e6e2d4</span>
+  </div>
+  <div class="color-swatch" style={{ background: '#d2cdba' }}>
+    <span class="color-swatch-label">bg-deep</span>
+    <span class="color-swatch-value">#d2cdba</span>
+  </div>
+  <div class="color-swatch" style={{ background: '#f3efe2' }}>
+    <span class="color-swatch-label">surface</span>
+    <span class="color-swatch-value">#f3efe2</span>
+  </div>
+  <div class="color-swatch" style={{ background: '#ffffff', borderColor: '#b8b3a4' }}>
+    <span class="color-swatch-label">surface-alt</span>
+    <span class="color-swatch-value">#ffffff</span>
+  </div>
+  <div class="color-swatch" style={{ background: '#1a1a1a' }}>
+    <span class="color-swatch-label" style={{ color: '#f3efe2' }}>ink</span>
+    <span class="color-swatch-value" style={{ color: '#b8b3a4' }}>#1a1a1a</span>
+  </div>
+  <div class="color-swatch" style={{ background: '#4a4a48' }}>
+    <span class="color-swatch-label" style={{ color: '#f3efe2' }}>ink-sub</span>
+    <span class="color-swatch-value" style={{ color: '#b8b3a4' }}>#4a4a48</span>
+  </div>
+  <div class="color-swatch" style={{ background: '#8a8682' }}>
+    <span class="color-swatch-label" style={{ color: '#f3efe2' }}>ink-muted</span>
+    <span class="color-swatch-value" style={{ color: '#b8b3a4' }}>#8a8682</span>
+  </div>
+  <div class="color-swatch" style={{ background: '#0a0f2e' }}>
+    <span class="color-swatch-label" style={{ color: '#f3efe2' }}>accent</span>
+    <span class="color-swatch-value" style={{ color: '#b8b3a4' }}>#0a0f2e</span>
+  </div>
+  <div class="color-swatch" style={{ background: '#04071a' }}>
+    <span class="color-swatch-label" style={{ color: '#f3efe2' }}>accent-press</span>
+    <span class="color-swatch-value" style={{ color: '#b8b3a4' }}>#04071a</span>
+  </div>
+  <div class="color-swatch" style={{ background: '#5b8b3e' }}>
+    <span class="color-swatch-label" style={{ color: '#f3efe2' }}>ok</span>
+    <span class="color-swatch-value" style={{ color: '#b8b3a4' }}>#5b8b3e</span>
+  </div>
+  <div class="color-swatch" style={{ background: '#d9a23a' }}>
+    <span class="color-swatch-label">warn</span>
+    <span class="color-swatch-value">#d9a23a</span>
+  </div>
+  <div class="color-swatch" style={{ background: '#c44a3e' }}>
+    <span class="color-swatch-label" style={{ color: '#f3efe2' }}>error</span>
+    <span class="color-swatch-value" style={{ color: '#b8b3a4' }}>#c44a3e</span>
+  </div>
+</div>
+
+---
+
+## TYPOGRAPHY
+
+### 4 Voices
+
+| Voice | Font | Style | Size | Usage |
+|-------|------|-------|------|-------|
+| Category Title Large | Jersey 10 | ALL CAPS | 36px | Top-level nav, section names |
+| Category Title Small | Jersey 10 | ALL CAPS | 22px | Sub-sections, sidebar labels |
+| Subtitle | VT323 | Mixed case | 18px | Metadata, timestamps |
+| Statement Title | Space Grotesk 700 | Normal | 22px, tracking -0.02em | Headlines, card titles |
+| Body | Space Grotesk 400 | Normal | 15px | Paragraph text |
+| Pixel | VT323 | Mixed case | 15px, letter-spacing 0.08em | System overlays |
+| Mono | JetBrains Mono | Normal | 12px | Paths, sizes, timestamps |
+
+<div class="type-showcase">
+  <div class="type-showcase-item">
+    <div class="type-showcase-label">jersey-10 · cat-lg · 36px · uppercase</div>
+    <div class="t-cat-lg">Library</div>
+  </div>
+  <div class="type-showcase-item">
+    <div class="type-showcase-label">jersey-10 · cat-sm · 22px · uppercase</div>
+    <div class="t-cat-sm">Manage</div>
+  </div>
+  <div class="type-showcase-item">
+    <div class="type-showcase-label">vt323 · subtitle · 18px · mixed case</div>
+    <div class="t-sub">Last synced 4 minutes ago · iPhone 15</div>
+  </div>
+  <div class="type-showcase-item">
+    <div class="type-showcase-label">space-grotesk 700 · title · 22px</div>
+    <div class="t-title">Your photos are safe.</div>
+  </div>
+  <div class="type-showcase-item">
+    <div class="type-showcase-label">space-grotesk 400 · body · 15px</div>
+    <div class="t-body">We store every photo you take — full resolution, no compression. Your archive is yours and it lasts forever.</div>
+  </div>
+  <div class="type-showcase-item">
+    <div class="type-showcase-label">jetbrains-mono · mono · 12px</div>
+    <div class="t-mono" style={{ fontSize: '13px' }}>/library/2025/05/13/IMG_4821.HEIC · 3.8 MB · 4032×3024</div>
+  </div>
+</div>
+
+---
+
+## PANELS
+
+### 3 Variants
+
+Base: --surface-alt bg, 2px solid --line, no border-radius. No gradients, no blur, no soft shadows ever.
+
+<div class="panel-grid-3">
+  <div class="panel">
+    <div class="panel-label">FLAT — NO SHADOW</div>
+    <div class="t-title" style={{ fontSize: '16px', marginBottom: '6px' }}>12,847 photos</div>
+    <div class="t-body" style={{ fontSize: '13px' }}>Secondary content, list items, inline details.</div>
+  </div>
+  
+  <div class="panel panel-hard">
+    <div class="panel-label">HARD SHADOW</div>
+    <div class="t-title" style={{ fontSize: '16px', marginBottom: '6px' }}>Backup complete.</div>
+    <div class="t-body" style={{ fontSize: '13px' }}>Primary cards, stat blocks, forms.</div>
+  </div>
+  
+  <div class="panel-dither-wrap">
+    <div class="panel">
+      <div class="panel-label">DITHER SHADOW ★</div>
+      <div class="t-title" style={{ fontSize: '16px', marginBottom: '6px' }}>Your photos last forever.</div>
+      <div class="t-body" style={{ fontSize: '13px' }}>Hero moments only. Once per surface.</div>
+    </div>
+  </div>
+</div>
+
+---
+
+## BUTTONS
+
+### 4 Variants
+
+appearance: none · border-radius: 0 always · 3-layer Win98 inset bevel · no dither overlay · bevel inverts on :active
+
+<div class="btn-row">
+  <button class="btn btn-primary">PRIMARY</button>
+  <button class="btn btn-secondary">SECONDARY</button>
+  <button class="btn btn-ghost">GHOST</button>
+  <button class="btn btn-danger">DANGER</button>
+</div>
+
+<div class="btn-row" style={{ marginTop: '12px' }}>
+  <button class="btn btn-primary btn-sm">PRIMARY SM</button>
+  <button class="btn btn-secondary btn-sm">SECONDARY SM</button>
+  <button class="btn btn-ghost btn-sm">GHOST SM</button>
+</div>
+
+---
+
+## CHIPS
+
+### Dithered Fill
+
+border-radius: 0 always · 1px border · dithered fill · Never round, never flat color fill.
+
+<div class="t-sub" style={{ marginTop: '16px' }}>Filter context — accent active</div>
+<div class="chip-row">
+  <div class="chip active">All</div>
+  <div class="chip">Videos</div>
+  <div class="chip">Screenshots</div>
+  <div class="chip">Favourites</div>
+  <div class="chip">2025</div>
+</div>
+
+<div class="divider" style={{ margin: '16px 0' }}></div>
+
+<div class="t-sub">Album context — black active</div>
+<div class="chip-row">
+  <div class="chip active-black">Summer 2024</div>
+  <div class="chip">Family</div>
+  <div class="chip">Travel</div>
+  <div class="chip">Work</div>
+</div>
+
+---
+
+## STAT CARDS
+
+<div class="panel-grid-4">
+  <div class="stat-card">
+    <div class="stat-icon c-accent">📷</div>
+    <div class="stat-value">12,847</div>
+    <div class="stat-label">photos stored</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon c-accent">☁️</div>
+    <div class="stat-value">1,204</div>
+    <div class="stat-label">uploaded this month</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon c-accent">📱</div>
+    <div class="stat-value">2</div>
+    <div class="stat-label">devices connected</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon c-warn">⚠️</div>
+    <div class="stat-value c-warn">3</div>
+    <div class="stat-label">items pending</div>
+  </div>
+</div>
+
+---
+
+## TOGGLES
+
+<div class="panel" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+  <div class="toggle-row">
+    <div>
+      <div class="toggle-title">Require sign-in</div>
+      <div class="toggle-hint">Recipients must log in before viewing.</div>
+    </div>
+    <div class="toggle on"><div class="toggle-knob"></div></div>
+  </div>
+  <div class="divider"></div>
+  <div class="toggle-row">
+    <div>
+      <div class="toggle-title">Allow download</div>
+      <div class="toggle-hint">Recipients can save originals.</div>
+    </div>
+    <div class="toggle"><div class="toggle-knob"></div></div>
+  </div>
+</div>
+
+---
+
+## PROGRESS
+
+<div class="panel" style={{ padding: 0, overflow: 'hidden' }}>
+  <div class="progress-wrap">
+    <div class="progress-meta">
+      <span class="t-mono c-sub">iPhone 15 → lasco.cloud</span>
+      <span class="t-mono">847 / 1,024</span>
+    </div>
+    <div class="progress-track">
+      <div class="progress-fill progress-fill-accent" style={{ width: '83%' }}></div>
+    </div>
+    <div class="progress-meta">
+      <span class="t-sub c-accent">Uploading…</span>
+      <span class="t-mono">2.4 MB/s</span>
+    </div>
+  </div>
+  <div class="divider"></div>
+  <div class="progress-wrap">
+    <div class="progress-meta">
+      <span class="t-mono c-sub">MacBook Pro → lasco.cloud</span>
+      <span class="t-mono">5,401 / 5,401</span>
+    </div>
+    <div class="progress-track">
+      <div class="progress-fill progress-fill-ok" style={{ width: '100%' }}></div>
+    </div>
+    <div class="progress-meta">
+      <span class="t-sub c-ok">Complete.</span>
+      <span class="t-mono">Done</span>
+    </div>
+  </div>
+</div>
+
+---
+
+## TOASTS
+
+<div class="toast-stack">
+  <div class="toast toast-ok">
+    <div class="toast-icon c-ok">✓</div>
+    <div class="toast-body">
+      <div class="toast-title">Backup complete.</div>
+      <div class="toast-msg">1,204 photos uploaded from iPhone 15. All files verified.</div>
+    </div>
+  </div>
+  <div class="toast toast-warn">
+    <div class="toast-icon c-warn">⚠</div>
+    <div class="toast-body">
+      <div class="toast-title">Storage running low.</div>
+      <div class="toast-msg">12 GB remaining. Upgrade your plan to keep backing up.</div>
+    </div>
+  </div>
+  <div class="toast toast-error">
+    <div class="toast-icon c-error">✗</div>
+    <div class="toast-body">
+      <div class="toast-title">Couldn't reach lasco.cloud.</div>
+      <div class="toast-msg">Try again in a minute. 3 files are waiting to upload.</div>
+    </div>
+  </div>
+</div>
+
+---
+
+## TAGS
+
+<div class="panel" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+  <div class="chip-row">
+    <span class="tag tag-ok">✓ Complete</span>
+    <span class="tag tag-warn">⚠ Partial</span>
+    <span class="tag tag-error">✗ Failed</span>
+    <span class="tag tag-muted">Pending</span>
+  </div>
+</div>
+
+---
+
+## DATA TABLE
+
+<div class="panel" style={{ padding: 0, overflow: 'hidden' }}>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Device</th>
+        <th>Files</th>
+        <th>Size</th>
+        <th>Duration</th>
+        <th>Status</th>
+        <th>Timestamp</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="t-mono c-ink">iPhone 15</span></td>
+        <td>1,204</td>
+        <td><span class="t-mono">3.8 GB</span></td>
+        <td><span class="t-mono">4m 12s</span></td>
+        <td><span class="tag tag-ok">✓ Complete</span></td>
+        <td><span class="t-mono">2025-05-13 09:42</span></td>
+      </tr>
+      <tr>
+        <td><span class="t-mono c-ink">MacBook Pro</span></td>
+        <td>5,401</td>
+        <td><span class="t-mono">24.1 GB</span></td>
+        <td><span class="t-mono">18m 05s</span></td>
+        <td><span class="tag tag-ok">✓ Complete</span></td>
+        <td><span class="t-mono">2025-05-12 22:10</span></td>
+      </tr>
+      <tr>
+        <td><span class="t-mono c-ink">iPhone 15</span></td>
+        <td>312</td>
+        <td><span class="t-mono">1.1 GB</span></td>
+        <td><span class="t-mono">1m 44s</span></td>
+        <td><span class="tag tag-warn">⚠ Partial</span></td>
+        <td><span class="t-mono">2025-05-11 14:03</span></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+---
+
+## INPUTS & FORMS
+
+<div class="panel panel-hard" style={{ maxWidth: '540px' }}>
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+    <div class="form-grid-2">
+      <div class="field">
+        <label class="field-label">Album name</label>
+        <input class="input" type="text" placeholder="Summer 2025" />
+      </div>
+      <div class="field">
+        <label class="field-label">Expires after</label>
+        <input class="input" type="text" placeholder="7 days" />
+      </div>
+    </div>
+    <div class="field">
+      <label class="field-label">Recipient email</label>
+      <div class="input-inline">
+        <input class="input" type="email" placeholder="name@example.com" />
+        <button class="btn btn-primary">Send</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+---
+
+## USER ROWS
+
+<div class="panel" style={{ padding: 0, overflow: 'hidden' }}>
+  <div class="user-row">
+    <div class="avatar" style={{ background: 'var(--accent)' }}>MR</div>
+    <div>
+      <div class="user-name">Maria Reyes</div>
+      <div class="user-meta">maria@reyes.com</div>
+    </div>
+    <div class="user-row-actions"><span class="tag tag-muted">Owner</span></div>
+  </div>
+  <div class="user-row">
+    <div class="avatar" style={{ background: 'var(--ink-sub)' }}>JP</div>
+    <div>
+      <div class="user-name">James Park</div>
+      <div class="user-meta">james@park.io · Can view</div>
+    </div>
+    <div class="user-row-actions"><button class="btn btn-ghost btn-sm">Remove</button></div>
+  </div>
+  <div class="user-row">
+    <div class="avatar" style={{ background: 'var(--warn)' }}>SL</div>
+    <div>
+      <div class="user-name">Sofia Lund</div>
+      <div class="user-meta">sofia@lund.se · Can edit</div>
+    </div>
+    <div class="user-row-actions"><button class="btn btn-ghost btn-sm">Remove</button></div>
+  </div>
+</div>
+
+---
+
+## UPLOAD ZONE
+
+<div class="upload-zone">
+  <div class="upload-zone-icon">📷</div>
+  <div class="t-title" style={{ fontSize: '18px' }}>Drop photos here.</div>
+  <div class="t-body">Or click to choose files from your computer.</div>
+  <div class="t-mono" style={{ marginTop: '4px' }}>JPEG · PNG · HEIC · RAW · MP4 · MOV</div>
+  <button class="btn btn-secondary" style={{ marginTop: '8px' }}>Choose files</button>
+</div>
+
+---
+
+## HERO
+
+<div class="hero">
+  <div class="hero-eyebrow">SYS // ALL GOOD // 2.4 MB/s</div>
+  <div class="t-title-lg">Your photos are safe.</div>
+  <div class="t-body" style={{ marginTop: '10px', maxWidth: '440px' }}>12,847 photos backed up across 2 devices. Last sync completed 4 minutes ago on iPhone 15.</div>
+  <div class="hero-cta">
+    <button class="btn btn-primary">Back up now</button>
+    <button class="btn btn-secondary">Browse library</button>
+  </div>
+</div>
+
+---
+
+## RULES
+
+<div class="panel" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+  <div class="t-body">
+    <strong>No gradients, no blur, no border-radius</strong> except on avatars (pill).
+  </div>
+  <div class="divider"></div>
+  <div class="t-body">
+    <strong>No emoji, no rounded chips, no soft anything.</strong>
+  </div>
+  <div class="divider"></div>
+  <div class="t-body">
+    <strong>Photos are sacred</strong> — no rounding, no tint, no filters on real imagery.
+  </div>
+  <div class="divider"></div>
+  <div class="t-body">
+    <strong>Only two legal shadows:</strong> Hard offset (5px 5px 0 0 var(--ink)) for panels and cards. Dithered offset (4×4 checker SVG behind the element) for hero moments only.
+  </div>
+  <div class="divider"></div>
+  <div class="t-body">
+    <strong>Pixelart icons</strong> for all icons, 24×24, 1px stroke.
+  </div>
+  <div class="divider"></div>
+  <div class="t-body">
+    <strong>Sentence case everywhere</strong> except Jersey 10 titles which are always ALL CAPS.
+  </div>
+</div>

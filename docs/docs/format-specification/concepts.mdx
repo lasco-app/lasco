@@ -1,0 +1,78 @@
+---
+sidebar_position: 2
+sidebar_label: Concepts
+---
+
+# Concepts
+
+## Library
+
+A **Library** is the top-level container for all of your media. It owns the encryption keys, the operation log, and the album tree.
+
+---
+
+## Users
+
+A library can have several users but they all get full access to the library. 
+However each user can have a different password.
+
+---
+
+## Media
+
+A **Media** represents a single media item (photo or video) stored in the library. 
+Each media item is stored as a single encrypted file on the server. 
+Each media item also gets a precomputed thumbnail, also encrypted and stored on the server.
+
+---
+
+
+
+## Keys
+
+Lasco uses a layered key hierarchy so that a single master key protects all content while per-media keys allow efficient granular encryption.
+
+| Key | Full name | Purpose |
+|-----|-----------|---------|
+| **KEK** | Key Encryption Key | Per-user key derived from the password; wraps the master key |
+| **Master Key** | Master Key | Root key; protects the entire library; stored as `mk_{user}.enc` |
+| **FileKey** | File Encryption Key | Per-media key derived from the master key and the file UUID |
+
+A `salt.bin` (32 random bytes, generated once at library creation) is mixed into all KEK derivations to ensure keys are unique per library even when passwords are reused.
+
+---
+
+## Albums
+
+Albums are used to gather media items (or groups of media items). Albums can hold other albums. Basically think about them like a folder arborescence.
+
+There is always a **Default album** that automatically receives every newly added media item. This is enforced by the client: whenever a media item is created, an `AlbumMediaAdd` operation targeting the Default album is emitted alongside the `MediaCreation` operation. A media item removed from all albums is still stored on the server but cannot easily be browsed or recovered.
+
+---
+
+## Groups
+
+Groups can be added to albums, contain media items like albums, but cannot hold other groups or albums.
+We use them to keep many similar media items in an album, without showing all of them.
+
+---
+
+## Operations
+
+An **Operation** is the atomic unit of change in a library. Every action is recorded as an operation. Operations are immutable once written and are never modified in place.
+
+Operations are bundled into **OperationGroups**: each group carries a unique ID, a timestamp, and one or more operations applied together. The group file is encrypted and stored on the server under `operations/`.
+
+To reconstruct the library state, a client downloads all operation groups, sorts them by timestamp, and replays them in order. This append-only design means all devices converge to the same state as long as they have seen the same operations.
+
+---
+
+## Remote
+
+A **Remote** is a storage backend (e.g. an S3 bucket or a compatible object store) where the library's encrypted blobs are kept. A library can have multiple remotes.
+
+---
+
+## Device
+
+A **Device** is any machine running a Lasco client. Each device maintains a full copy of all known operations, so the library state can be reconstructed offline. Only a subset of media blobs may be cached locally.

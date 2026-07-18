@@ -1,0 +1,85 @@
+---
+sidebar_position: 2
+---
+
+# CLI Commands
+
+## Library
+
+All commands accept an optional `--library <nickname>` flag to specify which library to use. If omitted, the default library is used. Complex commands work interactively and will prompt for missing information.
+
+| Command | Description |
+|---------|-------------|
+| `lasco new` | Initialize a new lasco library. Prompts for admin username, password, and default album name. Use `--username`, `--password`, `--album-name` to skip prompts. |
+| `lasco clone --remote-dir <path>` | Add a library that already exists on a local filesystem path. Copies the crypto metadata from the source app directory and registers it locally. Use `--username` and `--password` to skip prompts. |
+| `lasco check-storage [--library <nickname>]` | Verify the integrity of local and remote storage for the specified library. Checks for consistency between stored data and metadata. |
+| `lasco status [--library <nickname>]` | Display pending operation and media upload counts for the specified library. |
+| `lasco libraries list` | List all configured libraries with their nicknames and current default. |
+| `lasco library list` | Alias for `lasco libraries list`. |
+| `lasco library default [nickname]` | Set the default library. If nickname is provided, sets it as default. Otherwise, lists libraries and prompts interactively for selection. All operations that accept a `[--library <nickname>]` flag apply to the default library if no library is specified. |
+
+## Users
+
+| Command | Description |
+|---------|-------------|
+| `lasco user add <username> [--library <nickname>]` | Add a new user to the specified library. Prompts for password if not provided via `--password`. |
+| `lasco user list [--library <nickname>]` | List all users registered in the specified library. |
+| `lasco user change-password <username> [--library <nickname>]` | Change the password for the specified user. Prompts for current and new password. |
+
+## Media
+
+| Command | Description |
+|---------|-------------|
+| `lasco media add <path> [--library <nickname>]` | Add a media item to the specified library. Copies the media into local state. Use `--album` to specify a target album. |
+| `lasco media list [--library <nickname>]` | List all reachable media items in the specified library. |
+| `lasco media get <UUID> [--library <nickname>]` | Decrypt and download a media item to the local filesystem. Use `--output` or `-o` to specify destination path. |
+| `lasco media get-thumbnail <UUID> [--library <nickname>]` | Decrypt and return a media item's thumbnail bytes. |
+| `lasco media delete <UUID> [--library <nickname>]` | Remove a media item from all albums it belongs to. The media blob remains on remotes; it simply becomes unreachable through the album tree. |
+| `lasco media show <UUID> [--library <nickname>]` | Display metadata for a specific media item, including its UUID, name, size, and encryption status. |
+
+## Albums
+
+| Command | Description |
+|---------|-------------|
+| `lasco album create <name> [--library <nickname>]` | Create a new album in the specified library. Use `--parent` to nest it under an existing album. |
+| `lasco album tree [--library <nickname>]` | Display the complete album hierarchy as a tree for the specified library. Use `--parent <name/UUID>` to show only a subtree. |
+| `lasco album list <name/UUID> [--library <nickname>]` | List all media items contained in the specified album. |
+| `lasco album list-groups <name/UUID> [--library <nickname>]` | List all groups inside the specified album. |
+| `lasco album add <album-UUID> <media-UUID> [--library <nickname>]` | Add an existing media item to an album in the specified library. |
+| `lasco album remove <album-UUID> <media-UUID> [--library <nickname>]` | Remove a media item from an album (does not delete the media item). |
+| `lasco album delete <UUID> [--library <nickname>]` | Soft-delete an album. Child albums become disconnected; media items are not removed. Cannot delete the configured default upload album. |
+
+## Groups
+
+| Command | Description |
+|---------|-------------|
+| `lasco group create [--library <nickname>]` | Create a new group inside an album in the specified library. Use `--album` to specify the parent album. |
+| `lasco group list [--library <nickname>]` | List all non-deleted groups in the specified library. |
+| `lasco group show <UUID> [--library <nickname>]` | Display metadata for a specific group. |
+| `lasco group add <group-UUID> <media-UUID> [--library <nickname>]` | Add a media item to a group in the specified library. |
+| `lasco group remove <group-UUID> <media-UUID> [--library <nickname>]` | Remove a media item from a group (does not delete the media item). |
+| `lasco group delete <UUID> [--library <nickname>]` | Soft-delete a group. Media items in the group are not removed. |
+
+## Remote
+
+| Command | Description |
+|---------|-------------|
+| `lasco remote list [--library <nickname>]` | List all configured remote storage locations (primary and replicas) for the specified library. |
+| `lasco remote add <name> <url/type> [--library <nickname>]` | Add a new remote storage location as a replica to the specified library. |
+| `lasco remote remove <name> [--library <nickname>]` | Remove a configured remote storage location from the specified library. |
+| `lasco remote default-fetch <name> [--library <nickname>]` | Set the default fetch remote for the specified library. |
+
+## Sync
+
+| Command | Description |
+|---------|-------------|
+| `lasco fetch [--library <nickname>] [--remote <name>]` | Download new operations from the specified remote storage. If no remote is specified, uses the default fetch remote. Applies operations to the local library state. |
+| `lasco push [--library <nickname>] [--remote <name1,name2,...>]` | Upload pending local operations and media to the specified remote storage(s). If no remote is specified, pushes to all known remotes. |
+| `lasco sync [--library <nickname>] [--remote <name>]` | Perform a full synchronization: fetch new operations from the specified remote, then push local changes to it. If no remote is specified, uses the primary remote. |
+
+## Misc
+
+| Command | Description |
+|---------|-------------|
+| `lasco local-dir` | Display configuration directories: config dir, data dir, remote dir (if set), session dir (if set), and the config file path. |
+| `lasco session-end` | Clear cached session credentials from the OS keychain, ending the current session. |

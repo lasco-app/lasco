@@ -1,0 +1,24 @@
+---
+sidebar_position: 3.5
+sidebar_label: Users
+---
+
+# Users
+
+## Shared access model
+
+Any authenticated user can read and write all content: media, albums, groups, and operations.
+
+Each operation group records the username of the user who wrote it. However, this attribution is declarative: there is no proof that the recorded username actually performed the operation.
+
+## Add a user
+
+To add a user, a new `mk_{username}_{password_uuid}.enc` file is written locally. It contains the master key re-encrypted under the new user's KEK, which is derived from their password and the library's `salt.bin`. The new user gets access to the same master key and can therefore decrypt all existing and future content.
+
+The file is propagated to each remote on the next push (see [Sync](./sync)).
+
+---
+
+## Remove a user
+
+Removing a user means deleting their `mk_*.enc` file(s) from the remote storage. This must be done manually on the remote. Locally cached copies on other devices are not removed automatically.

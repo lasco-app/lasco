@@ -1,0 +1,17 @@
+docs/node_modules/
+docs/.docusaurus/
+/target/
+
+# Generated FFI artifacts
+lasco-ffi/artifacts/
+lasco-swift/LascoFFI.xcframework
+
+# Fonts
+lasco-swift/Lasco/Fonts/
+
+# Xcode user data
+lasco-swift/Lasco.xcodeproj/xcuserdata/
+lasco-swift/Lasco.xcodeproj/project.xcworkspace/xcuserdata/
+
+*.png
+*.svg

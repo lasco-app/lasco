@@ -1,0 +1,22 @@
+---
+sidebar_position: 8
+sidebar_label: Import
+---
+
+# Import
+
+## Import from iCloud / iOS Library
+
+Lasco uses Apple's PhotoKit API to access your iOS photo library directly. Assets are fetched on demand, iCloud photos are downloaded automatically when imported and do not need to be fully synced to the device beforehand.
+
+Files are kept in their original format, including the metadata it contains, such as position.
+
+Edits like crops and rotations, stored in `.aae` files, are imported as individual media, and linked to their associated photo's media. The AAE file is kept in the library so it can be recovered later, but it is not currently used to change how the photo is displayed in the app.
+
+Burst photos are imported as a group containing the main photo and the video of the burst.
+
+Albums are imported only during the initial import when the library is created, not during incremental imports.
+
+In the Apple model, folders can be nested and contain albums, and a photo can belong to several albums. Lasco transcribes this by treating each folder as an album.
+
+All the original data for photos and videos, including edit information, is packed into the Lasco library, except for information that only lives in the iOS library's local SQLite database. Whether a photo is marked as a favorite and a manual caption entered for a photo are two examples of such metadata.

@@ -1,0 +1,66 @@
+---
+sidebar_position: 7
+sidebar_label: Versioning
+---
+
+# Versioning
+
+Lasco uses separate version indicators for different layers of the format.
+
+---
+
+## Library format version
+
+The library format version is stored as an empty sentinel file in the `library/` directory on the remote:
+
+```
+library/
+  version_1
+```
+
+
+---
+
+## Encrypted blob format
+
+Every encrypted blob (media files `.data`, thumbnails `.thumb`, and operation group files `.op`) begins with a single-byte version header:
+
+```
+[ format_version: u8 (1 byte) | nonce: 24 bytes | ciphertext ]
+```
+
+---
+
+## Master key protocol version
+
+Each per-user master key file (`mk_{username}_{uuid}.enc`) stores a version field before ciphertext:
+
+```
+[ protocol_version: u32 | nonce: 12 bytes | ciphertext ]
+```
+
+---
+
+## App config version
+
+The global `config.json` file carries a version:
+
+```json
+{
+  "version": 1,
+  ...
+}
+```
+
+---
+
+## Remote secret key version
+
+There is no separate per-remote credential file. S3 credentials live in `library.json`, and the secret key's version is a plain string tag checked by equality:
+
+```json
+{
+  "secret_key_encryption_description": "AES-256-GCM v1",
+  ...
+}
+```

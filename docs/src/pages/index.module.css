@@ -1,0 +1,398 @@
+/**
+ * CSS files with the .module.css suffix will be treated as CSS modules
+ * and scoped locally.
+ */
+
+/* =============================================
+   Hero Title
+   ============================================= */
+
+.heroTitle {
+  position: relative;
+  /* Above the mascot (z-index 2) so the text renders in front of it. */
+  z-index: 3;
+  font-family: 'Jersey 10', monospace;
+  font-size: 56px;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1.1;
+  text-align: center;
+  margin: 2.5rem auto 0;
+  padding: 0 1.5rem;
+  color: var(--lasco-ink);
+}
+
+@media screen and (max-width: 768px) {
+  .heroTitle {
+    font-size: 36px;
+    margin-top: 1.5rem;
+  }
+}
+
+.mobileIntroText {
+  display: none;
+}
+
+@media screen and (max-width: 768px) {
+  .mobileIntroText {
+    display: block;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1.5;
+    text-align: center;
+    color: var(--lasco-ink);
+    max-width: 480px;
+    margin: 1rem auto 0;
+    padding: 0 1.5rem;
+  }
+}
+
+/* =============================================
+   Screenshot Scroll Section
+   ============================================= */
+
+.screenshotScrollSection {
+  position: relative;
+  /* Overlap the banner above. The banner height is width driven (aspect
+     ratio 1448/360), so express the pull up as a width percentage too. That
+     way the overlap stays a constant fraction of the banner at every size. */
+  margin-top: -13.3%;
+  z-index: 1;
+  /* Single source of truth for the gap between the viewport top and the
+     pinned screenshot. Reused by the sticky top, the screenshot max height
+     and the flamingo so there is only one number to tune. */
+  --shot-top: 160px;
+}
+
+.screenshotScrollWrap {
+  display: flex;
+  /* Stretch so the left column matches the tall right column. That tall
+     column is the travel range for the sticky stage inside it. */
+  align-items: stretch;
+}
+
+.screenshotScrollLeft {
+  width: 50%;
+  flex-shrink: 0;
+}
+
+.screenshotDecorWrap {
+  position: relative;
+  width: 320px;
+  margin-bottom: 1.5rem;
+}
+
+.screenshotDecorBottom {
+  display: block;
+  width: 60%;
+  height: auto;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.panelMascot {
+  display: block;
+  width: 330px;
+  max-width: 100%;
+  height: auto;
+  margin: 1.5rem 0 0;
+  pointer-events: none;
+}
+
+.panelBottom {
+  display: flex;
+  flex-direction: column;
+}
+
+.screenshotStage {
+  /* Pin the screenshot itself. The browser handles the boundaries: it sticks
+     at --shot-top from the viewport top and releases at the bottom of the
+     left column. No fixed column height or padding math needed. */
+  position: sticky;
+  top: var(--shot-top);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 0 2rem;
+  box-sizing: border-box;
+}
+
+.stickyStorage {
+  position: absolute;
+  right: 1rem;
+  top: 8%;
+  width: 55%;
+  max-width: 340px;
+  height: auto;
+  object-fit: contain;
+  pointer-events: none;
+  transition: opacity 0.1s ease;
+  z-index: 2;
+}
+
+.screenshotScrollImg {
+  flex-shrink: 1;
+  /* Fit within the viewport below the sticky gap, with matching breathing
+     room at the bottom. Reuses --shot-top so it tracks the pin automatically. */
+  max-height: calc(100vh - var(--shot-top) - 2rem);
+  max-width: 100%;
+  width: auto;
+  height: auto;
+  display: block;
+  border-radius: 32px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.18);
+  transition: max-width 0.3s ease, max-height 0.3s ease;
+}
+
+.screenshotScrollImgSplit {
+  max-width: 50%;
+  max-height: 70vh;
+}
+
+.screenshotScrollRight {
+  flex: 1;
+  min-width: 0;
+}
+
+.screenshotScrollPanel {
+  min-height: 65vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 3rem 3rem 3rem 4rem;
+}
+
+.screenshotScrollPanelFirst {
+  padding-top: 100vh;
+}
+
+.featureTitle {
+  font-family: 'Jersey 10', monospace;
+  font-size: 40px;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  margin: 0 0 1rem;
+  color: var(--lasco-ink);
+}
+
+.featureDesc {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--lasco-ink-sub);
+  max-width: 480px;
+  margin: 0;
+}
+
+.introDesc {
+  font-size: 22px;
+  font-weight: 700;
+  margin-top: -45vh;
+}
+
+.mascotFlamingoWrap {
+  position: absolute;
+  /* Rest just above the screenshot. --shot-top matches the sticky pin for the
+     vertical anchor, and 50 percent centers the flamingo on the page width
+     (the same place the screenshot sits when it is pinned at the top). No vh or
+     vw so it holds at every size. The wrap is anchored to the section top so it
+     scrolls away with the rest of the intro. */
+  top: var(--shot-top);
+  left: 50%;
+  transform: translate(-50%, -80%);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.mascotFlamingo {
+  width: 440px;
+  display: block;
+  margin: 0 auto;
+}
+
+/* Mobile-only panel images (hidden on desktop) */
+.mobilePanelImages {
+  display: none;
+}
+
+.mobilePanelScreenshot {
+  flex: 0 0 50%;
+  max-width: 50%;
+  min-width: 0;
+  height: auto;
+  border-radius: 20px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+  display: block;
+}
+
+.mobilePanelStorage {
+  flex: 0 0 35%;
+  max-width: 130px;
+  height: auto;
+  object-fit: contain;
+  display: block;
+}
+
+@media screen and (max-width: 768px) {
+  .screenshotScrollWrap {
+    flex-direction: column;
+  }
+
+  .screenshotScrollLeft {
+    display: none;
+  }
+
+  /* No decorative in-paragraph images on small screens. */
+  .screenshotDecorWrap {
+    display: none;
+  }
+
+  .screenshotScrollPanel {
+    min-height: auto;
+    padding: 2rem 1.5rem;
+  }
+
+  .screenshotScrollPanelFirst {
+    padding-top: 2rem;
+  }
+
+  .mobilePanelImages {
+    order: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    margin-bottom: 1.25rem;
+  }
+
+  .mobilePanelStorage {
+    position: absolute;
+    right: 0;
+    top: 8%;
+    width: 55%;
+    max-width: 220px;
+    flex: none;
+    height: auto;
+    object-fit: contain;
+  }
+
+  .panelBottom {
+    order: 2;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .featureTitle {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+  }
+
+  .panelMascot {
+    width: 110px;
+    flex-shrink: 0;
+    margin: 0;
+    order: -1;
+  }
+
+  .featureDesc {
+    order: 3;
+  }
+
+  .introDesc {
+    display: none;
+  }
+
+  .mascotFlamingoWrap {
+    position: relative;
+    top: auto;
+    left: auto;
+    transform: none;
+    text-align: center;
+    padding: 0 1rem;
+    /* Pull the first screenshot up so it both overlaps the flamingo's lower
+       half and sits closer to the top of the page. */
+    margin-bottom: -11rem;
+  }
+
+  .mascotFlamingo {
+    width: 200px;
+    margin: 0 auto;
+  }
+}
+
+/* =============================================
+   Why Lasco Stands Out Section
+   ============================================= */
+
+.whySection {
+  padding: 14rem 0 5rem;
+  background: var(--lasco-bg);
+}
+
+.whySectionTitle {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0 auto 2.5rem;
+  max-width: 640px;
+  color: var(--lasco-ink);
+}
+
+.whyList {
+  list-style: none;
+  padding: 0;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  max-width: 640px;
+}
+
+.whyItem {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.whyItemTitle {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--lasco-ink);
+}
+
+.whyItemDesc {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 17px;
+  line-height: 1.7;
+  color: var(--lasco-ink-sub);
+}
+
+/* =============================================
+   Waitlist Section
+   ============================================= */
+
+.waitlistSection {
+  padding: 5rem 0 6rem;
+  background: var(--lasco-bg);
+  text-align: center;
+}
+
+.waitlistTitle {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0 auto 0.75rem;
+  color: var(--lasco-ink);
+}
