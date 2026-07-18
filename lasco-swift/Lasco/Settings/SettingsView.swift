@@ -172,6 +172,21 @@ struct SettingsView: View {
                         .background(theme.inkMuted.opacity(0.2))
 
                     HStack {
+                        Text("Version")
+                            .font(LascoFont.body())
+                            .foregroundStyle(theme.inkSub)
+                        Spacer()
+                        Text(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
+                            .font(LascoFont.mono())
+                            .foregroundStyle(theme.inkMuted)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+
+                    Divider()
+                        .background(theme.inkMuted.opacity(0.2))
+
+                    HStack {
                         Text("Expert mode")
                             .font(LascoFont.body())
                             .foregroundStyle(theme.inkSub)
