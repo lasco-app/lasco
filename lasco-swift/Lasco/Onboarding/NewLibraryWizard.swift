@@ -5,7 +5,7 @@ import Photos
 
 struct NewLibraryWizard: View {
     @EnvironmentObject var libraryModel: LibraryModel
-    @AppStorage("devMode") private var devMode = false
+    @AppStorage("expertMode") private var expertMode = false
 
     var onBack: () -> Void
     var onComplete: () -> Void
@@ -131,7 +131,7 @@ struct NewLibraryWizard: View {
                 Button("Add S3-compatible remote") { showAddS3Sheet = true }
                     .buttonStyle(LascoPrimaryButtonStyle())
                     .frame(maxWidth: .infinity)
-                if devMode {
+                if expertMode {
                     Button("Add local filesystem remote") { showAddLocalFSSheet = true }
                         .buttonStyle(LascoDevButtonStyle())
                         .frame(maxWidth: .infinity)

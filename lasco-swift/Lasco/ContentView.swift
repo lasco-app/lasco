@@ -21,7 +21,6 @@ struct ContentView: View {
 
     let openAlbum: (FfiAlbum) -> Void
 
-    @AppStorage("devMode") private var devMode = false
     @State private var showingImportMedia = false
     @State private var pendingImportUrls: [URL] = []
     @State private var showingAlbumPicker = false
@@ -257,24 +256,6 @@ struct ContentView: View {
                 .padding(20)
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else {
-            if devMode {
-                HStack {
-                    Text("DEV MODE")
-                        .font(LascoFont.categorySmall())
-                        .foregroundStyle(theme.ink)
-                    Spacer()
-                    Button("Import random media") {
-                        importRandomMedia()
-                    }
-                    .buttonStyle(.plain)
-                    .font(LascoFont.body())
-                    .foregroundStyle(theme.ink)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(theme.pink)
-            }
-
             if libraryModel.defaultUploadAlbumId == nil {
                 HStack(spacing: 12) {
                     Text("Auto-import paused — no default upload album set.")
@@ -359,63 +340,6 @@ struct ContentView: View {
         }
     }
 
-    private func importRandomMedia() {
-        guard libraryModel.isOpen else {
-            toastManager.show(error: "No library open")
-            return
-        }
-        guard let url = generateRandomImage() else {
-            toastManager.show(error: "Failed to generate random image")
-            return
-        }
-        if let defaultAlbum = libraryModel.defaultUploadAlbum {
-            doImport(urls: [url], album: defaultAlbum)
-        } else {
-            pendingImportUrls = [url]
-            showingAlbumPicker = true
-        }
-    }
-
-    private func generateRandomImage() -> URL? {
-        let size = CGSize(width: 512, height: 512)
-        let r = CGFloat.random(in: 0...1)
-        let g = CGFloat.random(in: 0...1)
-        let b = CGFloat.random(in: 0...1)
-
-        let data: Data?
-        #if canImport(UIKit)
-        let renderer = UIGraphicsImageRenderer(size: size)
-        let image = renderer.image { ctx in
-            UIColor(red: r, green: g, blue: b, alpha: 1).setFill()
-            ctx.fill(CGRect(origin: .zero, size: size))
-        }
-        data = image.pngData()
-        #else
-        let image = NSImage(size: size)
-        image.lockFocus()
-        NSColor(red: r, green: g, blue: b, alpha: 1).setFill()
-        NSRect(origin: .zero, size: size).fill()
-        image.unlockFocus()
-        if let tiff = image.tiffRepresentation,
-           let bitmap = NSBitmapImageRep(data: tiff) {
-            data = bitmap.representation(using: .png, properties: [:])
-        } else {
-            data = nil
-        }
-        #endif
-
-        guard let pngData = data else { return nil }
-        let name = randomMediaName()
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(name).png")
-        try? pngData.write(to: url)
-        return url
-    }
-
-    private func randomMediaName() -> String {
-        let adjectives = ["crimson", "azure", "golden", "silver", "jade", "amber", "coral", "violet", "indigo", "scarlet"]
-        let nouns = ["horizon", "drift", "pulse", "echo", "flare", "trace", "bloom", "spark", "tide", "mist"]
-        return "\(adjectives.randomElement()!)-\(nouns.randomElement()!)-\(Int.random(in: 1000...9999))"
-    }
 }
 
 // MARK: - AlbumList wrapper

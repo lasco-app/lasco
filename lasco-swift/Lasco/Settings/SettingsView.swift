@@ -6,7 +6,7 @@ import AppKit
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.lascoTheme) var theme
-    @AppStorage("devMode") var devMode = false
+    @AppStorage("expertMode") var expertMode = false
     @State private var showLicense = false
 
     private var storageURL: URL? {
@@ -172,11 +172,11 @@ struct SettingsView: View {
                         .background(theme.inkMuted.opacity(0.2))
 
                     HStack {
-                        Text("Dev mode")
+                        Text("Expert mode")
                             .font(LascoFont.body())
                             .foregroundStyle(theme.inkSub)
                         Spacer()
-                        Toggle("", isOn: $devMode)
+                        Toggle("", isOn: $expertMode)
                             .toggleStyle(LascoToggleStyle())
                             .labelsHidden()
                     }

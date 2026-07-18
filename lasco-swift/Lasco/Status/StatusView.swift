@@ -5,7 +5,7 @@ struct StatusView: View {
     @Environment(ToastManager.self) var toastManager
     @Environment(\.lascoTheme) var theme
 
-    @AppStorage("devMode") private var devMode = false
+    @AppStorage("expertMode") private var expertMode = false
 
     @State private var showRemotePicker = false
     @State private var showAddS3 = false
@@ -47,7 +47,7 @@ struct StatusView: View {
         }
         .sheet(isPresented: $showRemotePicker) {
             RemoteTypePickerSheet(
-                devMode: devMode,
+                expertMode: expertMode,
                 onS3: { showRemotePicker = false; showAddS3 = true },
                 onLocalFS: { showRemotePicker = false; showAddLocalFS = true },
                 onDismiss: { showRemotePicker = false }
@@ -182,7 +182,7 @@ struct StatusView: View {
                         .padding(.vertical, 12)
                 }
 
-                if devMode {
+                if expertMode {
                     Divider().background(theme.inkMuted.opacity(0.2))
 
                     Button {

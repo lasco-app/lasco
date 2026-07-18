@@ -6,7 +6,7 @@ struct RemotesView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.lascoTheme) var theme
 
-    @AppStorage("devMode") private var devMode = false
+    @AppStorage("expertMode") private var expertMode = false
 
     @State private var showRemotePicker = false
     @State private var showAddS3 = false
@@ -79,7 +79,7 @@ struct RemotesView: View {
         .toolbarBackButton(action: { dismiss() })
         .sheet(isPresented: $showRemotePicker) {
             RemoteTypePickerSheet(
-                devMode: devMode,
+                expertMode: expertMode,
                 onS3: { showRemotePicker = false; showAddS3 = true },
                 onLocalFS: { showRemotePicker = false; showAddLocalFS = true },
                 onDismiss: { showRemotePicker = false }
@@ -104,7 +104,7 @@ struct RemotesView: View {
 }
 
 struct RemoteTypePickerSheet: View {
-    let devMode: Bool
+    let expertMode: Bool
     let onS3: () -> Void
     let onLocalFS: () -> Void
     let onDismiss: () -> Void
@@ -141,7 +141,7 @@ struct RemoteTypePickerSheet: View {
                         .buttonStyle(LascoPrimaryButtonStyle())
                         .frame(maxWidth: .infinity)
 
-                    if devMode {
+                    if expertMode {
                         Button("Add local filesystem remote", action: onLocalFS)
                             .buttonStyle(LascoDevButtonStyle())
                             .frame(maxWidth: .infinity)

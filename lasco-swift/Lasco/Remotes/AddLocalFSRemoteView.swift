@@ -54,7 +54,7 @@ struct AddLocalFSRemoteView: View {
                             }
                             .frame(width: 10, height: 10)
 
-                            Text("Dev mode only — not for production use.")
+                            Text("Saves the data locally, use it only for test purposes!")
                                 .font(LascoFont.body(13))
                                 .foregroundStyle(theme.inkMuted)
                         }

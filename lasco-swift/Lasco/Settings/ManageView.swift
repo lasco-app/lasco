@@ -10,7 +10,7 @@ struct ManageView: View {
     @State private var showDefaultAlbumPicker = false
     @State private var showDeleteConfirm = false
     @State private var showLicense = false
-    @AppStorage("devMode") private var devMode = false
+    @AppStorage("expertMode") private var expertMode = false
 
     var body: some View {
         NavigationStack {
@@ -167,7 +167,7 @@ struct ManageView: View {
                         }
                         .lascoPanel()
 
-                        if devMode {
+                        if expertMode {
                             VStack(alignment: .leading, spacing: 0) {
                                 Button {
                                     showOperations = true

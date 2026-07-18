@@ -49,7 +49,7 @@ struct MediaDetailView: View {
     @State private var showingLivePhotoVideo = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.lascoTheme) var theme
-    @AppStorage("devMode") private var devMode = false
+    @AppStorage("expertMode") private var expertMode = false
 
     // Panel reveal state (0 = image fills screen, 1 = info panel visible)
     @State private var panelProgress: CGFloat = 0
@@ -354,7 +354,7 @@ struct MediaDetailView: View {
                         metaRow(label: "DATE", value: infoDisplayItem.map { formatMediaDate($0.date) } ?? "")
                         metaRow(label: "SIZE", value: formattedSize)
                         metaRow(label: "ADDED BY", value: infoDisplayItem?.author ?? "")
-                        if devMode {
+                        if expertMode {
                             metaRow(label: "ID", value: infoDisplayItem?.mediaId ?? "")
                             metaRow(label: "HASH", value: infoDisplayItem?.contentHash ?? "")
                             if let aaeMediaId = infoDisplayItem?.appleAaeMediaId {
@@ -839,7 +839,7 @@ struct MediaDetailView: View {
                     metaRow(label: "FILE", value: infoDisplayItem?.filenameOriginal ?? "")
                     metaRow(label: "DATE", value: infoDisplayItem.map { formatMediaDate($0.date) } ?? "")
                     metaRow(label: "SIZE", value: formattedSize)
-                    if devMode {
+                    if expertMode {
                         metaRow(label: "ID", value: infoDisplayItem?.mediaId ?? "")
                         if let aaeMediaId = infoDisplayItem?.appleAaeMediaId {
                             Button(action: { presentAAEAdjustment(mediaId: aaeMediaId) }) {
