@@ -70,6 +70,11 @@ const config: Config = {
       },
       items: [
         {
+          href: 'https://github.com/lasco-app/lasco',
+          label: 'GitHub',
+          position: 'right',
+        },
+        {
           type: 'docSidebar',
           sidebarId: 'mainSidebar',
           position: 'right',
@@ -126,12 +131,9 @@ const config: Config = {
         {
           title: 'COMMUNITY',
           items: [
-            // {
-            //   label: 'GitHub',
-            //   href: 'https://github.com/lasco/lasco',
-            // },
             {
-              html: '<span style="color:#1a1a1a">GitHub, coming soon</span>',
+              label: 'GitHub',
+              href: 'https://github.com/lasco-app/lasco',
             },
           ],
         },
