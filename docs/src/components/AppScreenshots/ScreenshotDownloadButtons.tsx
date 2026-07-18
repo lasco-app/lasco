@@ -3,21 +3,25 @@ import styles from './AppScreenshots.module.css';
 
 type Props = {
   targetRef: RefObject<HTMLElement | null>;
-  pixelRatio: number;
+  width: number;
+  height: number;
   filename: string;
   label: string;
 };
 
-async function downloadAt(node: HTMLElement, pixelRatio: number, filename: string) {
+async function downloadAt(node: HTMLElement, width: number, height: number, filename: string) {
   const {toPng} = await import('html-to-image');
-  const dataUrl = await toPng(node, {pixelRatio});
+  // Force the canvas to the exact target pixel dimensions instead of deriving
+  // them from a single pixelRatio scalar, since the frame's aspect ratio
+  // (430:932) doesn't exactly match the App Store target's.
+  const dataUrl = await toPng(node, {pixelRatio: 1, canvasWidth: width, canvasHeight: height});
   const link = document.createElement('a');
   link.download = filename;
   link.href = dataUrl;
   link.click();
 }
 
-export default function ScreenshotDownloadButtons({targetRef, pixelRatio, filename, label}: Props) {
+export default function ScreenshotDownloadButtons({targetRef, width, height, filename, label}: Props) {
   return (
     <div className={styles.downloadRow}>
       <button
@@ -25,7 +29,7 @@ export default function ScreenshotDownloadButtons({targetRef, pixelRatio, filena
         className={styles.downloadButton}
         onClick={() => {
           if (targetRef.current) {
-            void downloadAt(targetRef.current, pixelRatio, filename);
+            void downloadAt(targetRef.current, width, height, filename);
           }
         }}
       >

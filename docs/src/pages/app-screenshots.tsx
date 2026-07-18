@@ -1,6 +1,6 @@
 import React, {useRef} from 'react';
 import Layout from '@theme/Layout';
-import PhoneFrame, {FRAME_WIDTH} from '@site/src/components/AppScreenshots/PhoneFrame';
+import PhoneFrame from '@site/src/components/AppScreenshots/PhoneFrame';
 import ScreenshotDownloadButtons from '@site/src/components/AppScreenshots/ScreenshotDownloadButtons';
 import Screenshot01Main from '@site/src/components/AppScreenshots/Screenshot01Main';
 import Screenshot02Sync from '@site/src/components/AppScreenshots/Screenshot02Sync';
@@ -14,8 +14,7 @@ const SCREENSHOTS = [
 ];
 
 const DEVICE_VARIANTS = [
-  {id: '6.7in', label: '6.7" · 1290×2796', pixelRatio: 3, width: 1290, height: 2796},
-  {id: '6.5in', label: '6.5" · 1242×2688', pixelRatio: 1242 / FRAME_WIDTH, width: 1242, height: 2688},
+  {id: '6.5in', label: '6.5" · 1242×2688', width: 1242, height: 2688},
 ];
 
 function ScreenshotRow({
@@ -36,7 +35,8 @@ function ScreenshotRow({
       </PhoneFrame>
       <ScreenshotDownloadButtons
         targetRef={frameRef}
-        pixelRatio={variant.pixelRatio}
+        width={variant.width}
+        height={variant.height}
         filename={`${filenameBase}-${variant.id}-${variant.width}x${variant.height}.png`}
         label={`${variant.width}×${variant.height}`}
       />

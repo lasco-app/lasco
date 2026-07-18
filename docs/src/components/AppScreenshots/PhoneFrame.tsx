@@ -1,9 +1,8 @@
 import React, {type ReactNode} from 'react';
 import styles from './AppScreenshots.module.css';
 
-// Authored once at iPhone 6.7" point size (430x932pt). Exported at pixelRatio 3
-// for the 6.7" target (1290x2796px) and at pixelRatio 1242/430 for the 6.5"
-// target (1242x2688px) -- the two device aspect ratios differ by under 0.2%.
+// Authored at iPhone 6.7" point size (430x932pt), then rasterized straight to
+// the 6.5" App Store target's exact pixel dimensions (1242x2688) on download.
 export const FRAME_WIDTH = 430;
 export const FRAME_HEIGHT = 932;
 
