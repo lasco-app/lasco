@@ -225,10 +225,20 @@ private struct HideSystemNavBarModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         #if canImport(UIKit)
-        content.toolbarVisibility(.hidden, for: .navigationBar)
+        content.toolbar(.hidden, for: .navigationBar)
         #else
         content.toolbarBackground(theme.bg, for: .windowToolbar)
         #endif
+    }
+}
+
+struct RemoveTitleToolbarModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 18, macOS 15, *) {
+            content.toolbar(removing: .title)
+        } else {
+            content
+        }
     }
 }
 
@@ -248,9 +258,9 @@ extension View {
     // Fully hides the navigation bar/toolbar for sheet-hosted NavigationStacks.
     func hideSheetNavigationBar() -> some View {
         #if canImport(UIKit)
-        self.toolbarVisibility(.hidden, for: .navigationBar)
+        self.toolbar(.hidden, for: .navigationBar)
         #else
-        self.toolbarVisibility(.hidden, for: .windowToolbar)
+        self.toolbar(.hidden, for: .windowToolbar)
         #endif
     }
 }

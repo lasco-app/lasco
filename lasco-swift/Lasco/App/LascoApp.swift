@@ -58,7 +58,7 @@ struct LascoApp: App {
                         .toastOverlay(toastManager)
                 }
             }
-            .toolbar(removing: .title)
+            .modifier(RemoveTitleToolbarModifier())
             .hideSystemNavigationBar()
             .environment(\.lascoTheme, libraryModel.isOpen ? .dark : .plaster)
             .tint(libraryModel.isOpen ? LascoTheme.dark.pink : LascoTheme.plaster.pink)
