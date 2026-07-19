@@ -865,7 +865,7 @@ struct MediaDetailView: View {
             HStack(alignment: .top, spacing: 8) {
                 Image("info-circle").renderingMode(.template).resizable().frame(width: 16, height: 16)
                     .foregroundStyle(p.inkMuted)
-                Text("There is an iPhone edit metadata file. No worries, it's backed up in the library. However, it's not currently used when showing the photo (crop, rotation, etc).")
+                Text("There is an associated metadata edit file (.aae). No worries, it's included in the library. However, it's not currently used when showing the photo (crop, rotation, etc).")
                     .font(LascoFont.mono())
                     .foregroundStyle(p.inkMuted)
                     .fixedSize(horizontal: false, vertical: true)
