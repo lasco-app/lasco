@@ -33,6 +33,9 @@ pub struct S3Config {
     pub endpoint: String,
     pub bucket: String,
     pub region: String,
+    /// Key prefix under which this library's objects live in the bucket, e.g. `photos/`.
+    /// Lets several libraries share one bucket. Empty means the bucket root.
+    pub path_prefix: String,
     pub access_key: String,
     /// Secret key encrypted with the library master key (AES-256-GCM), base64 encoded.
     pub secret_key_encrypted: String,

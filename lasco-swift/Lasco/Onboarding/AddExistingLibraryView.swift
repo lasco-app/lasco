@@ -18,6 +18,7 @@ struct AddExistingLibraryView: View {
     @State private var endpoint = ""
     @State private var bucket = ""
     @State private var region = ""
+    @State private var pathPrefix = ""
     @State private var accessKey = ""
     @State private var secretKey = ""
     @State private var uploadAcknowledged = false
@@ -108,6 +109,7 @@ struct AddExistingLibraryView: View {
                             inputField("Endpoint URL", placeholder: "https://region1.example-s3-server.com", binding: $endpoint)
                             inputField("Bucket", placeholder: "my-photos-bucket", binding: $bucket)
                             inputField("Region", placeholder: "region1", binding: $region)
+                            inputField("Path prefix (optional)", placeholder: "photos/", binding: $pathPrefix)
                             inputField("Access key", placeholder: "", binding: $accessKey)
                             secureInputField("Secret key", binding: $secretKey)
 
@@ -190,6 +192,7 @@ struct AddExistingLibraryView: View {
             endpoint: endpoint,
             bucket: bucket,
             region: region,
+            pathPrefix: pathPrefix,
             accessKey: accessKey,
             secretKey: secretKey
         )
@@ -204,7 +207,7 @@ struct AddExistingLibraryView: View {
 
     private func testConnection() {
         testState = .testing
-        let endpoint = endpoint, bucket = bucket, region = region
+        let endpoint = endpoint, bucket = bucket, region = region, pathPrefix = pathPrefix
         let accessKey = accessKey, secretKey = secretKey
         Task.detached {
             let result: TestState
@@ -213,6 +216,7 @@ struct AddExistingLibraryView: View {
                     endpoint: endpoint,
                     bucket: bucket,
                     region: region,
+                    pathPrefix: pathPrefix,
                     accessKey: accessKey,
                     secretKey: secretKey
                 )

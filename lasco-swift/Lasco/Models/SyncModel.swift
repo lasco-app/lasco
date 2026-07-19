@@ -170,6 +170,7 @@ extension LibraryModel {
         endpoint: String,
         bucket: String,
         region: String,
+        pathPrefix: String,
         accessKey: String,
         secretKey: String
     ) -> String? {
@@ -180,6 +181,7 @@ extension LibraryModel {
                 endpoint: endpoint,
                 bucket: bucket,
                 region: region,
+                pathPrefix: pathPrefix,
                 accessKey: accessKey,
                 secretKey: secretKey
             )

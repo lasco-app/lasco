@@ -113,12 +113,14 @@ impl FfiLibrary {
     }
 
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub fn add_remote_s3(
         &self,
         name: String,
         endpoint: String,
         bucket: String,
         region: String,
+        path_prefix: String,
         access_key: String,
         secret_key: String,
     ) -> Result<String, LascoError> {
@@ -143,6 +145,7 @@ impl FfiLibrary {
                 endpoint,
                 bucket,
                 region,
+                path_prefix,
                 access_key,
                 secret_key_encrypted,
                 secret_key_encryption_description,
@@ -326,7 +329,7 @@ pub(super) fn remote_config_to_ffi(r: &RemoteConfig) -> FfiRemote {
             Some(s3.endpoint.clone()),
             Some(s3.bucket.clone()),
             Some(s3.region.clone()),
-            None,
+            Some(s3.path_prefix.clone()),
         ),
         RemoteKind::FixedPath(fs) => (
             "fixed_path".to_string(),

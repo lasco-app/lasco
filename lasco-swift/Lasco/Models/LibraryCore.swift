@@ -206,6 +206,7 @@ class LibraryModel: ObservableObject {
         endpoint: String,
         bucket: String,
         region: String,
+        pathPrefix: String,
         accessKey: String,
         secretKey: String
     ) -> Bool {
@@ -222,6 +223,7 @@ class LibraryModel: ObservableObject {
                 endpoint: endpoint,
                 bucket: bucket,
                 region: region,
+                pathPrefix: pathPrefix,
                 accessKey: accessKey,
                 secretKey: secretKey
             )

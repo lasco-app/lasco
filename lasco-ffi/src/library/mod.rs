@@ -101,11 +101,13 @@ pub fn ffi_test_s3_remote(
     endpoint: String,
     bucket: String,
     region: String,
+    path_prefix: String,
     access_key: String,
     secret_key: String,
 ) -> Result<(), LascoError> {
-    let storage = lasco_core::storage::StorageS3::new(endpoint, bucket, region, access_key, secret_key)
-        .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+    let storage =
+        lasco_core::storage::StorageS3::new(endpoint, bucket, region, path_prefix, access_key, secret_key)
+            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
     let rt = tokio::runtime::Runtime::new()
         .map_err(|e| LascoError::Other { msg: e.to_string() })?;
     rt.block_on(lasco_core::storage::Storage::list(&storage, ""))
@@ -192,6 +194,7 @@ pub fn ffi_add_existing_library_s3(
     endpoint: String,
     bucket: String,
     region: String,
+    path_prefix: String,
     access_key: String,
     secret_key: String,
 ) -> Result<Arc<FfiLibrary>, LascoError> {
@@ -219,6 +222,7 @@ pub fn ffi_add_existing_library_s3(
             endpoint,
             bucket,
             region,
+            path_prefix,
             access_key,
             secret_key,
             Some(&sessions),

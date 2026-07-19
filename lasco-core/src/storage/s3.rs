@@ -10,6 +10,7 @@ use super::{Result, Storage, StorageError};
 #[derive(Debug, Clone)]
 pub struct StorageS3 {
     bucket: Box<Bucket>,
+    path_prefix: String,
 }
 
 impl StorageS3 {
@@ -17,9 +18,11 @@ impl StorageS3 {
         endpoint: String,
         bucket_name: String,
         region: String,
+        path_prefix: String,
         access_key: String,
         secret_key: String,
     ) -> Result<Self> {
+        let path_prefix = normalize_path_prefix(&path_prefix);
         // For S3-compatible providers (Hetzner, MinIO, etc.) the connection host
         // comes from the region endpoint, not from a host header. Use a custom
         // region pairing the region name with the provider endpoint.
@@ -48,7 +51,11 @@ impl StorageS3 {
             .map_err(|e| StorageError::Other(Box::new(e)))?
             .with_path_style();
 
-        Ok(Self { bucket })
+        Ok(Self { bucket, path_prefix })
+    }
+
+    fn scoped_key(&self, key: &str) -> String {
+        format!("{}{}", self.path_prefix, key)
     }
 }
 
@@ -56,7 +63,7 @@ impl StorageS3 {
 impl Storage for StorageS3 {
     async fn put(&self, key: &str, data: &[u8]) -> Result<()> {
         self.bucket
-            .put_object(key, data)
+            .put_object(self.scoped_key(key), data)
             .await
             .map_err(|e| StorageError::Other(Box::new(e)))?;
         Ok(())
@@ -71,7 +78,7 @@ impl Storage for StorageS3 {
     }
 
     async fn get(&self, key: &str) -> Result<Vec<u8>> {
-        match self.bucket.get_object(key).await {
+        match self.bucket.get_object(self.scoped_key(key)).await {
             Ok(obj) => {
                 // ResponseData has a bytes() method that returns &Bytes
                 // We can convert it to Vec<u8> using to_vec() or From trait
@@ -84,7 +91,7 @@ impl Storage for StorageS3 {
 
     async fn delete(&self, key: &str) -> Result<()> {
         self.bucket
-            .delete_object(key)
+            .delete_object(self.scoped_key(key))
             .await
             .map_err(|e| StorageError::Other(Box::new(e)))?;
         Ok(())
@@ -93,25 +100,42 @@ impl Storage for StorageS3 {
     async fn list(&self, prefix: &str) -> Result<Vec<String>> {
         let results = self
             .bucket
-            .list(prefix.to_string(), None)
+            .list(self.scoped_key(prefix), None)
             .await
             .map_err(|e| StorageError::Other(Box::new(e)))?;
 
         let mut keys = Vec::new();
         for result in results {
             for obj in result.contents {
-                keys.push(obj.key);
+                let key = obj
+                    .key
+                    .strip_prefix(&self.path_prefix)
+                    .map(|k| k.to_string())
+                    .unwrap_or(obj.key);
+                keys.push(key);
             }
         }
         Ok(keys)
     }
 
     async fn exists(&self, key: &str) -> Result<bool> {
-        match self.bucket.head_object(key).await {
+        match self.bucket.head_object(self.scoped_key(key)).await {
             Ok(_) => Ok(true),
             Err(e) if is_not_found_error(&e) => Ok(false),
             Err(e) => Err(StorageError::Other(Box::new(e))),
         }
+    }
+}
+
+/// Normalize a user-provided key prefix so it can be concatenated directly in
+/// front of a key. Trims slashes off both ends then re-adds a single trailing
+/// slash, unless the prefix is empty (bucket root).
+fn normalize_path_prefix(path_prefix: &str) -> String {
+    let trimmed = path_prefix.trim().trim_matches('/');
+    if trimmed.is_empty() {
+        String::new()
+    } else {
+        format!("{trimmed}/")
     }
 }
 
@@ -159,19 +183,29 @@ mod tests {
         );
     }
 
-    fn get_test_config() -> Option<(String, String, String, String, String)> {
+    #[test]
+    fn normalize_path_prefix_adds_trailing_slash() {
+        assert_eq!(normalize_path_prefix("photos"), "photos/");
+        assert_eq!(normalize_path_prefix("photos/"), "photos/");
+        assert_eq!(normalize_path_prefix("/photos/"), "photos/");
+        assert_eq!(normalize_path_prefix(""), "");
+        assert_eq!(normalize_path_prefix("  "), "");
+    }
+
+    fn get_test_config() -> Option<(String, String, String, String, String, String)> {
         Some((
             std::env::var("S3_TEST_ENDPOINT").ok()?,
             std::env::var("S3_TEST_BUCKET").ok()?,
             std::env::var("S3_TEST_REGION").ok()?,
+            std::env::var("S3_TEST_PATH_PREFIX").unwrap_or_default(),
             std::env::var("S3_TEST_ACCESS_KEY").ok()?,
             std::env::var("S3_TEST_SECRET_KEY").ok()?,
         ))
     }
 
     fn make_storage() -> Option<StorageS3> {
-        let (endpoint, bucket, region, access_key, secret_key) = get_test_config()?;
-        StorageS3::new(endpoint, bucket, region, access_key, secret_key).ok()
+        let (endpoint, bucket, region, path_prefix, access_key, secret_key) = get_test_config()?;
+        StorageS3::new(endpoint, bucket, region, path_prefix, access_key, secret_key).ok()
     }
 
     #[tokio::test]
@@ -226,6 +260,33 @@ mod tests {
             storage.delete(&k).await.unwrap();
         }
         storage.delete("other/c").await.unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore = "Requires S3 test environment"]
+    async fn path_prefix_scopes_keys_and_list_strips_it() {
+        let (endpoint, bucket, region, base_prefix, access_key, secret_key) =
+            get_test_config().expect("S3 test config not set");
+        let prefixed_dir = format!("{}pfx-test", base_prefix.trim_end_matches('/'));
+        let storage = StorageS3::new(
+            endpoint,
+            bucket,
+            region,
+            prefixed_dir,
+            access_key,
+            secret_key,
+        )
+        .unwrap();
+
+        storage.put("nested/a", b"1").await.unwrap();
+        let keys = storage.list("nested/").await.unwrap();
+        assert!(keys.iter().any(|k| k == "nested/a"));
+        assert_eq!(storage.get("nested/a").await.unwrap(), b"1");
+        storage.delete("nested/a").await.unwrap();
+        assert!(matches!(
+            storage.get("nested/a").await,
+            Err(StorageError::NotFound)
+        ));
     }
 
     #[tokio::test]

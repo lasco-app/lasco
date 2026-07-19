@@ -55,6 +55,7 @@ pub fn build_storage(
                 s3_cfg.endpoint.clone(),
                 s3_cfg.bucket.clone(),
                 s3_cfg.region.clone(),
+                s3_cfg.path_prefix.clone(),
                 access_key,
                 secret_key,
             )?))
@@ -177,6 +178,7 @@ pub async fn add_existing_library_s3(
     endpoint: String,
     bucket: String,
     region: String,
+    path_prefix: String,
     access_key: String,
     secret_key: String,
     session_dir: Option<&Path>,
@@ -185,6 +187,7 @@ pub async fn add_existing_library_s3(
         endpoint.clone(),
         bucket.clone(),
         region.clone(),
+        path_prefix.clone(),
         access_key.clone(),
         secret_key.clone(),
     )?;
@@ -294,6 +297,7 @@ pub async fn add_existing_library_s3(
             endpoint,
             bucket,
             region,
+            path_prefix,
             access_key,
             secret_key_encrypted,
             secret_key_encryption_description,

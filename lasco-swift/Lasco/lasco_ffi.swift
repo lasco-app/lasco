@@ -557,7 +557,7 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     
     func addRemoteFixedPath(name: String, path: String) throws  -> String
     
-    func addRemoteS3(name: String, endpoint: String, bucket: String, region: String, accessKey: String, secretKey: String) throws  -> String
+    func addRemoteS3(name: String, endpoint: String, bucket: String, region: String, pathPrefix: String, accessKey: String, secretKey: String) throws  -> String
     
     func albumListGroups(albumId: String) throws  -> [FfiGroup]
     
@@ -771,13 +771,14 @@ nonisolated open func addRemoteFixedPath(name: String, path: String)throws  -> S
 })
 }
     
-nonisolated open func addRemoteS3(name: String, endpoint: String, bucket: String, region: String, accessKey: String, secretKey: String)throws  -> String  {
+nonisolated open func addRemoteS3(name: String, endpoint: String, bucket: String, region: String, pathPrefix: String, accessKey: String, secretKey: String)throws  -> String  {
     return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_s3(self.uniffiClonePointer(),
         FfiConverterString.lower(name),
         FfiConverterString.lower(endpoint),
         FfiConverterString.lower(bucket),
         FfiConverterString.lower(region),
+        FfiConverterString.lower(pathPrefix),
         FfiConverterString.lower(accessKey),
         FfiConverterString.lower(secretKey),$0
     )
@@ -2892,7 +2893,7 @@ nonisolated fileprivate func uniffiFutureContinuationCallback(handle: UInt64, po
  * an existing user on the remote. When `new_username`/`new_password` are both
  * provided, a new user is registered and used as the effective device user.
  */
-nonisolated public func ffiAddExistingLibraryS3(nickname: String, username: String, password: String, newUsername: String?, newPassword: String?, remoteId: String, endpoint: String, bucket: String, region: String, accessKey: String, secretKey: String)throws  -> FfiLibrary  {
+nonisolated public func ffiAddExistingLibraryS3(nickname: String, username: String, password: String, newUsername: String?, newPassword: String?, remoteId: String, endpoint: String, bucket: String, region: String, pathPrefix: String, accessKey: String, secretKey: String)throws  -> FfiLibrary  {
     return try  FfiConverterTypeFfiLibrary_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_func_ffi_add_existing_library_s3(
         FfiConverterString.lower(nickname),
@@ -2904,6 +2905,7 @@ nonisolated public func ffiAddExistingLibraryS3(nickname: String, username: Stri
         FfiConverterString.lower(endpoint),
         FfiConverterString.lower(bucket),
         FfiConverterString.lower(region),
+        FfiConverterString.lower(pathPrefix),
         FfiConverterString.lower(accessKey),
         FfiConverterString.lower(secretKey),$0
     )
@@ -2940,11 +2942,12 @@ nonisolated public func ffiOpenCached(nickname: String?, username: String)throws
  * Test connectivity to an S3 remote using the given credentials, without
  * saving anything. Builds an ephemeral client and lists the bucket root.
  */
-nonisolated public func ffiTestS3Remote(endpoint: String, bucket: String, region: String, accessKey: String, secretKey: String)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+nonisolated public func ffiTestS3Remote(endpoint: String, bucket: String, region: String, pathPrefix: String, accessKey: String, secretKey: String)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_func_ffi_test_s3_remote(
         FfiConverterString.lower(endpoint),
         FfiConverterString.lower(bucket),
         FfiConverterString.lower(region),
+        FfiConverterString.lower(pathPrefix),
         FfiConverterString.lower(accessKey),
         FfiConverterString.lower(secretKey),$0
     )
@@ -2979,7 +2982,7 @@ nonisolated private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if (uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_s3() != 7453) {
+    if (uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_s3() != 42084) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_func_ffi_create_library() != 5995) {
@@ -2991,7 +2994,7 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_func_ffi_open_cached() != 47096) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_func_ffi_test_s3_remote() != 21829) {
+    if (uniffi_lasco_ffi_checksum_func_ffi_test_s3_remote() != 63928) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_func_list_libraries() != 56683) {
@@ -3012,7 +3015,7 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_fixed_path() != 58765) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_s3() != 53568) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_s3() != 47455) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_album_list_groups() != 38788) {

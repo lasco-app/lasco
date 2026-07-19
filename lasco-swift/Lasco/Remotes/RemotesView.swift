@@ -188,7 +188,8 @@ private struct RemoteCard: View {
                         .foregroundStyle(theme.inkMuted)
 
                     if let endpoint = remote.endpoint, let bucket = remote.bucket {
-                        Text("\(endpoint) / \(bucket)")
+                        let prefix = remote.path?.isEmpty == false ? "/\(remote.path!)" : ""
+                        Text("\(endpoint) / \(bucket)\(prefix)")
                             .font(LascoFont.mono())
                             .foregroundStyle(theme.inkMuted)
                             .lineLimit(1)
