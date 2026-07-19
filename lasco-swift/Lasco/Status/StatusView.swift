@@ -261,8 +261,7 @@ struct StatusView: View {
     }
 
     private func isSynced(_ remote: FfiRemote) -> Bool {
-        guard let record = libraryModel.lastPushRecords[remote.id], record.success else { return false }
-        return !(libraryModel.lib?.hasUnpushedChanges(remoteId: remote.id) ?? false)
+        !(libraryModel.lib?.hasUnpushedChanges(remoteId: remote.id) ?? false)
     }
 }
 
