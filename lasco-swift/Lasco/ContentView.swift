@@ -258,7 +258,7 @@ struct ContentView: View {
         } else {
             if libraryModel.defaultUploadAlbumId == nil {
                 HStack(spacing: 12) {
-                    Text("Auto-import paused — no default upload album set.")
+                    Text("Auto-import paused: no default upload album set.")
                         .font(LascoFont.body())
                         .foregroundStyle(theme.ink)
                     Spacer()

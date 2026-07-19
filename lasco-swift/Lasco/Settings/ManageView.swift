@@ -133,7 +133,7 @@ struct ManageView: View {
                                                 .font(LascoFont.pixel())
                                                 .foregroundStyle(theme.inkMuted)
                                         } else {
-                                            Text("Not set — prompted on each import")
+                                            Text("No default album for import set.")
                                                 .font(LascoFont.pixel())
                                                 .foregroundStyle(theme.inkMuted)
                                         }
