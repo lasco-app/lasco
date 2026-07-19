@@ -18,8 +18,74 @@ actor PhotoLibraryImporter {
     struct LibraryScan {
         let photoCount: Int
         let videoCount: Int
+        let livePhotoVideoCount: Int
+        let editMetadataCount: Int
+        let ignoredAssets: [IgnoredAsset]
         let estimatedBytes: Int64
         let assets: [PHAsset]
+    }
+
+    struct IgnoredAsset {
+        let localIdentifier: String
+        let mediaType: PHAssetMediaType
+        let creationDate: Date?
+    }
+
+    enum ImportKind {
+        case photo
+        case video
+    }
+
+    struct AssetAnalysis {
+        let photoResource: PHAssetResource?
+        let fullSizePhotoResource: PHAssetResource?
+        let adjustmentDataResource: PHAssetResource?
+        let livePhotoVideoResource: PHAssetResource?
+        let otherResources: [PHAssetResource]
+
+        var hasStill: Bool { photoResource != nil || fullSizePhotoResource != nil }
+        var isEdited: Bool { photoResource != nil && fullSizePhotoResource != nil }
+        var isImportable: Bool { hasStill || livePhotoVideoResource != nil || !otherResources.isEmpty }
+
+        // Matches the conditions importPHAsset uses to decide whether it links a live photo
+        // video or an edit's AAE sidecar alongside the still, so the scan count and the
+        // actual import stay in sync.
+        var importsLivePhotoVideo: Bool { hasStill && livePhotoVideoResource != nil }
+        var importsEditMetadata: Bool { isEdited && adjustmentDataResource != nil }
+
+        var kind: ImportKind? {
+            guard isImportable else { return nil }
+            return hasStill ? .photo : .video
+        }
+    }
+
+    // Groups an asset's PHAssetResources into the roles importPHAsset and scanLibrary both
+    // care about, so a resource combination is only ever interpreted in one place.
+    private static func analyzeAsset(_ asset: PHAsset) -> AssetAnalysis {
+        var photoResource: PHAssetResource?
+        var fullSizePhotoResource: PHAssetResource?
+        var adjustmentDataResource: PHAssetResource?
+        var livePhotoVideoResource: PHAssetResource?
+        var otherResources: [PHAssetResource] = []
+
+        for r in PHAssetResource.assetResources(for: asset) as [PHAssetResource] {
+            switch r.type as PHAssetResourceType {
+            case .photo: photoResource = r
+            case .fullSizePhoto: fullSizePhotoResource = r
+            case .adjustmentData: adjustmentDataResource = r
+            case .pairedVideo, .fullSizePairedVideo: livePhotoVideoResource = r
+            case .video, .fullSizeVideo: otherResources.append(r)
+            default: break
+            }
+        }
+
+        return AssetAnalysis(
+            photoResource: photoResource,
+            fullSizePhotoResource: fullSizePhotoResource,
+            adjustmentDataResource: adjustmentDataResource,
+            livePhotoVideoResource: livePhotoVideoResource,
+            otherResources: otherResources
+        )
     }
 
     struct AlbumNode {
@@ -66,18 +132,32 @@ actor PhotoLibraryImporter {
         let allAssets = PHAsset.fetchAssets(with: nil)
         var photoCount = 0
         var videoCount = 0
+        var livePhotoVideoCount = 0
+        var editMetadataCount = 0
+        var ignoredAssets: [IgnoredAsset] = []
         var totalBytes: Int64 = 0
         var assets: [PHAsset] = []
         assets.reserveCapacity(allAssets.count)
 
         for i in 0..<allAssets.count {
             let asset = allAssets.object(at: i)
-            assets.append(asset)
-            switch asset.mediaType {
-            case .image: photoCount += 1
-            case .video: videoCount += 1
-            default: break
+            let analysis = Self.analyzeAsset(asset)
+
+            switch analysis.kind {
+            case .photo:
+                photoCount += 1
+                assets.append(asset)
+            case .video:
+                videoCount += 1
+                assets.append(asset)
+            case nil:
+                ignoredAssets.append(IgnoredAsset(localIdentifier: asset.localIdentifier, mediaType: asset.mediaType, creationDate: asset.creationDate))
+                continue
             }
+
+            if analysis.importsLivePhotoVideo { livePhotoVideoCount += 1 }
+            if analysis.importsEditMetadata { editMetadataCount += 1 }
+
             let resources = PHAssetResource.assetResources(for: asset)
             for resource in resources {
                 if let size = resource.value(forKey: "fileSize") as? Int64 {
@@ -87,7 +167,15 @@ actor PhotoLibraryImporter {
             }
         }
 
-        return LibraryScan(photoCount: photoCount, videoCount: videoCount, estimatedBytes: totalBytes, assets: assets)
+        return LibraryScan(
+            photoCount: photoCount,
+            videoCount: videoCount,
+            livePhotoVideoCount: livePhotoVideoCount,
+            editMetadataCount: editMetadataCount,
+            ignoredAssets: ignoredAssets,
+            estimatedBytes: totalBytes,
+            assets: assets
+        )
     }
 
     /// Imports PHAssets created after the last recorded watermark date.
@@ -118,8 +206,8 @@ actor PhotoLibraryImporter {
         for i in 0..<result.count {
             let asset = result.object(at: i)
             do {
-                try await importPHAsset(asset, into: albumId, lib: lib)
-                imported += 1
+                let ids = try await importPHAsset(asset, into: albumId, lib: lib)
+                if !ids.isEmpty { imported += 1 }
             } catch {
                 AppLogger.log(.error, "auto-import asset \(asset.localIdentifier) failed: \(error)")
             }
@@ -133,35 +221,25 @@ actor PhotoLibraryImporter {
 
     @discardableResult
     func importPHAsset(_ asset: PHAsset, into albumId: String, lib: FfiLibrary) async throws -> [String] {
-        var photoResource: PHAssetResource?
-        var fullSizePhotoResource: PHAssetResource?
-        var adjustmentDataResource: PHAssetResource?
+        let analysis = Self.analyzeAsset(asset)
+        guard analysis.isImportable else { return [] }
+
+        let photoResource = analysis.photoResource
+        let fullSizePhotoResource = analysis.fullSizePhotoResource
+        let adjustmentDataResource = analysis.adjustmentDataResource
         // A Live Photo (Apple's name for a still with a short paired motion video captured at
         // the same moment) surfaces its video half as .pairedVideo/.fullSizePairedVideo.
-        var livePhotoVideoResource: PHAssetResource?
-        var otherResources: [PHAssetResource] = []
-
-        for r in PHAssetResource.assetResources(for: asset) as [PHAssetResource] {
-            switch r.type as PHAssetResourceType {
-            case .photo: photoResource = r
-            case .fullSizePhoto: fullSizePhotoResource = r
-            case .adjustmentData: adjustmentDataResource = r
-            case .pairedVideo, .fullSizePairedVideo: livePhotoVideoResource = r
-            case .video, .fullSizeVideo: otherResources.append(r)
-            default: break
-            }
-        }
-
-        guard photoResource != nil || fullSizePhotoResource != nil || livePhotoVideoResource != nil || !otherResources.isEmpty else { return [] }
+        let livePhotoVideoResource = analysis.livePhotoVideoResource
+        let otherResources = analysis.otherResources
 
         // When both are present, fullSizePhoto is a rendered duplicate of photo with the
         // edits baked in. We only want the original on disk plus a link to its AAE sidecar.
-        let isEdited = photoResource != nil && fullSizePhotoResource != nil
+        let isEdited = analysis.isEdited
         if isEdited && adjustmentDataResource == nil {
             AppLogger.log(.error, "asset \(asset.localIdentifier) is edited but has no adjustment data resource, importing original photo without an AAE link")
         }
 
-        let hasStill = photoResource != nil || fullSizePhotoResource != nil
+        let hasStill = analysis.hasStill
         var mediaIds: [String] = []
         var didSetThumbnail = false
 

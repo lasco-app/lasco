@@ -33,6 +33,7 @@ struct NewLibraryWizard: View {
     @State private var isBulkImporting = false
     @State private var importResult: (photos: Int, videos: Int)? = nil
     @State private var photoPermissionDenied = false
+    @State private var showIgnoredDetail = false
     #endif
 
     private var pageSlide: AnyTransition {
@@ -556,6 +557,14 @@ struct NewLibraryWizard: View {
                 VStack(alignment: .leading, spacing: 0) {
                     importStatRow(label: "Photos", value: "\(scan.photoCount)")
                     importStatRow(label: "Videos", value: "\(scan.videoCount)")
+                    importStatRow(label: "Video from live photo", value: "\(scan.livePhotoVideoCount)")
+                    importStatRow(label: "Photo edit metadata", value: "\(scan.editMetadataCount)")
+                    if !scan.ignoredAssets.isEmpty {
+                        Button { showIgnoredDetail = true } label: {
+                            importStatRow(label: "Ignored", value: "\(scan.ignoredAssets.count)")
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
                 .lascoPanel()
             }
@@ -570,6 +579,11 @@ struct NewLibraryWizard: View {
             scanLoading = true
             libraryScan = await libraryModel.scanPhotoLibrary()
             scanLoading = false
+        }
+        .sheet(isPresented: $showIgnoredDetail) {
+            if let scan = libraryScan {
+                IgnoredAssetsView(ignoredAssets: scan.ignoredAssets)
+            }
         }
     }
 
