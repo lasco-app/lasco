@@ -13,6 +13,8 @@ type Props = {
   shiftY?: number;
   mascotSrc?: string;
   mascotStyle?: CSSProperties;
+  shotAspectRatio?: string;
+  screenshotCropTopPercent?: number;
 };
 
 export default function ScreenshotComposition({
@@ -27,6 +29,8 @@ export default function ScreenshotComposition({
   shiftY = 0,
   mascotSrc,
   mascotStyle,
+  shotAspectRatio,
+  screenshotCropTopPercent = 0,
 }: Props) {
   return (
     <div className={styles.stage} style={{background}}>
@@ -48,13 +52,24 @@ export default function ScreenshotComposition({
         style={{
           bottom: `calc(20px + ${shiftY}px)`,
           transform: `translateX(calc(-50% + ${shiftX}px)) rotate(${rotate}deg)`,
+          aspectRatio: shotAspectRatio,
         }}
       >
         <img
           src={screenshotSrc}
           alt={screenshotAlt}
           className={styles.shotImg}
-          style={{objectPosition: screenshotObjectPosition}}
+          style={{
+            objectPosition: screenshotObjectPosition,
+            ...(screenshotCropTopPercent > 0
+              ? {
+                  transformOrigin: 'top',
+                  transform: `translateY(-${screenshotCropTopPercent}%) scale(${
+                    1 + screenshotCropTopPercent / 100
+                  })`,
+                }
+              : {}),
+          }}
         />
       </div>
     </div>

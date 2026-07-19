@@ -6,6 +6,14 @@
   box-sizing: border-box;
 }
 
+.ipadFrame {
+  position: relative;
+  width: 1032px;
+  height: 1376px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
 /* =============================================
    Screenshot composition (App Store style)
    ============================================= */
