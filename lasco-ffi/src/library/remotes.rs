@@ -137,6 +137,8 @@ impl FfiLibrary {
             lasco_core::s3_secret::encrypt_s3_secret_key(self.inner.master_key(), &secret_key)
                 .map_err(|e| LascoError::Other { msg: e.to_string() })?;
 
+        let path_prefix = if path_prefix.is_empty() { None } else { Some(path_prefix) };
+
         let remote_uuid = RemoteUuid::new();
         let remote_config = RemoteConfig {
             remote_uuid,
@@ -329,7 +331,7 @@ pub(super) fn remote_config_to_ffi(r: &RemoteConfig) -> FfiRemote {
             Some(s3.endpoint.clone()),
             Some(s3.bucket.clone()),
             Some(s3.region.clone()),
-            Some(s3.path_prefix.clone()),
+            s3.path_prefix.clone(),
         ),
         RemoteKind::FixedPath(fs) => (
             "fixed_path".to_string(),

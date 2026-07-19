@@ -178,7 +178,7 @@ pub async fn add_existing_library_s3(
     endpoint: String,
     bucket: String,
     region: String,
-    path_prefix: String,
+    path_prefix: Option<String>,
     access_key: String,
     secret_key: String,
     session_dir: Option<&Path>,

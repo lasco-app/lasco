@@ -105,6 +105,7 @@ pub fn ffi_test_s3_remote(
     access_key: String,
     secret_key: String,
 ) -> Result<(), LascoError> {
+    let path_prefix = if path_prefix.is_empty() { None } else { Some(path_prefix) };
     let storage =
         lasco_core::storage::StorageS3::new(endpoint, bucket, region, path_prefix, access_key, secret_key)
             .map_err(|e| LascoError::Other { msg: e.to_string() })?;
@@ -210,6 +211,8 @@ pub fn ffi_add_existing_library_s3(
         }
         _ => None,
     };
+
+    let path_prefix = if path_prefix.is_empty() { None } else { Some(path_prefix) };
 
     let (_library_id, library) = rt
         .block_on(lasco_core::client::add_existing_library_s3(

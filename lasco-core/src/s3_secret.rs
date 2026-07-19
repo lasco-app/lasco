@@ -120,7 +120,7 @@ mod tests {
             endpoint: "https://s3.example.com".to_string(),
             bucket: "my-bucket".to_string(),
             region: "us-east-1".to_string(),
-            path_prefix: String::new(),
+            path_prefix: None,
             access_key: "AKIAIOSFODNN7EXAMPLE".to_string(),
             secret_key_encrypted: encrypted,
             secret_key_encryption_description: desc,
