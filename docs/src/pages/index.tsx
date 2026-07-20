@@ -131,7 +131,7 @@ function ScreenshotScrollSection() {
     <section className={styles.screenshotScrollSection} ref={sectionRef}>
       <div className={styles.mascotFlamingoWrap}>
         <RiveMascot
-          src="https://public.getlasco.app/macot_hero_anim.riv"
+          src="/img/macot_hero_anim.riv"
           className={styles.mascotFlamingo}
         />
       </div>
@@ -401,7 +401,7 @@ export default function Home(): ReactNode {
         <WhyLascoSection />
         <div style={{display: 'flex', justifyContent: 'center', padding: '120px 0 200px'}}>
           <RiveMascot
-            src="https://public.getlasco.app/msacot_hole_anim.riv"
+            src="/img/msacot_hole_anim.riv"
             className={styles.mascotHole}
           />
         </div>
