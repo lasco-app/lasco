@@ -211,8 +211,16 @@
 
 .mascotFlamingo {
   width: 440px;
+  aspect-ratio: 471 / 486;
   display: block;
   margin: 0 auto;
+}
+
+.mascotHole {
+  height: 200px;
+  aspect-ratio: 523 / 369;
+  max-width: 100%;
+  display: block;
 }
 
 /* Mobile-only panel images (hidden on desktop) */
@@ -325,6 +333,7 @@
 
   .mascotFlamingo {
     width: 200px;
+    aspect-ratio: 471 / 486;
     margin: 0 auto;
   }
 }
