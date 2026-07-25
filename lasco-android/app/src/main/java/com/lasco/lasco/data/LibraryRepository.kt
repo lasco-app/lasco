@@ -115,6 +115,12 @@ class LibraryRepository(
         changes.emit(Change.AlbumList)
     }
 
+    suspend fun addMediaToAlbum(albumId: String, mediaId: String) {
+        withContext(io) { lib.addMediaToAlbum(albumId, mediaId) }
+        changes.emit(Change.Album(albumId))
+        changes.emit(Change.AlbumList)
+    }
+
     suspend fun albumsContainingMedia(mediaId: String): List<FfiAlbum> = withContext(io) {
         val ids = lib.mediaContainingAlbumIds(mediaId, true).toSet()
         lib.listAlbums().filter { it.albumId in ids }

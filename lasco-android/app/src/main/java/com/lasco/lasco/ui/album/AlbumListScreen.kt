@@ -22,8 +22,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,11 +46,13 @@ import com.lasco.lasco.ui.components.AlbumCell
 import com.lasco.lasco.ui.components.AlbumPickerDialog
 import com.lasco.lasco.ui.components.LascoConfirmDialog
 import com.lasco.lasco.ui.components.LascoTextInputDialog
+import com.lasco.lasco.ui.components.MediaPickerDialog
 import com.lasco.lasco.ui.components.MediaThumbnail
 import com.lasco.lasco.ui.theme.LascoTheme
 import kotlinx.coroutines.launch
 import uniffi.lasco_ffi.FfiAlbum
 import uniffi.lasco_ffi.FfiAlbumItem
+import uniffi.lasco_ffi.FfiMediaItem
 
 /**
  * One album level's content: child albums, media/group items, and (root
@@ -113,6 +118,8 @@ fun AlbumListScreen(
     var showRenameDialog by remember { mutableStateOf(false) }
     var showMovePicker by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showAddFromLibraryDialog by remember { mutableStateOf(false) }
+    var libraryMedia by remember { mutableStateOf<List<FfiMediaItem>>(emptyList()) }
     var isImporting by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
@@ -201,6 +208,26 @@ fun AlbumListScreen(
         )
     }
 
+    if (showAddFromLibraryDialog && album != null) {
+        LaunchedEffect(showAddFromLibraryDialog) {
+            libraryMedia = repo.mediaByDate()
+        }
+        val disabledIds = remember(items) { items.mapNotNull { it.media?.mediaId }.toSet() }
+        MediaPickerDialog(
+            title = "Add from library",
+            media = libraryMedia,
+            disabledIds = disabledIds,
+            repo = repo,
+            onConfirm = { ids ->
+                showAddFromLibraryDialog = false
+                scope.launch {
+                    for (id in ids) repo.addMediaToAlbum(album.albumId, id)
+                }
+            },
+            onCancel = { showAddFromLibraryDialog = false },
+        )
+    }
+
     Box(modifier = modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
@@ -252,6 +279,11 @@ fun AlbumListScreen(
                 },
                 onImportFiles = if (album != null) {
                     { filePickerLauncher.launch(arrayOf("image/*", "video/*")) }
+                } else {
+                    null
+                },
+                onAddFromLibrary = if (album != null) {
+                    { showAddFromLibraryDialog = true }
                 } else {
                     null
                 },
@@ -337,8 +369,10 @@ private fun AlbumHeader(
     onNewAlbum: () -> Unit,
     onImportPhotos: (() -> Unit)? = null,
     onImportFiles: (() -> Unit)? = null,
+    onAddFromLibrary: (() -> Unit)? = null,
 ) {
     val colors = LascoTheme.colors
+    var showAddMenu by remember { mutableStateOf(false) }
     Column {
         if (onBack != null) {
             Text(
@@ -371,26 +405,51 @@ private fun AlbumHeader(
                     color = colors.ink,
                     modifier = Modifier.clickable { onToggleSort() },
                 )
-                Text(
-                    text = "＋",
-                    style = LascoTheme.type.body(20),
-                    color = colors.ink,
-                    modifier = Modifier.clickable { onNewAlbum() },
-                )
                 if (onImportPhotos != null) {
+                    Box {
+                        Text(
+                            text = "＋",
+                            style = LascoTheme.type.body(20),
+                            color = colors.ink,
+                            modifier = Modifier.clickable { showAddMenu = true },
+                        )
+                        DropdownMenu(expanded = showAddMenu, onDismissRequest = { showAddMenu = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Import photo") },
+                                onClick = {
+                                    showAddMenu = false
+                                    onImportPhotos()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Import file") },
+                                onClick = {
+                                    showAddMenu = false
+                                    onImportFiles?.invoke()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Add file from library") },
+                                onClick = {
+                                    showAddMenu = false
+                                    onAddFromLibrary?.invoke()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Create album") },
+                                onClick = {
+                                    showAddMenu = false
+                                    onNewAlbum()
+                                },
+                            )
+                        }
+                    }
+                } else {
                     Text(
-                        text = "🖼",
-                        style = LascoTheme.type.body(18),
+                        text = "＋",
+                        style = LascoTheme.type.body(20),
                         color = colors.ink,
-                        modifier = Modifier.clickable { onImportPhotos() },
-                    )
-                }
-                if (onImportFiles != null) {
-                    Text(
-                        text = "📄",
-                        style = LascoTheme.type.body(18),
-                        color = colors.ink,
-                        modifier = Modifier.clickable { onImportFiles() },
+                        modifier = Modifier.clickable { onNewAlbum() },
                     )
                 }
             }
