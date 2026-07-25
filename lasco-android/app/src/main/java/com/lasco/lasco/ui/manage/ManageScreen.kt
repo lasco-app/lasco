@@ -2,6 +2,10 @@ package com.lasco.lasco.ui.manage
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -25,20 +29,30 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation3.runtime.NavKey
+import androidx.navigation3.runtime.entryProvider
+import androidx.navigation3.runtime.rememberNavBackStack
+import androidx.navigation3.ui.NavDisplay
 import com.lasco.lasco.ui.components.AlbumPickerDialog
 import com.lasco.lasco.ui.components.LascoConfirmDialog
 import com.lasco.lasco.ui.theme.LascoTheme
 import com.lasco.lasco.ui.theme.lascoPanel
 import kotlinx.coroutines.launch
+import kotlinx.serialization.Serializable
 
 private const val PRIVACY_POLICY_URL = "https://getlasco.app/privacy-policy"
 
-private sealed interface ManageDestination {
-    data object Root : ManageDestination
-    data object Remotes : ManageDestination
-    data object Users : ManageDestination
-    data object Operations : ManageDestination
-}
+@Serializable
+private data object ManageRootKey : NavKey
+
+@Serializable
+private data object RemotesKey : NavKey
+
+@Serializable
+private data object UsersKey : NavKey
+
+@Serializable
+private data object OperationsKey : NavKey
 
 /**
  * Ported from Swift's ManageView. Skips log-file sharing (no Android logging
@@ -47,29 +61,54 @@ private sealed interface ManageDestination {
  */
 @Composable
 fun ManageScreen(modifier: Modifier = Modifier, onSignedOut: () -> Unit = {}) {
-    var destination by remember { mutableStateOf<ManageDestination>(ManageDestination.Root) }
+    val backStack = rememberNavBackStack(ManageRootKey)
 
-    when (destination) {
-        ManageDestination.Root -> ManageRootScreen(
-            modifier = modifier,
-            onOpenRemotes = { destination = ManageDestination.Remotes },
-            onOpenUsers = { destination = ManageDestination.Users },
-            onOpenOperations = { destination = ManageDestination.Operations },
-            onSignedOut = onSignedOut,
-        )
-        ManageDestination.Remotes -> RemotesScreen(
-            modifier = modifier,
-            onBack = { destination = ManageDestination.Root },
-        )
-        ManageDestination.Users -> UsersScreen(
-            modifier = modifier,
-            onBack = { destination = ManageDestination.Root },
-        )
-        ManageDestination.Operations -> OperationsScreen(
-            modifier = modifier,
-            onBack = { destination = ManageDestination.Root },
-        )
-    }
+    NavDisplay(
+        backStack = backStack,
+        onBack = { backStack.removeLastOrNull() },
+        modifier = modifier,
+        transitionSpec = {
+            slideInHorizontally(tween(300)) { it } togetherWith
+                slideOutHorizontally(tween(300)) { -it / 3 }
+        },
+        popTransitionSpec = {
+            slideInHorizontally(tween(300)) { -it / 3 } togetherWith
+                slideOutHorizontally(tween(300)) { it }
+        },
+        predictivePopTransitionSpec = {
+            slideInHorizontally(tween(300)) { -it / 3 } togetherWith
+                slideOutHorizontally(tween(300)) { it }
+        },
+        entryProvider = entryProvider {
+            entry<ManageRootKey> {
+                ManageRootScreen(
+                    modifier = Modifier.fillMaxSize(),
+                    onOpenRemotes = { backStack.add(RemotesKey) },
+                    onOpenUsers = { backStack.add(UsersKey) },
+                    onOpenOperations = { backStack.add(OperationsKey) },
+                    onSignedOut = onSignedOut,
+                )
+            }
+            entry<RemotesKey> {
+                RemotesScreen(
+                    modifier = Modifier.fillMaxSize(),
+                    onBack = { backStack.removeLastOrNull() },
+                )
+            }
+            entry<UsersKey> {
+                UsersScreen(
+                    modifier = Modifier.fillMaxSize(),
+                    onBack = { backStack.removeLastOrNull() },
+                )
+            }
+            entry<OperationsKey> {
+                OperationsScreen(
+                    modifier = Modifier.fillMaxSize(),
+                    onBack = { backStack.removeLastOrNull() },
+                )
+            }
+        },
+    )
 }
 
 @Composable
