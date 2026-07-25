@@ -35,6 +35,8 @@ class AddExistingLibraryViewModel(
         nickname: String,
         username: String,
         password: String,
+        newUsername: String?,
+        newPassword: String?,
         remoteName: String,
         endpoint: String,
         bucket: String,
@@ -50,6 +52,8 @@ class AddExistingLibraryViewModel(
                     nickname = nickname,
                     username = username,
                     password = password,
+                    newUsername = newUsername,
+                    newPassword = newPassword,
                     remoteId = remoteName,
                     endpoint = endpoint,
                     bucket = bucket,
@@ -58,8 +62,9 @@ class AddExistingLibraryViewModel(
                     accessKey = accessKey,
                     secretKey = secretKey,
                 )
+                val sessionUsername = newUsername ?: username
                 app.librarySession =
-                    LibraryRepository(lib, nickname = nickname, username = username, appDir = repository.appDir)
+                    LibraryRepository(lib, nickname = nickname, username = sessionUsername, appDir = repository.appDir)
                 _uiState.value = AddExistingLibraryUiState(opened = true)
             } catch (e: Throwable) {
                 _uiState.value = AddExistingLibraryUiState(error = e.message ?: "Could not add library")

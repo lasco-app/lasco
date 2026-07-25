@@ -5,21 +5,33 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.lasco.lasco.R
 import com.lasco.lasco.ui.components.LascoPrimaryButton
+import com.lasco.lasco.ui.manage.SettingsDialog
 import com.lasco.lasco.ui.theme.LascoTheme
 import com.lasco.lasco.ui.theme.lascoPanel
 import com.lasco.lasco.ui.theme.lascoPanelHard
@@ -40,6 +52,7 @@ fun LibraryListScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val colors = LascoTheme.colors
+    var showSettings by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -47,18 +60,29 @@ fun LibraryListScreen(
             .background(colors.bg),
     ) {
         // Header.
-        Column(
+        Row(
             modifier = Modifier
                 .padding(horizontal = 32.dp)
                 .padding(top = 48.dp, bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.Top,
         ) {
-            Text(text = "LASCO", style = LascoTheme.type.categoryLarge(), color = colors.ink)
-            Text(
-                text = "Your libraries",
-                style = LascoTheme.type.subtitle(),
-                color = colors.inkMuted,
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(text = "LASCO", style = LascoTheme.type.categoryLarge(), color = colors.ink)
+                Text(
+                    text = "Your libraries",
+                    style = LascoTheme.type.subtitle(),
+                    color = colors.inkMuted,
+                )
+            }
+            Spacer(modifier = Modifier.weight(1f))
+            IconButton(onClick = { showSettings = true }) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_tab_cog),
+                    contentDescription = "Settings",
+                    tint = colors.inkMuted,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
         }
 
         // List.
@@ -106,6 +130,10 @@ fun LibraryListScreen(
                     .clickable(interactionSource = null, indication = null) { onAddExisting() },
             )
         }
+    }
+
+    if (showSettings) {
+        SettingsDialog(onDismiss = { showSettings = false })
     }
 }
 

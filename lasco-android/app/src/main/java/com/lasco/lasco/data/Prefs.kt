@@ -29,6 +29,19 @@ class Prefs(context: Context) {
         _expertMode.value = value
     }
 
+    fun onboardingStep(libraryId: String): Int? {
+        val value = sp.getInt("lasco.onboardingStep.$libraryId", -1)
+        return if (value < 0) null else value
+    }
+
+    fun setOnboardingStep(libraryId: String, step: Int) {
+        sp.edit().putInt("lasco.onboardingStep.$libraryId", step).apply()
+    }
+
+    fun clearOnboardingIncomplete(libraryId: String) {
+        sp.edit().remove("lasco.onboardingStep.$libraryId").apply()
+    }
+
     fun recordPush(remoteId: String, success: Boolean) =
         record("lasco.lastPush", remoteId, success)
 
