@@ -267,6 +267,7 @@ fun AlbumListScreen(
                 title = title,
                 backLabel = backLabel,
                 onBack = onBack,
+                isAlbumView = album != null,
                 isGridLayout = isGridLayout,
                 onToggleLayout = { isGridLayout = !isGridLayout },
                 sortAscending = sortAscending,
@@ -362,6 +363,7 @@ private fun AlbumHeader(
     title: String,
     backLabel: String?,
     onBack: (() -> Unit)?,
+    isAlbumView: Boolean,
     isGridLayout: Boolean,
     onToggleLayout: () -> Unit,
     sortAscending: Boolean,
@@ -393,12 +395,14 @@ private fun AlbumHeader(
                 modifier = Modifier.weight(1f),
             )
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text(
-                    text = if (isGridLayout) "☰" else "▦",
-                    style = LascoTheme.type.body(18),
-                    color = colors.ink,
-                    modifier = Modifier.clickable { onToggleLayout() },
-                )
+                if (isAlbumView) {
+                    Text(
+                        text = if (isGridLayout) "☰" else "▦",
+                        style = LascoTheme.type.body(18),
+                        color = colors.ink,
+                        modifier = Modifier.clickable { onToggleLayout() },
+                    )
+                }
                 Text(
                     text = if (sortAscending) "↑" else "↓",
                     style = LascoTheme.type.body(18),
