@@ -45,6 +45,10 @@ pub fn build_storage(
                 .join(&cfg.local_dir_name);
             Ok(Box::new(StorageLocalFs::new(&path)?))
         }
+        RemoteKind::DebugLocalAndroid(cfg) => {
+            let path = app_dir.join("local_fs_test").join(&cfg.local_dir_name);
+            Ok(Box::new(StorageLocalFs::new(&path)?))
+        }
         RemoteKind::S3(s3_cfg) => {
             let master_key = master_key.ok_or_else(|| {
                 anyhow::anyhow!("master key required to decrypt S3 credentials")

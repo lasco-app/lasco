@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use lasco_core::identifiers::RemoteUuid;
-use lasco_core::library_json::{save_library, DebugLocalAppleConfig, FixedPathConfig, LibraryJson, RemoteConfig, RemoteKind};
+use lasco_core::library_json::{save_library, DebugLocalAndroidConfig, DebugLocalAppleConfig, FixedPathConfig, LibraryJson, RemoteConfig, RemoteKind};
 use lasco_core::operations::{LibraryPassword, LibraryUsername, Operation};
 
 use super::{FfiKv, FfiLibrary, FfiMediaItem, FfiOperation, FfiOperationGroup, FfiRemote, FfiSyncResult};
@@ -112,7 +112,38 @@ impl FfiLibrary {
         Ok(remote_uuid.to_string())
     }
 
-    #[allow(clippy::too_many_arguments)]
+    pub fn add_remote_debug_local_android(&self, name: String) -> Result<String, LascoError> {
+        let library_id = self.inner.library_id();
+        let mut lib_config = self.load_library_json()?;
+
+        if lib_config.remotes.iter().any(|r| r.name == name) {
+            return Err(LascoError::Other {
+                msg: format!("remote '{}' already exists", name),
+            });
+        }
+
+        let remote_uuid = RemoteUuid::new();
+        let remote_config = RemoteConfig {
+            remote_uuid,
+            name: name.clone(),
+            kind: RemoteKind::DebugLocalAndroid(DebugLocalAndroidConfig {
+                local_dir_name: name,
+            }),
+        };
+
+        let ffi_remote = remote_config_to_ffi(&remote_config);
+        let is_first_remote = lib_config.remotes.is_empty();
+        lib_config.remotes.push(remote_config);
+        if is_first_remote {
+            lib_config.default_fetch_remote = Some(remote_uuid);
+        }
+        save_library(&self.app_dir, &library_id, &lib_config)
+            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+
+        self.remotes.lock().unwrap().push(ffi_remote);
+        Ok(remote_uuid.to_string())
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn add_remote_s3(
         &self,
@@ -342,6 +373,13 @@ pub(super) fn remote_config_to_ffi(r: &RemoteConfig) -> FfiRemote {
         ),
         RemoteKind::DebugLocalApple(cfg) => (
             "debug_local_apple".to_string(),
+            None,
+            None,
+            None,
+            Some(cfg.local_dir_name.clone()),
+        ),
+        RemoteKind::DebugLocalAndroid(cfg) => (
+            "debug_local_android".to_string(),
             None,
             None,
             None,

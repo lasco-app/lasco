@@ -25,6 +25,7 @@ pub enum RemoteKind {
     S3(S3Config),
     FixedPath(FixedPathConfig),
     DebugLocalApple(DebugLocalAppleConfig),
+    DebugLocalAndroid(DebugLocalAndroidConfig),
     // future: UsbVolume(UsbVolumeConfig)
 }
 
@@ -53,6 +54,14 @@ pub struct FixedPathConfig {
 /// segment changing across relaunches/reinstalls on iOS/macOS.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DebugLocalAppleConfig {
+    pub local_dir_name: String,
+}
+
+/// Stores a name and resolves the path against the app's own data directory on
+/// every use. Android's app_dir is not sandboxed the same way iOS/macOS is, so
+/// unlike DebugLocalAppleConfig no separate app-support directory is needed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DebugLocalAndroidConfig {
     pub local_dir_name: String,
 }
 
