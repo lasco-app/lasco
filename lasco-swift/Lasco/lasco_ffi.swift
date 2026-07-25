@@ -553,6 +553,8 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     
     func addMediaToGroup(groupId: String, mediaId: String) throws 
     
+    func addRemoteDebugLocalAndroid(name: String) throws  -> String
+    
     func addRemoteDebugLocalApple(name: String) throws  -> String
     
     func addRemoteFixedPath(name: String, path: String) throws  -> String
@@ -726,12 +728,13 @@ nonisolated open class FfiLibrary: FfiLibraryProtocol, @unchecked Sendable {
      * Open a library by nickname. Delegates config loading, storage
      * construction, and session/master-key handling to `lasco_core::client`.
      */
-nonisolated public static func `open`(nickname: String?, username: String, password: String)throws  -> FfiLibrary  {
+nonisolated public static func `open`(nickname: String?, username: String, password: String, appDir: String? = nil)throws  -> FfiLibrary  {
     return try  FfiConverterTypeFfiLibrary_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_constructor_ffilibrary_open(
         FfiConverterOptionString.lower(nickname),
         FfiConverterString.lower(username),
-        FfiConverterString.lower(password),$0
+        FfiConverterString.lower(password),
+        FfiConverterOptionString.lower(appDir),$0
     )
 })
 }
@@ -752,6 +755,14 @@ nonisolated open func addMediaToGroup(groupId: String, mediaId: String)throws   
         FfiConverterString.lower(mediaId),$0
     )
 }
+}
+    
+nonisolated open func addRemoteDebugLocalAndroid(name: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_debug_local_android(self.uniffiClonePointer(),
+        FfiConverterString.lower(name),$0
+    )
+})
 }
     
 nonisolated open func addRemoteDebugLocalApple(name: String)throws  -> String  {
@@ -2893,7 +2904,7 @@ nonisolated fileprivate func uniffiFutureContinuationCallback(handle: UInt64, po
  * an existing user on the remote. When `new_username`/`new_password` are both
  * provided, a new user is registered and used as the effective device user.
  */
-nonisolated public func ffiAddExistingLibraryS3(nickname: String, username: String, password: String, newUsername: String?, newPassword: String?, remoteId: String, endpoint: String, bucket: String, region: String, pathPrefix: String, accessKey: String, secretKey: String)throws  -> FfiLibrary  {
+nonisolated public func ffiAddExistingLibraryS3(nickname: String, username: String, password: String, newUsername: String?, newPassword: String?, remoteId: String, endpoint: String, bucket: String, region: String, pathPrefix: String, accessKey: String, secretKey: String, appDir: String? = nil)throws  -> FfiLibrary  {
     return try  FfiConverterTypeFfiLibrary_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_func_ffi_add_existing_library_s3(
         FfiConverterString.lower(nickname),
@@ -2907,22 +2918,25 @@ nonisolated public func ffiAddExistingLibraryS3(nickname: String, username: Stri
         FfiConverterString.lower(region),
         FfiConverterString.lower(pathPrefix),
         FfiConverterString.lower(accessKey),
-        FfiConverterString.lower(secretKey),$0
+        FfiConverterString.lower(secretKey),
+        FfiConverterOptionString.lower(appDir),$0
     )
 })
 }
-nonisolated public func ffiCreateLibrary(nickname: String, username: String, password: String)throws  -> FfiCreateLibraryResult  {
+nonisolated public func ffiCreateLibrary(nickname: String, username: String, password: String, appDir: String? = nil)throws  -> FfiCreateLibraryResult  {
     return try  FfiConverterTypeFfiCreateLibraryResult_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_func_ffi_create_library(
         FfiConverterString.lower(nickname),
         FfiConverterString.lower(username),
-        FfiConverterString.lower(password),$0
+        FfiConverterString.lower(password),
+        FfiConverterOptionString.lower(appDir),$0
     )
 })
 }
-nonisolated public func ffiDeleteLibrary(libraryId: String)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+nonisolated public func ffiDeleteLibrary(libraryId: String, appDir: String? = nil)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_func_ffi_delete_library(
-        FfiConverterString.lower(libraryId),$0
+        FfiConverterString.lower(libraryId),
+        FfiConverterOptionString.lower(appDir),$0
     )
 }
 }
@@ -2930,11 +2944,12 @@ nonisolated public func ffiDeleteLibrary(libraryId: String)throws   {try rustCal
  * Try to open a library using a cached session (OS keychain), without a password.
  * Returns `None` if no session is cached — the caller should then prompt for credentials.
  */
-nonisolated public func ffiOpenCached(nickname: String?, username: String)throws  -> FfiLibrary?  {
+nonisolated public func ffiOpenCached(nickname: String?, username: String, appDir: String? = nil)throws  -> FfiLibrary?  {
     return try  FfiConverterOptionTypeFfiLibrary.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_func_ffi_open_cached(
         FfiConverterOptionString.lower(nickname),
-        FfiConverterString.lower(username),$0
+        FfiConverterString.lower(username),
+        FfiConverterOptionString.lower(appDir),$0
     )
 })
 }
@@ -2953,16 +2968,18 @@ nonisolated public func ffiTestS3Remote(endpoint: String, bucket: String, region
     )
 }
 }
-nonisolated public func listLibraries()throws  -> [FfiLibraryEntry]  {
+nonisolated public func listLibraries(appDir: String? = nil)throws  -> [FfiLibraryEntry]  {
     return try  FfiConverterSequenceTypeFfiLibraryEntry.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
-    uniffi_lasco_ffi_fn_func_list_libraries($0
+    uniffi_lasco_ffi_fn_func_list_libraries(
+        FfiConverterOptionString.lower(appDir),$0
     )
 })
 }
-nonisolated public func sessionClear(libraryId: String, username: String)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+nonisolated public func sessionClear(libraryId: String, username: String, appDir: String? = nil)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_func_session_clear(
         FfiConverterString.lower(libraryId),
-        FfiConverterString.lower(username),$0
+        FfiConverterString.lower(username),
+        FfiConverterOptionString.lower(appDir),$0
     )
 }
 }
@@ -2982,31 +2999,34 @@ nonisolated private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if (uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_s3() != 42084) {
+    if (uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_s3() != 30233) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_func_ffi_create_library() != 5995) {
+    if (uniffi_lasco_ffi_checksum_func_ffi_create_library() != 65253) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_func_ffi_delete_library() != 24422) {
+    if (uniffi_lasco_ffi_checksum_func_ffi_delete_library() != 39390) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_func_ffi_open_cached() != 47096) {
+    if (uniffi_lasco_ffi_checksum_func_ffi_open_cached() != 45988) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_func_ffi_test_s3_remote() != 63928) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_func_list_libraries() != 56683) {
+    if (uniffi_lasco_ffi_checksum_func_list_libraries() != 48425) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_func_session_clear() != 58271) {
+    if (uniffi_lasco_ffi_checksum_func_session_clear() != 8061) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_media_to_album() != 38746) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_media_to_group() != 15163) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_debug_local_android() != 7423) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_debug_local_apple() != 36744) {
@@ -3186,7 +3206,7 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_user_list() != 55837) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_constructor_ffilibrary_open() != 27617) {
+    if (uniffi_lasco_ffi_checksum_constructor_ffilibrary_open() != 15911) {
         return InitializationResult.apiChecksumMismatch
     }
 
