@@ -39,6 +39,7 @@ fun AlbumsScreen(
     backStack: NavBackStack<NavKey>,
     modifier: Modifier = Modifier,
     onOpenAlbum: (String) -> Unit = {},
+    onPickerVisibleChange: (Boolean) -> Unit = {},
 ) {
     val repo = LibraryRepository.from(LocalContext.current)
     val allAlbums by remember { repo.watch(Change.AlbumList) { repo.listAlbums() } }
@@ -78,6 +79,7 @@ fun AlbumsScreen(
                     onOpenMedia = { itemId ->
                         backStack.add(MediaDetailKey(sourceAlbumId = key.albumId, startMediaId = itemId))
                     },
+                    onPickerVisibleChange = onPickerVisibleChange,
                 )
             }
             entry<MediaDetailKey> { key ->

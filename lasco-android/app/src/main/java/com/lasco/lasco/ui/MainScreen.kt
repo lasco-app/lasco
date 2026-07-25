@@ -45,6 +45,7 @@ fun MainScreen(modifier: Modifier = Modifier, onSignedOut: () -> Unit = {}) {
     val homeBackStack = rememberNavBackStack(HomeKey)
     val albumsBackStack = rememberNavBackStack(AlbumKey(null))
     val colors = LascoTheme.colors
+    var isAlbumPickerVisible by remember { mutableStateOf(false) }
 
     fun openAlbum(albumId: String) {
         albumsBackStack.clear()
@@ -54,7 +55,7 @@ fun MainScreen(modifier: Modifier = Modifier, onSignedOut: () -> Unit = {}) {
     }
 
     val activeBackStack = if (tab == AppTab.Home) homeBackStack else albumsBackStack
-    val showTabBar = activeBackStack.lastOrNull() !is MediaDetailKey
+    val showTabBar = activeBackStack.lastOrNull() !is MediaDetailKey && !isAlbumPickerVisible
 
     Box(modifier = modifier.fillMaxSize().background(colors.bg)) {
         when (tab) {
@@ -87,6 +88,7 @@ fun MainScreen(modifier: Modifier = Modifier, onSignedOut: () -> Unit = {}) {
                 backStack = albumsBackStack,
                 modifier = Modifier.fillMaxSize(),
                 onOpenAlbum = { openAlbum(it) },
+                onPickerVisibleChange = { isAlbumPickerVisible = it },
             )
             AppTab.Status -> StatusScreen(modifier = Modifier.fillMaxSize())
             AppTab.Manage -> ManageScreen(modifier = Modifier.fillMaxSize(), onSignedOut = onSignedOut)

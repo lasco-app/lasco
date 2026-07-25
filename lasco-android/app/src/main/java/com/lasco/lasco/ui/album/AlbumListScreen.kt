@@ -26,6 +26,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,6 +35,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
@@ -46,7 +48,6 @@ import com.lasco.lasco.ui.components.AlbumCell
 import com.lasco.lasco.ui.components.AlbumPickerDialog
 import com.lasco.lasco.ui.components.LascoConfirmDialog
 import com.lasco.lasco.ui.components.LascoTextInputDialog
-import com.lasco.lasco.ui.components.MediaPickerDialog
 import com.lasco.lasco.ui.components.MediaThumbnail
 import com.lasco.lasco.ui.components.ThumbnailPickerDialog
 import com.lasco.lasco.ui.theme.LascoTheme
@@ -54,6 +55,17 @@ import kotlinx.coroutines.launch
 import uniffi.lasco_ffi.FfiAlbum
 import uniffi.lasco_ffi.FfiAlbumItem
 import uniffi.lasco_ffi.FfiMediaItem
+
+/**
+ * Hoisted selection state for AlbumListScreen's picker mode, used by
+ * AlbumMediaPickerScreen so a single selection survives navigating in and
+ * out of nested albums across separate AlbumListScreen instances.
+ */
+data class AlbumPickerState(
+    val disabledIds: Set<String>,
+    val selectedIds: Set<String>,
+    val onToggle: (mediaId: String) -> Unit,
+)
 
 /**
  * One album level's content: child albums, media/group items, and (root
@@ -70,6 +82,8 @@ fun AlbumListScreen(
     onBack: (() -> Unit)? = null,
     onOpenChild: (FfiAlbum) -> Unit = {},
     onOpenMedia: (itemId: String) -> Unit = {},
+    pickerState: AlbumPickerState? = null,
+    onPickerVisibleChange: (Boolean) -> Unit = {},
     viewModel: AlbumViewModel = viewModel(
         key = album?.albumId ?: "root",
         factory = AlbumViewModel.factory(album?.albumId),
@@ -119,8 +133,11 @@ fun AlbumListScreen(
     var showRenameDialog by remember { mutableStateOf(false) }
     var showMovePicker by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
-    var showAddFromLibraryDialog by remember { mutableStateOf(false) }
-    var libraryMedia by remember { mutableStateOf<List<FfiMediaItem>>(emptyList()) }
+    var showMediaPicker by remember { mutableStateOf(false) }
+    DisposableEffect(showMediaPicker) {
+        onPickerVisibleChange(showMediaPicker)
+        onDispose { onPickerVisibleChange(false) }
+    }
     var showThumbnailPicker by remember { mutableStateOf(false) }
     var thumbnailPickerMedia by remember { mutableStateOf<List<FfiMediaItem>>(emptyList()) }
     var isImporting by remember { mutableStateOf(false) }
@@ -211,26 +228,6 @@ fun AlbumListScreen(
         )
     }
 
-    if (showAddFromLibraryDialog && album != null) {
-        LaunchedEffect(showAddFromLibraryDialog) {
-            libraryMedia = repo.mediaByDate()
-        }
-        val disabledIds = remember(items) { items.mapNotNull { it.media?.mediaId }.toSet() }
-        MediaPickerDialog(
-            title = "Add from library",
-            media = libraryMedia,
-            disabledIds = disabledIds,
-            repo = repo,
-            onConfirm = { ids ->
-                showAddFromLibraryDialog = false
-                scope.launch {
-                    for (id in ids) repo.addMediaToAlbum(album.albumId, id)
-                }
-            },
-            onCancel = { showAddFromLibraryDialog = false },
-        )
-    }
-
     if (showThumbnailPicker && album != null) {
         LaunchedEffect(showThumbnailPicker) {
             thumbnailPickerMedia = repo.mediaInAlbum(album.albumId)
@@ -302,7 +299,7 @@ fun AlbumListScreen(
                     null
                 },
                 onAddFromLibrary = if (album != null) {
-                    { showAddFromLibraryDialog = true }
+                    { showMediaPicker = true }
                 } else {
                     null
                 },
@@ -311,6 +308,7 @@ fun AlbumListScreen(
                 } else {
                     null
                 },
+                pickerMode = pickerState != null,
             )
         }
 
@@ -342,25 +340,35 @@ fun AlbumListScreen(
                     items = items,
                     isGridLayout = isGridLayout,
                     selectedAlbumIds = selectedAlbumIds,
-                    selectedMediaIds = selectedMediaIds,
+                    selectedMediaIds = pickerState?.selectedIds ?: selectedMediaIds,
                     selectedGroupIds = selectedGroupIds,
                     isSelecting = isSelecting,
+                    pickerState = pickerState,
                     onAlbumTap = { child ->
-                        if (isSelecting) toggleAlbum(child.albumId) else onOpenChild(child)
+                        when {
+                            pickerState != null -> onOpenChild(child)
+                            isSelecting -> toggleAlbum(child.albumId)
+                            else -> onOpenChild(child)
+                        }
                     },
-                    onAlbumLongPress = { toggleAlbum(it.albumId) },
+                    onAlbumLongPress = { if (pickerState == null) toggleAlbum(it.albumId) },
                     onItemTap = { item, _ ->
                         val mediaId = item.media?.mediaId
                         val groupId = item.group?.groupId
                         when {
+                            pickerState != null && mediaId != null && mediaId !in pickerState.disabledIds ->
+                                pickerState.onToggle(mediaId)
+                            pickerState != null -> Unit
                             isSelecting && mediaId != null -> toggleMedia(mediaId)
                             isSelecting && groupId != null -> toggleGroup(groupId)
                             else -> (mediaId ?: groupId)?.let(onOpenMedia)
                         }
                     },
                     onItemLongPress = { item ->
-                        item.media?.let { toggleMedia(it.mediaId) }
-                        item.group?.let { toggleGroup(it.groupId) }
+                        if (pickerState == null) {
+                            item.media?.let { toggleMedia(it.mediaId) }
+                            item.group?.let { toggleGroup(it.groupId) }
+                        }
                     },
                 )
             }
@@ -377,6 +385,19 @@ fun AlbumListScreen(
                 Text(text = "Importing…", color = colors.ink, modifier = Modifier.padding(top = 12.dp))
             }
         }
+    }
+
+    if (showMediaPicker && album != null) {
+        AlbumMediaPickerScreen(
+            destAlbumName = album.name,
+            disabledIds = remember(items) { items.mapNotNull { it.media?.mediaId }.toSet() },
+            onConfirm = { ids ->
+                showMediaPicker = false
+                scope.launch { for (id in ids) repo.addMediaToAlbum(album.albumId, id) }
+            },
+            onCancel = { showMediaPicker = false },
+            modifier = Modifier.fillMaxSize(),
+        )
     }
     }
 }
@@ -396,6 +417,7 @@ private fun AlbumHeader(
     onImportFiles: (() -> Unit)? = null,
     onAddFromLibrary: (() -> Unit)? = null,
     onSetThumbnail: (() -> Unit)? = null,
+    pickerMode: Boolean = false,
 ) {
     val colors = LascoTheme.colors
     var showAddMenu by remember { mutableStateOf(false) }
@@ -419,6 +441,7 @@ private fun AlbumHeader(
                 maxLines = 1,
                 modifier = Modifier.weight(1f),
             )
+            if (!pickerMode) {
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 if (isAlbumView) {
                     Text(
@@ -501,6 +524,7 @@ private fun AlbumHeader(
                     }
                 }
             }
+            }
         }
     }
 }
@@ -574,6 +598,7 @@ private fun AlbumSectionsContent(
     selectedMediaIds: Set<String>,
     selectedGroupIds: Set<String>,
     isSelecting: Boolean,
+    pickerState: AlbumPickerState? = null,
     onAlbumTap: (FfiAlbum) -> Unit,
     onAlbumLongPress: (FfiAlbum) -> Unit,
     onItemTap: (FfiAlbumItem, Int) -> Unit,
@@ -606,12 +631,15 @@ private fun AlbumSectionsContent(
             if (isGridLayout) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     items.forEachIndexed { index, item ->
+                        val dimmed = pickerState != null &&
+                            (item.group != null || item.media?.mediaId in pickerState.disabledIds)
                         AlbumItemCell(
                             item = item,
                             repo = repo,
                             modifier = Modifier.width(photoCellWidth),
                             isSelected = (item.media?.mediaId != null && item.media?.mediaId in selectedMediaIds) ||
                                 (item.group?.groupId != null && item.group?.groupId in selectedGroupIds),
+                            dimmed = dimmed,
                             onTap = { onItemTap(item, index) },
                             onLongPress = { onItemLongPress(item) },
                         )
@@ -620,11 +648,14 @@ private fun AlbumSectionsContent(
             } else {
                 Column {
                     items.forEachIndexed { index, item ->
+                        val dimmed = pickerState != null &&
+                            (item.group != null || item.media?.mediaId in pickerState.disabledIds)
                         AlbumItemRow(
                             item = item,
                             repo = repo,
                             isSelected = (item.media?.mediaId != null && item.media?.mediaId in selectedMediaIds) ||
                                 (item.group?.groupId != null && item.group?.groupId in selectedGroupIds),
+                            dimmed = dimmed,
                             onTap = { onItemTap(item, index) },
                             onLongPress = { onItemLongPress(item) },
                         )
@@ -659,6 +690,7 @@ private fun AlbumItemCell(
     repo: LibraryRepository,
     modifier: Modifier = Modifier,
     isSelected: Boolean,
+    dimmed: Boolean = false,
     onTap: () -> Unit,
     onLongPress: () -> Unit,
 ) {
@@ -666,7 +698,8 @@ private fun AlbumItemCell(
     Box(
         modifier = modifier
             .background(colors.surfaceAlt)
-            .combinedClickable(onClick = onTap, onLongClick = onLongPress),
+            .then(if (dimmed) Modifier.alpha(0.4f) else Modifier)
+            .combinedClickable(enabled = !dimmed, onClick = onTap, onLongClick = onLongPress),
     ) {
         MediaThumbnail(
             mediaId = item.media?.mediaId ?: item.group?.mediaIds?.firstOrNull(),
@@ -698,6 +731,7 @@ private fun AlbumItemRow(
     item: FfiAlbumItem,
     repo: LibraryRepository,
     isSelected: Boolean,
+    dimmed: Boolean = false,
     onTap: () -> Unit,
     onLongPress: () -> Unit,
 ) {
@@ -705,7 +739,8 @@ private fun AlbumItemRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .combinedClickable(onClick = onTap, onLongClick = onLongPress)
+            .then(if (dimmed) Modifier.alpha(0.4f) else Modifier)
+            .combinedClickable(enabled = !dimmed, onClick = onTap, onLongClick = onLongPress)
             .padding(vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
