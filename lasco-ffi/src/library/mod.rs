@@ -22,13 +22,14 @@ fn sessions_dir(app_dir: &std::path::Path) -> std::path::PathBuf {
     app_dir.join("sessions")
 }
 
-#[uniffi::export]
+#[uniffi::export(default(app_dir = None))]
 pub fn ffi_create_library(
     nickname: String,
     username: String,
     password: String,
+    app_dir: Option<String>,
 ) -> Result<FfiCreateLibraryResult, LascoError> {
-    let app_dir = lasco_core::config_json::default_app_dir()?;
+    let app_dir = crate::resolve_app_dir(app_dir)?;
     let sessions = sessions_dir(&app_dir);
     let (library_id, master_key) = tokio::runtime::Runtime::new()
         .unwrap()
@@ -46,9 +47,12 @@ pub fn ffi_create_library(
     })
 }
 
-#[uniffi::export]
-pub fn ffi_delete_library(library_id: String) -> Result<(), LascoError> {
-    let app_dir = lasco_core::config_json::default_app_dir()?;
+#[uniffi::export(default(app_dir = None))]
+pub fn ffi_delete_library(
+    library_id: String,
+    app_dir: Option<String>,
+) -> Result<(), LascoError> {
+    let app_dir = crate::resolve_app_dir(app_dir)?;
     let sessions = sessions_dir(&app_dir);
     let uuid = uuid::Uuid::parse_str(&library_id)
         .map_err(|e| LascoError::Other { msg: format!("invalid library id: {e}") })?;
@@ -58,9 +62,11 @@ pub fn ffi_delete_library(library_id: String) -> Result<(), LascoError> {
     Ok(())
 }
 
-#[uniffi::export]
-pub fn list_libraries() -> Result<Vec<FfiLibraryEntry>, LascoError> {
-    let app_dir = lasco_core::config_json::default_app_dir()?;
+#[uniffi::export(default(app_dir = None))]
+pub fn list_libraries(
+    app_dir: Option<String>,
+) -> Result<Vec<FfiLibraryEntry>, LascoError> {
+    let app_dir = crate::resolve_app_dir(app_dir)?;
     let config = match ConfigJson::load(&app_dir)? {
         Some(c) => c,
         None => return Ok(vec![]),
@@ -118,12 +124,13 @@ pub fn ffi_test_s3_remote(
 
 /// Try to open a library using a cached session (OS keychain), without a password.
 /// Returns `None` if no session is cached — the caller should then prompt for credentials.
-#[uniffi::export]
+#[uniffi::export(default(app_dir = None))]
 pub fn ffi_open_cached(
     nickname: Option<String>,
     username: String,
+    app_dir: Option<String>,
 ) -> Result<Option<Arc<FfiLibrary>>, LascoError> {
-    let app_dir = lasco_core::config_json::default_app_dir()?;
+    let app_dir = crate::resolve_app_dir(app_dir)?;
 
     let config = match ConfigJson::load(&app_dir)? {
         Some(c) => c,
@@ -183,7 +190,7 @@ pub fn ffi_open_cached(
 /// metadata and operations and opening it locally. `username`/`password` must be
 /// an existing user on the remote. When `new_username`/`new_password` are both
 /// provided, a new user is registered and used as the effective device user.
-#[uniffi::export]
+#[uniffi::export(default(app_dir = None))]
 #[allow(clippy::too_many_arguments)]
 pub fn ffi_add_existing_library_s3(
     nickname: String,
@@ -198,11 +205,12 @@ pub fn ffi_add_existing_library_s3(
     path_prefix: String,
     access_key: String,
     secret_key: String,
+    app_dir: Option<String>,
 ) -> Result<Arc<FfiLibrary>, LascoError> {
     let rt = tokio::runtime::Runtime::new()
         .map_err(|e| LascoError::Other { msg: e.to_string() })?;
 
-    let app_dir = lasco_core::config_json::default_app_dir()?;
+    let app_dir = crate::resolve_app_dir(app_dir)?;
     let sessions = sessions_dir(&app_dir);
 
     let new_user = match (new_username, new_password) {
@@ -267,16 +275,17 @@ pub struct FfiLibrary {
 impl FfiLibrary {
     /// Open a library by nickname. Delegates config loading, storage
     /// construction, and session/master-key handling to `lasco_core::client`.
-    #[uniffi::constructor]
+    #[uniffi::constructor(default(app_dir = None))]
     pub fn open(
         nickname: Option<String>,
         username: String,
         password: String,
+        app_dir: Option<String>,
     ) -> Result<Arc<Self>, LascoError> {
         let rt = tokio::runtime::Runtime::new()
             .map_err(|e| LascoError::Other { msg: e.to_string() })?;
 
-        let app_dir = lasco_core::config_json::default_app_dir()?;
+        let app_dir = crate::resolve_app_dir(app_dir)?;
 
         let config = ConfigJson::load(&app_dir)?
             .ok_or_else(|| LascoError::Other {
