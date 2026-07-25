@@ -97,6 +97,12 @@ class LibraryRepository(
         changes.emit(Change.AlbumList)
     }
 
+    suspend fun setAlbumThumbnail(albumId: String, mediaId: String?) {
+        withContext(io) { lib.setAlbumThumbnail(albumId, mediaId) }
+        changes.emit(Change.AlbumList)
+        changes.emit(Change.Album(albumId))
+    }
+
     suspend fun reparentAlbum(albumId: String, newParentAlbumId: String?) {
         withContext(io) { lib.reparentAlbum(albumId, newParentAlbumId) }
         changes.emit(Change.AlbumList)

@@ -235,3 +235,57 @@ fun MediaPickerDialog(
         }
     }
 }
+
+/**
+ * Single-select picker over an album's media, used by "Set thumbnail…".
+ * Ported from Swift's ThumbnailPickerSheet. Tapping an item picks it
+ * immediately, there is no separate confirm step.
+ */
+@Composable
+fun ThumbnailPickerDialog(
+    media: List<FfiMediaItem>,
+    repo: LibraryRepository,
+    onPick: (String) -> Unit,
+    onCancel: () -> Unit,
+) {
+    val colors = LascoTheme.colors
+    LascoDialogShell(onDismiss = onCancel) {
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text(text = "Set thumbnail", style = LascoTheme.type.categoryLarge(), color = colors.ink)
+            Box(modifier = Modifier.fillMaxWidth().lascoPanel()) {
+                LazyColumn {
+                    items(media, key = { it.mediaId }) { item ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onPick(item.mediaId) }
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                        ) {
+                            MediaThumbnail(
+                                mediaId = item.mediaId,
+                                repo = repo,
+                                modifier = Modifier.size(40.dp),
+                            )
+                            Text(
+                                text = item.name ?: item.filenameOriginal,
+                                style = LascoTheme.type.body(14),
+                                color = colors.ink,
+                                maxLines = 1,
+                                modifier = Modifier.weight(1f).padding(start = 10.dp).align(Alignment.CenterVertically),
+                            )
+                        }
+                    }
+                }
+            }
+            Row(modifier = Modifier.fillMaxWidth()) {
+                Spacer(modifier = Modifier.weight(1f))
+                Text(
+                    text = "Cancel",
+                    style = LascoTheme.type.body(),
+                    color = colors.inkMuted,
+                    modifier = Modifier.clickable { onCancel() },
+                )
+            }
+        }
+    }
+}

@@ -48,6 +48,7 @@ import com.lasco.lasco.ui.components.LascoConfirmDialog
 import com.lasco.lasco.ui.components.LascoTextInputDialog
 import com.lasco.lasco.ui.components.MediaPickerDialog
 import com.lasco.lasco.ui.components.MediaThumbnail
+import com.lasco.lasco.ui.components.ThumbnailPickerDialog
 import com.lasco.lasco.ui.theme.LascoTheme
 import kotlinx.coroutines.launch
 import uniffi.lasco_ffi.FfiAlbum
@@ -120,6 +121,8 @@ fun AlbumListScreen(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showAddFromLibraryDialog by remember { mutableStateOf(false) }
     var libraryMedia by remember { mutableStateOf<List<FfiMediaItem>>(emptyList()) }
+    var showThumbnailPicker by remember { mutableStateOf(false) }
+    var thumbnailPickerMedia by remember { mutableStateOf<List<FfiMediaItem>>(emptyList()) }
     var isImporting by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
@@ -228,6 +231,21 @@ fun AlbumListScreen(
         )
     }
 
+    if (showThumbnailPicker && album != null) {
+        LaunchedEffect(showThumbnailPicker) {
+            thumbnailPickerMedia = repo.mediaInAlbum(album.albumId)
+        }
+        ThumbnailPickerDialog(
+            media = thumbnailPickerMedia,
+            repo = repo,
+            onPick = { mediaId ->
+                showThumbnailPicker = false
+                scope.launch { repo.setAlbumThumbnail(album.albumId, mediaId) }
+            },
+            onCancel = { showThumbnailPicker = false },
+        )
+    }
+
     Box(modifier = modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
@@ -285,6 +303,11 @@ fun AlbumListScreen(
                 },
                 onAddFromLibrary = if (album != null) {
                     { showAddFromLibraryDialog = true }
+                } else {
+                    null
+                },
+                onSetThumbnail = if (album != null) {
+                    { showThumbnailPicker = true }
                 } else {
                     null
                 },
@@ -372,9 +395,11 @@ private fun AlbumHeader(
     onImportPhotos: (() -> Unit)? = null,
     onImportFiles: (() -> Unit)? = null,
     onAddFromLibrary: (() -> Unit)? = null,
+    onSetThumbnail: (() -> Unit)? = null,
 ) {
     val colors = LascoTheme.colors
     var showAddMenu by remember { mutableStateOf(false) }
+    var showMoreMenu by remember { mutableStateOf(false) }
     Column {
         if (onBack != null) {
             Text(
@@ -455,6 +480,25 @@ private fun AlbumHeader(
                         color = colors.ink,
                         modifier = Modifier.clickable { onNewAlbum() },
                     )
+                }
+                if (onSetThumbnail != null) {
+                    Box {
+                        Text(
+                            text = "...",
+                            style = LascoTheme.type.body(18),
+                            color = colors.ink,
+                            modifier = Modifier.clickable { showMoreMenu = true },
+                        )
+                        DropdownMenu(expanded = showMoreMenu, onDismissRequest = { showMoreMenu = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Set thumbnail...") },
+                                onClick = {
+                                    showMoreMenu = false
+                                    onSetThumbnail()
+                                },
+                            )
+                        }
+                    }
                 }
             }
         }

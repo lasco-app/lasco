@@ -8,6 +8,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -34,6 +39,18 @@ fun AlbumCell(
     onLongClick: (() -> Unit)? = null,
 ) {
     val colors = LascoTheme.colors
+
+    // Mirrors Swift's albumThumbnailMediaId: explicit thumbnail if set,
+    // otherwise the most recently dated media item in the album.
+    var thumbnailMediaId by remember(album.albumId, album.thumbnailMediaId) {
+        mutableStateOf(album.thumbnailMediaId)
+    }
+    LaunchedEffect(album.albumId, album.thumbnailMediaId) {
+        if (album.thumbnailMediaId == null) {
+            thumbnailMediaId = repo.mediaInAlbum(album.albumId).maxByOrNull { it.date }?.mediaId
+        }
+    }
+
     Box(
         modifier = modifier
             .lascoPanel()
@@ -46,7 +63,7 @@ fun AlbumCell(
             ),
     ) {
         Column {
-            MediaThumbnail(mediaId = album.thumbnailMediaId, repo = repo, modifier = Modifier.fillMaxWidth())
+            MediaThumbnail(mediaId = thumbnailMediaId, repo = repo, modifier = Modifier.fillMaxWidth())
             Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)) {
                 Text(text = album.name, style = LascoTheme.type.body(14), color = colors.ink, maxLines = 1)
                 if (parentInfo != null) {
