@@ -7,10 +7,11 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import com.lasco.lasco.data.LascoRepository
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import uniffi.lasco_ffi.FfiLibraryEntry
 
 /**
@@ -24,31 +25,19 @@ data class LibraryListUiState(
 )
 
 /**
- * Loads the list of libraries through the repository and exposes it as a
- * StateFlow the Compose screen collects. This is the standard Compose state
- * holder, one screen one ViewModel, replacing the throwaway FfiStatus probe.
+ * Watches the list of libraries through the repository and exposes it as a
+ * StateFlow the Compose screen collects. Reloads whenever the repository
+ * signals a library was created, deleted or added, so the list never goes
+ * stale after a mutation made elsewhere in the app.
  */
 class LibraryListViewModel(
-    private val repository: LascoRepository,
+    repository: LascoRepository,
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(LibraryListUiState())
-    val uiState: StateFlow<LibraryListUiState> = _uiState.asStateFlow()
-
-    init {
-        refresh()
-    }
-
-    fun refresh() {
-        _uiState.value = _uiState.value.copy(loading = true, error = null)
-        viewModelScope.launch {
-            try {
-                val libraries = repository.listLibraries()
-                _uiState.value = LibraryListUiState(loading = false, libraries = libraries)
-            } catch (e: Throwable) {
-                _uiState.value = LibraryListUiState(loading = false, error = e.message ?: "unknown error")
-            }
-        }
-    }
+    val uiState: StateFlow<LibraryListUiState> =
+        repository.watchLibraries()
+            .map { libraries -> LibraryListUiState(loading = false, libraries = libraries) }
+            .catch { e -> emit(LibraryListUiState(loading = false, error = e.message ?: "unknown error")) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LibraryListUiState())
 
     companion object {
         val Factory: ViewModelProvider.Factory = viewModelFactory {
