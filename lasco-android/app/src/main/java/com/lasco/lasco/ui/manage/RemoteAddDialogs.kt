@@ -182,6 +182,7 @@ fun AddS3RemoteDialog(
                             onDismiss()
                             val error = try {
                                 repo.initializeRemote(remoteId, null)
+                                repo.pushRemote(remoteId, null)
                                 null
                             } catch (e: Exception) {
                                 e.message?.ifBlank { null } ?: "Initialization failed"
@@ -242,6 +243,7 @@ fun AddLocalFSRemoteDialog(
                             onDismiss()
                             val error = try {
                                 repo.initializeRemote(remoteId, null)
+                                repo.pushRemote(remoteId, null)
                                 null
                             } catch (e: Exception) {
                                 e.message?.ifBlank { null } ?: "Initialization failed"

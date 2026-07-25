@@ -89,6 +89,8 @@ struct AddLocalFSRemoteView: View {
                         Task {
                             if let err = await libraryModel.initializeRemote(remoteId: remoteId) {
                                 toastManager.show(error: err)
+                            } else if let err = await libraryModel.pushRemote(remoteId: remoteId) {
+                                toastManager.show(error: err)
                             } else {
                                 toastManager.show(ok: "\(remoteName): initialized")
                             }
