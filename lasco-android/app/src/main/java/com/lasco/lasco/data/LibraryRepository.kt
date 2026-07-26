@@ -8,7 +8,9 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.mapLatest
@@ -44,6 +46,16 @@ class LibraryRepository(
 ) {
     private val changes = MutableSharedFlow<Change>(extraBufferCapacity = 64)
 
+    // Separate from changes, which also fires on remote driven refreshes
+    // (Change.All from sync/fetchRemote) and would misfire auto push if
+    // loadLocalState is ever wired up, since it reuses the same scopes.
+    private val localMutations = MutableSharedFlow<Unit>(extraBufferCapacity = 64)
+    val localMutationEvents: SharedFlow<Unit> = localMutations.asSharedFlow()
+
+    // The String is the id of the remote that was just pushed.
+    private val remoteSyncEvents = MutableSharedFlow<String>(extraBufferCapacity = 64)
+    val remoteSyncStateChanges: SharedFlow<String> = remoteSyncEvents.asSharedFlow()
+
     private val _sessionState = MutableStateFlow(buildSessionState())
     val sessionState: StateFlow<SessionState> = _sessionState.asStateFlow()
 
@@ -76,6 +88,7 @@ class LibraryRepository(
         // Membership is unknown here, start broad and narrow to
         // mediaContainingAlbumIds(id) -> Album(id) later if this proves heavy.
         changes.emit(Change.AlbumList)
+        localMutations.emit(Unit)
     }
 
     suspend fun albumItemsSorted(albumId: String, ascending: Boolean): List<FfiAlbumItem> =
@@ -84,6 +97,7 @@ class LibraryRepository(
     suspend fun createAlbum(name: String, parentAlbumId: String?): String {
         val id = withContext(io) { lib.createAlbum(name, parentAlbumId) }
         changes.emit(Change.AlbumList)
+        localMutations.emit(Unit)
         return id
     }
 
@@ -91,22 +105,26 @@ class LibraryRepository(
         withContext(io) { lib.renameAlbum(albumId, name) }
         changes.emit(Change.AlbumList)
         changes.emit(Change.Album(albumId))
+        localMutations.emit(Unit)
     }
 
     suspend fun deleteAlbum(albumId: String) {
         withContext(io) { lib.deleteAlbum(albumId) }
         changes.emit(Change.AlbumList)
+        localMutations.emit(Unit)
     }
 
     suspend fun setAlbumThumbnail(albumId: String, mediaId: String?) {
         withContext(io) { lib.setAlbumThumbnail(albumId, mediaId) }
         changes.emit(Change.AlbumList)
         changes.emit(Change.Album(albumId))
+        localMutations.emit(Unit)
     }
 
     suspend fun reparentAlbum(albumId: String, newParentAlbumId: String?) {
         withContext(io) { lib.reparentAlbum(albumId, newParentAlbumId) }
         changes.emit(Change.AlbumList)
+        localMutations.emit(Unit)
     }
 
     suspend fun moveMediaToAlbum(mediaId: String, fromAlbumId: String, toAlbumId: String) {
@@ -114,18 +132,21 @@ class LibraryRepository(
         changes.emit(Change.Album(fromAlbumId))
         changes.emit(Change.Album(toAlbumId))
         changes.emit(Change.AlbumList)
+        localMutations.emit(Unit)
     }
 
     suspend fun removeMediaFromAlbum(albumId: String, mediaId: String) {
         withContext(io) { lib.removeMediaFromAlbum(albumId, mediaId) }
         changes.emit(Change.Album(albumId))
         changes.emit(Change.AlbumList)
+        localMutations.emit(Unit)
     }
 
     suspend fun addMediaToAlbum(albumId: String, mediaId: String) {
         withContext(io) { lib.addMediaToAlbum(albumId, mediaId) }
         changes.emit(Change.Album(albumId))
         changes.emit(Change.AlbumList)
+        localMutations.emit(Unit)
     }
 
     suspend fun albumsContainingMedia(mediaId: String): List<FfiAlbum> = withContext(io) {
@@ -144,12 +165,14 @@ class LibraryRepository(
         }
         changes.emit(Change.Album(albumId))
         changes.emit(Change.AlbumList)
+        localMutations.emit(Unit)
         return groupId
     }
 
     suspend fun deleteGroup(groupId: String, albumId: String) {
         withContext(io) { lib.deleteGroup(groupId) }
         changes.emit(Change.Album(albumId))
+        localMutations.emit(Unit)
     }
 
     suspend fun importMedia(path: String, albumId: String?, originalFilename: String?): String {
@@ -157,12 +180,14 @@ class LibraryRepository(
         if (albumId != null) changes.emit(Change.Album(albumId))
         changes.emit(Change.AlbumList)
         changes.emit(Change.MediaList)
+        localMutations.emit(Unit)
         return id
     }
 
     suspend fun setMediaThumbnail(mediaId: String, data: ByteArray) {
         withContext(io) { lib.setMediaThumbnail(mediaId, data) }
         changes.emit(Change.Media(mediaId))
+        localMutations.emit(Unit)
     }
 
     // getMediaThumbnailAsync is already suspend on UniFFI's own executor, so
@@ -208,8 +233,11 @@ class LibraryRepository(
         return pulled
     }
 
-    suspend fun pushRemote(remoteId: String, appSupportDir: String?): UInt =
-        withContext(io) { lib.pushRemoteAsync(remoteId, appSupportDir) }
+    suspend fun pushRemote(remoteId: String, appSupportDir: String?): UInt {
+        val pushed = withContext(io) { lib.pushRemoteAsync(remoteId, appSupportDir) }
+        remoteSyncEvents.emit(remoteId)
+        return pushed
+    }
 
     suspend fun connectRemote(remoteId: String, appSupportDir: String?): Boolean =
         withContext(io) {

@@ -12,4 +12,5 @@ data class SyncState(
     val fetchInProgress: Boolean = false,
     val bulkImportProgress: Pair<Int, Int>? = null,
     val lastSyncResult: FfiSyncResult? = null,
+    val pushCountdownSeconds: Int? = null,
 )

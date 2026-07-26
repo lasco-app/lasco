@@ -49,8 +49,7 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * Status tab, mirroring Swift's StatusView minus the auto-push countdown,
- * out of scope.
+ * Status tab, mirroring Swift's StatusView.
  */
 @Composable
 fun StatusScreen(modifier: Modifier = Modifier) {
@@ -67,6 +66,7 @@ fun StatusScreen(modifier: Modifier = Modifier) {
     val unpushed by statusViewModel.unpushed.collectAsStateWithLifecycle()
     val localStateStats by statusViewModel.localStateStats.collectAsStateWithLifecycle()
     val syncState by syncViewModel.syncState.collectAsStateWithLifecycle()
+    val pushCountdownSeconds = syncState.pushCountdownSeconds
 
     var showRemotePicker by remember { mutableStateOf(false) }
     var showAddS3 by remember { mutableStateOf(false) }
@@ -189,6 +189,7 @@ fun StatusScreen(modifier: Modifier = Modifier) {
                         remote = remote,
                         isDefaultFetch = remote.id == session.defaultFetchRemoteId,
                         isSynced = unpushed[remote.id] != true,
+                        pushCountdownSeconds = pushCountdownSeconds,
                         lastPush = prefs.lastPush(remote.id),
                         lastFetch = prefs.lastFetch(remote.id),
                         pushEnabled = remote.id !in syncState.busyRemoteIds,
@@ -196,7 +197,6 @@ fun StatusScreen(modifier: Modifier = Modifier) {
                         onPush = {
                             scope.launch {
                                 val err = syncViewModel.pushRemote(remote.id)
-                                statusViewModel.refreshRemote(remote.id)
                                 feedback = err ?: "${remote.name}: pushed"
                             }
                         },
@@ -285,6 +285,7 @@ private fun RemoteStatusCard(
     remote: FfiRemote,
     isDefaultFetch: Boolean,
     isSynced: Boolean,
+    pushCountdownSeconds: Int?,
     lastPush: com.lasco.lasco.data.SyncRecord?,
     lastFetch: com.lasco.lasco.data.SyncRecord?,
     pushEnabled: Boolean,
@@ -302,8 +303,14 @@ private fun RemoteStatusCard(
             }
             Text(text = remote.id, style = LascoTheme.type.mono(10), color = colors.inkMuted)
         }
+        // isSynced wins over a stale countdown, e.g. after a manual push.
+        val bannerText = when {
+            !isSynced && pushCountdownSeconds != null -> "local changes not pushed, pushing in ${pushCountdownSeconds}s"
+            isSynced -> "all local changes pushed"
+            else -> "local changes not pushed"
+        }
         Text(
-            text = if (isSynced) "all local changes pushed" else "local changes not pushed",
+            text = bannerText,
             style = LascoTheme.type.mono(),
             color = Color.White,
             modifier = Modifier

@@ -6,6 +6,8 @@ import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.AP
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,6 +26,30 @@ class SyncViewModel(
 ) : ViewModel() {
     private val _syncState = MutableStateFlow(SyncState())
     val syncState: StateFlow<SyncState> = _syncState.asStateFlow()
+
+    private var pushDebounceJob: Job? = null
+
+    init {
+        viewModelScope.launch {
+            repository.localMutationEvents.collect { schedulePush() }
+        }
+    }
+
+    // Mirrors Swift's LibraryModel.schedulePush. Resets on every local edit within the window.
+    // The countdown and the push are the same loop, so they can never disagree with each other.
+    fun schedulePush() {
+        pushDebounceJob?.cancel()
+        pushDebounceJob = viewModelScope.launch {
+            for (secondsLeft in PUSH_DELAY_SECONDS downTo 1) {
+                _syncState.value = _syncState.value.copy(pushCountdownSeconds = secondsLeft)
+                delay(1000)
+            }
+            _syncState.value = _syncState.value.copy(pushCountdownSeconds = null)
+            for (remote in repository.sessionState.value.remotes) {
+                pushRemote(remote.id)
+            }
+        }
+    }
 
     fun sync(appSupportDir: String? = null) {
         viewModelScope.launch {
@@ -84,6 +110,8 @@ class SyncViewModel(
     }
 
     companion object {
+        private const val PUSH_DELAY_SECONDS = 30
+
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val app = this[APPLICATION_KEY]!!

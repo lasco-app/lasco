@@ -57,6 +57,9 @@ class StatusViewModel(
             repo.watch(Change.MediaList, Change.AlbumList) {}
                 .collect { refreshUnpushed(sessionState.value.remotes.map { it.id }) }
         }
+        viewModelScope.launch {
+            repo.remoteSyncStateChanges.collect { remoteId -> refreshUnpushed(listOf(remoteId)) }
+        }
         refreshLocalStateStats()
     }
 
