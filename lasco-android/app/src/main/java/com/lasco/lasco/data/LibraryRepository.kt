@@ -17,6 +17,7 @@ import kotlinx.coroutines.withContext
 import uniffi.lasco_ffi.FfiAlbum
 import uniffi.lasco_ffi.FfiAlbumItem
 import uniffi.lasco_ffi.FfiLibrary
+import uniffi.lasco_ffi.FfiLocalStateStats
 import uniffi.lasco_ffi.FfiMediaItem
 import uniffi.lasco_ffi.FfiOperationGroup
 import uniffi.lasco_ffi.FfiSyncResult
@@ -226,6 +227,15 @@ class LibraryRepository(
 
     suspend fun hasUnpushedChanges(remoteId: String): Boolean =
         withContext(io) { lib.hasUnpushedChanges(remoteId) }
+
+    suspend fun localStateStats(): FfiLocalStateStats = withContext(io) { lib.localStateStats() }
+
+    suspend fun mediaIdsWithoutRemoteBackup(): List<String> =
+        withContext(io) { lib.mediaIdsWithoutRemoteBackup() }
+
+    suspend fun evictLocalData() = withContext(io) { lib.evictLocalData(lib.allMediaIds()) }
+
+    suspend fun evictLocalThumbnails() = withContext(io) { lib.evictLocalThumbnails(lib.allMediaIds()) }
 
     suspend fun addRemoteS3(
         name: String,

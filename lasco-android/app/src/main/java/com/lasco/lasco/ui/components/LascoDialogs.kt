@@ -49,6 +49,31 @@ private fun LascoDialogShell(onDismiss: () -> Unit, content: @Composable () -> U
     }
 }
 
+/** An OK-only dialog for informational messages (e.g. a blocked action). */
+@Composable
+fun LascoInfoDialog(
+    title: String,
+    message: String,
+    onDismiss: () -> Unit,
+) {
+    val colors = LascoTheme.colors
+    LascoDialogShell(onDismiss = onDismiss) {
+        Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+            Text(text = title, style = LascoTheme.type.categoryLarge(), color = colors.ink)
+            Text(text = message, style = LascoTheme.type.body(14), color = colors.inkMuted)
+            Row(modifier = Modifier.fillMaxWidth()) {
+                Spacer(modifier = Modifier.weight(1f))
+                Text(
+                    text = "OK",
+                    style = LascoTheme.type.body(),
+                    color = colors.ink,
+                    modifier = Modifier.clickable { onDismiss() },
+                )
+            }
+        }
+    }
+}
+
 /**
  * Ported from NewAlbumSheet. A single text field with Cancel/Confirm,
  * confirm disabled while the trimmed value is empty.
