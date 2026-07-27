@@ -12,11 +12,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -26,6 +26,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -164,31 +165,48 @@ fun RecentMediaScreen(
 @Composable
 private fun SelectionBar(count: Int, onClose: () -> Unit, onOpenAlbum: () -> Unit) {
     val colors = LascoTheme.colors
+    var showActionMenu by remember { mutableStateOf(false) }
     Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 16.dp, bottom = 8.dp)
+            .background(colors.pink)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = "✕",
             style = LascoTheme.type.body(18),
-            color = colors.ink,
-            modifier = Modifier.size(44.dp).clickable { onClose() },
+            color = Color.White,
+            modifier = Modifier.clickable { onClose() },
         )
         if (count > 1) {
             Text(
-                text = "$count",
+                text = "$count selected",
                 style = LascoTheme.type.categorySmall(),
-                color = colors.ink,
+                color = Color.White,
                 modifier = Modifier.padding(start = 8.dp),
             )
         }
         Box(modifier = Modifier.weight(1f))
         if (count == 1) {
-            Text(
-                text = "📁",
-                style = LascoTheme.type.body(18),
-                color = colors.ink,
-                modifier = Modifier.width(48.dp).clickable { onOpenAlbum() },
-            )
+            Box {
+                Text(
+                    text = "...",
+                    style = LascoTheme.type.body(18),
+                    color = Color.White,
+                    modifier = Modifier.clickable { showActionMenu = true },
+                )
+                DropdownMenu(expanded = showActionMenu, onDismissRequest = { showActionMenu = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Open containing album") },
+                        onClick = {
+                            showActionMenu = false
+                            onOpenAlbum()
+                        },
+                    )
+                }
+            }
         }
     }
 }

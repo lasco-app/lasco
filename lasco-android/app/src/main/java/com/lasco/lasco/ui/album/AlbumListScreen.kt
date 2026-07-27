@@ -545,41 +545,90 @@ private fun AlbumSelectionBar(
     onDelete: () -> Unit,
 ) {
     val colors = LascoTheme.colors
+    var showActionMenu by remember { mutableStateOf(false) }
+    val hasActions = canRename || canGroup || canMove || canRemove || canDelete
     Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 16.dp, bottom = 8.dp)
+            .background(colors.pink)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = "✕",
             style = LascoTheme.type.body(18),
-            color = colors.ink,
-            modifier = Modifier.size(44.dp).clickable { onClose() },
+            color = Color.White,
+            modifier = Modifier.clickable { onClose() },
         )
-        Text(
-            text = "$count",
-            style = LascoTheme.type.categorySmall(),
-            color = colors.ink,
-            modifier = Modifier.padding(start = 4.dp),
-        )
+        if (count > 1) {
+            Text(
+                text = "$count selected",
+                style = LascoTheme.type.categorySmall(),
+                color = Color.White,
+                modifier = Modifier.padding(start = 8.dp),
+            )
+        }
         Box(modifier = Modifier.weight(1f))
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (canRename) IconAction("✎", colors, onRename)
-            if (canGroup) IconAction("G", colors, onGroup)
-            if (canMove) IconAction("📁", colors, onMove)
-            if (canRemove) IconAction("－", colors, onRemove)
-            if (canDelete) IconAction("🗑", colors, onDelete)
+        if (hasActions) {
+            Box {
+                Text(
+                    text = "...",
+                    style = LascoTheme.type.body(18),
+                    color = Color.White,
+                    modifier = Modifier.clickable { showActionMenu = true },
+                )
+                DropdownMenu(expanded = showActionMenu, onDismissRequest = { showActionMenu = false }) {
+                    if (canRename) {
+                        DropdownMenuItem(
+                            text = { Text("Rename album") },
+                            onClick = {
+                                showActionMenu = false
+                                onRename()
+                            },
+                        )
+                    }
+                    if (canGroup) {
+                        DropdownMenuItem(
+                            text = { Text("Group together") },
+                            onClick = {
+                                showActionMenu = false
+                                onGroup()
+                            },
+                        )
+                    }
+                    if (canMove) {
+                        DropdownMenuItem(
+                            text = { Text("Move to album...") },
+                            onClick = {
+                                showActionMenu = false
+                                onMove()
+                            },
+                        )
+                    }
+                    if (canRemove) {
+                        DropdownMenuItem(
+                            text = { Text("Remove from album") },
+                            onClick = {
+                                showActionMenu = false
+                                onRemove()
+                            },
+                        )
+                    }
+                    if (canDelete) {
+                        DropdownMenuItem(
+                            text = { Text("Delete") },
+                            onClick = {
+                                showActionMenu = false
+                                onDelete()
+                            },
+                        )
+                    }
+                }
+            }
         }
     }
-}
-
-@Composable
-private fun IconAction(glyph: String, colors: com.lasco.lasco.ui.theme.LascoColors, onClick: () -> Unit) {
-    Text(
-        text = glyph,
-        style = LascoTheme.type.body(18),
-        color = colors.ink,
-        modifier = Modifier.size(44.dp).clickable { onClick() },
-    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)
