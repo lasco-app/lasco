@@ -9,6 +9,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.lasco.lasco.LascoApp
 import com.lasco.lasco.data.LascoRepository
 import com.lasco.lasco.data.LibraryRepository
+import com.lasco.lasco.data.Prefs
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -32,6 +33,7 @@ data class LibraryOpenUiState(
 class LibraryOpenViewModel(
     private val app: LascoApp,
     private val repository: LascoRepository,
+    private val prefs: Prefs,
     entryId: String,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(LibraryOpenUiState())
@@ -61,7 +63,7 @@ class LibraryOpenViewModel(
                 val lib = repository.openCached(nickname = nickname, username = username)
                 if (lib != null) {
                     app.librarySession =
-                        LibraryRepository(lib, nickname = nickname, username = username, appDir = repository.appDir)
+                        LibraryRepository(lib, nickname = nickname, username = username, appDir = repository.appDir, prefs = prefs)
                     _uiState.value = LibraryOpenUiState(checkingCache = false, opened = true)
                 } else {
                     _uiState.value = LibraryOpenUiState(checkingCache = false)
@@ -78,7 +80,7 @@ class LibraryOpenViewModel(
             try {
                 val lib = repository.openLibrary(nickname = nickname, username = username, password = password)
                 app.librarySession =
-                    LibraryRepository(lib, nickname = nickname, username = username, appDir = repository.appDir)
+                    LibraryRepository(lib, nickname = nickname, username = username, appDir = repository.appDir, prefs = prefs)
                 _uiState.value = _uiState.value.copy(loading = false, opened = true)
             } catch (e: Throwable) {
                 _uiState.value = _uiState.value.copy(loading = false, error = e.message ?: "Could not open library")
@@ -90,7 +92,7 @@ class LibraryOpenViewModel(
         fun factory(entryId: String): ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val app = this[APPLICATION_KEY] as LascoApp
-                LibraryOpenViewModel(app, LascoRepository.from(app), entryId)
+                LibraryOpenViewModel(app, LascoRepository.from(app), Prefs.from(app), entryId)
             }
         }
     }

@@ -3,14 +3,16 @@ package com.lasco.lasco.data
 import android.content.Context
 import com.lasco.lasco.LascoApp
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.mapLatest
@@ -25,16 +27,15 @@ import uniffi.lasco_ffi.FfiOperationGroup
 import uniffi.lasco_ffi.FfiSyncResult
 
 /**
- * Session scoped repository sitting on top of an opened FfiLibrary. FfiLibrary
- * is pull only and mostly blocking, Rust never pushes a change notification,
- * so the only thing shared across screens is the invalidation signal carried
- * by changes. Data itself is never shared, each screen pulls its own snapshot
- * through watch and holds it locally. This is what replaces the Swift
- * LibraryModel god object on Android.
+ * Session scoped wrapper around an opened FfiLibrary, replacing the Swift
+ * LibraryModel god object. Rust never pushes change notifications, so screens
+ * share only the changes invalidation signal and each pulls its own snapshot
+ * via watch. sync.syncState is the one exception, shared so StatusScreen and
+ * RemotesScreen agree on push/fetch busy state.
  *
- * Blocking FfiLibrary calls are wrapped in the injected io dispatcher. The
- * UniFFI async methods (syncAsync, fetchRemoteAsync, pushRemoteAsync,
- * getMediaThumbnailAsync, getMediaBytesAsync) are already suspend on UniFFI's
+ * Blocking FfiLibrary calls run on the injected io dispatcher. The UniFFI
+ * async methods (syncAsync, fetchRemoteAsync, pushRemoteAsync,
+ * getMediaThumbnailAsync, getMediaBytesAsync) are already suspend on their
  * own executor and must not be wrapped again.
  */
 class LibraryRepository(
@@ -42,29 +43,36 @@ class LibraryRepository(
     private val nickname: String,
     private val username: String,
     private val appDir: String,
+    prefs: Prefs,
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
     private val changes = MutableSharedFlow<Change>(extraBufferCapacity = 64)
 
-    // Separate from changes, which also fires on remote driven refreshes
-    // (Change.All from sync/fetchRemote) and would misfire auto push if
-    // loadLocalState is ever wired up, since it reuses the same scopes.
+    // Separate from changes, which also fires on remote refreshes (Change.All)
+    // and would wrongly trigger auto push if reused here.
     private val localMutations = MutableSharedFlow<Unit>(extraBufferCapacity = 64)
-    val localMutationEvents: SharedFlow<Unit> = localMutations.asSharedFlow()
-
-    // The String is the id of the remote that was just pushed.
-    private val remoteSyncEvents = MutableSharedFlow<String>(extraBufferCapacity = 64)
-    val remoteSyncStateChanges: SharedFlow<String> = remoteSyncEvents.asSharedFlow()
 
     private val _sessionState = MutableStateFlow(buildSessionState())
     val sessionState: StateFlow<SessionState> = _sessionState.asStateFlow()
 
-    /**
-     * Subscribes to a load that reruns whenever one of the given scopes (or
-     * the All wildcard) is emitted. Re-fires on every re-subscription too, so
-     * a screen coming back from the back stack always reloads once and can
-     * never stay stale, this is what makes a SharedFlow event bus safe here.
-     */
+    val sync = SyncController(lib = lib, prefs = prefs, onLibraryChanged = { changes.emit(Change.All) }, scope = scope)
+
+    init {
+        scope.launch { localMutations.collect { sync.schedulePush() } }
+    }
+
+    // Must be called on session end (sign out, delete), or the sync loop and
+    // its localMutations collector outlive the repository.
+    suspend fun close() {
+        sync.close()
+        scope.cancel()
+    }
+
+    // Reruns load on any of the given scopes (or Change.All), and once per
+    // subscription, so a screen returning from the back stack always reloads
+    // and never stays stale.
     @OptIn(ExperimentalCoroutinesApi::class)
     fun <T> watch(vararg scopes: Change, load: suspend () -> T): Flow<T> =
         changes
@@ -85,8 +93,8 @@ class LibraryRepository(
         withContext(io) { lib.renameMedia(mediaId, name) }
         changes.emit(Change.Media(mediaId))
         changes.emit(Change.MediaList)
-        // Membership is unknown here, start broad and narrow to
-        // mediaContainingAlbumIds(id) -> Album(id) later if this proves heavy.
+        // Membership unknown, so start broad and narrow to
+        // mediaContainingAlbumIds(id) later if this proves heavy.
         changes.emit(Change.AlbumList)
         localMutations.emit(Unit)
     }
@@ -190,8 +198,6 @@ class LibraryRepository(
         localMutations.emit(Unit)
     }
 
-    // getMediaThumbnailAsync is already suspend on UniFFI's own executor, so
-    // this must not be wrapped in withContext(io) again.
     suspend fun mediaThumbnail(mediaId: String): ByteArray? =
         try {
             lib.getMediaThumbnailAsync(mediaId, appDir)
@@ -199,8 +205,6 @@ class LibraryRepository(
             null
         }
 
-    // getMediaBytesAsync is already suspend on UniFFI's own executor, so
-    // this must not be wrapped in withContext(io) again.
     suspend fun mediaBytes(mediaId: String): ByteArray? =
         try {
             lib.getMediaBytesAsync(mediaId, appDir)
@@ -225,18 +229,6 @@ class LibraryRepository(
         changes.emit(Change.All)
         refreshSessionState()
         return result
-    }
-
-    suspend fun fetchRemote(remoteId: String, appSupportDir: String?): UInt {
-        val pulled = lib.fetchRemoteAsync(remoteId, appSupportDir)
-        changes.emit(Change.All)
-        return pulled
-    }
-
-    suspend fun pushRemote(remoteId: String, appSupportDir: String?): UInt {
-        val pushed = withContext(io) { lib.pushRemoteAsync(remoteId, appSupportDir) }
-        remoteSyncEvents.emit(remoteId)
-        return pushed
     }
 
     suspend fun connectRemote(remoteId: String, appSupportDir: String?): Boolean =

@@ -49,7 +49,7 @@ class NewLibraryWizardViewModel(
                 val result = repository.createLibrary(nickname = name, username = username, password = password)
                 val lib = repository.openLibrary(nickname = name, username = username, password = password)
                 app.librarySession =
-                    LibraryRepository(lib, nickname = name, username = username, appDir = repository.appDir)
+                    LibraryRepository(lib, nickname = name, username = username, appDir = repository.appDir, prefs = prefs)
                 _uiState.value = NewLibraryWizardUiState(
                     libraryId = result.libraryId,
                     nickname = name,

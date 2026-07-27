@@ -8,7 +8,9 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.lasco.lasco.data.Change
 import com.lasco.lasco.data.LibraryRepository
+import com.lasco.lasco.data.Prefs
 import com.lasco.lasco.data.SessionState
+import com.lasco.lasco.data.SyncState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -30,18 +32,21 @@ fun List<FfiMediaItem>.mediaTypeCounts(): MediaTypeCounts {
 }
 
 /**
- * Backs StatusScreen. Push/fetch themselves live on SyncViewModel, shared
- * with RemotesScreen so busy state stays consistent, this tracks the per
- * remote unpushed state the pink/red banner needs plus local cache stats.
+ * Backs StatusScreen. Push and fetch live on LibraryRepository.sync, this
+ * tracks the per remote unpushed state the pink/red banner needs plus local
+ * cache stats.
  */
 class StatusViewModel(
     private val repo: LibraryRepository,
+    private val prefs: Prefs,
 ) : ViewModel() {
     val media: StateFlow<List<FfiMediaItem>> =
         repo.watch(Change.MediaList) { repo.mediaByDate() }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val sessionState: StateFlow<SessionState> = repo.sessionState
+
+    val syncState: StateFlow<SyncState> = repo.sync.syncState
 
     private val _unpushed = MutableStateFlow<Map<String, Boolean>>(emptyMap())
     val unpushed: StateFlow<Map<String, Boolean>> = _unpushed.asStateFlow()
@@ -58,13 +63,17 @@ class StatusViewModel(
                 .collect { refreshUnpushed(sessionState.value.remotes.map { it.id }) }
         }
         viewModelScope.launch {
-            repo.remoteSyncStateChanges.collect { remoteId -> refreshUnpushed(listOf(remoteId)) }
+            prefs.lastPush.collect { records -> refreshUnpushed(records.keys.toList()) }
         }
         refreshLocalStateStats()
     }
 
-    fun refreshRemote(remoteId: String) {
-        viewModelScope.launch { refreshUnpushed(listOf(remoteId)) }
+    suspend fun pushRemote(remoteId: String): String? = repo.sync.pushRemote(remoteId)
+
+    suspend fun fetchRemote(remoteId: String): String? {
+        val result = repo.sync.fetchRemoteWithResult(remoteId)
+        refreshUnpushed(listOf(remoteId))
+        return result
     }
 
     private suspend fun refreshUnpushed(remoteIds: List<String>) {
@@ -97,7 +106,7 @@ class StatusViewModel(
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val app = this[APPLICATION_KEY]!!
-                StatusViewModel(LibraryRepository.from(app))
+                StatusViewModel(LibraryRepository.from(app), Prefs.from(app))
             }
         }
     }

@@ -11,6 +11,7 @@ import com.lasco.lasco.data.Change
 import com.lasco.lasco.data.LibraryRepository
 import com.lasco.lasco.data.Prefs
 import com.lasco.lasco.data.SessionState
+import com.lasco.lasco.data.SyncState
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -29,6 +30,8 @@ class ManageViewModel(
 ) : ViewModel() {
     val sessionState: StateFlow<SessionState> = repo.sessionState
 
+    val syncState: StateFlow<SyncState> = repo.sync.syncState
+
     val albums: StateFlow<List<FfiAlbum>> =
         repo.watch(Change.AlbumList) { repo.listAlbums() }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -37,14 +40,18 @@ class ManageViewModel(
         viewModelScope.launch { repo.setDefaultUploadAlbum(albumId) }
     }
 
+    // Close first, it waits for a push in flight. Signing out or deleting
+    // under a running push would pull the library out from under it.
     suspend fun signOut() {
         val state = sessionState.value
+        repo.close()
         app.repository.signOut(state.libraryId, state.username ?: "")
         app.librarySession = null
     }
 
     suspend fun deleteLibrary() {
         val state = sessionState.value
+        repo.close()
         app.repository.deleteLibrary(state.libraryId)
         app.librarySession = null
     }

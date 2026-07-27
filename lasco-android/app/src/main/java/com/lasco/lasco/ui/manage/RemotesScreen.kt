@@ -26,7 +26,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lasco.lasco.data.LibraryRepository
 import com.lasco.lasco.data.Prefs
-import com.lasco.lasco.data.SyncViewModel
 import com.lasco.lasco.ui.components.LascoConfirmDialog
 import com.lasco.lasco.ui.components.LascoPrimaryButton
 import com.lasco.lasco.ui.theme.LascoTheme
@@ -35,9 +34,8 @@ import kotlinx.coroutines.launch
 import uniffi.lasco_ffi.FfiRemote
 
 /**
- * Ported from Swift's RemotesView. Shares SyncViewModel with StatusScreen so
- * push/fetch busy state stays consistent across both screens, and shares the
- * add-remote dialogs from RemoteAddDialogs.kt.
+ * Ported from Swift's RemotesView. Reads LibraryRepository.sync.syncState and
+ * shares the add-remote dialogs from RemoteAddDialogs.kt.
  */
 @Composable
 fun RemotesScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
@@ -48,9 +46,8 @@ fun RemotesScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     val expertMode by prefs.expertMode.collectAsStateWithLifecycle()
 
     val manageViewModel: ManageViewModel = viewModel(factory = ManageViewModel.Factory)
-    val syncViewModel: SyncViewModel = viewModel(factory = SyncViewModel.Factory)
     val session by manageViewModel.sessionState.collectAsStateWithLifecycle()
-    val syncState by syncViewModel.syncState.collectAsStateWithLifecycle()
+    val syncState by manageViewModel.syncState.collectAsStateWithLifecycle()
 
     var showRemotePicker by remember { mutableStateOf(false) }
     var showAddS3 by remember { mutableStateOf(false) }

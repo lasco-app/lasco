@@ -1,5 +1,6 @@
 package com.lasco.lasco.ui.status
 
+import android.os.SystemClock
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -32,7 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lasco.lasco.data.Prefs
-import com.lasco.lasco.data.SyncViewModel
+import com.lasco.lasco.data.SyncRecord
 import com.lasco.lasco.ui.components.LascoConfirmDialog
 import com.lasco.lasco.ui.components.LascoInfoDialog
 import com.lasco.lasco.ui.components.LascoPrimaryButton
@@ -41,12 +42,14 @@ import com.lasco.lasco.ui.manage.AddS3RemoteDialog
 import com.lasco.lasco.ui.manage.RemoteTypePickerDialog
 import com.lasco.lasco.ui.theme.LascoTheme
 import com.lasco.lasco.ui.theme.lascoPanel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import uniffi.lasco_ffi.FfiRemote
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import kotlin.math.ceil
 
 /**
  * Status tab, mirroring Swift's StatusView.
@@ -57,16 +60,17 @@ fun StatusScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val prefs = remember { Prefs.from(context) }
     val expertMode by prefs.expertMode.collectAsStateWithLifecycle()
+    val pushRecords by prefs.lastPush.collectAsStateWithLifecycle()
+    val fetchRecords by prefs.lastFetch.collectAsStateWithLifecycle()
 
     val statusViewModel: StatusViewModel = viewModel(factory = StatusViewModel.Factory)
-    val syncViewModel: SyncViewModel = viewModel(factory = SyncViewModel.Factory)
 
     val media by statusViewModel.media.collectAsStateWithLifecycle()
     val session by statusViewModel.sessionState.collectAsStateWithLifecycle()
     val unpushed by statusViewModel.unpushed.collectAsStateWithLifecycle()
     val localStateStats by statusViewModel.localStateStats.collectAsStateWithLifecycle()
-    val syncState by syncViewModel.syncState.collectAsStateWithLifecycle()
-    val pushCountdownSeconds = syncState.pushCountdownSeconds
+    val syncState by statusViewModel.syncState.collectAsStateWithLifecycle()
+    val pushCountdownSeconds = pushCountdownSeconds(syncState.pushDeadlineElapsedMs)
 
     var showRemotePicker by remember { mutableStateOf(false) }
     var showAddS3 by remember { mutableStateOf(false) }
@@ -190,20 +194,19 @@ fun StatusScreen(modifier: Modifier = Modifier) {
                         isDefaultFetch = remote.id == session.defaultFetchRemoteId,
                         isSynced = unpushed[remote.id] != true,
                         pushCountdownSeconds = pushCountdownSeconds,
-                        lastPush = prefs.lastPush(remote.id),
-                        lastFetch = prefs.lastFetch(remote.id),
+                        lastPush = pushRecords[remote.id],
+                        lastFetch = fetchRecords[remote.id],
                         pushEnabled = remote.id !in syncState.busyRemoteIds,
                         fetchEnabled = remote.id !in syncState.busyRemoteIds && !syncState.fetchInProgress,
                         onPush = {
                             scope.launch {
-                                val err = syncViewModel.pushRemote(remote.id)
+                                val err = statusViewModel.pushRemote(remote.id)
                                 feedback = err ?: "${remote.name}: pushed"
                             }
                         },
                         onFetch = {
                             scope.launch {
-                                val err = syncViewModel.fetchRemoteWithResult(remote.id)
-                                statusViewModel.refreshRemote(remote.id)
+                                val err = statusViewModel.fetchRemote(remote.id)
                                 feedback = err ?: "${remote.name}: fetched"
                             }
                         },
@@ -280,14 +283,47 @@ private fun syncLabel(epochMillis: Long): String {
     }
 }
 
+/**
+ * Turns the sync controller's push deadline into the seconds the banner
+ * shows. The deadline stays the source of truth, so the ticking is a display
+ * concern costing one recomposition a second instead of a new SyncState for
+ * every screen watching sync.
+ */
+@Composable
+private fun pushCountdownSeconds(deadlineElapsedMs: Long?): Int? {
+    var seconds by remember(deadlineElapsedMs) {
+        mutableStateOf(deadlineElapsedMs?.let { secondsUntil(it) })
+    }
+    LaunchedEffect(deadlineElapsedMs) {
+        if (deadlineElapsedMs == null) {
+            seconds = null
+            return@LaunchedEffect
+        }
+        while (true) {
+            val remaining = secondsUntil(deadlineElapsedMs)
+            seconds = remaining
+            if (remaining == null) break
+            delay(1_000)
+        }
+    }
+    return seconds
+}
+
+// Rounded up so the banner shows 30 the moment a push is scheduled and never
+// sits on 0. Null once the deadline has passed.
+private fun secondsUntil(deadlineElapsedMs: Long): Int? {
+    val remaining = deadlineElapsedMs - SystemClock.elapsedRealtime()
+    return if (remaining > 0) ceil(remaining / 1000.0).toInt() else null
+}
+
 @Composable
 private fun RemoteStatusCard(
     remote: FfiRemote,
     isDefaultFetch: Boolean,
     isSynced: Boolean,
     pushCountdownSeconds: Int?,
-    lastPush: com.lasco.lasco.data.SyncRecord?,
-    lastFetch: com.lasco.lasco.data.SyncRecord?,
+    lastPush: SyncRecord?,
+    lastFetch: SyncRecord?,
     pushEnabled: Boolean,
     fetchEnabled: Boolean,
     onPush: () -> Unit,
@@ -303,7 +339,8 @@ private fun RemoteStatusCard(
             }
             Text(text = remote.id, style = LascoTheme.type.mono(10), color = colors.inkMuted)
         }
-        // isSynced wins over a stale countdown, e.g. after a manual push.
+        // isSynced wins over a stale countdown, covering the window between a
+        // push landing and unpushed refreshing.
         val bannerText = when {
             !isSynced && pushCountdownSeconds != null -> "local changes not pushed, pushing in ${pushCountdownSeconds}s"
             isSynced -> "all local changes pushed"

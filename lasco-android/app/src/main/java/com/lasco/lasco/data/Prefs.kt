@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 
 /**
  * Small local settings store, the Android equivalent of Swift's
@@ -12,8 +13,8 @@ import kotlinx.coroutines.flow.asStateFlow
  * timestamps per remote, none of which is FFI state so it does not belong
  * on SessionState.
  *
- * One instance lives for the process lifetime (see companion), so expert
- * mode is exposed as a StateFlow that every screen observes rather than a
+ * One instance lives for the process lifetime (see companion), so everything
+ * here is exposed as a StateFlow that every screen observes rather than a
  * plain property, keeping them in sync without a re-read on every
  * recomposition.
  */
@@ -30,43 +31,66 @@ class Prefs(context: Context) {
     }
 
     fun onboardingStep(libraryId: String): Int? {
-        val value = sp.getInt("lasco.onboardingStep.$libraryId", -1)
+        val value = sp.getInt("$KEY_ONBOARDING_STEP.$libraryId", -1)
         return if (value < 0) null else value
     }
 
     fun setOnboardingStep(libraryId: String, step: Int) {
-        sp.edit().putInt("lasco.onboardingStep.$libraryId", step).apply()
+        sp.edit().putInt("$KEY_ONBOARDING_STEP.$libraryId", step).apply()
     }
 
     fun clearOnboardingIncomplete(libraryId: String) {
-        sp.edit().remove("lasco.onboardingStep.$libraryId").apply()
+        sp.edit().remove("$KEY_ONBOARDING_STEP.$libraryId").apply()
     }
+
+    private val _lastPush = MutableStateFlow(readAll(KEY_LAST_PUSH))
+    val lastPush: StateFlow<Map<String, SyncRecord>> = _lastPush.asStateFlow()
+
+    private val _lastFetch = MutableStateFlow(readAll(KEY_LAST_FETCH))
+    val lastFetch: StateFlow<Map<String, SyncRecord>> = _lastFetch.asStateFlow()
 
     fun recordPush(remoteId: String, success: Boolean) =
-        record("lasco.lastPush", remoteId, success)
+        record(KEY_LAST_PUSH, _lastPush, remoteId, success)
 
     fun recordFetch(remoteId: String, success: Boolean) =
-        record("lasco.lastFetch", remoteId, success)
+        record(KEY_LAST_FETCH, _lastFetch, remoteId, success)
 
-    fun lastPush(remoteId: String): SyncRecord? = read("lasco.lastPush", remoteId)
-
-    fun lastFetch(remoteId: String): SyncRecord? = read("lasco.lastFetch", remoteId)
-
-    private fun record(key: String, remoteId: String, success: Boolean) {
+    private fun record(
+        key: String,
+        flow: MutableStateFlow<Map<String, SyncRecord>>,
+        remoteId: String,
+        success: Boolean,
+    ) {
+        val record = SyncRecord(System.currentTimeMillis(), success)
         sp.edit()
-            .putLong("$key.$remoteId", System.currentTimeMillis())
-            .putBoolean("${key}Ok.$remoteId", success)
+            .putLong("$key.$remoteId", record.epochMillis)
+            .putBoolean("${key}Ok.$remoteId", record.success)
             .apply()
+        // Called from the push and fetch coroutines on the io dispatcher, so
+        // this has to be an atomic update rather than a read then write.
+        flow.update { it + (remoteId to record) }
     }
 
-    private fun read(key: String, remoteId: String): SyncRecord? {
-        val epochMillis = sp.getLong("$key.$remoteId", -1L)
-        if (epochMillis < 0) return null
-        return SyncRecord(epochMillis, sp.getBoolean("${key}Ok.$remoteId", false))
+    // The remote ids are not known here, so the stored keys say which remotes
+    // have a record.
+    private fun readAll(key: String): Map<String, SyncRecord> {
+        val prefix = "$key."
+        return sp.all.keys
+            .filter { it.startsWith(prefix) }
+            .associate { storedKey ->
+                val remoteId = storedKey.removePrefix(prefix)
+                remoteId to SyncRecord(
+                    epochMillis = sp.getLong(storedKey, 0L),
+                    success = sp.getBoolean("${key}Ok.$remoteId", false),
+                )
+            }
     }
 
     companion object {
         private const val KEY_EXPERT_MODE = "expertMode"
+        private const val KEY_ONBOARDING_STEP = "onboardingStep"
+        private const val KEY_LAST_PUSH = "lastPush"
+        private const val KEY_LAST_FETCH = "lastFetch"
 
         @Volatile
         private var instance: Prefs? = null

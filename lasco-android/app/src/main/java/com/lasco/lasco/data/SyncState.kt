@@ -12,5 +12,9 @@ data class SyncState(
     val fetchInProgress: Boolean = false,
     val bulkImportProgress: Pair<Int, Int>? = null,
     val lastSyncResult: FfiSyncResult? = null,
-    val pushCountdownSeconds: Int? = null,
+    // When the scheduled auto push fires, on SystemClock.elapsedRealtime's
+    // monotonic clock, or null when none is scheduled. A deadline rather than
+    // a remaining count, so this changes twice per schedule instead of once a
+    // second, and the UI derives the displayed seconds from it.
+    val pushDeadlineElapsedMs: Long? = null,
 )
