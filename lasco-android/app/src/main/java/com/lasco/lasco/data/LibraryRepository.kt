@@ -33,10 +33,12 @@ import uniffi.lasco_ffi.FfiSyncResult
  * via watch. sync.syncState is the one exception, shared so StatusScreen and
  * RemotesScreen agree on push/fetch busy state.
  *
- * Blocking FfiLibrary calls run on the injected io dispatcher. The UniFFI
- * async methods (syncAsync, fetchRemoteAsync, pushRemoteAsync,
- * getMediaThumbnailAsync, getMediaBytesAsync) are already suspend on their
- * own executor and must not be wrapped again.
+ * Only calls whose cost scales with the amount of data are wrapped in the
+ * injected io dispatcher. Short blocking FfiLibrary calls run on the caller's
+ * dispatcher, which is usually Main. The UniFFI async methods (syncAsync,
+ * fetchRemoteAsync, pushRemoteAsync, getMediaThumbnailAsync,
+ * getMediaBytesAsync) are already suspend on their own executor and must not
+ * be wrapped again.
  */
 class LibraryRepository(
     private val lib: FfiLibrary,
@@ -78,19 +80,19 @@ class LibraryRepository(
         changes
             .filter { c -> c is Change.All || scopes.any { it == c } }
             .onStart { emit(Change.All) }
-            .mapLatest { withContext(io) { load() } }
+            .mapLatest { load() }
 
+    // Blocking and proportional to file size. Drop the wrap once the Rust side is async.
     suspend fun mediaByDate(): List<FfiMediaItem> = withContext(io) { lib.mediaByDate() }
 
-    suspend fun listAlbums(): List<FfiAlbum> = withContext(io) { lib.listAlbums() }
+    suspend fun listAlbums(): List<FfiAlbum> = lib.listAlbums()
 
-    suspend fun mediaInAlbum(albumId: String): List<FfiMediaItem> =
-        withContext(io) { lib.mediaInAlbum(albumId) }
+    suspend fun mediaInAlbum(albumId: String): List<FfiMediaItem> = lib.mediaInAlbum(albumId)
 
-    suspend fun showMedia(mediaId: String): FfiMediaItem = withContext(io) { lib.showMedia(mediaId) }
+    suspend fun showMedia(mediaId: String): FfiMediaItem = lib.showMedia(mediaId)
 
     suspend fun renameMedia(mediaId: String, name: String?) {
-        withContext(io) { lib.renameMedia(mediaId, name) }
+        lib.renameMedia(mediaId, name)
         changes.emit(Change.Media(mediaId))
         changes.emit(Change.MediaList)
         // Membership unknown, so start broad and narrow to
@@ -100,43 +102,43 @@ class LibraryRepository(
     }
 
     suspend fun albumItemsSorted(albumId: String, ascending: Boolean): List<FfiAlbumItem> =
-        withContext(io) { lib.albumListItemsSorted(albumId, ascending) }
+        lib.albumListItemsSorted(albumId, ascending)
 
     suspend fun createAlbum(name: String, parentAlbumId: String?): String {
-        val id = withContext(io) { lib.createAlbum(name, parentAlbumId) }
+        val id = lib.createAlbum(name, parentAlbumId)
         changes.emit(Change.AlbumList)
         localMutations.emit(Unit)
         return id
     }
 
     suspend fun renameAlbum(albumId: String, name: String) {
-        withContext(io) { lib.renameAlbum(albumId, name) }
+        lib.renameAlbum(albumId, name)
         changes.emit(Change.AlbumList)
         changes.emit(Change.Album(albumId))
         localMutations.emit(Unit)
     }
 
     suspend fun deleteAlbum(albumId: String) {
-        withContext(io) { lib.deleteAlbum(albumId) }
+        lib.deleteAlbum(albumId)
         changes.emit(Change.AlbumList)
         localMutations.emit(Unit)
     }
 
     suspend fun setAlbumThumbnail(albumId: String, mediaId: String?) {
-        withContext(io) { lib.setAlbumThumbnail(albumId, mediaId) }
+        lib.setAlbumThumbnail(albumId, mediaId)
         changes.emit(Change.AlbumList)
         changes.emit(Change.Album(albumId))
         localMutations.emit(Unit)
     }
 
     suspend fun reparentAlbum(albumId: String, newParentAlbumId: String?) {
-        withContext(io) { lib.reparentAlbum(albumId, newParentAlbumId) }
+        lib.reparentAlbum(albumId, newParentAlbumId)
         changes.emit(Change.AlbumList)
         localMutations.emit(Unit)
     }
 
     suspend fun moveMediaToAlbum(mediaId: String, fromAlbumId: String, toAlbumId: String) {
-        withContext(io) { lib.moveMediaToAlbum(mediaId, fromAlbumId, toAlbumId) }
+        lib.moveMediaToAlbum(mediaId, fromAlbumId, toAlbumId)
         changes.emit(Change.Album(fromAlbumId))
         changes.emit(Change.Album(toAlbumId))
         changes.emit(Change.AlbumList)
@@ -144,33 +146,30 @@ class LibraryRepository(
     }
 
     suspend fun removeMediaFromAlbum(albumId: String, mediaId: String) {
-        withContext(io) { lib.removeMediaFromAlbum(albumId, mediaId) }
+        lib.removeMediaFromAlbum(albumId, mediaId)
         changes.emit(Change.Album(albumId))
         changes.emit(Change.AlbumList)
         localMutations.emit(Unit)
     }
 
     suspend fun addMediaToAlbum(albumId: String, mediaId: String) {
-        withContext(io) { lib.addMediaToAlbum(albumId, mediaId) }
+        lib.addMediaToAlbum(albumId, mediaId)
         changes.emit(Change.Album(albumId))
         changes.emit(Change.AlbumList)
         localMutations.emit(Unit)
     }
 
-    suspend fun albumsContainingMedia(mediaId: String): List<FfiAlbum> = withContext(io) {
+    suspend fun albumsContainingMedia(mediaId: String): List<FfiAlbum> {
         val ids = lib.mediaContainingAlbumIds(mediaId, true).toSet()
-        lib.listAlbums().filter { it.albumId in ids }
+        return lib.listAlbums().filter { it.albumId in ids }
     }
 
     suspend fun containingAlbums(mediaId: String, excludingAlbumId: String?): List<FfiAlbum> =
         albumsContainingMedia(mediaId).filter { it.albumId != excludingAlbumId }
 
     suspend fun createGroupFromSelectedMedia(mediaIds: List<String>, albumId: String): String {
-        val groupId = withContext(io) {
-            val id = lib.createGroup(albumId)
-            for (mediaId in mediaIds) lib.addMediaToGroup(id, mediaId)
-            id
-        }
+        val groupId = lib.createGroup(albumId)
+        for (mediaId in mediaIds) lib.addMediaToGroup(groupId, mediaId)
         changes.emit(Change.Album(albumId))
         changes.emit(Change.AlbumList)
         localMutations.emit(Unit)
@@ -178,11 +177,12 @@ class LibraryRepository(
     }
 
     suspend fun deleteGroup(groupId: String, albumId: String) {
-        withContext(io) { lib.deleteGroup(groupId) }
+        lib.deleteGroup(groupId)
         changes.emit(Change.Album(albumId))
         localMutations.emit(Unit)
     }
 
+    // Blocking and proportional to file size. Drop the wrap once the Rust side is async.
     suspend fun importMedia(path: String, albumId: String?, originalFilename: String?): String {
         val id = withContext(io) { lib.importMedia(path, albumId, originalFilename, null, null) }
         if (albumId != null) changes.emit(Change.Album(albumId))
@@ -193,7 +193,7 @@ class LibraryRepository(
     }
 
     suspend fun setMediaThumbnail(mediaId: String, data: ByteArray) {
-        withContext(io) { lib.setMediaThumbnail(mediaId, data) }
+        lib.setMediaThumbnail(mediaId, data)
         changes.emit(Change.Media(mediaId))
         localMutations.emit(Unit)
     }
@@ -212,12 +212,11 @@ class LibraryRepository(
             null
         }
 
-    suspend fun groupMedia(groupId: String): List<FfiMediaItem> =
-        withContext(io) { lib.groupListMedia(groupId) }
+    suspend fun groupMedia(groupId: String): List<FfiMediaItem> = lib.groupListMedia(groupId)
 
-    suspend fun listOperationGroups(): List<FfiOperationGroup> =
-        withContext(io) { lib.listOperationGroups() }
+    suspend fun listOperationGroups(): List<FfiOperationGroup> = lib.listOperationGroups()
 
+    // Blocking and proportional to file size. Drop the wrap once the Rust side is async.
     suspend fun loadLocalState() {
         withContext(io) { lib.loadLocalState() }
         changes.emit(Change.MediaList)
@@ -232,29 +231,27 @@ class LibraryRepository(
     }
 
     suspend fun connectRemote(remoteId: String, appSupportDir: String?): Boolean =
-        withContext(io) {
-            try {
-                lib.connectRemote(remoteId, appSupportDir)
-                true
-            } catch (e: Exception) {
-                false
-            }
+        try {
+            lib.connectRemote(remoteId, appSupportDir)
+            true
+        } catch (e: Exception) {
+            false
         }
 
     suspend fun initializeRemote(remoteId: String, appSupportDir: String?) {
-        withContext(io) { lib.initializeRemote(remoteId, appSupportDir) }
+        lib.initializeRemote(remoteId, appSupportDir)
     }
 
-    suspend fun hasUnpushedChanges(remoteId: String): Boolean =
-        withContext(io) { lib.hasUnpushedChanges(remoteId) }
+    suspend fun hasUnpushedChanges(remoteId: String): Boolean = lib.hasUnpushedChanges(remoteId)
 
-    suspend fun localStateStats(): FfiLocalStateStats = withContext(io) { lib.localStateStats() }
+    suspend fun localStateStats(): FfiLocalStateStats = lib.localStateStats()
 
-    suspend fun mediaIdsWithoutRemoteBackup(): List<String> =
-        withContext(io) { lib.mediaIdsWithoutRemoteBackup() }
+    suspend fun mediaIdsWithoutRemoteBackup(): List<String> = lib.mediaIdsWithoutRemoteBackup()
 
+    // Blocking and proportional to file size. Drop the wrap once the Rust side is async.
     suspend fun evictLocalData() = withContext(io) { lib.evictLocalData(lib.allMediaIds()) }
 
+    // Blocking and proportional to file size. Drop the wrap once the Rust side is async.
     suspend fun evictLocalThumbnails() = withContext(io) { lib.evictLocalThumbnails(lib.allMediaIds()) }
 
     suspend fun addRemoteS3(
@@ -266,42 +263,40 @@ class LibraryRepository(
         accessKey: String,
         secretKey: String,
     ): String {
-        val id = withContext(io) {
-            lib.addRemoteS3(name, endpoint, bucket, region, pathPrefix, accessKey, secretKey)
-        }
+        val id = lib.addRemoteS3(name, endpoint, bucket, region, pathPrefix, accessKey, secretKey)
         refreshSessionState()
         return id
     }
 
     suspend fun addRemoteFixedPath(name: String, path: String): String {
-        val id = withContext(io) { lib.addRemoteFixedPath(name, path) }
+        val id = lib.addRemoteFixedPath(name, path)
         refreshSessionState()
         return id
     }
 
     suspend fun addRemoteDebugLocalAndroid(name: String): String {
-        val id = withContext(io) { lib.addRemoteDebugLocalAndroid(name) }
+        val id = lib.addRemoteDebugLocalAndroid(name)
         refreshSessionState()
         return id
     }
 
     suspend fun removeRemote(remoteId: String) {
-        withContext(io) { lib.removeRemote(remoteId) }
+        lib.removeRemote(remoteId)
         refreshSessionState()
     }
 
     suspend fun setDefaultFetchRemote(remoteId: String?) {
-        withContext(io) { lib.setDefaultFetchRemote(remoteId) }
+        lib.setDefaultFetchRemote(remoteId)
         refreshSessionState()
     }
 
     suspend fun setDefaultUploadAlbum(albumId: String?) {
-        withContext(io) { lib.setDefaultUploadAlbum(albumId) }
+        lib.setDefaultUploadAlbum(albumId)
         refreshSessionState()
     }
 
     suspend fun addUser(username: String, password: String) {
-        withContext(io) { lib.userAdd(username, password) }
+        lib.userAdd(username, password)
         refreshSessionState()
     }
 
