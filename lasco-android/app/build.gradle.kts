@@ -2,6 +2,18 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.jaredsburrows.license)
+}
+
+// Generates the Maven dependency license page shown in Manage > Licenses >
+// Library Dependencies. Run ./gradlew licenseReleaseReport after changing
+// any dependency, it rewrites app/src/main/assets/open_source_licenses.html.
+licenseReport {
+    generateHtmlReport = true
+    copyHtmlReportToAssets = true
+    generateCsvReport = false
+    generateJsonReport = false
+    generateTextReport = false
 }
 
 android {

@@ -14,6 +14,7 @@ navigation3 = "1.1.4"
 lifecycleViewmodelNavigation3 = "2.11.0"
 kotlinxSerialization = "1.11.0"
 benManesVersions = "0.54.0"
+jaredsburrowsLicense = "0.9.9"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -47,4 +48,5 @@ android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 ben-manes-versions = { id = "com.github.ben-manes.versions", version.ref = "benManesVersions" }
+jaredsburrows-license = { id = "com.jaredsburrows.license", version.ref = "jaredsburrowsLicense" }
 
