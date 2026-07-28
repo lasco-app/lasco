@@ -48,6 +48,7 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lasco.lasco.data.Prefs
+import com.lasco.lasco.media.DeviceImportController
 import com.lasco.lasco.media.ImportState
 import com.lasco.lasco.ui.components.ErrorBanner
 import com.lasco.lasco.ui.components.LascoField
@@ -694,6 +695,15 @@ private fun ImportStep(viewModel: NewLibraryWizardViewModel, state: NewLibraryWi
                     }
                 }
 
+                // Blocking, unlike the location note below. The import is
+                // refused while any of these are in the camera folder, so the
+                // Import Now button is disabled alongside this.
+                state.deviceScan?.let { scan ->
+                    if (scan.tooLargeCount > 0) {
+                        ErrorBanner(message = DeviceImportController.tooLargeMessage(scan.tooLargeCount))
+                    }
+                }
+
                 if (!hasMediaLocationAccess(context)) {
                     Text(
                         text = "Photo locations were not allowed, so imported photos will not carry the place they were taken.",
@@ -738,7 +748,7 @@ private fun ImportStep(viewModel: NewLibraryWizardViewModel, state: NewLibraryWi
                     LascoPrimaryButton(
                         text = "Import Now",
                         onClick = { viewModel.startDeviceImport() },
-                        enabled = state.deviceScan != null,
+                        enabled = state.deviceScan?.let { it.tooLargeCount == 0 } == true,
                     )
                     LascoSecondaryButton(text = "Skip for now", onClick = onDone)
                 }

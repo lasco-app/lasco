@@ -81,6 +81,15 @@ class DeviceImportController(
         val scan = lastScan ?: return
         if (importJob?.isActive == true) return
 
+        // Importing everything else and leaving these behind would hand the
+        // user a library they believe is complete. Nothing is imported instead,
+        // and no watermark is stamped, so making room and coming back still
+        // picks up the whole camera folder.
+        if (scan.tooLargeCount > 0) {
+            _importState.value = ImportState.Error(tooLargeMessage(scan.tooLargeCount))
+            return
+        }
+
         // Checked before anything is imported. Without a remote the chunk
         // eviction below would delete every blob it just wrote, leaving a
         // library of unreadable entries.
@@ -142,7 +151,9 @@ class DeviceImportController(
                         // ends and cancel() waits out 32 more files.
                         ensureActive()
 
-                        if (row.size <= MAX_IMPORT_FILE_BYTES) {
+                        // scan() already left the oversized rows out, so this
+                        // only catches a MediaStore size that was stale then.
+                        if (row.size <= DeviceMediaStore.MAX_IMPORT_FILE_BYTES) {
                             // One unreadable row must not abort the whole run,
                             // the same per item tolerance as the iOS importer.
                             try {
@@ -282,8 +293,11 @@ class DeviceImportController(
         const val PUSH_FAILED_MESSAGE =
             "Upload failed, so the import stopped. Everything imported so far is on this device until the remote is reachable again."
 
-        // Files above this are skipped rather than risking an OOM in
-        // media_add, which reads and encrypts the whole file in memory.
-        private const val MAX_IMPORT_FILE_BYTES = 4L * 1024 * 1024 * 1024
+        fun tooLargeMessage(count: Int): String {
+            val fileWord = if (count == 1) "file is" else "files are"
+            return "$count $fileWord larger than ${DeviceMediaStore.MAX_IMPORT_FILE_LABEL}, which Lasco cannot import yet. " +
+                "Nothing is imported until they are moved out of your camera folder, rather than leaving you " +
+                "with a library that is quietly missing them."
+        }
     }
 }

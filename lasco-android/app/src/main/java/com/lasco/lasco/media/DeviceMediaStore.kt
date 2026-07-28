@@ -26,6 +26,7 @@ data class DeviceScan(
     val photoCount: Int,
     val videoCount: Int,
     val ignoredCount: Int,
+    val tooLargeCount: Int,
     val totalBytes: Long,
     val maxDateAdded: Long,
     val rows: List<DeviceMediaRow>,
@@ -74,6 +75,7 @@ class DeviceMediaStore(private val context: Context) {
         var photoCount = 0
         var videoCount = 0
         var ignoredCount = 0
+        var tooLargeCount = 0
         var totalBytes = 0L
         var maxDateAdded = sinceDateAdded ?: 0L
         val rows = mutableListOf<DeviceMediaRow>()
@@ -104,6 +106,15 @@ class DeviceMediaStore(private val context: Context) {
                     continue
                 }
 
+                // Counted here rather than at import time so the wizard knows
+                // before the user commits that the import cannot run. Left out
+                // of rows and out of the photo and video counts, which are what
+                // the wizard shows as importable.
+                if (size > MAX_IMPORT_FILE_BYTES) {
+                    tooLargeCount++
+                    continue
+                }
+
                 val isVideo = cursor.getInt(mediaTypeIdx) == FileColumns.MEDIA_TYPE_VIDEO
                 if (isVideo) videoCount++ else photoCount++
                 totalBytes += size
@@ -124,6 +135,7 @@ class DeviceMediaStore(private val context: Context) {
             photoCount = photoCount,
             videoCount = videoCount,
             ignoredCount = ignoredCount,
+            tooLargeCount = tooLargeCount,
             totalBytes = totalBytes,
             maxDateAdded = maxDateAdded,
             rows = rows,
@@ -135,4 +147,12 @@ class DeviceMediaStore(private val context: Context) {
             if (row.isVideo) MediaStore.Video.Media.EXTERNAL_CONTENT_URI else MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
             row.id,
         )
+
+    companion object {
+        // Largest file the import accepts. A scan that finds anything above
+        // this refuses the whole run.
+        const val MAX_IMPORT_FILE_BYTES = 2L * 1024 * 1024 * 1024
+
+        val MAX_IMPORT_FILE_LABEL = "${MAX_IMPORT_FILE_BYTES / (1024 * 1024 * 1024)} GB"
+    }
 }
