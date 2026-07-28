@@ -19,6 +19,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -167,12 +168,8 @@ class DeviceImportController(
                 }
 
                 // pushRemote is UniFFI async on its own executor, kept outside io.
-                val pushError = sync.pushRemote(remoteId)
-                if (pushError != null) {
-                    Log.w(TAG, "push failed, keeping local data: $pushError")
-                } else {
-                    withContext(io) { lib.evictLocalData(chunkIds) }
-                }
+                pushChunk(remoteId)
+                withContext(io) { lib.evictLocalData(chunkIds) }
             }
         } catch (e: CancellationException) {
             throw e
@@ -190,6 +187,22 @@ class DeviceImportController(
         prefs.setImportWatermark(lib.libraryId(), startedAt)
         _importState.value = ImportState.Done(photosImported, videosImported, failed)
         if (photosImported + videosImported > 0) onLibraryChanged()
+    }
+
+    // Uploads what the chunk just imported, or throws once the retries are
+    // spent. Nothing is evicted until this returns, so a run that kept going
+    // through failed pushes would write the whole camera roll to internal
+    // storage and never take any of it back. Failing the run is what stops
+    // that, the alternative is a silently filled disk.
+    private suspend fun pushChunk(remoteId: String) {
+        var lastError: String? = null
+        repeat(PUSH_ATTEMPTS) { attempt ->
+            if (attempt > 0) delay(PUSH_RETRY_DELAY_MS * attempt)
+            val error = sync.pushRemote(remoteId) ?: return
+            lastError = error
+            Log.w(TAG, "push attempt ${attempt + 1} of $PUSH_ATTEMPTS failed: $error")
+        }
+        throw IOException("$PUSH_FAILED_MESSAGE ($lastError)")
     }
 
     // A row whose content hash is already in the library keeps its existing
@@ -257,6 +270,17 @@ class DeviceImportController(
 
         const val NO_LOCATION_PERMISSION_MESSAGE =
             "Allow access to photo locations before importing. Lasco imports originals only, and Android strips the location out of every copy it hands over without that permission."
+
+        // Tries per chunk, the run stops when the last one fails.
+        private const val PUSH_ATTEMPTS = 3
+
+        // Multiplied by the attempt number, so the waits are 2s then 4s. Long
+        // enough for a network handover, short enough that a dead endpoint
+        // does not hold the import open for a minute.
+        private const val PUSH_RETRY_DELAY_MS = 2_000L
+
+        const val PUSH_FAILED_MESSAGE =
+            "Upload failed, so the import stopped. Everything imported so far is on this device until the remote is reachable again."
 
         // Files above this are skipped rather than risking an OOM in
         // media_add, which reads and encrypts the whole file in memory.
