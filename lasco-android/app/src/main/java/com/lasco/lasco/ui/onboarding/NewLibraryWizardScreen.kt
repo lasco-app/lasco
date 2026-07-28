@@ -474,6 +474,13 @@ private fun PermissionStep(autoSkip: Boolean, onGranted: () -> Unit, onSkip: () 
         }
     }
 
+    // Granting in Settings does not restart the app, so without this the step
+    // would sit on its denied state after the user comes back having granted.
+    LifecycleResumeEffect(denied) {
+        if (denied && hasFullMediaAccess(context)) onGranted()
+        onPauseOrDispose {}
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
