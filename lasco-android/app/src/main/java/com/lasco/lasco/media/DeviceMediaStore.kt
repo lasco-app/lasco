@@ -7,8 +7,9 @@ import android.provider.MediaStore.Files.FileColumns
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-// Camera folder only. Albums and other DCIM subfolders on the device are not
-// scanned, matching the "camera folder only" decision for initial import.
+// Everything under DCIM, subfolders included. Screenshots, restored files and
+// third party camera folders all live there and are all wanted. Pictures,
+// Movies and Download are not, which is what this prefix leaves out.
 private const val PATH_PREFIX_Q = "DCIM/%"
 private const val PATH_PREFIX_LEGACY = "%/DCIM/%"
 
