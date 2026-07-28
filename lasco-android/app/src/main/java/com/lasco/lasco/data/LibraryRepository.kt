@@ -2,6 +2,7 @@ package com.lasco.lasco.data
 
 import android.content.Context
 import com.lasco.lasco.LascoApp
+import com.lasco.lasco.media.DeviceImportController
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -45,6 +46,7 @@ class LibraryRepository(
     private val nickname: String,
     private val username: String,
     private val appDir: String,
+    context: Context,
     prefs: Prefs,
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
@@ -61,6 +63,15 @@ class LibraryRepository(
 
     val sync = SyncController(lib = lib, prefs = prefs, onLibraryChanged = { changes.emit(Change.All) }, scope = scope)
 
+    val deviceImport = DeviceImportController(
+        lib = lib,
+        context = context.applicationContext,
+        prefs = prefs,
+        sync = sync,
+        onLibraryChanged = { changes.emit(Change.All) },
+        scope = scope,
+    )
+
     init {
         scope.launch { localMutations.collect { sync.schedulePush() } }
     }
@@ -68,6 +79,7 @@ class LibraryRepository(
     // Must be called on session end (sign out, delete), or the sync loop and
     // its localMutations collector outlive the repository.
     suspend fun close() {
+        deviceImport.cancel()
         sync.close()
         scope.cancel()
     }
@@ -292,6 +304,11 @@ class LibraryRepository(
 
     suspend fun setDefaultUploadAlbum(albumId: String?) {
         lib.setDefaultUploadAlbum(albumId)
+        refreshSessionState()
+    }
+
+    suspend fun setAutoImportDeviceMedia(enabled: Boolean) {
+        lib.setAutoImportDeviceMedia(enabled)
         refreshSessionState()
     }
 

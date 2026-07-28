@@ -1,5 +1,14 @@
 package com.lasco.lasco.ui.onboarding
 
+import android.Manifest
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
@@ -19,6 +28,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -32,9 +43,11 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lasco.lasco.data.Prefs
+import com.lasco.lasco.media.ImportState
 import com.lasco.lasco.ui.components.ErrorBanner
 import com.lasco.lasco.ui.components.LascoField
 import com.lasco.lasco.ui.components.LascoPrimaryButton
@@ -44,15 +57,40 @@ import com.lasco.lasco.ui.manage.AddS3RemoteDialog
 import com.lasco.lasco.ui.manage.ManageViewModel
 import com.lasco.lasco.ui.theme.LascoTheme
 import com.lasco.lasco.ui.theme.lascoPanel
+import kotlinx.coroutines.flow.MutableStateFlow
 
-private const val TOTAL_STEPS = 7
+// One more than the iOS wizard, which has no separate photo location
+// permission to ask for.
+private const val TOTAL_STEPS = 8
+
+private fun requiredMediaPermissions(): Array<String> =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
+    } else {
+        arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+    }
+
+// Partial access (READ_MEDIA_VISUAL_USER_SELECTED on API 34+) is treated as
+// denied, full access to the camera folder is required.
+private fun hasFullMediaAccess(context: Context): Boolean =
+    requiredMediaPermissions().all {
+        ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+    }
+
+// Optional, unlike the read permissions. Without it MediaStore hands back
+// copies with the GPS EXIF tags stripped, so photos still import, just
+// without their location. Below API 29 nothing is redacted and the
+// permission does not exist.
+private fun hasMediaLocationAccess(context: Context): Boolean =
+    Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_MEDIA_LOCATION) ==
+        PackageManager.PERMISSION_GRANTED
 
 /**
  * Multi step new library flow, ported from the Swift NewLibraryWizard (iOS
- * branch, 7 steps). Steps 3-6 are stubs since automatic photo import isn't
- * available on Android yet, they exist so the step count and dot indicator
- * match the iOS wizard, and so onboardingStep persistence has somewhere
- * meaningful to resume into.
+ * branch). Steps 3-6 drive the device media import (ask, media access,
+ * photo locations, scan and import), step 7 the auto-import toggle. The two
+ * permission steps skip themselves when access is already granted.
  */
 @Composable
 fun NewLibraryWizardScreen(
@@ -154,21 +192,19 @@ fun NewLibraryWizardScreen(
                     0 -> CreateStep(loading = state.loading, error = state.error, onCreate = viewModel::create)
                     1 -> MasterKeyStep(masterKeyHex = state.masterKeyHex)
                     2 -> RemoteStep(onAdvance = { goTo(3) })
-                    3 -> StubStep(
-                        title = "Import your device photos?",
-                        body = "Automatic photo import isn't available on Android yet.",
-                    )
-                    4 -> StubStep(
-                        title = "Access your photos.",
-                        body = "Automatic photo import isn't available on Android yet.",
-                    )
-                    5 -> StubStep(
-                        title = "Import your photo library?",
-                        body = "Automatic photo import isn't available on Android yet.",
-                    )
-                    else -> StubStep(
-                        title = "Automatically import new photos?",
-                        body = "Automatic photo import isn't available on Android yet.",
+                    3 -> AskImportStep(onImport = { goTo(4) }, onSkip = { goTo(7) })
+                    4 -> PermissionStep(autoSkip = slideForward, onGranted = { goTo(5) }, onSkip = { goTo(7) })
+                    5 -> MediaLocationStep(autoSkip = slideForward, onDone = { goTo(6) })
+                    6 -> ImportStep(viewModel = viewModel, state = state, onDone = { goTo(7) })
+                    else -> AutoImportStep(
+                        onYes = {
+                            viewModel.setAutoImportDeviceMedia(true)
+                            finish()
+                        },
+                        onNo = {
+                            viewModel.setAutoImportDeviceMedia(false)
+                            finish()
+                        },
                     )
                 }
             }
@@ -188,8 +224,6 @@ fun NewLibraryWizardScreen(
                         goTo(2)
                     },
                 )
-                in 3..5 -> LascoPrimaryButton(text = "Continue", onClick = { goTo(step + 1) })
-                6 -> LascoPrimaryButton(text = "Get started", onClick = { finish() })
                 else -> {}
             }
         }
@@ -362,16 +396,338 @@ private fun RemoteStep(onAdvance: () -> Unit) {
 }
 
 @Composable
-private fun StubStep(title: String, body: String) {
+private fun AskImportStep(onImport: () -> Unit, onSkip: () -> Unit) {
     val colors = LascoTheme.colors
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 32.dp)
-            .padding(top = 40.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
+    Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(horizontal = 32.dp)
+                .padding(top = 40.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            Text(text = "Import your device photos?", style = LascoTheme.type.title(26), color = colors.ink)
+            Text(
+                text = "Lasco can import the photos and videos in your camera folder and back them up to your remote. Albums are not replicated, and photos stored outside the camera folder are not imported.",
+                style = LascoTheme.type.body(16),
+                color = colors.inkSub,
+            )
+            Text(text = "Nothing is deleted from your device.", style = LascoTheme.type.body(16), color = colors.inkSub)
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 32.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            LascoPrimaryButton(text = "Yes, import my photos", onClick = onImport)
+            LascoSecondaryButton(text = "No, not now", onClick = onSkip)
+        }
+    }
+}
+
+@Composable
+private fun PermissionStep(autoSkip: Boolean, onGranted: () -> Unit, onSkip: () -> Unit) {
+    val colors = LascoTheme.colors
+    val context = LocalContext.current
+    var denied by remember { mutableStateOf(false) }
+
+    // Access can already be granted from an earlier run or an earlier pass
+    // through the wizard. Only skipped when moving forward, so stepping back
+    // from the next screen does not bounce straight in again.
+    val alreadyGranted = remember { autoSkip && hasFullMediaAccess(context) }
+    LaunchedEffect(alreadyGranted) { if (alreadyGranted) onGranted() }
+    if (alreadyGranted) return
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions(),
     ) {
-        Text(text = title, style = LascoTheme.type.title(26), color = colors.ink)
-        Text(text = body, style = LascoTheme.type.body(16), color = colors.inkSub)
+        if (hasFullMediaAccess(context)) {
+            denied = false
+            onGranted()
+        } else {
+            denied = true
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(horizontal = 32.dp)
+                .padding(top = 40.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            Text(text = "Access your photos.", style = LascoTheme.type.title(26), color = colors.ink)
+            Text(
+                text = "We'll ask for permission to access your photos so Lasco can import them.",
+                style = LascoTheme.type.body(16),
+                color = colors.inkSub,
+            )
+            if (denied) {
+                Text(
+                    text = "Access was denied, or only partial access was granted. You can grant full access in Settings and come back here.",
+                    style = LascoTheme.type.body(16),
+                    color = colors.inkSub,
+                )
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 32.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            if (denied) {
+                LascoPrimaryButton(
+                    text = "Open Settings",
+                    onClick = {
+                        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                            data = Uri.fromParts("package", context.packageName, null)
+                        }
+                        context.startActivity(intent)
+                    },
+                )
+                LascoSecondaryButton(text = "Skip for now", onClick = onSkip)
+            } else {
+                LascoPrimaryButton(
+                    text = "Continue",
+                    onClick = {
+                        if (hasFullMediaAccess(context)) {
+                            onGranted()
+                        } else {
+                            permissionLauncher.launch(requiredMediaPermissions())
+                        }
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MediaLocationStep(autoSkip: Boolean, onDone: () -> Unit) {
+    val colors = LascoTheme.colors
+    val context = LocalContext.current
+
+    // Often granted alongside the read permissions, since the system treats
+    // them as one group, and it does not exist at all below API 29. Either
+    // way there is nothing to ask, so the step advances itself.
+    val alreadyGranted = remember { autoSkip && hasMediaLocationAccess(context) }
+    LaunchedEffect(alreadyGranted) { if (alreadyGranted) onDone() }
+    if (alreadyGranted) return
+
+    // Declining is not a failure, the import goes ahead without locations,
+    // so this advances either way.
+    val locationLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) {
+        onDone()
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(horizontal = 32.dp)
+                .padding(top = 40.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            Text(text = "Keep photo locations.", style = LascoTheme.type.title(26), color = colors.ink)
+            Text(
+                text = "Android strips the place a photo was taken out of every copy it hands to an app, unless you allow access to photo locations.",
+                style = LascoTheme.type.body(16),
+                color = colors.inkSub,
+            )
+            Text(
+                text = "Without it your photos are still imported, but the location is lost and cannot be recovered later.",
+                style = LascoTheme.type.body(16),
+                color = colors.inkSub,
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 32.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            LascoPrimaryButton(
+                text = "Allow photo locations",
+                onClick = { locationLauncher.launch(Manifest.permission.ACCESS_MEDIA_LOCATION) },
+            )
+            LascoSecondaryButton(text = "Import without locations", onClick = onDone)
+        }
+    }
+}
+
+@Composable
+private fun ImportStep(viewModel: NewLibraryWizardViewModel, state: NewLibraryWizardUiState, onDone: () -> Unit) {
+    val colors = LascoTheme.colors
+    val context = LocalContext.current
+    val importState by (viewModel.deviceImportState ?: remember { MutableStateFlow(ImportState.Idle) })
+        .collectAsStateWithLifecycle()
+
+    LaunchedEffect(Unit) {
+        if (state.deviceScan == null) viewModel.scanDeviceMedia()
+    }
+
+    val done = importState as? ImportState.Done
+    val failure = importState as? ImportState.Error
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(horizontal = 32.dp)
+                .padding(top = 40.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            if (done != null) {
+                Text(text = "All done.", style = LascoTheme.type.title(26), color = colors.ink)
+                val photoWord = if (done.photos == 1) "photo" else "photos"
+                val videoWord = if (done.videos == 1) "video" else "videos"
+                Text(
+                    text = "${done.photos} $photoWord and ${done.videos} $videoWord were successfully imported.",
+                    style = LascoTheme.type.body(16),
+                    color = colors.inkSub,
+                )
+                if (done.failed > 0) {
+                    val itemWord = if (done.failed == 1) "item" else "items"
+                    Text(
+                        text = "${done.failed} $itemWord could not be imported and were left on your device.",
+                        style = LascoTheme.type.body(16),
+                        color = colors.inkSub,
+                    )
+                }
+            } else {
+                Text(text = "Import your photo library?", style = LascoTheme.type.title(26), color = colors.ink)
+                Text(
+                    text = "Lasco will import your existing photos and videos and back them up to your remote.",
+                    style = LascoTheme.type.body(16),
+                    color = colors.inkSub,
+                )
+
+                if (state.scanning) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        CircularProgressIndicator(color = colors.inkMuted, modifier = Modifier.height(16.dp).width(16.dp))
+                        Text(text = "Scanning library…", style = LascoTheme.type.body(14), color = colors.inkMuted)
+                    }
+                } else {
+                    state.deviceScan?.let { scan ->
+                        Column(modifier = Modifier.fillMaxWidth().lascoPanel().padding(horizontal = 16.dp, vertical = 12.dp)) {
+                            ImportStatRow(label = "Photos", value = scan.photoCount.toString())
+                            ImportStatRow(label = "Videos", value = scan.videoCount.toString())
+                            if (scan.ignoredCount > 0) {
+                                ImportStatRow(label = "Ignored", value = scan.ignoredCount.toString())
+                            }
+                        }
+                    }
+                }
+
+                if (!hasMediaLocationAccess(context)) {
+                    Text(
+                        text = "Photo locations were not allowed, so imported photos will not carry the place they were taken.",
+                        style = LascoTheme.type.body(14),
+                        color = colors.inkMuted,
+                    )
+                }
+
+                if (failure != null) {
+                    ErrorBanner(message = failure.message)
+                }
+
+                if (importState is ImportState.Importing) {
+                    val importing = importState as ImportState.Importing
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        LinearProgressIndicator(
+                            progress = { if (importing.total > 0) importing.done.toFloat() / importing.total else 0f },
+                            color = colors.ink,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Text(
+                            text = "${importing.done} of ${importing.total}",
+                            style = LascoTheme.type.mono(13),
+                            color = colors.inkMuted,
+                        )
+                    }
+                }
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 32.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            when {
+                done != null -> LascoPrimaryButton(text = "Continue", onClick = onDone)
+                importState is ImportState.Importing -> {}
+                else -> {
+                    LascoPrimaryButton(
+                        text = "Import Now",
+                        onClick = { viewModel.startDeviceImport() },
+                        enabled = state.deviceScan != null,
+                    )
+                    LascoSecondaryButton(text = "Skip for now", onClick = onDone)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ImportStatRow(label: String, value: String) {
+    val colors = LascoTheme.colors
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(text = label, style = LascoTheme.type.body(14), color = colors.inkSub)
+        Text(text = value, style = LascoTheme.type.mono(14), color = colors.ink)
+    }
+}
+
+@Composable
+private fun AutoImportStep(onYes: () -> Unit, onNo: () -> Unit) {
+    val colors = LascoTheme.colors
+    Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(horizontal = 32.dp)
+                .padding(top = 40.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            Text(text = "Automatically import new photos?", style = LascoTheme.type.title(26), color = colors.ink)
+            Text(
+                text = "Lasco can check for new photos each time you open the app and import any taken after this point.",
+                style = LascoTheme.type.body(16),
+                color = colors.inkSub,
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 32.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            LascoPrimaryButton(text = "Yes, auto-import new photos", onClick = onYes)
+            LascoSecondaryButton(text = "No, not now", onClick = onNo)
+        }
     }
 }

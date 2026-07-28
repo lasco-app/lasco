@@ -66,7 +66,7 @@ class AddExistingLibraryViewModel(
                 )
                 val sessionUsername = newUsername ?: username
                 app.librarySession =
-                    LibraryRepository(lib, nickname = nickname, username = sessionUsername, appDir = repository.appDir, prefs = prefs)
+                    LibraryRepository(lib, nickname = nickname, username = sessionUsername, appDir = repository.appDir, context = app, prefs = prefs)
                 _uiState.value = AddExistingLibraryUiState(opened = true)
             } catch (e: Throwable) {
                 _uiState.value = AddExistingLibraryUiState(error = e.message ?: "Could not add library")

@@ -78,6 +78,7 @@ fun LascoRoot(modifier: Modifier = Modifier, onLibraryOpenChanged: (Boolean) -> 
                     nickname = incomplete.nickname,
                     username = username!!,
                     appDir = repository.appDir,
+                    context = app,
                     prefs = prefs,
                 )
                 var step = prefs.onboardingStep(incomplete.id) ?: 0

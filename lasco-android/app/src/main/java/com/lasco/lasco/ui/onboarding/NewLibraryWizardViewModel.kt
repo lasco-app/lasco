@@ -10,6 +10,8 @@ import com.lasco.lasco.LascoApp
 import com.lasco.lasco.data.LascoRepository
 import com.lasco.lasco.data.LibraryRepository
 import com.lasco.lasco.data.Prefs
+import com.lasco.lasco.media.DeviceScan
+import com.lasco.lasco.media.ImportState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,6 +23,8 @@ data class NewLibraryWizardUiState(
     val libraryId: String? = null,
     val nickname: String? = null,
     val masterKeyHex: String? = null,
+    val deviceScan: DeviceScan? = null,
+    val scanning: Boolean = false,
 )
 
 /**
@@ -49,7 +53,7 @@ class NewLibraryWizardViewModel(
                 val result = repository.createLibrary(nickname = name, username = username, password = password)
                 val lib = repository.openLibrary(nickname = name, username = username, password = password)
                 app.librarySession =
-                    LibraryRepository(lib, nickname = name, username = username, appDir = repository.appDir, prefs = prefs)
+                    LibraryRepository(lib, nickname = name, username = username, appDir = repository.appDir, context = app, prefs = prefs)
                 _uiState.value = NewLibraryWizardUiState(
                     libraryId = result.libraryId,
                     nickname = name,
@@ -63,6 +67,29 @@ class NewLibraryWizardViewModel(
 
     fun clearMasterKey() {
         _uiState.value = _uiState.value.copy(masterKeyHex = null)
+    }
+
+    // Exposed for the screen to collect directly, since it updates far more
+    // often (once per imported item) than a plain uiState copy would want to.
+    val deviceImportState: StateFlow<ImportState>?
+        get() = app.librarySession?.deviceImport?.importState
+
+    fun scanDeviceMedia() {
+        val deviceImport = app.librarySession?.deviceImport ?: return
+        _uiState.value = _uiState.value.copy(scanning = true)
+        viewModelScope.launch {
+            val scan = deviceImport.scan()
+            _uiState.value = _uiState.value.copy(scanning = false, deviceScan = scan)
+        }
+    }
+
+    fun startDeviceImport() {
+        val deviceImport = app.librarySession?.deviceImport ?: return
+        viewModelScope.launch { deviceImport.runInitialImport() }
+    }
+
+    fun setAutoImportDeviceMedia(enabled: Boolean) {
+        viewModelScope.launch { app.librarySession?.setAutoImportDeviceMedia(enabled) }
     }
 
     fun recordStep(step: Int) {

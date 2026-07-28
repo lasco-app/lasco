@@ -43,6 +43,18 @@ class Prefs(context: Context) {
         sp.edit().remove("$KEY_ONBOARDING_STEP.$libraryId").apply()
     }
 
+    // DATE_ADDED of the newest device media row imported so far, the Android
+    // equivalent of PhotoLibraryImporter's lastImportDate. Used by the
+    // incremental import path to scan only newer rows.
+    fun importWatermark(libraryId: String): Long? {
+        val value = sp.getLong("$KEY_IMPORT_WATERMARK.$libraryId", -1L)
+        return if (value < 0) null else value
+    }
+
+    fun setImportWatermark(libraryId: String, dateAdded: Long) {
+        sp.edit().putLong("$KEY_IMPORT_WATERMARK.$libraryId", dateAdded).apply()
+    }
+
     private val _lastPush = MutableStateFlow(readAll(KEY_LAST_PUSH))
     val lastPush: StateFlow<Map<String, SyncRecord>> = _lastPush.asStateFlow()
 
@@ -89,6 +101,7 @@ class Prefs(context: Context) {
     companion object {
         private const val KEY_EXPERT_MODE = "expertMode"
         private const val KEY_ONBOARDING_STEP = "onboardingStep"
+        private const val KEY_IMPORT_WATERMARK = "importWatermark"
         private const val KEY_LAST_PUSH = "lastPush"
         private const val KEY_LAST_FETCH = "lastFetch"
 

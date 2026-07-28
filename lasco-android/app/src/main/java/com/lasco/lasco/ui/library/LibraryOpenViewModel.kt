@@ -63,7 +63,7 @@ class LibraryOpenViewModel(
                 val lib = repository.openCached(nickname = nickname, username = username)
                 if (lib != null) {
                     app.librarySession =
-                        LibraryRepository(lib, nickname = nickname, username = username, appDir = repository.appDir, prefs = prefs)
+                        LibraryRepository(lib, nickname = nickname, username = username, appDir = repository.appDir, context = app, prefs = prefs)
                     _uiState.value = LibraryOpenUiState(checkingCache = false, opened = true)
                 } else {
                     _uiState.value = LibraryOpenUiState(checkingCache = false)
@@ -80,7 +80,7 @@ class LibraryOpenViewModel(
             try {
                 val lib = repository.openLibrary(nickname = nickname, username = username, password = password)
                 app.librarySession =
-                    LibraryRepository(lib, nickname = nickname, username = username, appDir = repository.appDir, prefs = prefs)
+                    LibraryRepository(lib, nickname = nickname, username = username, appDir = repository.appDir, context = app, prefs = prefs)
                 _uiState.value = _uiState.value.copy(loading = false, opened = true)
             } catch (e: Throwable) {
                 _uiState.value = _uiState.value.copy(loading = false, error = e.message ?: "Could not open library")
