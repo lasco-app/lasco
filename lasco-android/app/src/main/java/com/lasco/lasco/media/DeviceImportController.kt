@@ -89,6 +89,15 @@ class DeviceImportController(
             return
         }
 
+        // Every row would fail the original read without this, so it is worth
+        // one error up front instead of a run that imports nothing. No
+        // watermark is stamped, granting the permission and coming back has
+        // to still pick up everything.
+        if (!canReadOriginals()) {
+            _importState.value = ImportState.Error(NO_LOCATION_PERMISSION_MESSAGE)
+            return
+        }
+
         val job = scope.launch { importScan(scan, remoteId) }
         importJob = job
         job.join()
@@ -104,6 +113,11 @@ class DeviceImportController(
     private suspend fun importScan(scan: DeviceScan, remoteId: String) {
         val albumId = lib.getDefaultUploadAlbum()
         val total = scan.rows.size
+
+        // Read before the first row so the incremental import later picks up
+        // anything the device gained while this run was going. Seconds, to
+        // match the MediaStore DATE_ADDED it is compared against.
+        val startedAt = System.currentTimeMillis() / 1000
 
         sync.stopScheduledPush()
         _importState.value = ImportState.Importing(0, total)
@@ -126,6 +140,11 @@ class DeviceImportController(
                                 chunkIds += importRow(row, albumId)
                                 if (row.isVideo) videosImported++ else photosImported++
                             } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: SecurityException) {
+                                // The location permission went away mid run,
+                                // so every remaining row would import without
+                                // its location. Abort rather than tolerate.
                                 throw e
                             } catch (e: Throwable) {
                                 failed++
@@ -160,7 +179,7 @@ class DeviceImportController(
             return
         }
 
-        prefs.setImportWatermark(lib.libraryId(), scan.maxDateAdded)
+        prefs.setImportWatermark(lib.libraryId(), startedAt)
         _importState.value = ImportState.Done(photosImported, videosImported, failed)
         if (photosImported + videosImported > 0) onLibraryChanged()
     }
@@ -180,36 +199,36 @@ class DeviceImportController(
         }
     }
 
-    // True once an original read has failed, so the rest of the run goes
-    // straight to the redacted copy instead of throwing per file.
-    private var originalReadUnavailable = false
-
     // Reading through setRequireOriginal is what keeps the GPS EXIF tags in
-    // the bytes, but it throws unless ACCESS_MEDIA_LOCATION was granted, so
-    // it is both checked up front and guarded.
+    // the bytes. Only originals are imported, so a row that cannot be read
+    // that way fails instead of being quietly downgraded to the redacted
+    // copy, whose location cannot be recovered later.
     private fun copyToCache(row: DeviceMediaRow): File {
         val uri = deviceMediaStore.contentUriFor(row)
         val name = row.displayName ?: UUID.randomUUID().toString()
         val file = File(context.cacheDir, "device_import_${UUID.randomUUID()}_$name")
 
-        if (canReadOriginals()) {
-            try {
-                copyUri(MediaStore.setRequireOriginal(uri), file)
-                return file
-            } catch (e: Exception) {
-                originalReadUnavailable = true
-                file.delete()
-                Log.w(TAG, "original read refused, falling back to redacted copies", e)
-            }
+        // Below API 29 nothing is redacted and setRequireOriginal does not
+        // exist, so the plain uri already yields the original.
+        val source = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.setRequireOriginal(uri)
+        } else {
+            uri
         }
 
-        copyUri(uri, file)
+        try {
+            copyUri(source, file)
+        } catch (e: Throwable) {
+            // Thrown before importRow gets the file, so its finally block
+            // cannot be the one to clean up the partial copy.
+            file.delete()
+            throw e
+        }
         return file
     }
 
     private fun canReadOriginals(): Boolean =
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
-            !originalReadUnavailable &&
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_MEDIA_LOCATION) ==
             PackageManager.PERMISSION_GRANTED
 
@@ -227,6 +246,9 @@ class DeviceImportController(
 
         const val NO_REMOTE_MESSAGE =
             "Add a remote before importing. Lasco uploads each batch as it goes and keeps only what the remote has."
+
+        const val NO_LOCATION_PERMISSION_MESSAGE =
+            "Allow access to photo locations before importing. Lasco imports originals only, and Android strips the location out of every copy it hands over without that permission."
 
         // Files above this are skipped rather than risking an OOM in
         // media_add, which reads and encrypts the whole file in memory.

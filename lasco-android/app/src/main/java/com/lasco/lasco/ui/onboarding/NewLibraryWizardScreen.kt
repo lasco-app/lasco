@@ -44,6 +44,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lasco.lasco.data.Prefs
@@ -207,7 +208,14 @@ fun NewLibraryWizardScreen(
                             goTo(7)
                         },
                     )
-                    5 -> MediaLocationStep(autoSkip = slideForward, onDone = { goTo(6) })
+                    5 -> MediaLocationStep(
+                        autoSkip = slideForward,
+                        onDone = { goTo(6) },
+                        onSkip = {
+                            viewModel.skipDeviceImport()
+                            goTo(7)
+                        },
+                    )
                     6 -> ImportStep(viewModel = viewModel, state = state, onDone = { goTo(7) })
                     else -> AutoImportStep(
                         onYes = {
@@ -525,9 +533,10 @@ private fun PermissionStep(autoSkip: Boolean, onGranted: () -> Unit, onSkip: () 
 }
 
 @Composable
-private fun MediaLocationStep(autoSkip: Boolean, onDone: () -> Unit) {
+private fun MediaLocationStep(autoSkip: Boolean, onDone: () -> Unit, onSkip: () -> Unit) {
     val colors = LascoTheme.colors
     val context = LocalContext.current
+    var denied by remember { mutableStateOf(false) }
 
     // Often granted alongside the read permissions, since the system treats
     // them as one group, and it does not exist at all below API 29. Either
@@ -536,12 +545,24 @@ private fun MediaLocationStep(autoSkip: Boolean, onDone: () -> Unit) {
     LaunchedEffect(alreadyGranted) { if (alreadyGranted) onDone() }
     if (alreadyGranted) return
 
-    // Declining is not a failure, the import goes ahead without locations,
-    // so this advances either way.
+    // Required, not optional. Only originals are imported, so without it
+    // there is nothing to advance to.
     val locationLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
-    ) {
-        onDone()
+    ) { granted ->
+        if (granted) {
+            denied = false
+            onDone()
+        } else {
+            denied = true
+        }
+    }
+
+    // Granting in Settings does not restart the app, so without this the step
+    // would sit on its denied state after the user comes back having granted.
+    LifecycleResumeEffect(denied) {
+        if (denied && hasMediaLocationAccess(context)) onDone()
+        onPauseOrDispose {}
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -560,10 +581,17 @@ private fun MediaLocationStep(autoSkip: Boolean, onDone: () -> Unit) {
                 color = colors.inkSub,
             )
             Text(
-                text = "Without it your photos are still imported, but the location is lost and cannot be recovered later.",
+                text = "Lasco imports originals only, so this is needed to import at all. The location cannot be recovered later.",
                 style = LascoTheme.type.body(16),
                 color = colors.inkSub,
             )
+            if (denied) {
+                Text(
+                    text = "Access to photo locations was denied. You can grant it in Settings and come back here, or skip importing your photos for now.",
+                    style = LascoTheme.type.body(16),
+                    color = colors.inkSub,
+                )
+            }
         }
 
         Column(
@@ -573,11 +601,23 @@ private fun MediaLocationStep(autoSkip: Boolean, onDone: () -> Unit) {
                 .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            LascoPrimaryButton(
-                text = "Allow photo locations",
-                onClick = { locationLauncher.launch(Manifest.permission.ACCESS_MEDIA_LOCATION) },
-            )
-            LascoSecondaryButton(text = "Import without locations", onClick = onDone)
+            if (denied) {
+                LascoPrimaryButton(
+                    text = "Open Settings",
+                    onClick = {
+                        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                            data = Uri.fromParts("package", context.packageName, null)
+                        }
+                        context.startActivity(intent)
+                    },
+                )
+            } else {
+                LascoPrimaryButton(
+                    text = "Allow photo locations",
+                    onClick = { locationLauncher.launch(Manifest.permission.ACCESS_MEDIA_LOCATION) },
+                )
+            }
+            LascoSecondaryButton(text = "Skip for now", onClick = onSkip)
         }
     }
 }
