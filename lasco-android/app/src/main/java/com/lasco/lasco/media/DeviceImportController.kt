@@ -7,12 +7,12 @@ import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
 import android.util.Log
+import android.webkit.MimeTypeMap
 import androidx.core.content.ContextCompat
 import com.lasco.lasco.data.Prefs
 import com.lasco.lasco.data.SyncController
 import java.io.File
 import java.io.IOException
-import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -135,10 +135,18 @@ class DeviceImportController(
         sync.stopScheduledPush()
         _importState.value = ImportState.Importing(0, total)
 
+        // A run killed partway leaves its temp files behind, nothing else ever
+        // removes them.
+        withContext(io) { clearImportCacheDir() }
+
         var photosImported = 0
         var videosImported = 0
         var failed = 0
         var done = 0
+
+        // Names the temp file of each row. A counter is used rather than
+        // anything coming from MediaStore, so uniqueness is ours to guarantee.
+        var tempIndex = 0
 
         try {
             for (chunk in scan.rows.chunked(CHUNK_SIZE)) {
@@ -150,6 +158,7 @@ class DeviceImportController(
                         // check cancellation is only noticed when the chunk
                         // ends and cancel() waits out 32 more files.
                         ensureActive()
+                        val rowIndex = tempIndex++
 
                         // scan() already left the oversized rows out, so this
                         // only catches a MediaStore size that was stale then.
@@ -157,7 +166,7 @@ class DeviceImportController(
                             // One unreadable row must not abort the whole run,
                             // the same per item tolerance as the iOS importer.
                             try {
-                                chunkIds += importRow(row, albumId)
+                                chunkIds += importRow(row, albumId, rowIndex)
                                 if (row.isVideo) videosImported++ else photosImported++
                             } catch (e: CancellationException) {
                                 throw e
@@ -218,10 +227,14 @@ class DeviceImportController(
 
     // A row whose content hash is already in the library keeps its existing
     // thumbnail, regenerating it would re-encrypt and rewrite the same bytes.
-    private fun importRow(row: DeviceMediaRow, albumId: String?): String {
-        val tempFile = copyToCache(row)
+    private fun importRow(row: DeviceMediaRow, albumId: String?, tempIndex: Int): String {
+        val tempFile = copyToCache(row, tempIndex)
         try {
-            val result = lib.importMedia(tempFile.path, albumId, row.displayName, null, null)
+            // Always named explicitly. Passing null makes media_add fall back to
+            // the temp file name, which would put a bare number in the library
+            // and leave the extension checks in the UI with nothing to read.
+            val name = row.displayName ?: fallbackFilename(row, tempIndex)
+            val result = lib.importMedia(tempFile.path, albumId, name, null, null)
             if (!result.alreadyExisted) {
                 ThumbnailGenerator.generate(tempFile)?.let { lib.setMediaThumbnail(result.mediaId, it) }
             }
@@ -235,10 +248,13 @@ class DeviceImportController(
     // the bytes. Only originals are imported, so a row that cannot be read
     // that way fails instead of being quietly downgraded to the redacted
     // copy, whose location cannot be recovered later.
-    private fun copyToCache(row: DeviceMediaRow): File {
+    private fun copyToCache(row: DeviceMediaRow, tempIndex: Int): File {
         val uri = deviceMediaStore.contentUriFor(row)
-        val name = row.displayName ?: UUID.randomUUID().toString()
-        val file = File(context.cacheDir, "device_import_${UUID.randomUUID()}_$name")
+
+        // Nothing reads this name. The bytes go to the core by path, the
+        // thumbnail is decoded from the content, and the file is deleted once
+        // the row is done, so the counter alone is enough.
+        val file = File(importCacheDir(), tempIndex.toString())
 
         // Below API 29 nothing is redacted and setRequireOriginal does not
         // exist, so the plain uri already yields the original.
@@ -259,6 +275,22 @@ class DeviceImportController(
         return file
     }
 
+    // Only reached when MediaStore has no display name for the row, which is
+    // rare. The extension is the part that matters, the UI tells photos and
+    // videos apart by reading it back off the stored name.
+    private fun fallbackFilename(row: DeviceMediaRow, tempIndex: Int): String {
+        val ext = row.mimeType?.let { MimeTypeMap.getSingleton().getExtensionFromMimeType(it) }
+            ?: if (row.isVideo) "mp4" else "jpg"
+        return "media_$tempIndex.$ext"
+    }
+
+    private fun importCacheDir(): File =
+        File(context.cacheDir, TEMP_DIR_NAME).apply { mkdirs() }
+
+    private fun clearImportCacheDir() {
+        importCacheDir().listFiles()?.forEach { it.delete() }
+    }
+
     private fun canReadOriginals(): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_MEDIA_LOCATION) ==
@@ -275,6 +307,8 @@ class DeviceImportController(
     companion object {
         private const val TAG = "DeviceImport"
         private const val CHUNK_SIZE = 32
+
+        private const val TEMP_DIR_NAME = "device_import"
 
         const val NO_REMOTE_MESSAGE =
             "Add a remote before importing. Lasco uploads each batch as it goes and keeps only what the remote has."
