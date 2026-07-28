@@ -85,6 +85,7 @@ class DeviceImportController(
         val remoteId = lib.getDefaultFetchRemote()
         if (remoteId == null) {
             _importState.value = ImportState.Error(NO_REMOTE_MESSAGE)
+            prefs.baselineImportWatermark(lib.libraryId())
             return
         }
 
@@ -151,6 +152,10 @@ class DeviceImportController(
         } catch (e: Throwable) {
             Log.e(TAG, "import aborted", e)
             _importState.value = ImportState.Error(e.message ?: "Import failed")
+            // The run stopped partway, so the rows it never reached are left
+            // behind rather than picked up later by the incremental import.
+            // Stamping the watermark is what draws that line.
+            prefs.baselineImportWatermark(lib.libraryId())
             if (photosImported + videosImported > 0) onLibraryChanged()
             return
         }

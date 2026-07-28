@@ -88,6 +88,14 @@ class NewLibraryWizardViewModel(
         viewModelScope.launch { deviceImport.runInitialImport() }
     }
 
+    // Both skip paths still lead to the auto-import question, so the user can
+    // turn it on having imported nothing. Stamping the watermark here is what
+    // keeps that from meaning the entire camera folder.
+    fun skipDeviceImport() {
+        val libraryId = _uiState.value.libraryId ?: return
+        prefs.baselineImportWatermark(libraryId)
+    }
+
     fun setAutoImportDeviceMedia(enabled: Boolean) {
         viewModelScope.launch { app.librarySession?.setAutoImportDeviceMedia(enabled) }
     }

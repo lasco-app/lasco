@@ -55,6 +55,17 @@ class Prefs(context: Context) {
         sp.edit().putLong("$KEY_IMPORT_WATERMARK.$libraryId", dateAdded).apply()
     }
 
+    // Stamps the watermark with the current time, for the paths that end
+    // without importing anything, the two wizard skips and a failed import.
+    // Without it the watermark stays null and the incremental import has no
+    // floor to scan from, so it would treat the whole camera folder as new.
+    // Seconds, to match the MediaStore DATE_ADDED it is compared against.
+    // An already stored watermark is left alone, a real import knows better.
+    fun baselineImportWatermark(libraryId: String) {
+        if (importWatermark(libraryId) != null) return
+        setImportWatermark(libraryId, System.currentTimeMillis() / 1000)
+    }
+
     private val _lastPush = MutableStateFlow(readAll(KEY_LAST_PUSH))
     val lastPush: StateFlow<Map<String, SyncRecord>> = _lastPush.asStateFlow()
 

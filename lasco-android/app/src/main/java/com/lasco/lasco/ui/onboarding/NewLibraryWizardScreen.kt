@@ -192,8 +192,21 @@ fun NewLibraryWizardScreen(
                     0 -> CreateStep(loading = state.loading, error = state.error, onCreate = viewModel::create)
                     1 -> MasterKeyStep(masterKeyHex = state.masterKeyHex)
                     2 -> RemoteStep(onAdvance = { goTo(3) })
-                    3 -> AskImportStep(onImport = { goTo(4) }, onSkip = { goTo(7) })
-                    4 -> PermissionStep(autoSkip = slideForward, onGranted = { goTo(5) }, onSkip = { goTo(7) })
+                    3 -> AskImportStep(
+                        onImport = { goTo(4) },
+                        onSkip = {
+                            viewModel.skipDeviceImport()
+                            goTo(7)
+                        },
+                    )
+                    4 -> PermissionStep(
+                        autoSkip = slideForward,
+                        onGranted = { goTo(5) },
+                        onSkip = {
+                            viewModel.skipDeviceImport()
+                            goTo(7)
+                        },
+                    )
                     5 -> MediaLocationStep(autoSkip = slideForward, onDone = { goTo(6) })
                     6 -> ImportStep(viewModel = viewModel, state = state, onDone = { goTo(7) })
                     else -> AutoImportStep(
