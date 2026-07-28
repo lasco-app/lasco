@@ -19,6 +19,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -104,8 +105,10 @@ class DeviceImportController(
     }
 
     // Must be called before the owning scope is cancelled (see
-    // LibraryRepository.close), or an in-flight import is torn down mid
-    // chunk with its temp file left behind.
+    // LibraryRepository.close), since cancelling the scope does not wait and
+    // would leave an importMedia call running against a library the caller is
+    // about to tear down. Returns once the row in flight has finished, which
+    // for a large video can take a while, importRow cannot be interrupted.
     suspend fun cancel() {
         importJob?.cancelAndJoin()
     }
@@ -133,6 +136,11 @@ class DeviceImportController(
 
                 withContext(io) {
                     for (row in chunk) {
+                        // Nothing else in this loop suspends, so without this
+                        // check cancellation is only noticed when the chunk
+                        // ends and cancel() waits out 32 more files.
+                        ensureActive()
+
                         if (row.size <= MAX_IMPORT_FILE_BYTES) {
                             // One unreadable row must not abort the whole run,
                             // the same per item tolerance as the iOS importer.
