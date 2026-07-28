@@ -160,12 +160,16 @@ class DeviceImportController(
         if (photosImported + videosImported > 0) onLibraryChanged()
     }
 
+    // A row whose content hash is already in the library keeps its existing
+    // thumbnail, regenerating it would re-encrypt and rewrite the same bytes.
     private fun importRow(row: DeviceMediaRow, albumId: String?): String {
         val tempFile = copyToCache(row)
         try {
-            val mediaId = lib.importMedia(tempFile.path, albumId, row.displayName, null, null)
-            ThumbnailGenerator.generate(tempFile)?.let { lib.setMediaThumbnail(mediaId, it) }
-            return mediaId
+            val result = lib.importMedia(tempFile.path, albumId, row.displayName, null, null)
+            if (!result.alreadyExisted) {
+                ThumbnailGenerator.generate(tempFile)?.let { lib.setMediaThumbnail(result.mediaId, it) }
+            }
+            return result.mediaId
         } finally {
             tempFile.delete()
         }

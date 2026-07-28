@@ -196,7 +196,7 @@ class LibraryRepository(
 
     // Blocking and proportional to file size. Drop the wrap once the Rust side is async.
     suspend fun importMedia(path: String, albumId: String?, originalFilename: String?): String {
-        val id = withContext(io) { lib.importMedia(path, albumId, originalFilename, null, null) }
+        val id = withContext(io) { lib.importMedia(path, albumId, originalFilename, null, null).mediaId }
         if (albumId != null) changes.emit(Change.Album(albumId))
         changes.emit(Change.AlbumList)
         changes.emit(Change.MediaList)

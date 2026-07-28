@@ -4,6 +4,16 @@ pub struct FfiCreateLibraryResult {
     pub master_key_hex: String,
 }
 
+// already_existed is true when a media with the same content hash was already
+// in the library, in which case media_id is the existing entry and nothing was
+// written. Callers use it to skip work they would otherwise redo, such as
+// regenerating a thumbnail.
+#[derive(uniffi::Record, Debug)]
+pub struct FfiMediaAddResult {
+    pub media_id: String,
+    pub already_existed: bool,
+}
+
 #[derive(uniffi::Record, Debug)]
 pub struct FfiMediaItem {
     pub media_id: String,

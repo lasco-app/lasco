@@ -1440,7 +1440,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_has_unpushed_changes() != 6244.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_import_media() != 39206.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_import_media() != 30935.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_initialize_remote() != 24286.toShort()) {
@@ -2076,7 +2076,7 @@ public interface FfiLibraryInterface {
     
     fun `hasUnpushedChanges`(`remoteId`: kotlin.String): kotlin.Boolean
     
-    fun `importMedia`(`path`: kotlin.String, `albumId`: kotlin.String?, `originalFilename`: kotlin.String?, `appleAaeMediaId`: kotlin.String?, `appleLivePhotoMediaId`: kotlin.String?): kotlin.String
+    fun `importMedia`(`path`: kotlin.String, `albumId`: kotlin.String?, `originalFilename`: kotlin.String?, `appleAaeMediaId`: kotlin.String?, `appleLivePhotoMediaId`: kotlin.String?): FfiMediaAddResult
     
     fun `initializeRemote`(`remoteId`: kotlin.String, `appSupportDir`: kotlin.String?)
     
@@ -2605,8 +2605,8 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
-    @Throws(LascoException::class)override fun `importMedia`(`path`: kotlin.String, `albumId`: kotlin.String?, `originalFilename`: kotlin.String?, `appleAaeMediaId`: kotlin.String?, `appleLivePhotoMediaId`: kotlin.String?): kotlin.String {
-            return FfiConverterString.lift(
+    @Throws(LascoException::class)override fun `importMedia`(`path`: kotlin.String, `albumId`: kotlin.String?, `originalFilename`: kotlin.String?, `appleAaeMediaId`: kotlin.String?, `appleLivePhotoMediaId`: kotlin.String?): FfiMediaAddResult {
+            return FfiConverterTypeFfiMediaAddResult.lift(
     callWithPointer {
     uniffiRustCallWithError(LascoException) { _status ->
     UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_import_media(
@@ -3364,6 +3364,38 @@ public object FfiConverterTypeFfiLocalStateStats: FfiConverterRustBuffer<FfiLoca
             FfiConverterULong.write(value.`mediaCachedBytes`, buf)
             FfiConverterUInt.write(value.`thumbCachedCount`, buf)
             FfiConverterULong.write(value.`thumbCachedBytes`, buf)
+    }
+}
+
+
+
+data class FfiMediaAddResult (
+    var `mediaId`: kotlin.String, 
+    var `alreadyExisted`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFfiMediaAddResult: FfiConverterRustBuffer<FfiMediaAddResult> {
+    override fun read(buf: ByteBuffer): FfiMediaAddResult {
+        return FfiMediaAddResult(
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FfiMediaAddResult) = (
+            FfiConverterString.allocationSize(value.`mediaId`) +
+            FfiConverterBoolean.allocationSize(value.`alreadyExisted`)
+    )
+
+    override fun write(value: FfiMediaAddResult, buf: ByteBuffer) {
+            FfiConverterString.write(value.`mediaId`, buf)
+            FfiConverterBoolean.write(value.`alreadyExisted`, buf)
     }
 }
 

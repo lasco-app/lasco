@@ -1,8 +1,10 @@
 use lasco_core::identifiers::{AlbumUuid, MediaUuid};
 use lasco_core::library_json::LibraryJson;
 
+use lasco_core::library::media::upload::MediaAddResult;
+
 use super::remotes::media_entry_to_ffi;
-use super::types::FfiLocalStateStats;
+use super::types::{FfiLocalStateStats, FfiMediaAddResult};
 use super::{FfiLibrary, FfiMediaItem};
 use crate::error::LascoError;
 
@@ -225,7 +227,7 @@ impl FfiLibrary {
         original_filename: Option<String>,
         apple_aae_media_id: Option<String>,
         apple_live_photo_media_id: Option<String>,
-    ) -> Result<String, LascoError> {
+    ) -> Result<FfiMediaAddResult, LascoError> {
         let album_uuid = album_id
             .map(|s| {
                 uuid::Uuid::parse_str(&s)
@@ -260,7 +262,16 @@ impl FfiLibrary {
                 apple_live_photo_media_uuid,
             ))
             .map_err(LascoError::from)?;
-        Ok(result.id().to_string())
+        Ok(match result {
+            MediaAddResult::Added(id) => FfiMediaAddResult {
+                media_id: id.to_string(),
+                already_existed: false,
+            },
+            MediaAddResult::AlreadyExists(id) => FfiMediaAddResult {
+                media_id: id.to_string(),
+                already_existed: true,
+            },
+        })
     }
 
     pub fn pending_media_count(&self) -> u32 {
