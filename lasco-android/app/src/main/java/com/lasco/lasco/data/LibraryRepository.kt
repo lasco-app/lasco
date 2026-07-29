@@ -2,7 +2,6 @@ package com.lasco.lasco.data
 
 import android.content.Context
 import com.lasco.lasco.LascoApp
-import com.lasco.lasco.media.DeviceImportController
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -47,9 +46,11 @@ class LibraryRepository(
     private val username: String,
     private val appDir: String,
     context: Context,
-    prefs: Prefs,
+    private val prefs: Prefs,
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
+    private val appContext = context.applicationContext
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private val changes = MutableSharedFlow<Change>(extraBufferCapacity = 64)
@@ -63,23 +64,26 @@ class LibraryRepository(
 
     val sync = SyncController(lib = lib, prefs = prefs, onLibraryChanged = { changes.emit(Change.All) }, scope = scope)
 
-    val deviceImport = DeviceImportController(
-        lib = lib,
-        context = context.applicationContext,
-        prefs = prefs,
-        sync = sync,
-        onLibraryChanged = { changes.emit(Change.All) },
-        scope = scope,
-    )
-
     init {
         scope.launch { localMutations.collect { sync.schedulePush() } }
+    }
+
+    // Exists only so the onboarding wizard can build its own
+    // InitialImportController (which needs the raw FfiLibrary, not the
+    // wrapped suspend methods below, to avoid a changes/localMutations emit
+    // per imported row). Not for any other caller, and not to be cached
+    // beyond the session's lifetime.
+    internal fun ffiLibraryForOnboardingImport(): FfiLibrary = lib
+
+    // For code that mutates the library through a path other than this
+    // repository's own wrapped methods above, e.g. the onboarding import.
+    suspend fun notifyChanged() {
+        changes.emit(Change.All)
     }
 
     // Must be called on session end (sign out, delete), or the sync loop and
     // its localMutations collector outlive the repository.
     suspend fun close() {
-        deviceImport.cancel()
         sync.close()
         scope.cancel()
     }

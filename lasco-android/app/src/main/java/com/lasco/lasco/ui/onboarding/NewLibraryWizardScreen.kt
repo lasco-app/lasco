@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
@@ -48,8 +49,6 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lasco.lasco.data.Prefs
-import com.lasco.lasco.media.DeviceImportController
-import com.lasco.lasco.media.ImportState
 import com.lasco.lasco.ui.components.ErrorBanner
 import com.lasco.lasco.ui.components.LascoField
 import com.lasco.lasco.ui.components.LascoPrimaryButton
@@ -59,7 +58,6 @@ import com.lasco.lasco.ui.manage.AddS3RemoteDialog
 import com.lasco.lasco.ui.manage.ManageViewModel
 import com.lasco.lasco.ui.theme.LascoTheme
 import com.lasco.lasco.ui.theme.lascoPanel
-import kotlinx.coroutines.flow.MutableStateFlow
 
 // One more than the iOS wizard, which has no separate photo location
 // permission to ask for.
@@ -109,8 +107,25 @@ fun NewLibraryWizardScreen(
     val colors = LascoTheme.colors
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
+    // Guarded on libraryId rather than collected unconditionally, since
+    // deviceImportState builds the import controller on first read, and
+    // that controller requires app.librarySession, not set until create()
+    // has run (step 0). libraryId becomes non null the moment it is, both
+    // on a fresh create and on an onboarding resume.
+    val importState by if (state.libraryId != null) {
+        viewModel.deviceImportState.collectAsStateWithLifecycle()
+    } else {
+        remember { mutableStateOf<ImportState>(ImportState.Idle) }
+    }
+    val importInProgress = importState is ImportState.Importing
+
     var step by remember { mutableStateOf(initialStep) }
     var slideForward by remember { mutableStateOf(true) }
+
+    // Swallowed rather than left to the default Activity-finishing behavior,
+    // since the wizard has no NavHost of its own to intercept it and the
+    // import must never be left running unobserved in the background.
+    BackHandler(enabled = importInProgress) {}
 
     LaunchedEffect(step) {
         if (step > 0) viewModel.recordStep(step)
@@ -152,8 +167,8 @@ fun NewLibraryWizardScreen(
             Text(
                 text = "← Back",
                 style = LascoTheme.type.body(14),
-                color = colors.inkMuted,
-                modifier = Modifier.clickable(interactionSource = null, indication = null) { back() },
+                color = if (importInProgress) colors.inkMuted.copy(alpha = 0.35f) else colors.inkMuted,
+                modifier = Modifier.clickable(interactionSource = null, indication = null, enabled = !importInProgress) { back() },
             )
             Spacer(modifier = Modifier.weight(1f))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -217,7 +232,7 @@ fun NewLibraryWizardScreen(
                             goTo(7)
                         },
                     )
-                    6 -> ImportStep(viewModel = viewModel, state = state, onDone = { goTo(7) })
+                    6 -> ImportStep(viewModel = viewModel, state = state, importState = importState, onDone = { goTo(7) })
                     else -> AutoImportStep(
                         onYes = {
                             viewModel.setAutoImportDeviceMedia(true)
@@ -631,11 +646,14 @@ private fun MediaLocationStep(autoSkip: Boolean, onDone: () -> Unit, onSkip: () 
 }
 
 @Composable
-private fun ImportStep(viewModel: NewLibraryWizardViewModel, state: NewLibraryWizardUiState, onDone: () -> Unit) {
+private fun ImportStep(
+    viewModel: NewLibraryWizardViewModel,
+    state: NewLibraryWizardUiState,
+    importState: ImportState,
+    onDone: () -> Unit,
+) {
     val colors = LascoTheme.colors
     val context = LocalContext.current
-    val importState by (viewModel.deviceImportState ?: remember { MutableStateFlow(ImportState.Idle) })
-        .collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) {
         if (state.deviceScan == null) viewModel.scanDeviceMedia()
@@ -700,7 +718,7 @@ private fun ImportStep(viewModel: NewLibraryWizardViewModel, state: NewLibraryWi
                 // Import Now button is disabled alongside this.
                 state.deviceScan?.let { scan ->
                     if (scan.tooLargeCount > 0) {
-                        ErrorBanner(message = DeviceImportController.tooLargeMessage(scan.tooLargeCount))
+                        ErrorBanner(message = InitialImportController.tooLargeMessage(scan.tooLargeCount))
                     }
                 }
 

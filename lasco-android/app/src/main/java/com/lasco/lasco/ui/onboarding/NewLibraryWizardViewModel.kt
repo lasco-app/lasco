@@ -11,7 +11,6 @@ import com.lasco.lasco.data.LascoRepository
 import com.lasco.lasco.data.LibraryRepository
 import com.lasco.lasco.data.Prefs
 import com.lasco.lasco.media.DeviceScan
-import com.lasco.lasco.media.ImportState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -69,23 +68,38 @@ class NewLibraryWizardViewModel(
         _uiState.value = _uiState.value.copy(masterKeyHex = null)
     }
 
+    // Built lazily rather than at construction, since app.librarySession is
+    // only set once create() has opened the library, the wizard steps before
+    // the import one. Owned here and run on viewModelScope, safe because the
+    // wizard screen blocks back navigation for the entire time an import is
+    // in progress, so this ViewModel cannot be cleared mid run.
+    private val initialImportController: InitialImportController by lazy {
+        val session = app.librarySession ?: error("No library session")
+        InitialImportController(
+            lib = session.ffiLibraryForOnboardingImport(),
+            context = app,
+            prefs = prefs,
+            sync = session.sync,
+            onLibraryChanged = { session.notifyChanged() },
+            scope = viewModelScope,
+        )
+    }
+
     // Exposed for the screen to collect directly, since it updates far more
     // often (once per imported item) than a plain uiState copy would want to.
-    val deviceImportState: StateFlow<ImportState>?
-        get() = app.librarySession?.deviceImport?.importState
+    val deviceImportState: StateFlow<ImportState>
+        get() = initialImportController.importState
 
     fun scanDeviceMedia() {
-        val deviceImport = app.librarySession?.deviceImport ?: return
         _uiState.value = _uiState.value.copy(scanning = true)
         viewModelScope.launch {
-            val scan = deviceImport.scan()
+            val scan = initialImportController.scan()
             _uiState.value = _uiState.value.copy(scanning = false, deviceScan = scan)
         }
     }
 
     fun startDeviceImport() {
-        val deviceImport = app.librarySession?.deviceImport ?: return
-        viewModelScope.launch { deviceImport.runInitialImport() }
+        viewModelScope.launch { initialImportController.runInitialImport() }
     }
 
     // Both skip paths still lead to the auto-import question, so the user can

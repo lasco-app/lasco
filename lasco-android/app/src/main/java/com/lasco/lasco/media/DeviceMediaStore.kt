@@ -33,8 +33,8 @@ data class DeviceScan(
 )
 
 /**
- * Pure MediaStore access, no Lasco types, kept separate from
- * DeviceImportController so it is testable on its own.
+ * Pure MediaStore access, no Lasco types, kept separate from the importers
+ * so it is testable on its own.
  */
 class DeviceMediaStore(private val context: Context) {
     // null scans everything (initial import). A value restricts to rows added
@@ -142,13 +142,15 @@ class DeviceMediaStore(private val context: Context) {
         )
     }
 
-    fun contentUriFor(row: DeviceMediaRow) =
-        android.content.ContentUris.withAppendedId(
-            if (row.isVideo) MediaStore.Video.Media.EXTERNAL_CONTENT_URI else MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-            row.id,
-        )
-
     companion object {
+        // On the companion because it reads nothing but the row itself, so
+        // DeviceMediaImporter can resolve a uri without holding a store.
+        fun contentUriFor(row: DeviceMediaRow) =
+            android.content.ContentUris.withAppendedId(
+                if (row.isVideo) MediaStore.Video.Media.EXTERNAL_CONTENT_URI else MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                row.id,
+            )
+
         // Largest file the import accepts. A scan that finds anything above
         // this refuses the whole run.
         const val MAX_IMPORT_FILE_BYTES = 2L * 1024 * 1024 * 1024
