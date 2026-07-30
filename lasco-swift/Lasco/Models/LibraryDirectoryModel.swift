@@ -39,29 +39,26 @@ final class LibraryDirectoryModel {
     var openUsername: String? { session?.username }
 
     func start() async {
-        refreshLibraries()
+        await refreshLibraries()
         showOnboarding = libraries.isEmpty
     }
 
-    func refreshLibraries() {
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                let entries = try await directory.loadLibraries()
-                libraries = entries
-                librariesError = nil
-                showOnboarding = entries.isEmpty
-            } catch {
-                libraries = []
-                librariesError = error.localizedDescription
-            }
+    func refreshLibraries() async {
+        do {
+            let entries = try await directory.loadLibraries()
+            libraries = entries
+            librariesError = nil
+            showOnboarding = entries.isEmpty
+        } catch {
+            libraries = []
+            librariesError = error.localizedDescription
         }
     }
 
     func openCached(entry: FfiLibraryEntry) async -> Bool {
         do {
             guard let library = try await directory.openCached(entry: entry) else { return false }
-            install(library: library, nickname: entry.nickname, username: await directory.storedUsername(libraryID: entry.id))
+            await install(library: library, nickname: entry.nickname, username: await directory.storedUsername(libraryID: entry.id))
             return true
         } catch {
             onboarding.setError(error)
@@ -72,7 +69,7 @@ final class LibraryDirectoryModel {
     func open(nickname: String?, username: String, password: String) async -> Bool {
         do {
             let library = try await directory.open(nickname: nickname, username: username, password: password)
-            install(library: library, nickname: nickname ?? "", username: username)
+            await install(library: library, nickname: nickname ?? "", username: username)
             return true
         } catch {
             onboarding.setError(error)
@@ -82,7 +79,7 @@ final class LibraryDirectoryModel {
 
     func create(name: String, username: String, password: String) async throws -> CreateLibraryResult {
         let created = try await directory.create(name: name, username: username, password: password)
-        install(library: created.library, nickname: name, username: username)
+        await install(library: created.library, nickname: name, username: username)
         let result = CreateLibraryResult(libraryID: created.result.libraryId, masterKey: created.result.masterKeyHex)
         setOnboardingStep(1, libraryID: result.libraryID)
         return result
@@ -117,7 +114,7 @@ final class LibraryDirectoryModel {
             secretKey: secretKey
         )
         let effectiveUsername = newUsername?.isEmpty == false ? newUsername! : username
-        install(library: library, nickname: nickname, username: effectiveUsername)
+        await install(library: library, nickname: nickname, username: effectiveUsername)
     }
 
     func signOut() async {
@@ -133,11 +130,11 @@ final class LibraryDirectoryModel {
         await closeActive()
         do {
             try await directory.delete(libraryID: libraryID)
-            refreshLibraries()
+            await refreshLibraries()
             return true
         } catch {
             onboarding.setError(error)
-            refreshLibraries()
+            await refreshLibraries()
             return false
         }
     }
@@ -171,7 +168,7 @@ final class LibraryDirectoryModel {
         try await directory.testS3Remote(endpoint: endpoint, bucket: bucket, region: region, pathPrefix: pathPrefix, accessKey: accessKey, secretKey: secretKey)
     }
 
-    private func install(library: FfiLibrary, nickname: String, username: String?) {
+    private func install(library: FfiLibrary, nickname: String, username: String?) async {
         let repository = LibraryRepository(library: library)
         let state = LibrarySessionState(libraryID: library.libraryId(), nickname: nickname, username: username)
         let sync = SyncCoordinator(repository: repository, session: state)
@@ -187,6 +184,6 @@ final class LibraryDirectoryModel {
             guard let state else { return }
             await state.listen(using: repository)
         }
-        refreshLibraries()
+        await refreshLibraries()
     }
 }

@@ -1,13 +1,22 @@
 import Foundation
 
 actor LibraryDirectoryRepository {
+    /// The FFI app-data root. This must match `lasco_core::default_app_dir()`
+    /// on Apple platforms (`Application Support/lasco`), not the raw
+    /// Application Support directory.
     let appSupportDirectory: String?
 
     init(appSupportDirectory: String? = nil) {
-        self.appSupportDirectory = appSupportDirectory ?? FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first?.path
+        if let appSupportDirectory {
+            self.appSupportDirectory = appSupportDirectory
+        } else {
+            self.appSupportDirectory = FileManager.default.urls(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask
+            ).first?
+                .appendingPathComponent("lasco", isDirectory: true)
+                .path
+        }
     }
 
     func loadLibraries() throws -> [FfiLibraryEntry] {
