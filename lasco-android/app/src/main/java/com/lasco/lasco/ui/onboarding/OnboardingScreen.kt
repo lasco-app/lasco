@@ -2,6 +2,7 @@ package com.lasco.lasco.ui.onboarding
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
@@ -52,7 +53,24 @@ data class OnboardingResume(
     val checkpoint: com.lasco.lasco.data.WizardCheckpoint,
 )
 
-private enum class Flow { Main, Own, ExistingChoice }
+private sealed interface OnboardingStep {
+    data class Intro(val page: IntroPage) : OnboardingStep
+    data object NewLibrary : OnboardingStep
+    data object ExistingLibraryChoice : OnboardingStep
+    data object AddExistingLibrary : OnboardingStep
+}
+
+private enum class IntroPage {
+    SyncInfo,
+    Encrypted,
+    Safety,
+    LibraryChoice,
+}
+
+private data class OnboardingUiState(
+    val currentStep: OnboardingStep,
+    val slideForward: Boolean,
+)
 
 /**
  * Top level onboarding flow, ported from the Swift OnboardingView. Shown only
@@ -72,10 +90,15 @@ fun OnboardingScreen(
 ) {
     val colors = LascoTheme.colors
 
-    var flow by remember { mutableStateOf(if (resume != null) Flow.Own else Flow.Main) }
+    var state by remember {
+        mutableStateOf(
+            OnboardingUiState(
+                currentStep = if (resume != null) OnboardingStep.NewLibrary else OnboardingStep.Intro(IntroPage.SyncInfo),
+                slideForward = true,
+            ),
+        )
+    }
     var wizardSessionId by remember { mutableStateOf(resume?.sessionId ?: UUID.randomUUID().toString()) }
-    var page by remember { mutableStateOf(0) }
-    var slideForward by remember { mutableStateOf(true) }
 
     var encryptedMascot by remember { mutableStateOf<Bitmap?>(null) }
     var betaMascot by remember { mutableStateOf<Bitmap?>(null) }
@@ -85,30 +108,84 @@ fun OnboardingScreen(
         betaMascot = fetchNetworkBitmap("https://public.getlasco.app/mascot_beta_0_5x.png")
     }
 
+    fun transitionTo(step: OnboardingStep, slideForward: Boolean) {
+        state = state.copy(slideForward = slideForward)
+        state = state.copy(currentStep = step)
+    }
+
+    fun advanceIntro() {
+        val currentPage = (state.currentStep as? OnboardingStep.Intro)?.page ?: return
+        val nextPage = when (currentPage) {
+            IntroPage.SyncInfo -> IntroPage.Encrypted
+            IntroPage.Encrypted -> IntroPage.Safety
+            IntroPage.Safety -> IntroPage.LibraryChoice
+            IntroPage.LibraryChoice -> return
+        }
+        transitionTo(OnboardingStep.Intro(nextPage), slideForward = true)
+    }
+
+    fun goBack() {
+        when (val step = state.currentStep) {
+            is OnboardingStep.Intro -> when (step.page) {
+                IntroPage.SyncInfo -> Unit
+                IntroPage.Encrypted -> transitionTo(OnboardingStep.Intro(IntroPage.SyncInfo), slideForward = false)
+                IntroPage.Safety -> transitionTo(OnboardingStep.Intro(IntroPage.Encrypted), slideForward = false)
+                IntroPage.LibraryChoice -> transitionTo(OnboardingStep.Intro(IntroPage.Safety), slideForward = false)
+            }
+            OnboardingStep.NewLibrary -> transitionTo(
+                OnboardingStep.Intro(IntroPage.LibraryChoice),
+                slideForward = false,
+            )
+            OnboardingStep.ExistingLibraryChoice -> transitionTo(
+                OnboardingStep.Intro(IntroPage.LibraryChoice),
+                slideForward = false,
+            )
+            OnboardingStep.AddExistingLibrary -> transitionTo(
+                OnboardingStep.ExistingLibraryChoice,
+                slideForward = false,
+            )
+        }
+    }
+
+    fun skip() = onComplete()
+
+    fun startFresh() {
+        wizardSessionId = UUID.randomUUID().toString()
+        transitionTo(OnboardingStep.NewLibrary, slideForward = true)
+    }
+
+    fun chooseExisting() = transitionTo(OnboardingStep.ExistingLibraryChoice, slideForward = true)
+
+    fun openExistingLibrary() = transitionTo(OnboardingStep.AddExistingLibrary, slideForward = true)
+
+    BackHandler(enabled = state.currentStep !is OnboardingStep.NewLibrary) {
+        if (state.currentStep !is OnboardingStep.Intro) goBack()
+    }
+
     Box(modifier = modifier.fillMaxSize().background(colors.bg)) {
-        when (flow) {
-            Flow.Main -> MainCarousel(
-                page = page,
-                slideForward = slideForward,
+        when (val step = state.currentStep) {
+            is OnboardingStep.Intro -> MainCarousel(
+                page = step.page,
+                slideForward = state.slideForward,
                 encryptedMascot = encryptedMascot,
                 betaMascot = betaMascot,
-                onSkip = onComplete,
-                onNext = { slideForward = true; page = minOf(page + 1, 3) },
-                onStartFresh = {
-                    slideForward = true
-                    wizardSessionId = UUID.randomUUID().toString()
-                    flow = Flow.Own
-                },
-                onExisting = { slideForward = true; flow = Flow.ExistingChoice },
+                onSkip = ::skip,
+                onNext = ::advanceIntro,
+                onStartFresh = ::startFresh,
+                onExisting = ::chooseExisting,
             )
-            Flow.Own -> NewLibraryWizardScreen(
+            OnboardingStep.NewLibrary -> NewLibraryWizardScreen(
                 sessionId = wizardSessionId,
                 resume = resume?.takeIf { it.sessionId == wizardSessionId },
-                onBack = { slideForward = false; flow = Flow.Main },
+                onBack = ::goBack,
                 onComplete = onLibraryOpened,
             )
-            Flow.ExistingChoice -> ExistingChoiceBody(
-                onBack = { slideForward = false; flow = Flow.Main },
+            OnboardingStep.ExistingLibraryChoice -> ExistingChoiceBody(
+                onBack = ::goBack,
+                onOpenExistingLibrary = ::openExistingLibrary,
+            )
+            OnboardingStep.AddExistingLibrary -> AddExistingLibraryScreen(
+                onBack = ::goBack,
                 onLibraryOpened = onLibraryOpened,
             )
         }
@@ -185,7 +262,7 @@ private fun onboardingBottomBar(content: @Composable () -> Unit) {
 
 @Composable
 private fun MainCarousel(
-    page: Int,
+    page: IntroPage,
     slideForward: Boolean,
     encryptedMascot: Bitmap?,
     betaMascot: Bitmap?,
@@ -195,6 +272,7 @@ private fun MainCarousel(
     onExisting: () -> Unit,
 ) {
     val colors = LascoTheme.colors
+    val progressIndex = IntroPage.entries.indexOf(page)
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier
@@ -207,9 +285,9 @@ private fun MainCarousel(
                 for (i in 0 until 4) {
                     Box(
                         modifier = Modifier
-                            .width(if (i == page) 20.dp else 8.dp)
+                            .width(if (i == progressIndex) 20.dp else 8.dp)
                             .height(3.dp)
-                            .background(if (i == page) colors.ink else colors.inkMuted.copy(alpha = 0.35f)),
+                        .background(if (i == progressIndex) colors.ink else colors.inkMuted.copy(alpha = 0.35f)),
                     )
                 }
             }
@@ -237,23 +315,23 @@ private fun MainCarousel(
                 label = "onboarding-page",
             ) { p ->
                 when (p) {
-                    0 -> SyncInfoPage()
-                    1 -> MascotPage(
+                    IntroPage.SyncInfo -> SyncInfoPage()
+                    IntroPage.Encrypted -> MascotPage(
                         title = "Fully encrypted.",
                         body = "Your photos are encrypted on your device before they ever leave it.",
                         mascot = encryptedMascot,
                     )
-                    2 -> MascotPage(
+                    IntroPage.Safety -> MascotPage(
                         title = "Safety first !",
                         body = "Always make sure your data is correctly replicated at several places, within or without Lasco, before deleting things.",
                         mascot = betaMascot,
                     )
-                    else -> ExistingLibraryPage(onStartFresh = onStartFresh, onExisting = onExisting)
+                    IntroPage.LibraryChoice -> ExistingLibraryPage(onStartFresh = onStartFresh, onExisting = onExisting)
                 }
             }
         }
 
-        if (page < 3) {
+        if (page != IntroPage.LibraryChoice) {
             onboardingBottomBar {
                 LascoPrimaryButton(text = "Next", onClick = onNext)
             }
@@ -367,17 +445,7 @@ private fun ExistingLibraryPage(onStartFresh: () -> Unit, onExisting: () -> Unit
 }
 
 @Composable
-private fun ExistingChoiceBody(onBack: () -> Unit, onLibraryOpened: () -> Unit) {
-    var showAddExisting by remember { mutableStateOf(false) }
-
-    if (showAddExisting) {
-        AddExistingLibraryScreen(
-            onBack = { showAddExisting = false },
-            onLibraryOpened = onLibraryOpened,
-        )
-        return
-    }
-
+private fun ExistingChoiceBody(onBack: () -> Unit, onOpenExistingLibrary: () -> Unit) {
     val colors = LascoTheme.colors
     Column(modifier = Modifier.fillMaxSize()) {
         onboardingTopBar(dots = 1, current = 0, onBack = onBack)
@@ -396,7 +464,7 @@ private fun ExistingChoiceBody(onBack: () -> Unit, onLibraryOpened: () -> Unit) 
             )
         }
         onboardingBottomBar {
-            LascoPrimaryButton(text = "S3-compatible storage", onClick = { showAddExisting = true })
+            LascoPrimaryButton(text = "S3-compatible storage", onClick = onOpenExistingLibrary)
         }
     }
 }
