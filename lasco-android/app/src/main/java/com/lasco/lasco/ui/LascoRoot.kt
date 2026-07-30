@@ -25,6 +25,7 @@ import com.lasco.lasco.ui.onboarding.NewLibraryWizardScreen
 import com.lasco.lasco.ui.onboarding.OnboardingResume
 import com.lasco.lasco.ui.onboarding.OnboardingScreen
 import com.lasco.lasco.ui.theme.LascoTheme
+import java.util.UUID
 
 /**
  * The screens reachable around the library open flow. Kept as a small sealed
@@ -34,7 +35,7 @@ import com.lasco.lasco.ui.theme.LascoTheme
  */
 private sealed interface Screen {
     data object LibraryList : Screen
-    data object NewLibrary : Screen
+    data class NewLibrary(val sessionId: String) : Screen
     data object AddExisting : Screen
     data class OpeningLibrary(val entryId: String) : Screen
     data object Opened : Screen
@@ -47,7 +48,7 @@ private sealed interface Screen {
  * prompt, and the post open home surface.
  *
  * On startup, once the library list finishes loading, checks for a library
- * with an incomplete onboarding wizard (Prefs.onboardingStep) and tries to
+ * with an incomplete onboarding wizard (Prefs.onboardingCheckpoint) and tries to
  * reopen its cached session so the wizard can resume where it left off,
  * mirroring LibraryCore.swift's init() resume logic. Nothing is shown while
  * this resolves, to avoid flashing the library list before redirecting into
@@ -68,7 +69,7 @@ fun LascoRoot(modifier: Modifier = Modifier, onLibraryOpenChanged: (Boolean) -> 
     LaunchedEffect(libraryListState.loading, libraryListState.libraries) {
         if (screen != null || libraryListState.loading) return@LaunchedEffect
 
-        val incomplete = libraryListState.libraries.firstOrNull { prefs.onboardingStep(it.id) != null }
+        val incomplete = libraryListState.libraries.firstOrNull { prefs.onboardingCheckpoint(it.id) != null }
         if (incomplete != null) {
             val username = incomplete.username
             val opened = if (username != null) repository.openCached(nickname = incomplete.nickname, username = username) else null
@@ -81,11 +82,15 @@ fun LascoRoot(modifier: Modifier = Modifier, onLibraryOpenChanged: (Boolean) -> 
                     context = app,
                     prefs = prefs,
                 )
-                var step = prefs.onboardingStep(incomplete.id) ?: 0
-                // The master key can't be recovered after a process restart,
-                // so resuming into the master key step is skipped.
-                if (step == 1) step = 2
-                screen = Screen.Onboarding(OnboardingResume(incomplete.id, incomplete.nickname, step))
+                val checkpoint = prefs.onboardingCheckpoint(incomplete.id)
+                if (checkpoint == null) {
+                    prefs.clearOnboardingIncomplete(incomplete.id)
+                    screen = Screen.LibraryList
+                } else {
+                    screen = Screen.Onboarding(
+                        OnboardingResume(UUID.randomUUID().toString(), incomplete.id, incomplete.nickname, checkpoint),
+                    )
+                }
                 return@LaunchedEffect
             } else {
                 prefs.clearOnboardingIncomplete(incomplete.id)
@@ -105,16 +110,15 @@ fun LascoRoot(modifier: Modifier = Modifier, onLibraryOpenChanged: (Boolean) -> 
 
     when (current) {
         Screen.LibraryList -> LibraryListScreen(
-            onNewLibrary = { screen = Screen.NewLibrary },
+            onNewLibrary = { screen = Screen.NewLibrary(UUID.randomUUID().toString()) },
             onAddExisting = { screen = Screen.AddExisting },
             onOpenLibrary = { entryId -> screen = Screen.OpeningLibrary(entryId) },
             modifier = modifier,
             viewModel = libraryListViewModel,
         )
-        Screen.NewLibrary -> NewLibraryWizardScreen(
-            initialStep = 0,
-            resumeLibraryId = null,
-            resumeNickname = null,
+        is Screen.NewLibrary -> NewLibraryWizardScreen(
+            sessionId = current.sessionId,
+            resume = null,
             onBack = { screen = Screen.LibraryList },
             onComplete = { screen = Screen.Opened },
             modifier = modifier,

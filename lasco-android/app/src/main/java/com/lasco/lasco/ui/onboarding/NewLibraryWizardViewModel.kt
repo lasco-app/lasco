@@ -10,13 +10,30 @@ import com.lasco.lasco.LascoApp
 import com.lasco.lasco.data.LascoRepository
 import com.lasco.lasco.data.LibraryRepository
 import com.lasco.lasco.data.Prefs
+import com.lasco.lasco.data.WizardCheckpoint
 import com.lasco.lasco.media.DeviceScan
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-data class NewLibraryWizardUiState(
+sealed interface WizardStep {
+    data object CreateLibrary : WizardStep
+    data object SaveRecoveryKey : WizardStep
+    data object AddRemote : WizardStep
+    data object ChooseDeviceImport : WizardStep
+    data object GrantMediaAccess : WizardStep
+    data object GrantLocationAccess : WizardStep
+    data object ImportDeviceMedia : WizardStep
+    data object ChooseAutoImport : WizardStep
+}
+
+enum class BackResult { ExitWizard, Consumed, NoOp }
+
+data class WizardUiState(
+    val step: WizardStep = WizardStep.CreateLibrary,
+    val slideForward: Boolean = true,
     val loading: Boolean = false,
     val error: String? = null,
     val libraryId: String? = null,
@@ -24,119 +41,220 @@ data class NewLibraryWizardUiState(
     val masterKeyHex: String? = null,
     val deviceScan: DeviceScan? = null,
     val scanning: Boolean = false,
+    val importState: ImportState = ImportState.Idle,
+    val isImporting: Boolean = false,
 )
 
-/**
- * Backs NewLibraryWizardScreen, ported from the createStep/masterKeyStep of
- * the Swift NewLibraryWizard. When resuming an interrupted wizard, libraryId
- * and nickname are pre-populated from the caller instead of being produced
- * by create(), since the master key cannot be recovered after a process
- * restart, that step is always skipped on resume.
- */
+fun WizardStep.progressIndex() = when (this) {
+    WizardStep.CreateLibrary -> 0
+    WizardStep.SaveRecoveryKey -> 1
+    WizardStep.AddRemote -> 2
+    WizardStep.ChooseDeviceImport -> 3
+    WizardStep.GrantMediaAccess -> 4
+    WizardStep.GrantLocationAccess -> 5
+    WizardStep.ImportDeviceMedia -> 6
+    WizardStep.ChooseAutoImport -> 7
+}
+
 class NewLibraryWizardViewModel(
     private val app: LascoApp,
     private val repository: LascoRepository,
     private val prefs: Prefs,
-    resumeLibraryId: String?,
-    resumeNickname: String?,
 ) : ViewModel() {
-    private val _uiState = MutableStateFlow(
-        NewLibraryWizardUiState(libraryId = resumeLibraryId, nickname = resumeNickname),
-    )
-    val uiState: StateFlow<NewLibraryWizardUiState> = _uiState.asStateFlow()
+    private val _uiState = MutableStateFlow(WizardUiState())
+    val uiState: StateFlow<WizardUiState> = _uiState.asStateFlow()
 
-    fun create(name: String, username: String, password: String) {
+    private var sessionId: String? = null
+    private var importStateJob: Job? = null
+    private var initialImportController: InitialImportController? = null
+
+    fun startFresh(sessionId: String) {
+        if (this.sessionId == sessionId) return
+        cancel()
+        this.sessionId = sessionId
+        app.librarySession = null
+        _uiState.value = WizardUiState()
+    }
+
+    fun resume(sessionId: String, libraryId: String, nickname: String, checkpoint: WizardCheckpoint) {
+        if (this.sessionId == sessionId) return
+        reset(clearAppSession = false)
+        this.sessionId = sessionId
+        val step = checkpoint.toStep()
+        _uiState.value = WizardUiState(step = step, libraryId = libraryId, nickname = nickname)
+        observeImportState()
+    }
+
+    fun createLibrary(name: String, username: String, password: String) {
+        if (_uiState.value.step != WizardStep.CreateLibrary || _uiState.value.loading) return
         _uiState.value = _uiState.value.copy(loading = true, error = null)
         viewModelScope.launch {
             try {
                 val result = repository.createLibrary(nickname = name, username = username, password = password)
                 val lib = repository.openLibrary(nickname = name, username = username, password = password)
-                app.librarySession =
-                    LibraryRepository(lib, nickname = name, username = username, appDir = repository.appDir, context = app, prefs = prefs)
-                _uiState.value = NewLibraryWizardUiState(
+                app.librarySession = LibraryRepository(
+                    lib,
+                    nickname = name,
+                    username = username,
+                    appDir = repository.appDir,
+                    context = app,
+                    prefs = prefs,
+                )
+                _uiState.value = WizardUiState(
+                    step = WizardStep.SaveRecoveryKey,
                     libraryId = result.libraryId,
                     nickname = name,
                     masterKeyHex = result.masterKeyHex,
                 )
+                observeImportState()
             } catch (e: Throwable) {
                 _uiState.value = _uiState.value.copy(loading = false, error = e.message ?: "Could not create library")
             }
         }
     }
 
-    fun clearMasterKey() {
+    fun confirmRecoveryKey() {
         _uiState.value = _uiState.value.copy(masterKeyHex = null)
+        moveTo(WizardStep.AddRemote)
+    }
+    fun remoteCompleted() = moveTo(WizardStep.ChooseDeviceImport)
+    fun skipRemote() = moveTo(WizardStep.ChooseDeviceImport)
+    fun chooseDeviceImport() = moveTo(WizardStep.GrantMediaAccess)
+    fun mediaAccessGranted() = moveTo(WizardStep.GrantLocationAccess)
+    fun locationAccessGranted() = moveTo(WizardStep.ImportDeviceMedia)
+
+    fun skipDeviceImport() {
+        _uiState.value.libraryId?.let(prefs::baselineImportWatermark)
+        moveTo(WizardStep.ChooseAutoImport)
     }
 
-    // Built lazily rather than at construction, since app.librarySession is
-    // only set once create() has opened the library, the wizard steps before
-    // the import one. Owned here and run on viewModelScope, safe because the
-    // wizard screen blocks back navigation for the entire time an import is
-    // in progress, so this ViewModel cannot be cleared mid run.
-    private val initialImportController: InitialImportController by lazy {
-        val session = app.librarySession ?: error("No library session")
-        InitialImportController(
-            lib = session.ffiLibraryForOnboardingImport(),
-            context = app,
-            prefs = prefs,
-            sync = session.sync,
-            onLibraryChanged = { session.notifyChanged() },
-            scope = viewModelScope,
-        )
-    }
+    fun importCompleted() = moveTo(WizardStep.ChooseAutoImport)
 
-    // Exposed for the screen to collect directly, since it updates far more
-    // often (once per imported item) than a plain uiState copy would want to.
-    val deviceImportState: StateFlow<ImportState>
-        get() = initialImportController.importState
+    fun setAutoImport(enabled: Boolean, onSuccess: () -> Unit) {
+        viewModelScope.launch {
+            try {
+                app.librarySession?.setAutoImportDeviceMedia(enabled)
+                _uiState.value.libraryId?.let(prefs::clearOnboardingIncomplete)
+                complete()
+                onSuccess()
+            } catch (e: Throwable) {
+                _uiState.value = _uiState.value.copy(error = e.message ?: "Could not save auto-import setting")
+            }
+        }
+    }
 
     fun scanDeviceMedia() {
-        _uiState.value = _uiState.value.copy(scanning = true)
+        val controller = controllerOrNull() ?: return
+        _uiState.value = _uiState.value.copy(scanning = true, error = null)
         viewModelScope.launch {
-            val scan = initialImportController.scan()
-            _uiState.value = _uiState.value.copy(scanning = false, deviceScan = scan)
+            try {
+                val scan = controller.scan()
+                _uiState.value = _uiState.value.copy(scanning = false, deviceScan = scan)
+            } catch (e: Throwable) {
+                _uiState.value = _uiState.value.copy(scanning = false, error = e.message ?: "Could not scan device media")
+            }
         }
     }
 
     fun startDeviceImport() {
-        viewModelScope.launch { initialImportController.runInitialImport() }
+        controllerOrNull()?.let { controller -> viewModelScope.launch { controller.runInitialImport() } }
     }
 
-    // Both skip paths still lead to the auto-import question, so the user can
-    // turn it on having imported nothing. Stamping the watermark here is what
-    // keeps that from meaning the entire camera folder.
-    fun skipDeviceImport() {
-        val libraryId = _uiState.value.libraryId ?: return
-        prefs.baselineImportWatermark(libraryId)
+    fun back(): BackResult {
+        val current = _uiState.value
+        if (current.step == WizardStep.CreateLibrary) return BackResult.ExitWizard
+        return BackResult.NoOp
     }
 
-    fun setAutoImportDeviceMedia(enabled: Boolean) {
-        viewModelScope.launch { app.librarySession?.setAutoImportDeviceMedia(enabled) }
+    fun cancel() {
+        reset(clearAppSession = true)
     }
 
-    fun recordStep(step: Int) {
-        val libraryId = _uiState.value.libraryId ?: return
-        prefs.setOnboardingStep(libraryId, step)
+    private fun reset(clearAppSession: Boolean) {
+        initialImportController?.cancel()
+        importStateJob?.cancel()
+        importStateJob = null
+        initialImportController = null
+        if (clearAppSession) app.librarySession = null
+        _uiState.value = WizardUiState()
     }
 
-    fun finish() {
-        val libraryId = _uiState.value.libraryId ?: return
-        prefs.clearOnboardingIncomplete(libraryId)
+    fun complete() {
+        _uiState.value.libraryId?.let(prefs::clearOnboardingIncomplete)
+        initialImportController?.cancel()
+        importStateJob?.cancel()
+        importStateJob = null
+        initialImportController = null
+        _uiState.value = WizardUiState()
+        sessionId = null
+    }
+
+    private fun moveTo(next: WizardStep) {
+        val current = _uiState.value
+        _uiState.value = current.copy(
+            step = next,
+            slideForward = next.progressIndex() > current.step.progressIndex(),
+            masterKeyHex = current.masterKeyHex.takeIf { next == WizardStep.SaveRecoveryKey },
+        )
+        val libraryId = current.libraryId ?: return
+        next.toCheckpoint()?.let { prefs.setOnboardingCheckpoint(libraryId, it) }
+            ?: prefs.clearOnboardingIncomplete(libraryId)
+    }
+
+    private fun controllerOrNull(): InitialImportController? {
+        if (initialImportController == null) {
+            val session = app.librarySession ?: return null
+            initialImportController = InitialImportController(
+                lib = session.ffiLibraryForOnboardingImport(),
+                context = app,
+                prefs = prefs,
+                sync = session.sync,
+                onLibraryChanged = { session.notifyChanged() },
+                scope = viewModelScope,
+            )
+            observeImportState()
+        }
+        return initialImportController
+    }
+
+    private fun observeImportState() {
+        val controller = initialImportController ?: return
+        if (importStateJob?.isActive == true) return
+        importStateJob = viewModelScope.launch {
+            controller.importState.collect { importState ->
+                _uiState.value = _uiState.value.copy(
+                    importState = importState,
+                    isImporting = importState is ImportState.Importing,
+                )
+            }
+        }
+    }
+
+    private fun WizardCheckpoint.toStep() = when (this) {
+        WizardCheckpoint.AddRemote -> WizardStep.AddRemote
+        WizardCheckpoint.ChooseDeviceImport -> WizardStep.ChooseDeviceImport
+        WizardCheckpoint.GrantMediaAccess -> WizardStep.GrantMediaAccess
+        WizardCheckpoint.GrantLocationAccess -> WizardStep.GrantLocationAccess
+        WizardCheckpoint.ImportDeviceMedia -> WizardStep.ImportDeviceMedia
+        WizardCheckpoint.ChooseAutoImport -> WizardStep.ChooseAutoImport
+    }
+
+    private fun WizardStep.toCheckpoint() = when (this) {
+        WizardStep.AddRemote -> WizardCheckpoint.AddRemote
+        WizardStep.ChooseDeviceImport -> WizardCheckpoint.ChooseDeviceImport
+        WizardStep.GrantMediaAccess -> WizardCheckpoint.GrantMediaAccess
+        WizardStep.GrantLocationAccess -> WizardCheckpoint.GrantLocationAccess
+        WizardStep.ImportDeviceMedia -> WizardCheckpoint.ImportDeviceMedia
+        WizardStep.ChooseAutoImport -> WizardCheckpoint.ChooseAutoImport
+        WizardStep.CreateLibrary, WizardStep.SaveRecoveryKey -> null
     }
 
     companion object {
-        fun factory(resumeLibraryId: String?, resumeNickname: String?): ViewModelProvider.Factory =
-            viewModelFactory {
-                initializer {
-                    val app = this[APPLICATION_KEY] as LascoApp
-                    NewLibraryWizardViewModel(
-                        app,
-                        LascoRepository.from(app),
-                        Prefs.from(app),
-                        resumeLibraryId,
-                        resumeNickname,
-                    )
-                }
+        fun factory(): ViewModelProvider.Factory = viewModelFactory {
+            initializer {
+                val app = this[APPLICATION_KEY] as LascoApp
+                NewLibraryWizardViewModel(app, LascoRepository.from(app), Prefs.from(app))
             }
+        }
     }
 }

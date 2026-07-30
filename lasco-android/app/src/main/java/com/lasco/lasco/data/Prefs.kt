@@ -30,17 +30,17 @@ class Prefs(context: Context) {
         _expertMode.value = value
     }
 
-    fun onboardingStep(libraryId: String): Int? {
-        val value = sp.getInt("$KEY_ONBOARDING_STEP.$libraryId", -1)
-        return if (value < 0) null else value
+    fun onboardingCheckpoint(libraryId: String): WizardCheckpoint? {
+        return sp.getString("$KEY_ONBOARDING_CHECKPOINT.$libraryId", null)
+            ?.let { value -> WizardCheckpoint.entries.firstOrNull { it.name == value } }
     }
 
-    fun setOnboardingStep(libraryId: String, step: Int) {
-        sp.edit().putInt("$KEY_ONBOARDING_STEP.$libraryId", step).apply()
+    fun setOnboardingCheckpoint(libraryId: String, checkpoint: WizardCheckpoint) {
+        sp.edit().putString("$KEY_ONBOARDING_CHECKPOINT.$libraryId", checkpoint.name).apply()
     }
 
     fun clearOnboardingIncomplete(libraryId: String) {
-        sp.edit().remove("$KEY_ONBOARDING_STEP.$libraryId").apply()
+        sp.edit().remove("$KEY_ONBOARDING_CHECKPOINT.$libraryId").apply()
     }
 
     // DATE_ADDED of the newest device media row imported so far, the Android
@@ -111,7 +111,7 @@ class Prefs(context: Context) {
 
     companion object {
         private const val KEY_EXPERT_MODE = "expertMode"
-        private const val KEY_ONBOARDING_STEP = "onboardingStep"
+        private const val KEY_ONBOARDING_CHECKPOINT = "onboardingCheckpoint"
         private const val KEY_IMPORT_WATERMARK = "importWatermark"
         private const val KEY_LAST_PUSH = "lastPush"
         private const val KEY_LAST_FETCH = "lastFetch"
@@ -124,6 +124,15 @@ class Prefs(context: Context) {
                 instance ?: Prefs(context.applicationContext).also { instance = it }
             }
     }
+}
+
+enum class WizardCheckpoint {
+    AddRemote,
+    ChooseDeviceImport,
+    GrantMediaAccess,
+    GrantLocationAccess,
+    ImportDeviceMedia,
+    ChooseAutoImport,
 }
 
 data class SyncRecord(val epochMillis: Long, val success: Boolean)

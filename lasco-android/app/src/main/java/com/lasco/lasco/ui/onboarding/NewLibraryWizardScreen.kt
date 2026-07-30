@@ -59,10 +59,6 @@ import com.lasco.lasco.ui.manage.ManageViewModel
 import com.lasco.lasco.ui.theme.LascoTheme
 import com.lasco.lasco.ui.theme.lascoPanel
 
-// One more than the iOS wizard, which has no separate photo location
-// permission to ask for.
-private const val TOTAL_STEPS = 8
-
 private fun requiredMediaPermissions(): Array<String> =
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
@@ -94,68 +90,29 @@ private fun hasMediaLocationAccess(context: Context): Boolean =
  */
 @Composable
 fun NewLibraryWizardScreen(
-    initialStep: Int,
-    resumeLibraryId: String?,
-    resumeNickname: String?,
+    sessionId: String,
+    resume: OnboardingResume?,
     onBack: () -> Unit,
     onComplete: () -> Unit,
     modifier: Modifier = Modifier,
-    viewModel: NewLibraryWizardViewModel = viewModel(
-        factory = NewLibraryWizardViewModel.factory(resumeLibraryId, resumeNickname),
-    ),
+    viewModel: NewLibraryWizardViewModel = viewModel(factory = NewLibraryWizardViewModel.factory()),
 ) {
     val colors = LascoTheme.colors
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
-    // Guarded on libraryId rather than collected unconditionally, since
-    // deviceImportState builds the import controller on first read, and
-    // that controller requires app.librarySession, not set until create()
-    // has run (step 0). libraryId becomes non null the moment it is, both
-    // on a fresh create and on an onboarding resume.
-    val importState by if (state.libraryId != null) {
-        viewModel.deviceImportState.collectAsStateWithLifecycle()
-    } else {
-        remember { mutableStateOf<ImportState>(ImportState.Idle) }
-    }
-    val importInProgress = importState is ImportState.Importing
-
-    var step by remember { mutableStateOf(initialStep) }
-    var slideForward by remember { mutableStateOf(true) }
-
-    // Swallowed rather than left to the default Activity-finishing behavior,
-    // since the wizard has no NavHost of its own to intercept it and the
-    // import must never be left running unobserved in the background.
-    BackHandler(enabled = importInProgress) {}
-
-    LaunchedEffect(step) {
-        if (step > 0) viewModel.recordStep(step)
+    LaunchedEffect(sessionId) {
+        if (resume == null) viewModel.startFresh(sessionId)
+        else viewModel.resume(sessionId, resume.libraryId, resume.nickname, resume.checkpoint)
     }
 
-    LaunchedEffect(state.libraryId) {
-        if (step == 0 && state.libraryId != null) {
-            slideForward = true
-            step = 1
-        }
-    }
-
-    fun goTo(next: Int) {
-        slideForward = next > step
-        step = next
-    }
-
-    fun back() {
-        if (step == 0) {
+    fun handleBack() {
+        if (viewModel.back() == BackResult.ExitWizard) {
+            viewModel.cancel()
             onBack()
-        } else {
-            goTo(step - 1)
         }
     }
 
-    fun finish() {
-        viewModel.finish()
-        onComplete()
-    }
-
+    BackHandler(onBack = ::handleBack)
     Column(modifier = modifier.fillMaxSize().background(colors.bg)) {
         Row(
             modifier = Modifier
@@ -164,20 +121,22 @@ fun NewLibraryWizardScreen(
                 .padding(top = 32.dp, bottom = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = "← Back",
-                style = LascoTheme.type.body(14),
-                color = if (importInProgress) colors.inkMuted.copy(alpha = 0.35f) else colors.inkMuted,
-                modifier = Modifier.clickable(interactionSource = null, indication = null, enabled = !importInProgress) { back() },
-            )
+            if (state.step == WizardStep.CreateLibrary) {
+                Text(
+                    text = "← Back",
+                    style = LascoTheme.type.body(14),
+                    color = colors.inkMuted,
+                    modifier = Modifier.clickable(interactionSource = null, indication = null) { handleBack() },
+                )
+            }
             Spacer(modifier = Modifier.weight(1f))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                for (i in 0 until TOTAL_STEPS) {
+                for (i in 0 until 8) {
                     Box(
                         modifier = Modifier
-                            .width(if (i == step) 20.dp else 8.dp)
+                            .width(if (i == state.step.progressIndex()) 20.dp else 8.dp)
                             .height(3.dp)
-                            .background(if (i == step) colors.ink else colors.inkMuted.copy(alpha = 0.35f)),
+                            .background(if (i == state.step.progressIndex()) colors.ink else colors.inkMuted.copy(alpha = 0.35f)),
                     )
                 }
             }
@@ -195,9 +154,9 @@ fun NewLibraryWizardScreen(
 
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             AnimatedContent(
-                targetState = step,
+                targetState = state.step,
                 transitionSpec = {
-                    if (slideForward) {
+                    if (state.slideForward) {
                         slideInHorizontally(tween(300)) { it } togetherWith slideOutHorizontally(tween(300)) { -it }
                     } else {
                         slideInHorizontally(tween(300)) { -it } togetherWith slideOutHorizontally(tween(300)) { it }
@@ -206,41 +165,30 @@ fun NewLibraryWizardScreen(
                 label = "wizard-step",
             ) { s ->
                 when (s) {
-                    0 -> CreateStep(loading = state.loading, error = state.error, onCreate = viewModel::create)
-                    1 -> MasterKeyStep(masterKeyHex = state.masterKeyHex)
-                    2 -> RemoteStep(onAdvance = { goTo(3) })
-                    3 -> AskImportStep(
-                        onImport = { goTo(4) },
-                        onSkip = {
-                            viewModel.skipDeviceImport()
-                            goTo(7)
-                        },
+                    WizardStep.CreateLibrary -> CreateStep(loading = state.loading, error = state.error, onCreate = viewModel::createLibrary)
+                    WizardStep.SaveRecoveryKey -> MasterKeyStep(masterKeyHex = state.masterKeyHex)
+                    WizardStep.AddRemote -> RemoteStep(onAdvance = viewModel::remoteCompleted)
+                    WizardStep.ChooseDeviceImport -> AskImportStep(
+                        onImport = viewModel::chooseDeviceImport,
+                        onSkip = viewModel::skipDeviceImport,
                     )
-                    4 -> PermissionStep(
-                        autoSkip = slideForward,
-                        onGranted = { goTo(5) },
-                        onSkip = {
-                            viewModel.skipDeviceImport()
-                            goTo(7)
-                        },
+                    WizardStep.GrantMediaAccess -> PermissionStep(
+                        autoSkip = state.slideForward,
+                        onGranted = viewModel::mediaAccessGranted,
+                        onSkip = viewModel::skipDeviceImport,
                     )
-                    5 -> MediaLocationStep(
-                        autoSkip = slideForward,
-                        onDone = { goTo(6) },
-                        onSkip = {
-                            viewModel.skipDeviceImport()
-                            goTo(7)
-                        },
+                    WizardStep.GrantLocationAccess -> MediaLocationStep(
+                        autoSkip = state.slideForward,
+                        onDone = viewModel::locationAccessGranted,
+                        onSkip = viewModel::skipDeviceImport,
                     )
-                    6 -> ImportStep(viewModel = viewModel, state = state, importState = importState, onDone = { goTo(7) })
-                    else -> AutoImportStep(
+                    WizardStep.ImportDeviceMedia -> ImportStep(viewModel = viewModel, state = state, onDone = viewModel::importCompleted)
+                    WizardStep.ChooseAutoImport -> AutoImportStep(
                         onYes = {
-                            viewModel.setAutoImportDeviceMedia(true)
-                            finish()
+                            viewModel.setAutoImport(true, onComplete)
                         },
                         onNo = {
-                            viewModel.setAutoImportDeviceMedia(false)
-                            finish()
+                            viewModel.setAutoImport(false, onComplete)
                         },
                     )
                 }
@@ -253,12 +201,11 @@ fun NewLibraryWizardScreen(
                 .padding(horizontal = 32.dp)
                 .padding(top = 20.dp, bottom = 48.dp),
         ) {
-            when (step) {
-                1 -> LascoPrimaryButton(
+            when (state.step) {
+                WizardStep.SaveRecoveryKey -> LascoPrimaryButton(
                     text = "I've saved my key",
                     onClick = {
-                        viewModel.clearMasterKey()
-                        goTo(2)
+                        viewModel.confirmRecoveryKey()
                     },
                 )
                 else -> {}
@@ -648,8 +595,7 @@ private fun MediaLocationStep(autoSkip: Boolean, onDone: () -> Unit, onSkip: () 
 @Composable
 private fun ImportStep(
     viewModel: NewLibraryWizardViewModel,
-    state: NewLibraryWizardUiState,
-    importState: ImportState,
+    state: WizardUiState,
     onDone: () -> Unit,
 ) {
     val colors = LascoTheme.colors
@@ -659,6 +605,7 @@ private fun ImportStep(
         if (state.deviceScan == null) viewModel.scanDeviceMedia()
     }
 
+    val importState = state.importState
     val done = importState as? ImportState.Done
     val failure = importState as? ImportState.Error
 

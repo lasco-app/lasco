@@ -42,9 +42,15 @@ import com.lasco.lasco.ui.theme.LascoTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.net.URL
+import java.util.UUID
 
 /** Resume information for a library whose onboarding was interrupted mid wizard. */
-data class OnboardingResume(val libraryId: String, val nickname: String, val step: Int)
+data class OnboardingResume(
+    val sessionId: String,
+    val libraryId: String,
+    val nickname: String,
+    val checkpoint: com.lasco.lasco.data.WizardCheckpoint,
+)
 
 private enum class Flow { Main, Own, ExistingChoice }
 
@@ -67,6 +73,7 @@ fun OnboardingScreen(
     val colors = LascoTheme.colors
 
     var flow by remember { mutableStateOf(if (resume != null) Flow.Own else Flow.Main) }
+    var wizardSessionId by remember { mutableStateOf(resume?.sessionId ?: UUID.randomUUID().toString()) }
     var page by remember { mutableStateOf(0) }
     var slideForward by remember { mutableStateOf(true) }
 
@@ -87,13 +94,16 @@ fun OnboardingScreen(
                 betaMascot = betaMascot,
                 onSkip = onComplete,
                 onNext = { slideForward = true; page = minOf(page + 1, 3) },
-                onStartFresh = { slideForward = true; flow = Flow.Own },
+                onStartFresh = {
+                    slideForward = true
+                    wizardSessionId = UUID.randomUUID().toString()
+                    flow = Flow.Own
+                },
                 onExisting = { slideForward = true; flow = Flow.ExistingChoice },
             )
             Flow.Own -> NewLibraryWizardScreen(
-                initialStep = resume?.step ?: 0,
-                resumeLibraryId = resume?.libraryId,
-                resumeNickname = resume?.nickname,
+                sessionId = wizardSessionId,
+                resume = resume?.takeIf { it.sessionId == wizardSessionId },
                 onBack = { slideForward = false; flow = Flow.Main },
                 onComplete = onLibraryOpened,
             )

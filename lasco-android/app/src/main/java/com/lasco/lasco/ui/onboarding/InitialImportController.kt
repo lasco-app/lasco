@@ -71,6 +71,11 @@ class InitialImportController(
     private var lastScan: DeviceScan? = null
     private var importJob: Job? = null
 
+    fun cancel() {
+        importJob?.cancel()
+        importJob = null
+    }
+
     // Guards against two overlapping runs. tryLock rather than withLock,
     // since a second call while one is already in flight must be dropped
     // immediately, not queued. Released once a run ends so a retry after
