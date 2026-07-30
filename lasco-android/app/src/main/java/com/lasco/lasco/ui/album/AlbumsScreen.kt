@@ -13,7 +13,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
+import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
+import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import com.lasco.lasco.data.Change
 import com.lasco.lasco.data.LibraryRepository
 import com.lasco.lasco.ui.media.MediaDetailKey
@@ -51,6 +53,10 @@ fun AlbumsScreen(
         backStack = backStack,
         onBack = { backStack.removeLastOrNull() },
         modifier = modifier,
+        entryDecorators = listOf(
+            rememberSaveableStateHolderNavEntryDecorator(),
+            rememberViewModelStoreNavEntryDecorator(),
+        ),
         transitionSpec = {
             slideInHorizontally(tween(300)) { it } togetherWith
                 slideOutHorizontally(tween(300)) { -it / 3 }

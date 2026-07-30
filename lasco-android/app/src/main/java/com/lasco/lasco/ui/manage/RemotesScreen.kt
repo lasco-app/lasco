@@ -23,7 +23,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lasco.lasco.data.LibraryRepository
 import com.lasco.lasco.data.Prefs
 import com.lasco.lasco.ui.components.LascoConfirmDialog
@@ -38,14 +37,17 @@ import uniffi.lasco_ffi.FfiRemote
  * shares the add-remote dialogs from RemoteAddDialogs.kt.
  */
 @Composable
-fun RemotesScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
+fun RemotesScreen(
+    onBack: () -> Unit,
+    manageViewModel: ManageViewModel,
+    modifier: Modifier = Modifier,
+) {
     val colors = LascoTheme.colors
     val context = LocalContext.current
     val prefs = remember { Prefs.from(context) }
     val repo = remember { LibraryRepository.from(context) }
     val expertMode by prefs.expertMode.collectAsStateWithLifecycle()
 
-    val manageViewModel: ManageViewModel = viewModel(factory = ManageViewModel.Factory)
     val session by manageViewModel.sessionState.collectAsStateWithLifecycle()
     val syncState by manageViewModel.syncState.collectAsStateWithLifecycle()
 

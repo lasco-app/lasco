@@ -23,7 +23,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.material3.HorizontalDivider
 import com.lasco.lasco.data.LibraryRepository
 import com.lasco.lasco.ui.components.ErrorBanner
@@ -38,9 +37,12 @@ import kotlinx.coroutines.launch
  * screen is add only, matching the Swift UI.
  */
 @Composable
-fun UsersScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
+fun UsersScreen(
+    onBack: () -> Unit,
+    manageViewModel: ManageViewModel,
+    modifier: Modifier = Modifier,
+) {
     val colors = LascoTheme.colors
-    val manageViewModel: ManageViewModel = viewModel(factory = ManageViewModel.Factory)
     val session by manageViewModel.sessionState.collectAsStateWithLifecycle()
     var showAddUser by remember { mutableStateOf(false) }
 

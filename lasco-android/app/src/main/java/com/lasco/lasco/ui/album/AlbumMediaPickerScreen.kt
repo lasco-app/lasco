@@ -24,7 +24,9 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
+import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
+import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import com.lasco.lasco.data.Change
 import com.lasco.lasco.data.LibraryRepository
 import com.lasco.lasco.ui.theme.LascoTheme
@@ -66,6 +68,10 @@ fun AlbumMediaPickerScreen(
                     if (backStack.size > 1) backStack.removeLastOrNull() else onCancel()
                 },
                 modifier = Modifier.fillMaxSize(),
+                entryDecorators = listOf(
+                    rememberSaveableStateHolderNavEntryDecorator(),
+                    rememberViewModelStoreNavEntryDecorator(),
+                ),
                 entryProvider = entryProvider {
                     entry<PickerAlbumKey> { key ->
                         val ids = backStack.filterIsInstance<PickerAlbumKey>().mapNotNull { it.albumId }

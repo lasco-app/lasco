@@ -10,6 +10,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
@@ -19,6 +20,13 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
+import androidx.navigation3.runtime.NavKey
+import androidx.navigation3.runtime.entryProvider
+import androidx.navigation3.runtime.rememberNavBackStack
+import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
+import androidx.navigation3.ui.NavDisplay
+import kotlinx.coroutines.launch
 import com.lasco.lasco.LascoApp
 import com.lasco.lasco.data.LascoRepository
 import com.lasco.lasco.data.LibraryRepository
@@ -49,6 +57,14 @@ private sealed interface Screen {
     data class DeletingLibrary(val libraryId: String) : Screen
     data class DeletionFailed(val libraryId: String, val detail: String) : Screen
     data class Onboarding(val resume: OnboardingResume?) : Screen
+}
+
+@kotlinx.serialization.Serializable
+private data class OpenedLibraryKey(val libraryId: String) : NavKey
+
+private sealed interface LibrarySessionExit {
+    data object SignedOut : LibrarySessionExit
+    data class Delete(val libraryId: String) : LibrarySessionExit
 }
 
 /**
@@ -143,23 +159,29 @@ fun LascoRoot(modifier: Modifier = Modifier, onLibraryOpenChanged: (Boolean) -> 
             onOpened = { screen = Screen.Opened },
             modifier = modifier,
         )
-        Screen.Opened -> MainScreen(
-            modifier = modifier,
-            onSignedOut = { screen = Screen.LibraryList },
-            onDeleteLibrary = {
-                app.librarySession?.sessionState?.value?.libraryId?.let { libraryId ->
-                    screen = Screen.DeletingLibrary(libraryId)
-                }
-            },
-        )
+        Screen.Opened -> {
+            val libraryId = app.librarySession?.sessionState?.value?.libraryId
+            if (libraryId == null) {
+                screen = Screen.LibraryList
+            } else {
+                LibrarySessionHost(
+                    libraryId = libraryId,
+                    modifier = modifier,
+                    onExitLibrarySession = { exit ->
+                        screen = when (exit) {
+                            LibrarySessionExit.SignedOut -> Screen.LibraryList
+                            is LibrarySessionExit.Delete -> Screen.DeletingLibrary(exit.libraryId)
+                        }
+                    },
+                )
+            }
+        }
         is Screen.DeletingLibrary -> {
             // This is composed only after MainScreen has left composition. That cancels its
             // collectors before native library files are removed, preventing them from racing
             // an FFI read against deletion.
             LaunchedEffect(current.libraryId) {
                 try {
-                    app.librarySession?.close()
-                    app.librarySession = null
                     repository.deleteLibrary(current.libraryId)
                     screen = Screen.LibraryList
                 } catch (e: Throwable) {
@@ -185,6 +207,45 @@ fun LascoRoot(modifier: Modifier = Modifier, onLibraryOpenChanged: (Boolean) -> 
             modifier = modifier,
         )
     }
+}
+
+@Composable
+private fun LibrarySessionHost(
+    libraryId: String,
+    modifier: Modifier = Modifier,
+    onExitLibrarySession: (LibrarySessionExit) -> Unit,
+) {
+    val context = LocalContext.current
+    val app = remember { context.applicationContext as LascoApp }
+    val backStack = rememberNavBackStack(OpenedLibraryKey(libraryId))
+    val scope = rememberCoroutineScope()
+
+    fun exitLibrarySession(exit: LibrarySessionExit) {
+        scope.launch {
+            app.librarySession?.close()
+            app.librarySession = null
+            backStack.clear()
+            onExitLibrarySession(exit)
+        }
+    }
+
+    NavDisplay(
+        backStack = backStack,
+        modifier = modifier,
+        entryDecorators = listOf(
+            rememberSaveableStateHolderNavEntryDecorator(),
+            rememberViewModelStoreNavEntryDecorator(),
+        ),
+        entryProvider = entryProvider {
+            entry<OpenedLibraryKey> {
+                MainScreen(
+                    modifier = Modifier.fillMaxSize(),
+                    onSignedOut = { exitLibrarySession(LibrarySessionExit.SignedOut) },
+                    onDeleteLibrary = { exitLibrarySession(LibrarySessionExit.Delete(libraryId)) },
+                )
+            }
+        },
+    )
 }
 
 @Composable

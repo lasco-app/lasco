@@ -32,7 +32,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
+import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
+import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import com.lasco.lasco.ui.components.AlbumPickerDialog
 import com.lasco.lasco.ui.components.LascoConfirmDialog
 import com.lasco.lasco.ui.theme.LascoTheme
@@ -66,11 +68,19 @@ fun ManageScreen(
     onDeleteLibrary: () -> Unit = {},
 ) {
     val backStack = rememberNavBackStack(ManageRootKey)
+    val manageViewModel: ManageViewModel = viewModel(
+        key = "manage",
+        factory = ManageViewModel.Factory,
+    )
 
     NavDisplay(
         backStack = backStack,
         onBack = { backStack.removeLastOrNull() },
         modifier = modifier,
+        entryDecorators = listOf(
+            rememberSaveableStateHolderNavEntryDecorator(),
+            rememberViewModelStoreNavEntryDecorator(),
+        ),
         transitionSpec = {
             slideInHorizontally(tween(300)) { it } togetherWith
                 slideOutHorizontally(tween(300)) { -it / 3 }
@@ -92,18 +102,21 @@ fun ManageScreen(
                     onOpenOperations = { backStack.add(OperationsKey) },
                     onSignedOut = onSignedOut,
                     onDeleteLibrary = onDeleteLibrary,
+                    manageViewModel = manageViewModel,
                 )
             }
             entry<RemotesKey> {
                 RemotesScreen(
                     modifier = Modifier.fillMaxSize(),
                     onBack = { backStack.removeLastOrNull() },
+                    manageViewModel = manageViewModel,
                 )
             }
             entry<UsersKey> {
                 UsersScreen(
                     modifier = Modifier.fillMaxSize(),
                     onBack = { backStack.removeLastOrNull() },
+                    manageViewModel = manageViewModel,
                 )
             }
             entry<OperationsKey> {
@@ -124,13 +137,13 @@ private fun ManageRootScreen(
     onOpenOperations: () -> Unit,
     onSignedOut: () -> Unit,
     onDeleteLibrary: () -> Unit,
+    manageViewModel: ManageViewModel,
 ) {
     val colors = LascoTheme.colors
     val context = LocalContext.current
-    val viewModel: ManageViewModel = viewModel(factory = ManageViewModel.Factory)
-    val session by viewModel.sessionState.collectAsStateWithLifecycle()
-    val albums by viewModel.albums.collectAsStateWithLifecycle()
-    val expertMode by viewModel.prefs.expertMode.collectAsStateWithLifecycle()
+    val session by manageViewModel.sessionState.collectAsStateWithLifecycle()
+    val albums by manageViewModel.albums.collectAsStateWithLifecycle()
+    val expertMode by manageViewModel.prefs.expertMode.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 
     var showSettings by remember { mutableStateOf(false) }
@@ -220,7 +233,7 @@ private fun ManageRootScreen(
             title = "Default import album",
             albums = albums,
             onSelect = {
-                viewModel.setDefaultUploadAlbum(it.albumId)
+                manageViewModel.setDefaultUploadAlbum(it.albumId)
                 showAlbumPicker = false
             },
             onCancel = { showAlbumPicker = false },
@@ -237,7 +250,7 @@ private fun ManageRootScreen(
             onConfirm = {
                 confirmSignOut = false
                 scope.launch {
-                    viewModel.signOut()
+                    manageViewModel.signOut()
                     onSignedOut()
                 }
             },
