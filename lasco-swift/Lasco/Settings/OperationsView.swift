@@ -1,12 +1,16 @@
 import SwiftUI
 
 struct OperationsView: View {
-    @EnvironmentObject var libraryModel: LibraryModel
+    let repository: LibraryRepository
+    @State private var model: OperationsModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.lascoTheme) var theme
 
-    private var groups: [FfiOperationGroup] {
-        libraryModel.listOperationGroups().reversed()
+    private var groups: [FfiOperationGroup] { model.operationGroups.reversed() }
+
+    init(repository: LibraryRepository) {
+        self.repository = repository
+        _model = State(initialValue: OperationsModel(repository: repository))
     }
 
     var body: some View {
@@ -50,6 +54,7 @@ struct OperationsView: View {
                 }
             }
         }
+        .task { await model.start() }
     }
 }
 

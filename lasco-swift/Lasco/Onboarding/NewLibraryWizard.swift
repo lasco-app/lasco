@@ -4,7 +4,7 @@ import Photos
 #endif
 
 struct NewLibraryWizard: View {
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(LibraryDirectoryModel.self) private var directory
     @AppStorage("expertMode") private var expertMode = false
 
     var onBack: () -> Void
@@ -19,6 +19,7 @@ struct NewLibraryWizard: View {
     @State private var showAddS3Sheet = false
     @State private var showAddLocalFSSheet = false
     @State private var masterKeyCopied = false
+    @State private var masterKey: String?
 
     init(initialStep: Int = 0, onBack: @escaping () -> Void, onComplete: @escaping () -> Void) {
         _step = State(initialValue: initialStep)
@@ -89,8 +90,8 @@ struct NewLibraryWizard: View {
             }
         }
         .onChange(of: step) { _, newValue in
-            if let libId = libraryModel.lib?.libraryId() {
-                libraryModel.setOnboardingStep(newValue, libraryId: libId)
+            if let libraryID = directory.openLibraryID {
+                directory.setOnboardingStep(newValue, libraryID: libraryID)
             }
         }
         #if os(iOS)
@@ -108,11 +109,16 @@ struct NewLibraryWizard: View {
     private var stepButtons: some View {
         if step == 0 {
             Button("Create Library") {
-                libraryModel.error = nil
-                libraryModel.create(name: name, username: username, password: password)
-                if libraryModel.error == nil {
-                    slideForward = true
-                    withAnimation(.easeInOut(duration: 0.3)) { step = 1 }
+                directory.onboarding.clearError()
+                Task {
+                    do {
+                        let result = try await directory.create(name: name, username: username, password: password)
+                        masterKey = result.masterKey
+                        slideForward = true
+                        withAnimation(.easeInOut(duration: 0.3)) { step = 1 }
+                    } catch {
+                        directory.onboarding.setError(error)
+                    }
                 }
             }
             .buttonStyle(LascoPrimaryButtonStyle())
@@ -121,7 +127,7 @@ struct NewLibraryWizard: View {
             .opacity(canCreate ? 1 : 0.45)
         } else if step == 1 {
             Button("I've saved my key") {
-                libraryModel.pendingMasterKey = nil
+                masterKey = nil
                 slideForward = true
                 withAnimation(.easeInOut(duration: 0.3)) { step = 2 }
             }
@@ -142,16 +148,18 @@ struct NewLibraryWizard: View {
                     .frame(maxWidth: .infinity)
             }
             .sheet(isPresented: $showAddS3Sheet, onDismiss: {
-                if !libraryModel.remotes.isEmpty { advanceFromRemote() }
+                if !(directory.session?.remotes ?? []).isEmpty { advanceFromRemote() }
             }) {
-                AddS3RemoteView()
-                    .environmentObject(libraryModel)
+                if let repository = directory.activeRepository {
+                    AddS3RemoteView().environment(repository)
+                }
             }
             .sheet(isPresented: $showAddLocalFSSheet, onDismiss: {
-                if !libraryModel.remotes.isEmpty { advanceFromRemote() }
+                if !(directory.session?.remotes ?? []).isEmpty { advanceFromRemote() }
             }) {
-                AddLocalFSRemoteView()
-                    .environmentObject(libraryModel)
+                if let repository = directory.activeRepository {
+                    AddLocalFSRemoteView().environment(repository)
+                }
             }
         } else {
             #if os(iOS)
@@ -169,10 +177,9 @@ struct NewLibraryWizard: View {
     }
 
     private func finish() {
-        if let libId = libraryModel.lib?.libraryId() {
-            libraryModel.clearOnboardingIncomplete(libraryId: libId)
+        if let libraryID = directory.openLibraryID {
+            directory.clearOnboardingIncomplete(libraryID: libraryID)
         }
-        libraryModel.isOpen = true
         onComplete()
     }
 
@@ -193,7 +200,7 @@ struct NewLibraryWizard: View {
             }
         }
         #if os(iOS)
-        if step == 3 && libraryModel.remotes.isEmpty {
+        if step == 3 && (directory.session?.remotes ?? []).isEmpty {
             return {
                 slideForward = false
                 withAnimation(.easeInOut(duration: 0.3)) { step = 2 }
@@ -282,7 +289,7 @@ struct NewLibraryWizard: View {
                 username: $username,
                 password: $password,
                 confirmPassword: $confirmPassword,
-                error: libraryModel.error
+                error: directory.onboarding.error
             )
 
             Spacer()
@@ -306,7 +313,7 @@ struct NewLibraryWizard: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .lineSpacing(4)
 
-            if let key = libraryModel.pendingMasterKey {
+            if let key = masterKey {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack {
                         Text(key)
@@ -380,7 +387,7 @@ struct NewLibraryWizard: View {
 
     #if os(iOS)
     private var askImportStep: some View {
-        let hasRemote = !libraryModel.remotes.isEmpty
+        let hasRemote = !(directory.session?.remotes ?? []).isEmpty
 
         return VStack(alignment: .leading, spacing: 20) {
             Text(hasRemote ? "Import your device photos?" : "Can't import your current photo library yet.")
@@ -418,7 +425,7 @@ struct NewLibraryWizard: View {
 
     private var askImportButtons: some View {
         Group {
-            if libraryModel.remotes.isEmpty {
+            if (directory.session?.remotes ?? []).isEmpty {
                 Button("Get started") { finish() }
                     .buttonStyle(LascoPrimaryButtonStyle())
                     .frame(maxWidth: .infinity)
@@ -577,7 +584,7 @@ struct NewLibraryWizard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .task {
             scanLoading = true
-            libraryScan = await libraryModel.scanPhotoLibrary()
+            libraryScan = await directory.importCoordinator?.scanPhotoLibrary()
             scanLoading = false
         }
         .sheet(isPresented: $showIgnoredDetail) {
@@ -590,7 +597,7 @@ struct NewLibraryWizard: View {
     private var importButtons: some View {
         VStack(spacing: 12) {
             if isBulkImporting {
-                let progress = libraryModel.bulkImportProgress
+                let progress = directory.importCoordinator?.progress
                 let done = progress?.done ?? 0
                 let total = max(progress?.total ?? 1, 1)
 
@@ -609,7 +616,7 @@ struct NewLibraryWizard: View {
                     if let scan = libraryScan {
                         isBulkImporting = true
                         Task {
-                            await libraryModel.importFromPhotoLibraryWithAlbums(assets: scan.assets)
+                            await directory.importCoordinator?.importFromPhotoLibraryWithAlbums(assets: scan.assets)
                             isBulkImporting = false
                             importResult = (photos: scan.photoCount, videos: scan.videoCount)
                         }
@@ -654,15 +661,19 @@ struct NewLibraryWizard: View {
     private var autoImportButtons: some View {
         VStack(spacing: 12) {
             Button("Yes, auto-import new photos") {
-                libraryModel.setAutoImportDeviceMedia(true)
-                finish()
+                Task {
+                    if let repository = directory.activeRepository { try? await repository.setAutoImportDeviceMedia(enabled: true) }
+                    finish()
+                }
             }
             .buttonStyle(LascoPrimaryButtonStyle())
             .frame(maxWidth: .infinity)
 
             Button("No, not now") {
-                libraryModel.setAutoImportDeviceMedia(false)
-                finish()
+                Task {
+                    if let repository = directory.activeRepository { try? await repository.setAutoImportDeviceMedia(enabled: false) }
+                    finish()
+                }
             }
             .buttonStyle(LascoSecondaryButtonStyle())
             .frame(maxWidth: .infinity)

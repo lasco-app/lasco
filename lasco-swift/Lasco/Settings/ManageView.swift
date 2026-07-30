@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ManageView: View {
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(LibraryDirectoryModel.self) private var directory
     @Environment(ToastManager.self) var toastManager
     @Environment(\.lascoTheme) var theme
 
@@ -11,6 +11,15 @@ struct ManageView: View {
     @State private var showDeleteConfirm = false
     @State private var showLicense = false
     @AppStorage("expertMode") private var expertMode = false
+    let repository: LibraryRepository
+    let session: LibrarySessionState
+    @State private var model: ManageModel
+
+    init(repository: LibraryRepository, session: LibrarySessionState) {
+        self.repository = repository
+        self.session = session
+        _model = State(initialValue: ManageModel(repository: repository, session: session))
+    }
 
     var body: some View {
         NavigationStack {
@@ -23,18 +32,15 @@ struct ManageView: View {
                             Text("MANAGE")
                                 .font(LascoFont.categoryLarge())
                                 .foregroundStyle(theme.ink)
-                            if let nickname = libraryModel.openNickname {
-                                Text(nickname)
-                                    .font(LascoFont.subtitle())
-                                    .foregroundStyle(theme.inkMuted)
-                            }
+                            Text(session.nickname)
+                                .font(LascoFont.subtitle())
+                                .foregroundStyle(theme.inkMuted)
                         }
                         .padding(.top, 20)
 
                         VStack(alignment: .leading, spacing: 0) {
                             NavigationLink {
-                                RemotesView()
-                                    .environmentObject(libraryModel)
+                                RemotesView(repository: repository, session: session)
                                     .navigationBarBackButtonHidden(true)
                             } label: {
                                 HStack {
@@ -56,8 +62,7 @@ struct ManageView: View {
                                 .background(theme.inkMuted.opacity(0.2))
 
                             NavigationLink {
-                                UsersView()
-                                    .environmentObject(libraryModel)
+                                UsersView(repository: repository, session: session)
                                     .navigationBarBackButtonHidden(true)
                             } label: {
                                 HStack {
@@ -100,7 +105,7 @@ struct ManageView: View {
                                 .background(theme.inkMuted.opacity(0.2))
 
                             Button {
-                                libraryModel.signOut()
+                                Task { await directory.signOut() }
                             } label: {
                                 HStack {
                                     Text("Sign out")
@@ -128,8 +133,8 @@ struct ManageView: View {
                                         Text("Default import album")
                                             .font(LascoFont.body())
                                             .foregroundStyle(theme.inkSub)
-                                        if let album = libraryModel.defaultUploadAlbum {
-                                            Text(album.name)
+                                        if let albumID = model.defaultUploadAlbumID {
+                                            Text(albumID)
                                                 .font(LascoFont.pixel())
                                                 .foregroundStyle(theme.inkMuted)
                                         } else {
@@ -154,8 +159,8 @@ struct ManageView: View {
                                 .background(theme.inkMuted.opacity(0.2))
 
                             Toggle(isOn: Binding(
-                                get: { libraryModel.autoImportDeviceMedia ?? false },
-                                set: { libraryModel.setAutoImportDeviceMedia($0) }
+                                get: { model.autoImportDeviceMedia },
+                                set: { enabled in Task { try? await model.setAutoImportDeviceMedia(enabled) } }
                             )) {
                                 Text("Auto-import device media")
                                     .font(LascoFont.body())
@@ -268,22 +273,23 @@ struct ManageView: View {
                 .preferredColorScheme(.dark)
         }
         .sheet(isPresented: $showOperations) {
-            OperationsView()
-                .environmentObject(libraryModel)
+            OperationsView(repository: repository)
                 .environment(\.lascoTheme, .dark)
                 .preferredColorScheme(.dark)
         }
         .confirmationDialog(
-            "Delete \(libraryModel.openNickname ?? "library")?",
+            "Delete \(session.nickname)?",
             isPresented: $showDeleteConfirm,
             titleVisibility: .visible
         ) {
             Button("Delete", role: .destructive) {
-                let nickname = libraryModel.openNickname ?? "library"
-                if libraryModel.deleteCurrentLibrary() {
+                let nickname = session.nickname
+                Task {
+                    if await directory.deleteCurrentLibrary() {
                     toastManager.show(ok: "Deleted \(nickname)")
-                } else {
-                    toastManager.show(error: libraryModel.error ?? "Failed to delete library")
+                    } else {
+                        toastManager.show(error: "Failed to delete library")
+                    }
                 }
             }
             Button("Cancel", role: .cancel) { }
@@ -296,15 +302,15 @@ struct ManageView: View {
                 .preferredColorScheme(.dark)
         }
         .sheet(isPresented: $showDefaultAlbumPicker) {
-            AlbumPickerView(title: "Default import album") { album in
-                libraryModel.setDefaultUploadAlbum(albumId: album.albumId)
+            AlbumPickerView(repository: repository, title: "Default import album") { album in
+                Task { try? await model.setDefaultUploadAlbum(id: album.albumId) }
                 showDefaultAlbumPicker = false
             } onCancel: {
                 showDefaultAlbumPicker = false
             }
-            .environmentObject(libraryModel)
             .environment(\.lascoTheme, .dark)
             .preferredColorScheme(.dark)
         }
+        .task { await model.start() }
     }
 }

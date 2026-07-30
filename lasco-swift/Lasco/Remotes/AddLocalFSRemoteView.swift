@@ -4,7 +4,7 @@ import AppKit
 #endif
 
 struct AddLocalFSRemoteView: View {
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(LibraryRepository.self) private var repository
     @Environment(\.dismiss) private var dismiss
     @Environment(ToastManager.self) var toastManager
     @Environment(\.lascoTheme) var theme
@@ -84,16 +84,14 @@ struct AddLocalFSRemoteView: View {
                 Button("Add Remote") {
                     guard !name.isEmpty else { return }
                     let remoteName = name
-                    if let remoteId = libraryModel.addRemoteDebugLocalApple(name: remoteName) {
-                        dismiss()
-                        Task {
-                            if let err = await libraryModel.initializeRemote(remoteId: remoteId) {
-                                toastManager.show(error: err)
-                            } else if let err = await libraryModel.pushRemote(remoteId: remoteId) {
-                                toastManager.show(error: err)
-                            } else {
-                                toastManager.show(ok: "\(remoteName): initialized")
-                            }
+                    Task {
+                        do {
+                            let remoteID = try await repository.addRemoteDebugLocalApple(name: remoteName)
+                            try await repository.initializeRemote(id: remoteID)
+                            dismiss()
+                            toastManager.show(ok: "\(remoteName): initialized")
+                        } catch {
+                            toastManager.show(error: error.localizedDescription)
                         }
                     }
                 }
@@ -131,5 +129,4 @@ struct AddLocalFSRemoteView: View {
 
 #Preview {
     AddLocalFSRemoteView()
-        .environmentObject(LibraryModel())
 }

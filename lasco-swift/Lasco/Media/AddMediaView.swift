@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct AddMediaView: View {
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(AlbumListModel.self) private var model
     let targetAlbum: FfiAlbum?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.lascoTheme) var theme
@@ -44,7 +44,7 @@ struct AddMediaView: View {
                 Button("Add \(selectedMediaIds.count)") {
                     if let albumId = targetAlbum?.albumId {
                         for mediaId in selectedMediaIds {
-                            libraryModel.addMediaToAlbum(albumId: albumId, mediaId: mediaId)
+                            Task { try? await model.addMedia(mediaID: mediaId, albumID: albumId) }
                         }
                     }
                     dismiss()
@@ -61,7 +61,7 @@ struct AddMediaView: View {
 }
 
 struct AddMediaAlbumBrowser: View {
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(AlbumListModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @Environment(\.lascoTheme) var theme
     let album: FfiAlbum?
@@ -76,7 +76,7 @@ struct AddMediaAlbumBrowser: View {
     private var title: String { album?.name.uppercased() ?? "ALL ALBUMS" }
 
     private var childAlbums: [FfiAlbum] {
-        libraryModel.albums.filter {
+        model.albums.filter {
             $0.parentAlbumId == album?.albumId && !$0.deleted && !$0.isDisconnected
         }
     }
@@ -177,7 +177,7 @@ struct AddMediaAlbumBrowser: View {
         .background(theme.bg)
         .onAppear {
             if let album {
-                albumMedia = libraryModel.mediaInAlbum(albumId: album.albumId)
+                Task { albumMedia = await model.mediaInAlbum(albumID: album.albumId) }
             }
         }
     }

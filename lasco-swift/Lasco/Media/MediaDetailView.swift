@@ -37,7 +37,7 @@ struct MediaDetailState: Identifiable, Hashable {
 }
 
 struct MediaDetailView: View {
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(LibraryRepository.self) private var repository
     @State private var items: [AlbumItem]
     @State private var currentIndex: Int
     @State private var groupMediaCache: [String: [FfiMediaItem]] = [:]
@@ -63,7 +63,7 @@ struct MediaDetailView: View {
     // Rename sheet
     @State private var showingRename = false
     @State private var renameText = ""
-    @State private var otherContainingAlbums: [FfiAlbum] = []
+    @State private var detailModel: MediaDetailModel?
 
     // Title truncation detection
     @State private var titleAvailableWidth: CGFloat = 0
@@ -75,6 +75,7 @@ struct MediaDetailView: View {
 
     // AAE adjustment data debug viewer
     @State private var aaePayload: AAEViewerPayload? = nil
+    @State private var exportData: Data?
 
     var currentAlbumId: String? = nil
     var onAlbumTap: ((FfiAlbum) -> Void)? = nil
@@ -99,7 +100,8 @@ struct MediaDetailView: View {
     private var currentDisplayItem: FfiMediaItem? {
         guard items.indices.contains(currentIndex) else { return nil }
         switch items[currentIndex] {
-        case .media(let m): return m
+        case .media(let m):
+            return detailModel?.mediaID == m.mediaId ? (detailModel?.media ?? m) : m
         case .group:
             let media = currentGroupMedia
             return media.indices.contains(groupMediaIndex) ? media[groupMediaIndex] : nil
@@ -107,6 +109,12 @@ struct MediaDetailView: View {
     }
 
     private var currentItem: FfiMediaItem? { currentDisplayItem }
+
+    private var otherContainingAlbums: [FfiAlbum] {
+        guard let mediaID = currentItem?.mediaId,
+              detailModel?.mediaID == mediaID else { return [] }
+        return detailModel?.containingAlbums.filter { $0.albumId != currentAlbumId } ?? []
+    }
 
     private var currentLivePhotoVideoItem: FfiMediaItem? {
         guard let item = currentItem else { return nil }
@@ -121,8 +129,10 @@ struct MediaDetailView: View {
 
     private func loadLivePhotoVideoIfNeeded(for item: FfiMediaItem) {
         guard let videoId = item.appleLivePhotoMediaId, livePhotoVideoItems[item.mediaId] == nil else { return }
-        if let video = libraryModel.showMedia(mediaId: videoId) {
-            livePhotoVideoItems[item.mediaId] = video
+        Task {
+            if let video = try? await repository.showMedia(id: videoId) {
+                livePhotoVideoItems[item.mediaId] = video
+            }
         }
     }
 
@@ -141,14 +151,8 @@ struct MediaDetailView: View {
 
     private func loadGroupMediaIfNeeded(for groupId: String) {
         guard groupMediaCache[groupId] == nil else { return }
-        groupMediaCache[groupId] = libraryModel.groupMedia(groupId: groupId)
-    }
-
-    private func updateContainingAlbums() {
-        if let mediaId = currentItem?.mediaId {
-            otherContainingAlbums = libraryModel.containingAlbums(mediaId: mediaId, excludingAlbumId: currentAlbumId)
-        } else {
-            otherContainingAlbums = []
+        Task {
+            groupMediaCache[groupId] = (try? await repository.groupMedia(groupID: groupId)) ?? []
         }
     }
 
@@ -172,11 +176,25 @@ struct MediaDetailView: View {
         .sheet(item: $aaePayload) { payload in
             AAEAdjustmentDebugView(jsonText: payload.text)
         }
+        .task(id: currentItem?.mediaId) {
+            guard let mediaID = currentItem?.mediaId else {
+                detailModel = nil
+                return
+            }
+            let model = MediaDetailModel(mediaID: mediaID, repository: repository)
+            detailModel = model
+            await model.start()
+        }
     }
 
     private func presentAAEAdjustment(mediaId: String) {
-        let text = libraryModel.aaeAdjustmentJSON(for: mediaId) ?? "no adjustment data"
-        aaePayload = AAEViewerPayload(text: text)
+        Task {
+            guard let data = try? await repository.mediaBytes(mediaID: mediaId) else {
+                aaePayload = AAEViewerPayload(text: "no adjustment data")
+                return
+            }
+            aaePayload = AAEViewerPayload(text: AAEDecoder.decodeAdjustmentJSON(from: data) ?? "no adjustment data")
+        }
     }
 
     // MARK: - iOS
@@ -245,14 +263,12 @@ struct MediaDetailView: View {
         .onAppear {
             AppLogger.log(.info, "media shown — '\(currentItem.flatMap { $0.name ?? $0.filenameOriginal })' (\(currentItem?.mediaId ?? "group"))")
             if case .group(let g) = items[safe: currentIndex] { loadGroupMediaIfNeeded(for: g.groupId) }
-            updateContainingAlbums()
             scheduleCounterHide()
             preloadAdjacent()
         }
         .onChange(of: currentIndex) {
             AppLogger.log(.info, "media navigated — '\(currentItem.flatMap { $0.name ?? $0.filenameOriginal })' (\(currentItem?.mediaId ?? "group"))")
             if case .group(let g) = items[safe: currentIndex] { loadGroupMediaIfNeeded(for: g.groupId) }
-            updateContainingAlbums()
             withAnimation { showCounter = true }
             scheduleCounterHide()
         }
@@ -383,7 +399,7 @@ struct MediaDetailView: View {
         }
         .background(Color.black)
         .sheet(isPresented: $showingExportSheet) {
-            if let mediaId = currentItem?.mediaId, let data = libraryModel.mediaBytes(for: mediaId) {
+            if let data = exportData {
                 ActivityView(activityItems: [data])
             }
         }
@@ -441,7 +457,13 @@ struct MediaDetailView: View {
     }
 
     private func exportButton(p: LascoTheme) -> some View {
-        Button(action: { showingExportSheet = true }) {
+        Button {
+            guard let mediaID = currentItem?.mediaId else { return }
+            Task {
+                exportData = try? await repository.mediaBytesAsync(mediaID: mediaID)
+                showingExportSheet = exportData != nil
+            }
+        } label: {
             HStack(spacing: 8) {
                 Image("share").renderingMode(.template).resizable().frame(width: 16, height: 16)
                 Text("EXPORT")
@@ -540,11 +562,9 @@ struct MediaDetailView: View {
         .preference(key: HideTabBarKey.self, value: true)
         .onAppear {
             if case .group(let g) = items[safe: currentIndex] { loadGroupMediaIfNeeded(for: g.groupId) }
-            updateContainingAlbums()
         }
         .onChange(of: currentIndex) {
             if case .group(let g) = items[safe: currentIndex] { loadGroupMediaIfNeeded(for: g.groupId) }
-            updateContainingAlbums()
             showingLivePhotoVideo = false
         }
     }
@@ -760,19 +780,25 @@ struct MediaDetailView: View {
     private func loadVideoPlayerIfNeeded(for item: FfiMediaItem) {
         guard videoPlayers[item.mediaId] == nil else { return }
         let ext = (item.filenameOriginal as NSString).pathExtension
-        guard let url = libraryModel.videoURL(for: item.mediaId, extension: ext) else { return }
-        videoPlayers[item.mediaId] = AVPlayer(url: url)
+        Task {
+            guard let data = try? await repository.mediaBytesAsync(mediaID: item.mediaId) else { return }
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent(item.mediaId)
+                .appendingPathExtension(ext)
+            guard (try? data.write(to: url)) != nil else { return }
+            videoPlayers[item.mediaId] = AVPlayer(url: url)
+        }
     }
 
     private func loadImagesAsync(for mediaId: String) async {
         guard let item = itemForMediaId(mediaId), !isVideo(item) else { return }
         if thumbnails[mediaId] == nil,
-           let data = await libraryModel.thumbnailAsync(for: mediaId),
+           let data = try? await repository.thumbnailAsync(mediaID: mediaId),
            let img = Image(data: data) {
             thumbnails[mediaId] = img
         }
         if fullImages[mediaId] == nil,
-           let data = await libraryModel.mediaBytesAsync(for: mediaId),
+           let data = try? await repository.mediaBytesAsync(mediaID: mediaId),
            let img = Image(data: data) {
             fullImages[mediaId] = img
         }
@@ -919,9 +945,8 @@ struct MediaDetailView: View {
         let trimmed = renameText.trimmingCharacters(in: .whitespaces)
         let newName: String? = trimmed.isEmpty ? nil : trimmed
         guard let mediaId = currentItem?.mediaId else { return }
-        libraryModel.renameMedia(mediaId: mediaId, name: newName)
-        if let refreshed = libraryModel.showMedia(mediaId: mediaId) {
-            items[currentIndex] = .media(refreshed)
+        Task {
+            try? await repository.renameMedia(id: mediaId, name: newName)
         }
         showingRename = false
     }
@@ -997,7 +1022,7 @@ private struct RenameMediaSheet: View {
 
 #if canImport(UIKit)
 struct GroupThumbnailStrip: View {
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(LibraryRepository.self) private var repository
     let media: [FfiMediaItem]
     @Binding var selected: Int
 
@@ -1022,7 +1047,7 @@ struct GroupThumbnailStrip: View {
     }
 
     private struct ThumbnailCell: View {
-        @EnvironmentObject var libraryModel: LibraryModel
+        @Environment(LibraryRepository.self) private var repository
         let item: FfiMediaItem
         let isSelected: Bool
         @State private var thumbnail: Image? = nil
@@ -1041,7 +1066,7 @@ struct GroupThumbnailStrip: View {
                     .stroke(isSelected ? Color(red: 1, green: 0.2, blue: 0.6) : Color.clear, lineWidth: 2)
             )
             .task(id: item.mediaId) {
-                if let data = await libraryModel.thumbnailAsync(for: item.mediaId) {
+                if let data = try? await repository.thumbnailAsync(mediaID: item.mediaId) {
                     thumbnail = Image(data: data)
                 }
             }

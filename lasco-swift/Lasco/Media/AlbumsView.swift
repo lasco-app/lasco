@@ -2,7 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import PhotosUI
 
-extension FfiAlbum: @retroactive Identifiable {
+extension FfiAlbum: Identifiable {
     public var id: String { albumId }
 }
 
@@ -122,6 +122,18 @@ struct AlbumsView: View {
     @State private var path: [AlbumsDestination] = []
     @Environment(\.lascoTheme) var theme
     @Binding var pendingAlbum: FfiAlbum?
+    let repository: LibraryRepository
+    let session: LibrarySessionState
+    let importCoordinator: ImportCoordinator
+    @State private var model: AlbumListModel
+
+    init(repository: LibraryRepository, session: LibrarySessionState, importCoordinator: ImportCoordinator, pendingAlbum: Binding<FfiAlbum?>) {
+        self.repository = repository
+        self.session = session
+        self.importCoordinator = importCoordinator
+        _pendingAlbum = pendingAlbum
+        _model = State(initialValue: AlbumListModel(repository: repository))
+    }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -141,6 +153,10 @@ struct AlbumsView: View {
                 }
         }
         .background(theme.bg)
+        .environment(model)
+        .environment(repository)
+        .environment(importCoordinator)
+        .task { await model.start() }
         .onAppear {
             if let album = pendingAlbum {
                 path = [.album(album)]
@@ -158,16 +174,18 @@ struct AlbumsView: View {
 // MARK: - Content view
 
 struct AlbumContentView: View {
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(AlbumListModel.self) private var albumModel
+    @Environment(LibraryRepository.self) private var repository
+    @Environment(ImportCoordinator.self) private var importCoordinator
     @Environment(\.dismiss) private var dismiss
     @Environment(\.lascoTheme) var theme
     @Environment(ToastManager.self) var toastManager
     let album: FfiAlbum?
     @Binding var path: [AlbumsDestination]
+    @State private var detailModel: AlbumDetailModel?
 
     @State private var showingNewAlbum = false
     @State private var newAlbumName = ""
-    @State private var albumItems: [AlbumItem] = []
     @State private var albumToRename: FfiAlbum?
     @State private var renameText = ""
     @State private var showingAddMedia = false
@@ -195,13 +213,13 @@ struct AlbumContentView: View {
     }
 
     private var childAlbums: [FfiAlbum] {
-        libraryModel.albums.filter {
+        albumModel.albums.filter {
             $0.parentAlbumId == album?.albumId && !$0.deleted && !$0.isDisconnected
         }
     }
 
     private var disconnectedAlbums: [FfiAlbum] {
-        libraryModel.albums.filter { $0.isDisconnected && !$0.deleted }
+        albumModel.albums.filter { $0.isDisconnected && !$0.deleted }
     }
 
     // MARK: Body
@@ -250,7 +268,7 @@ struct AlbumContentView: View {
                             toastManager.show(error: "Could not read dropped files")
                             return
                         }
-                        if let err = await libraryModel.importMediaAsync(urls: urls, albumId: album.albumId) {
+                        if let err = await albumModel.importMediaAsync(urls: urls, albumID: album.albumId) {
                             toastManager.show(error: err)
                         } else {
                             toastManager.show(ok: "Imported \(urls.count) item(s) to \(album.name)")
@@ -274,7 +292,7 @@ struct AlbumContentView: View {
                 }
 
                 #if os(macOS)
-                if libraryModel.isImporting {
+                if importCoordinator.isImporting {
                     ZStack {
                         Color.black.opacity(0.45)
                         VStack(spacing: 12) {
@@ -303,15 +321,22 @@ struct AlbumContentView: View {
         .toolbarBackButton(action: { dismiss() }, isVisible: !isRoot)
         .onAppear {
             AppLogger.log(.info, "album shown — '\(album?.name ?? "root")' (\(album?.albumId ?? "root"))")
-            refreshMedia()
         }
-        .onChange(of: libraryModel.albums) { refreshMedia() }
-        .onChange(of: libraryModel.media) { refreshMedia() }
+        .task(id: album?.albumId) {
+            guard let albumID = album?.albumId else {
+                detailModel = nil
+                return
+            }
+            let model = AlbumDetailModel(albumID: albumID, repository: repository)
+            model.ascending = sortAscending
+            detailModel = model
+            await model.start()
+        }
         .sheet(isPresented: $showingNewAlbum) {
             NewAlbumSheet(title: "NEW ALBUM", name: $newAlbumName) {
                 let trimmed = newAlbumName.trimmingCharacters(in: .whitespaces)
                 guard !trimmed.isEmpty else { return }
-                libraryModel.createAlbum(name: trimmed, parentAlbumId: album?.albumId)
+                albumModel.createAlbum(name: trimmed, parentID: album?.albumId)
                 showingNewAlbum = false
             }
             .environment(\.lascoTheme, .dark)
@@ -321,7 +346,7 @@ struct AlbumContentView: View {
             NewAlbumSheet(title: "RENAME ALBUM", name: $renameText) {
                 let trimmed = renameText.trimmingCharacters(in: .whitespaces)
                 guard !trimmed.isEmpty else { return }
-                libraryModel.renameAlbum(albumId: target.albumId, name: trimmed)
+                albumModel.renameAlbum(id: target.albumId, name: trimmed)
                 albumToRename = nil
             }
             .environment(\.lascoTheme, .dark)
@@ -329,7 +354,8 @@ struct AlbumContentView: View {
         }
         .sheet(isPresented: $showingAddMedia) {
             AddMediaView(targetAlbum: album)
-                .environmentObject(libraryModel)
+                .environment(albumModel)
+                .environment(repository)
                 .environment(\.lascoTheme, .dark)
                 .preferredColorScheme(.dark)
         }
@@ -342,10 +368,10 @@ struct AlbumContentView: View {
         .sheet(isPresented: $showingThumbnailPicker) {
             if let albumId = album?.albumId {
                 ThumbnailPickerSheet(albumId: albumId, albumName: title, media: albumMediaItems) { mediaId in
-                    libraryModel.setAlbumThumbnail(albumId: albumId, mediaId: mediaId)
+                albumModel.setAlbumThumbnail(albumID: albumId, mediaID: mediaId)
                     showingThumbnailPicker = false
                 }
-                .environmentObject(libraryModel)
+                .environment(repository)
                 .environment(\.lascoTheme, .dark)
                 .preferredColorScheme(.dark)
             }
@@ -361,7 +387,7 @@ struct AlbumContentView: View {
                 toastManager.show(error: err.localizedDescription)
             case .success(let urls):
                 Task {
-                    if let err = await libraryModel.importMediaAsync(urls: urls, albumId: albumId) {
+                    if let err = await albumModel.importMediaAsync(urls: urls, albumID: albumId) {
                         toastManager.show(error: err)
                     } else {
                         toastManager.show(ok: "Imported \(urls.count) item(s)")
@@ -398,7 +424,7 @@ struct AlbumContentView: View {
                     }
                 }
                 guard !urls.isEmpty else { return }
-                if let err = await libraryModel.importMediaAsync(urls: urls, albumId: albumId) {
+                if let err = await albumModel.importMediaAsync(urls: urls, albumID: albumId) {
                     toastManager.show(error: err)
                 } else {
                     toastManager.show(ok: "Imported \(urls.count) item(s)")
@@ -413,7 +439,7 @@ struct AlbumContentView: View {
         ) {
             Button("Delete", role: .destructive) {
                 for id in selection.selectedAlbumIds {
-                    libraryModel.deleteAlbum(albumId: id)
+                    albumModel.deleteAlbum(id: id)
                 }
                 selection = .none
             }
@@ -427,16 +453,14 @@ struct AlbumContentView: View {
         albumItems.compactMap { if case .media(let m) = $0 { return m } else { return nil } }
     }
 
-    private func refreshMedia() {
-        guard let album else { return }
-        let ffi = libraryModel.albumListItemsSorted(albumId: album.albumId, ascending: sortAscending)
-        albumItems = ffi.compactMap { item in
+    private var albumItems: [AlbumItem] {
+        detailModel?.items.compactMap { item in
             switch item.kind {
             case "media": return item.media.map { .media($0) }
             case "group": return item.group.map { .group($0) }
             default: return nil
             }
-        }
+        } ?? []
     }
 
     // MARK: Shared content body
@@ -656,7 +680,7 @@ struct AlbumContentView: View {
 
             if mediaIds.count > 1 && groupIds.isEmpty, let albumId = album?.albumId {
                 Button {
-                    libraryModel.createGroupFromSelectedMedia(mediaIds: Array(mediaIds), albumId: albumId)
+                    albumModel.createGroupFromSelectedMedia(mediaIDs: Array(mediaIds), albumID: albumId)
                     selection = .none
                 } label: {
                     Text("G")
@@ -674,7 +698,7 @@ struct AlbumContentView: View {
                 Button {
                     let existingIds = Set(group.mediaIds)
                     for mediaId in mediaIds where !existingIds.contains(mediaId) {
-                        libraryModel.addMediaToGroup(groupId: groupId, mediaId: mediaId)
+                        albumModel.addMediaToGroup(groupID: groupId, mediaID: mediaId)
                     }
                     selection = .none
                 } label: {
@@ -744,7 +768,7 @@ struct AlbumContentView: View {
     private var sortToggle: some View {
         Button {
             sortAscending.toggle()
-            refreshMedia()
+            Task { await detailModel?.setSortAscending(sortAscending) }
         } label: {
             Image(systemName: sortAscending ? "arrow.up" : "arrow.down")
                 .foregroundStyle(theme.ink)
@@ -757,13 +781,14 @@ struct AlbumContentView: View {
     // MARK: Move picker sheet
 
     private var movePickerSheet: some View {
-        AlbumPickerView(title: "Move to", onSelect: { targetAlbum in
+        AlbumPickerView(repository: repository, title: "Move to", onSelect: { targetAlbum in
             handleMoveTo(targetAlbumId: targetAlbum.albumId)
             showingMovePicker = false
         }, onCancel: {
             showingMovePicker = false
         })
-        .environmentObject(libraryModel)
+        .environment(albumModel)
+        .environment(repository)
     }
 
     // MARK: Actions
@@ -775,10 +800,10 @@ struct AlbumContentView: View {
         case .items(let mediaIds, let groupIds):
             guard let albumId = album?.albumId else { break }
             for id in mediaIds {
-                libraryModel.removeMediaFromAlbum(albumId: albumId, mediaId: id)
+                albumModel.removeMediaFromAlbum(albumID: albumId, mediaID: id)
             }
             for id in groupIds {
-                libraryModel.deleteGroup(groupId: id)
+                albumModel.deleteGroup(groupID: id)
             }
             selection = .none
         case .albums:
@@ -793,12 +818,12 @@ struct AlbumContentView: View {
         case .items(let mediaIds, _):
             guard let fromAlbumId = album?.albumId else { break }
             for id in mediaIds {
-                libraryModel.moveMediaToAlbum(mediaId: id, fromAlbumId: fromAlbumId, toAlbumId: targetAlbumId)
+                albumModel.moveMediaToAlbum(mediaID: id, fromAlbumID: fromAlbumId, toAlbumID: targetAlbumId)
             }
             selection = .none
         case .albums(let ids):
             for id in ids {
-                libraryModel.reparentAlbum(albumId: id, newParentAlbumId: targetAlbumId)
+                albumModel.reparentAlbum(id: id, parentID: targetAlbumId)
             }
             selection = .none
         }
@@ -809,7 +834,7 @@ struct AlbumContentView: View {
     @ViewBuilder
     private func disconnectedAlbumCell(_ disc: FfiAlbum) -> some View {
         let parentAlbum = disc.parentAlbumId.flatMap { pid in
-            libraryModel.albums.first(where: { $0.albumId == pid })
+            albumModel.albums.first(where: { $0.albumId == pid })
         }
         let parentInfo: String = {
             if let name = parentAlbum?.name { return "In: \(name)" }
@@ -878,8 +903,7 @@ struct AlbumContentView: View {
                 if selection.isSelecting {
                     selection.toggleGroup(group.groupId)
                 } else if let idx = albumItems.firstIndex(of: .group(group)) {
-                    let thumb = group.mediaIds.first.flatMap { libraryModel.thumbnail(for: $0) }
-                    path.append(.mediaDetail(MediaDetailState(items: albumItems, startIndex: idx, albumId: album?.albumId, startThumbnail: thumb)))
+                    path.append(.mediaDetail(MediaDetailState(items: albumItems, startIndex: idx, albumId: album?.albumId, startThumbnail: nil)))
                 }
             }
             .onLongPressGesture { selection.toggleGroup(group.groupId) }
@@ -893,8 +917,7 @@ struct AlbumContentView: View {
                 if selection.isSelecting {
                     selection.toggleGroup(group.groupId)
                 } else if let idx = albumItems.firstIndex(of: .group(group)) {
-                    let thumb = group.mediaIds.first.flatMap { libraryModel.thumbnail(for: $0) }
-                    path.append(.mediaDetail(MediaDetailState(items: albumItems, startIndex: idx, albumId: album?.albumId, startThumbnail: thumb)))
+                    path.append(.mediaDetail(MediaDetailState(items: albumItems, startIndex: idx, albumId: album?.albumId, startThumbnail: nil)))
                 }
             }
             .onLongPressGesture { selection.toggleGroup(group.groupId) }
@@ -910,8 +933,7 @@ struct AlbumContentView: View {
                 if selection.isSelecting {
                     selection.toggleMedia(item.mediaId)
                 } else if let idx = albumItems.firstIndex(of: .media(item)) {
-                    let thumb = libraryModel.thumbnail(for: item.mediaId)
-                    path.append(.mediaDetail(MediaDetailState(items: albumItems, startIndex: idx, albumId: album?.albumId, startThumbnail: thumb)))
+                    path.append(.mediaDetail(MediaDetailState(items: albumItems, startIndex: idx, albumId: album?.albumId, startThumbnail: nil)))
                 }
             }
             .onLongPressGesture { selection.toggleMedia(item.mediaId) }
@@ -928,8 +950,7 @@ struct AlbumContentView: View {
                 if selection.isSelecting {
                     selection.toggleMedia(item.mediaId)
                 } else if let idx = albumItems.firstIndex(of: .media(item)) {
-                    let thumb = libraryModel.thumbnail(for: item.mediaId)
-                    path.append(.mediaDetail(MediaDetailState(items: albumItems, startIndex: idx, albumId: album?.albumId, startThumbnail: thumb)))
+                    path.append(.mediaDetail(MediaDetailState(items: albumItems, startIndex: idx, albumId: album?.albumId, startThumbnail: nil)))
                 }
             }
             .onLongPressGesture { selection.toggleMedia(item.mediaId) }
@@ -948,14 +969,14 @@ struct AlbumContentView: View {
         } else {
             if let albumId = album?.albumId {
                 Button("Set as album thumbnail") {
-                    libraryModel.setAlbumThumbnail(albumId: albumId, mediaId: item.mediaId)
+                    albumModel.setAlbumThumbnail(albumID: albumId, mediaID: item.mediaId)
                 }
                 Button("Move to…") {
                     selection = .items(mediaIds: [item.mediaId], groupIds: [])
                     showingMovePicker = true
                 }
                 Button("Remove from album", role: .destructive) {
-                    libraryModel.removeMediaFromAlbum(albumId: albumId, mediaId: item.mediaId)
+                    albumModel.removeMediaFromAlbum(albumID: albumId, mediaID: item.mediaId)
                 }
             }
         }
@@ -1041,7 +1062,7 @@ struct AlbumCell: View {
     let album: FfiAlbum
     var parentInfo: String? = nil
     var isSelected: Bool = false
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(LibraryRepository.self) private var repository
     @Environment(\.lascoTheme) var theme
     @State private var thumbnail: Image? = nil
 
@@ -1088,8 +1109,9 @@ struct AlbumCell: View {
         }
         .task(id: album.albumId) {
             thumbnail = nil
-            if let mediaId = libraryModel.albumThumbnailMediaId(albumId: album.albumId),
-               let data = await libraryModel.thumbnailAsync(for: mediaId) {
+            let items = (try? await repository.albumItems(albumID: album.albumId, ascending: false)) ?? []
+            if let mediaId = album.thumbnailMediaId ?? items.compactMap({ $0.media?.mediaId }).first,
+               let data = try? await repository.thumbnailAsync(mediaID: mediaId) {
                 thumbnail = Image(data: data)
             }
         }
@@ -1104,7 +1126,7 @@ private struct ThumbnailPickerSheet: View {
     let albumName: String
     let media: [FfiMediaItem]
     let onPick: (String) -> Void
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(LibraryRepository.self) private var repository
     @Environment(\.lascoTheme) var theme
     @Environment(\.dismiss) private var dismiss
 
@@ -1155,7 +1177,7 @@ private struct ThumbnailPickerSheet: View {
 
 private struct ThumbnailPickerCell: View {
     let item: FfiMediaItem
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(LibraryRepository.self) private var repository
     @Environment(\.lascoTheme) var theme
     @State private var thumbnail: Image? = nil
 
@@ -1174,7 +1196,7 @@ private struct ThumbnailPickerCell: View {
             .clipped()
             .contentShape(Rectangle())
             .task(id: item.mediaId) {
-                if let data = await libraryModel.thumbnailAsync(for: item.mediaId) {
+                if let data = try? await repository.thumbnailAsync(mediaID: item.mediaId) {
                     thumbnail = Image(data: data)
                 }
             }

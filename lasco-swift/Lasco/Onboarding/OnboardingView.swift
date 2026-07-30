@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct OnboardingView: View {
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(LibraryDirectoryModel.self) private var directory
     @Environment(ToastManager.self) var toastManager
 
     private enum Flow { case main, cloud, own, existingChoice }
@@ -44,9 +44,9 @@ struct OnboardingView: View {
                             slideForward = false
                             withAnimation(.easeInOut(duration: 0.3)) { flow = .main }
                         },
-                        onComplete: { libraryModel.showOnboarding = false }
+                        onComplete: { directory.showOnboarding = false }
                     )
-                    .environmentObject(libraryModel)
+                    .environment(directory)
                 case .existingChoice: existingChoiceBody
                 }
             }
@@ -61,9 +61,9 @@ struct OnboardingView: View {
     }
 
     private func resumeOnboardingIfNeeded() {
-        guard libraryModel.resumeOnboardingLibraryId != nil else { return }
-        libraryModel.resumeOnboardingLibraryId = nil
-        wizardInitialStep = libraryModel.resumeOnboardingStep
+        guard directory.onboarding.resumeLibraryID != nil else { return }
+        directory.onboarding.resumeLibraryID = nil
+        wizardInitialStep = directory.onboarding.resumeStep
         flow = .own
     }
 
@@ -155,7 +155,7 @@ struct OnboardingView: View {
                     }
                     Spacer()
                     Button("Skip") {
-                        libraryModel.showOnboarding = false
+                        directory.showOnboarding = false
                     }
                         .font(LascoFont.body(14))
                         .foregroundStyle(Color.Lasco.inkMuted)
@@ -248,7 +248,7 @@ struct OnboardingView: View {
                     .buttonStyle(LascoPrimaryButtonStyle())
                     .frame(maxWidth: .infinity)
                 } else {
-                    Button("Get started") { libraryModel.showOnboarding = false }
+                    Button("Get started") { directory.showOnboarding = false }
                         .buttonStyle(LascoPrimaryButtonStyle())
                         .frame(maxWidth: .infinity)
                         .disabled(cloudLibraryName.isEmpty)
@@ -288,16 +288,16 @@ struct OnboardingView: View {
 
             bottomBar {
                 Button("S3-compatible storage") {
-                    libraryCountBeforeAddExisting = libraryModel.libraries.count
+                    libraryCountBeforeAddExisting = directory.libraries.count
                     showAddExistingS3Sheet = true
                 }
                     .buttonStyle(LascoPrimaryButtonStyle())
                     .frame(maxWidth: .infinity)
                     .sheet(isPresented: $showAddExistingS3Sheet, onDismiss: {
-                        if libraryModel.libraries.count > libraryCountBeforeAddExisting { libraryModel.showOnboarding = false }
+                        if directory.libraries.count > libraryCountBeforeAddExisting { directory.showOnboarding = false }
                     }) {
                         AddExistingLibraryView()
-                            .environmentObject(libraryModel)
+                            .environment(directory)
                             .environment(toastManager)
                     }
             }
@@ -574,5 +574,4 @@ struct OnboardingView: View {
 
 #Preview {
     OnboardingView()
-        .environmentObject(LibraryModel())
 }

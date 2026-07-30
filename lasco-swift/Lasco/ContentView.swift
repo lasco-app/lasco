@@ -15,11 +15,23 @@ enum LibraryDestination: Hashable {
 // MARK: - ContentView
 
 struct ContentView: View {
-    @EnvironmentObject var libraryModel: LibraryModel
     @Environment(ToastManager.self) var toastManager
     @Environment(\.lascoTheme) var theme
 
     let openAlbum: (FfiAlbum) -> Void
+    let repository: LibraryRepository
+    let session: LibrarySessionState
+    let importCoordinator: ImportCoordinator
+
+    @State private var model: RecentMediaModel
+
+    init(repository: LibraryRepository, session: LibrarySessionState, importCoordinator: ImportCoordinator, openAlbum: @escaping (FfiAlbum) -> Void) {
+        self.repository = repository
+        self.session = session
+        self.importCoordinator = importCoordinator
+        self.openAlbum = openAlbum
+        _model = State(initialValue: RecentMediaModel(repository: repository))
+    }
 
     @State private var showingImportMedia = false
     @State private var pendingImportUrls: [URL] = []
@@ -35,7 +47,7 @@ struct ContentView: View {
             GeometryReader { geo in
                 let columns = geo.size.width > 500 ? 3 : 2
                 let gridColumns = Array(repeating: GridItem(.flexible(), spacing: 3), count: columns)
-                let media = libraryModel.media
+                let media = model.media
 
                 ZStack(alignment: .top) {
                     ScrollView {
@@ -108,7 +120,7 @@ struct ContentView: View {
         }
         .background(theme.bg)
         .sheet(isPresented: $showingAlbumPicker) {
-            AlbumPickerView(title: "Choose import destination") { album in
+            AlbumPickerView(repository: repository, title: "Choose import destination") { album in
                 showingAlbumPicker = false
                 doImport(urls: pendingImportUrls, album: album)
                 pendingImportUrls = []
@@ -116,18 +128,16 @@ struct ContentView: View {
                 showingAlbumPicker = false
                 pendingImportUrls = []
             }
-            .environmentObject(libraryModel)
             .environment(\.lascoTheme, .dark)
             .preferredColorScheme(.dark)
         }
         .sheet(isPresented: $showingDefaultAlbumPicker) {
-            AlbumPickerView(title: "Default upload album") { album in
-                libraryModel.setDefaultUploadAlbum(albumId: album.albumId)
+            AlbumPickerView(repository: repository, title: "Default upload album") { album in
+                Task { try? await repository.setDefaultUploadAlbum(albumID: album.albumId) }
                 showingDefaultAlbumPicker = false
             } onCancel: {
                 showingDefaultAlbumPicker = false
             }
-            .environmentObject(libraryModel)
             .environment(\.lascoTheme, .dark)
             .preferredColorScheme(.dark)
         }
@@ -140,8 +150,16 @@ struct ContentView: View {
             case .failure(let err):
                 toastManager.show(error: err.localizedDescription)
             case .success(let urls):
-                if let defaultAlbum = libraryModel.defaultUploadAlbum {
-                    doImport(urls: urls, album: defaultAlbum)
+                if let defaultAlbumID = session.defaultUploadAlbumID {
+                    Task {
+                        if let albums = try? await repository.listAlbums(),
+                           let defaultAlbum = albums.first(where: { $0.albumId == defaultAlbumID }) {
+                            doImport(urls: urls, album: defaultAlbum)
+                        } else {
+                            pendingImportUrls = urls
+                            showingAlbumPicker = true
+                        }
+                    }
                 } else {
                     pendingImportUrls = urls
                     showingAlbumPicker = true
@@ -149,8 +167,10 @@ struct ContentView: View {
             }
         }
         .onAppear {
-            AppLogger.log(.info, "home screen shown — \(libraryModel.media.count) media items")
+            AppLogger.log(.info, "home screen shown — \(model.media.count) media items")
         }
+        .task { await model.start() }
+        .environment(repository)
     }
 
     // MARK: Header
@@ -162,10 +182,6 @@ struct ContentView: View {
                 .foregroundStyle(theme.ink)
             Spacer()
             Button {
-                guard libraryModel.isOpen else {
-                    toastManager.show(error: "No library open")
-                    return
-                }
                 showingImportMedia = true
             } label: {
                 Image("upload").renderingMode(.template).resizable().frame(width: 18, height: 18)
@@ -256,7 +272,7 @@ struct ContentView: View {
                 .padding(20)
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else {
-            if libraryModel.defaultUploadAlbumId == nil {
+            if session.defaultUploadAlbumID == nil {
                 HStack(spacing: 12) {
                     Text("Auto-import paused: no default upload album set.")
                         .font(LascoFont.body())
@@ -287,8 +303,7 @@ struct ContentView: View {
                                     selection.insert(item.mediaId)
                                 }
                             } else if let idx = media.firstIndex(where: { $0.mediaId == item.mediaId }) {
-                                let thumb = libraryModel.thumbnail(for: item.mediaId)
-                                path.append(.mediaDetail(MediaDetailState(items: media.map { .media($0) }, startIndex: idx, startThumbnail: thumb)))
+                                path.append(.mediaDetail(MediaDetailState(items: media.map { .media($0) }, startIndex: idx, startThumbnail: nil)))
                             }
                         }
                         .onLongPressGesture {
@@ -318,25 +333,28 @@ struct ContentView: View {
     // MARK: Open album
 
     private func triggerOpenAlbum(for mediaId: String) {
-        let containing = libraryModel.albumsContainingMedia(mediaId: mediaId)
-        guard !containing.isEmpty else { return }
-        if containing.count == 1 {
-            selection = []
-            isSelecting = false
-            openAlbum(containing[0])
-        } else {
-            guard let mediaItem = libraryModel.showMedia(mediaId: mediaId) else { return }
-            albumsForMedia = AlbumList(media: mediaItem, albums: containing)
+        Task {
+            let containing = await model.albumsContainingMedia(id: mediaId)
+            guard !containing.isEmpty else { return }
+            if containing.count == 1 {
+                selection = []
+                isSelecting = false
+                openAlbum(containing[0])
+            } else if let mediaItem = await model.showMedia(id: mediaId) {
+                albumsForMedia = AlbumList(media: mediaItem, albums: containing)
+            }
         }
     }
 
     // MARK: Import helpers
 
     private func doImport(urls: [URL], album: FfiAlbum) {
-        if let err = libraryModel.importMedia(urls: urls, albumId: album.albumId) {
-            toastManager.show(error: err)
-        } else {
-            toastManager.show(ok: "Imported \(urls.count) item(s) to \(album.name)")
+        Task {
+            if let err = await importCoordinator.importMedia(urls: urls, albumID: album.albumId) {
+                toastManager.show(error: err)
+            } else {
+                toastManager.show(ok: "Imported \(urls.count) item(s) to \(album.name)")
+            }
         }
     }
 
@@ -353,7 +371,7 @@ private struct AlbumList: Identifiable {
 // MARK: - OpenAlbumPickerSheet
 
 private struct OpenAlbumPickerSheet: View {
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(LibraryRepository.self) private var repository
     let media: FfiMediaItem
     let albums: [FfiAlbum]
     let onSelect: (FfiAlbum) -> Void
@@ -444,7 +462,7 @@ private struct OpenAlbumPickerSheet: View {
         .frame(minWidth: 400, minHeight: 300)
         #endif
         .task(id: media.mediaId) {
-            if let data = libraryModel.thumbnail(for: media.mediaId) {
+            if let data = try? await repository.thumbnailAsync(mediaID: media.mediaId) {
                 thumbnail = Image(data: data)
             }
         }

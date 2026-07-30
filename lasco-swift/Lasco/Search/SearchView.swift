@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct SearchView: View {
-    @EnvironmentObject var libraryModel: LibraryModel
     @Environment(\.lascoTheme) var theme
     @State private var query = ""
 

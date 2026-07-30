@@ -1,13 +1,22 @@
 import SwiftUI
 
 struct AlbumPickerView: View {
-    @EnvironmentObject var libraryModel: LibraryModel
+    let repository: LibraryRepository
     let title: String
     let onSelect: (FfiAlbum) -> Void
     let onCancel: () -> Void
 
     @State private var path: [FfiAlbum] = []
+    @State private var model: AlbumListModel
     @Environment(\.lascoTheme) var theme
+
+    init(repository: LibraryRepository, title: String, onSelect: @escaping (FfiAlbum) -> Void, onCancel: @escaping () -> Void) {
+        self.repository = repository
+        self.title = title
+        self.onSelect = onSelect
+        self.onCancel = onCancel
+        _model = State(initialValue: AlbumListModel(repository: repository))
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -41,6 +50,8 @@ struct AlbumPickerView: View {
             .overlay(Rectangle().stroke(theme.ink, lineWidth: 2).ignoresSafeArea(edges: .bottom))
         }
         .background(theme.bg)
+        .environment(model)
+        .task { await model.start() }
         #if os(macOS)
         .frame(minWidth: 480, minHeight: 400)
         #endif
@@ -48,7 +59,7 @@ struct AlbumPickerView: View {
 }
 
 private struct AlbumPickerBrowser: View {
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(AlbumListModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @Environment(\.lascoTheme) var theme
     let album: FfiAlbum?
@@ -58,7 +69,7 @@ private struct AlbumPickerBrowser: View {
     private var isRoot: Bool { album == nil }
 
     private var childAlbums: [FfiAlbum] {
-        libraryModel.albums.filter {
+        model.albums.filter {
             $0.parentAlbumId == album?.albumId && !$0.deleted && !$0.isDisconnected
         }
     }

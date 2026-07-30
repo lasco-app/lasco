@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct AddNASSFTPView: View {
-    @EnvironmentObject var libraryModel: LibraryModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.lascoTheme) var theme
 
@@ -130,5 +129,4 @@ struct AddNASSFTPView: View {
 
 #Preview {
     AddNASSFTPView()
-        .environmentObject(LibraryModel())
 }

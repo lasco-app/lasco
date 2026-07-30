@@ -5,7 +5,7 @@ enum MediaLayout { case list, grid }
 // MARK: - MediaRow
 
 struct MediaRow: View {
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(LibraryRepository.self) private var repository
     @Environment(\.lascoTheme) var theme
     let item: FfiMediaItem
     var isSelected: Bool = false
@@ -65,7 +65,7 @@ struct MediaRow: View {
         .contentShape(Rectangle())
         .task(id: item.mediaId) {
             guard thumbnail == nil else { return }
-            if let data = await libraryModel.thumbnailAsync(for: item.mediaId) {
+            if let data = try? await repository.thumbnailAsync(mediaID: item.mediaId) {
                 thumbnail = Image(data: data)
             }
         }
@@ -75,7 +75,7 @@ struct MediaRow: View {
 // MARK: - GroupListRow
 
 struct GroupListRow: View {
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(LibraryRepository.self) private var repository
     @Environment(\.lascoTheme) var theme
     let group: FfiGroup
     var isSelected: Bool = false
@@ -127,7 +127,7 @@ struct GroupListRow: View {
         .task(id: group.groupId) {
             thumbnail = nil
             if let firstId = group.mediaIds.first,
-               let data = await libraryModel.thumbnailAsync(for: firstId) {
+               let data = try? await repository.thumbnailAsync(mediaID: firstId) {
                 thumbnail = Image(data: data)
             }
         }
@@ -137,7 +137,7 @@ struct GroupListRow: View {
 // MARK: - GroupGridCell
 
 struct GroupGridCell: View {
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(LibraryRepository.self) private var repository
     @Environment(\.lascoTheme) var theme
     let group: FfiGroup
     var isSelected: Bool = false
@@ -179,7 +179,7 @@ struct GroupGridCell: View {
         .task(id: group.groupId) {
             thumbnail = nil
             if let firstId = group.mediaIds.first,
-               let data = await libraryModel.thumbnailAsync(for: firstId) {
+               let data = try? await repository.thumbnailAsync(mediaID: firstId) {
                 thumbnail = Image(data: data)
             }
         }
@@ -189,7 +189,7 @@ struct GroupGridCell: View {
 // MARK: - MediaGridCell
 
 struct MediaGridCell: View {
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(LibraryRepository.self) private var repository
     @Environment(\.lascoTheme) var theme
     let item: FfiMediaItem
     var isSelected: Bool = false
@@ -222,7 +222,7 @@ struct MediaGridCell: View {
         .contentShape(Rectangle())
         .task(id: item.mediaId) {
             guard thumbnail == nil else { return }
-            if let data = await libraryModel.thumbnailAsync(for: item.mediaId) {
+            if let data = try? await repository.thumbnailAsync(mediaID: item.mediaId) {
                 thumbnail = Image(data: data)
             }
         }

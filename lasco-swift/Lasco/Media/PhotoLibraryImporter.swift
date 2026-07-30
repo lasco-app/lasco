@@ -181,7 +181,7 @@ actor PhotoLibraryImporter {
     /// Imports PHAssets created after the last recorded watermark date.
     /// On first run, stores the current date and imports nothing.
     /// Returns the number of newly imported assets.
-    func importNewAssets(libraryId: String, albumId: String, lib: FfiLibrary) async -> Int {
+    func importNewAssets(libraryId: String, albumId: String, repository: any LibraryRepositoryProtocol) async -> Int {
         let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
         guard status == .authorized || status == .limited else { return 0 }
 
@@ -206,7 +206,7 @@ actor PhotoLibraryImporter {
         for i in 0..<result.count {
             let asset = result.object(at: i)
             do {
-                let ids = try await importPHAsset(asset, into: albumId, lib: lib)
+                let ids = try await importPHAsset(asset, into: albumId, repository: repository)
                 if !ids.isEmpty { imported += 1 }
             } catch {
                 AppLogger.log(.error, "auto-import asset \(asset.localIdentifier) failed: \(error)")
@@ -220,7 +220,7 @@ actor PhotoLibraryImporter {
     // MARK: - Single asset import
 
     @discardableResult
-    func importPHAsset(_ asset: PHAsset, into albumId: String, lib: FfiLibrary) async throws -> [String] {
+    func importPHAsset(_ asset: PHAsset, into albumId: String, repository: any LibraryRepositoryProtocol) async throws -> [String] {
         let analysis = Self.analyzeAsset(asset)
         guard analysis.isImportable else { return [] }
 
@@ -247,12 +247,18 @@ actor PhotoLibraryImporter {
             let filePath = try await downloadResource(resource)
             defer { try? FileManager.default.removeItem(at: filePath) }
 
-            let mediaId = try await runOnBackground {
-                try lib.importMedia(path: filePath.path, albumId: albumId, originalFilename: resource.originalFilename, appleAaeMediaId: appleAaeMediaId, appleLivePhotoMediaId: appleLivePhotoMediaId)
-            }
+            let mediaId = try await repository.importMediaWithoutNotification(
+                source: MediaImportSource(
+                    path: filePath.path,
+                    originalFilename: resource.originalFilename,
+                    appleAaeMediaID: appleAaeMediaId,
+                    appleLivePhotoMediaID: appleLivePhotoMediaId
+                ),
+                albumID: albumId
+            )
 
             if allowThumbnail, !didSetThumbnail, let thumbData = ThumbnailGenerator.generate(for: filePath) {
-                try? await runOnBackground { try lib.setMediaThumbnail(mediaId: mediaId, data: thumbData) }
+                try? await repository.setMediaThumbnail(mediaID: mediaId, data: thumbData)
                 didSetThumbnail = true
             }
 
@@ -309,13 +315,5 @@ actor PhotoLibraryImporter {
         return filePath
     }
 
-    private func runOnBackground<T>(_ work: @escaping () throws -> T) async throws -> T {
-        try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                do { continuation.resume(returning: try work()) }
-                catch { continuation.resume(throwing: error) }
-            }
-        }
-    }
 }
 #endif

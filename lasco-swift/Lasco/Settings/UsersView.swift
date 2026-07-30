@@ -1,12 +1,18 @@
 import SwiftUI
 
 struct UsersView: View {
-    @EnvironmentObject var libraryModel: LibraryModel
     @Environment(ToastManager.self) var toastManager
     @Environment(\.dismiss) private var dismiss
     @Environment(\.lascoTheme) var theme
 
     @State private var showAddUser = false
+    let repository: LibraryRepository
+    let session: LibrarySessionState
+
+    init(repository: LibraryRepository, session: LibrarySessionState) {
+        self.repository = repository
+        self.session = session
+    }
 
     var body: some View {
         ZStack {
@@ -29,7 +35,7 @@ struct UsersView: View {
                 .padding(.bottom, 32)
 
                 VStack(alignment: .leading, spacing: 12) {
-                    if libraryModel.users.isEmpty {
+                    if session.users.isEmpty {
                         Text("No users found.")
                             .font(LascoFont.body())
                             .foregroundStyle(theme.inkMuted)
@@ -39,14 +45,14 @@ struct UsersView: View {
                             .lascoPanel()
                     } else {
                         VStack(alignment: .leading, spacing: 0) {
-                            ForEach(Array(libraryModel.users.enumerated()), id: \.element) { index, username in
+                            ForEach(Array(session.users.enumerated()), id: \.element) { index, username in
                                 if index > 0 {
                                     Divider()
                                         .background(theme.inkMuted.opacity(0.2))
                                 }
                                 UserRow(
                                     username: username,
-                                    isMe: username == libraryModel.openUsername
+                                    isMe: username == session.username
                                 )
                             }
                         }
@@ -68,7 +74,7 @@ struct UsersView: View {
         .toolbarBackButton(action: { dismiss() })
         .sheet(isPresented: $showAddUser) {
             AddUserView()
-                .environmentObject(libraryModel)
+                .environment(repository)
                 .environment(\.lascoTheme, .dark)
                 .preferredColorScheme(.dark)
         }
@@ -102,7 +108,7 @@ private struct UserRow: View {
 }
 
 private struct AddUserView: View {
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(LibraryRepository.self) private var repository
     @Environment(\.dismiss) private var dismiss
     @Environment(\.lascoTheme) var theme
     @Environment(ToastManager.self) var toastManager
@@ -197,11 +203,14 @@ private struct AddUserView: View {
 
                     Button("Add user") {
                         let trimmed = username.trimmingCharacters(in: .whitespaces)
-                        if let err = libraryModel.addUser(username: trimmed, password: password) {
-                            errorMessage = err
-                        } else {
-                            toastManager.show(ok: "User \"\(trimmed)\" added")
-                            dismiss()
+                        Task {
+                            do {
+                                try await repository.addUser(username: trimmed, password: password)
+                                toastManager.show(ok: "User \"\(trimmed)\" added")
+                                dismiss()
+                            } catch {
+                                errorMessage = error.localizedDescription
+                            }
                         }
                     }
                     .buttonStyle(LascoPrimaryButtonStyle())

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct LibraryParametersView: View {
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(LibraryDirectoryModel.self) private var directory
     @Environment(\.dismiss) private var dismiss
     @Environment(\.lascoTheme) var theme
 
@@ -27,12 +27,12 @@ struct LibraryParametersView: View {
                     .padding(.top, 40)
                     .padding(.bottom, 8)
 
-                    if let nickname = libraryModel.openNickname {
+                    if let nickname = directory.openNickname {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(nickname)
                                 .font(LascoFont.categoryLarge())
                                 .foregroundStyle(theme.ink)
-                            if let id = libraryModel.openLibraryId {
+                            if let id = directory.openLibraryID {
                                 Text(id)
                                     .font(LascoFont.mono())
                                     .foregroundStyle(theme.inkMuted)
@@ -46,8 +46,9 @@ struct LibraryParametersView: View {
 
                     VStack(alignment: .leading, spacing: 0) {
                         NavigationLink {
-                            RemotesView()
-                                .environmentObject(libraryModel)
+                            if let repository = directory.activeRepository, let session = directory.session {
+                                RemotesView(repository: repository, session: session)
+                            }
                         } label: {
                             HStack {
                                 Text("Remotes")

@@ -3,7 +3,7 @@ import SwiftUI
 extension FfiLibraryEntry: Identifiable {}
 
 struct LibraryListView: View {
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(LibraryDirectoryModel.self) private var directory
     @Environment(ToastManager.self) var toastManager
 
     @State private var selectedEntry: FfiLibraryEntry?
@@ -40,7 +40,7 @@ struct LibraryListView: View {
 
                 ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    if let err = libraryModel.librariesError {
+                    if let err = directory.librariesError {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Could not load libraries")
                                 .font(LascoFont.body())
@@ -54,7 +54,7 @@ struct LibraryListView: View {
                         .padding(.horizontal, 16)
                         .padding(.vertical, 16)
                         .lascoPanel()
-                    } else if libraryModel.libraries.isEmpty {
+                    } else if directory.libraries.isEmpty {
                         Text("No libraries yet.")
                             .font(LascoFont.body())
                             .foregroundStyle(Color.Lasco.inkMuted)
@@ -63,7 +63,7 @@ struct LibraryListView: View {
                             .padding(.vertical, 20)
                             .lascoPanel()
                     } else {
-                        ForEach(libraryModel.libraries, id: \.id) { entry in
+                        ForEach(directory.libraries, id: \.id) { entry in
                             if let err = entry.loadError {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(entry.id.isEmpty ? "Unknown library" : entry.nickname)
@@ -80,11 +80,10 @@ struct LibraryListView: View {
                                 .lascoPanel()
                             } else {
                                 Button {
-                                    libraryModel.error = nil
-                                    switch libraryModel.openCached(entry: entry) {
-                                    case .opened: break
-                                    case .noSession: selectedEntry = entry
-                                    case .failed(let msg): toastManager.show(error: msg)
+                                    Task {
+                                        if await directory.openCached(entry: entry) == false {
+                                            selectedEntry = entry
+                                        }
                                     }
                                 } label: {
                                     Text(entry.nickname)
@@ -125,7 +124,7 @@ struct LibraryListView: View {
         }
         .sheet(item: $selectedEntry) { entry in
             LibraryOpenSheet(entry: entry)
-                .environmentObject(libraryModel)
+                .environment(directory)
         }
         .sheet(isPresented: $showSettings) {
             SettingsView()
@@ -135,18 +134,18 @@ struct LibraryListView: View {
                 onBack: { showNewLibrary = false },
                 onComplete: { showNewLibrary = false }
             )
-            .environmentObject(libraryModel)
+            .environment(directory)
         }
         .sheet(isPresented: $showAddExisting) {
             AddExistingLibraryView()
-                .environmentObject(libraryModel)
+                .environment(directory)
                 .environment(toastManager)
         }
     }
 }
 
 struct LibraryOpenSheet: View {
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(LibraryDirectoryModel.self) private var directory
     @Environment(\.dismiss) private var dismiss
 
     let entry: FfiLibraryEntry
@@ -196,18 +195,17 @@ struct LibraryOpenSheet: View {
                             .focused($passwordFocused)
                     }
 
-                    if let error = libraryModel.error {
+                    if let error = directory.onboarding.error {
                         ErrorBanner(message: error)
                     }
 
                     Button {
                         isLoading = true
-                        libraryModel.open(
-                            nickname: entry.nickname,
-                            username: username,
-                            password: password
-                        )
-                        isLoading = false
+                        Task {
+                            _ = await directory.open(nickname: entry.nickname, username: username, password: password)
+                            isLoading = false
+                            if directory.isOpen { dismiss() }
+                        }
                     } label: {
                         if isLoading {
                             HStack(spacing: 8) {
@@ -237,5 +235,4 @@ struct LibraryOpenSheet: View {
 
 #Preview {
     LibraryListView()
-        .environmentObject(LibraryModel())
 }

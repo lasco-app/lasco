@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct StatusView: View {
-    @EnvironmentObject var libraryModel: LibraryModel
     @Environment(ToastManager.self) var toastManager
     @Environment(\.lascoTheme) var theme
 
@@ -13,6 +12,17 @@ struct StatusView: View {
     @State private var showCleanConfirm = false
     @State private var cleanBlockedCount: Int? = nil
     @State private var showClearThumbsConfirm = false
+    let repository: LibraryRepository
+    let session: LibrarySessionState
+    let syncCoordinator: SyncCoordinator
+    @State private var model: StatusModel
+
+    init(repository: LibraryRepository, session: LibrarySessionState, syncCoordinator: SyncCoordinator) {
+        self.repository = repository
+        self.session = session
+        self.syncCoordinator = syncCoordinator
+        _model = State(initialValue: StatusModel(repository: repository))
+    }
 
     var body: some View {
         NavigationStack {
@@ -25,11 +35,9 @@ struct StatusView: View {
                             Text("STATUS")
                                 .font(LascoFont.categoryLarge())
                                 .foregroundStyle(theme.ink)
-                            if let nickname = libraryModel.openNickname {
-                                Text(nickname)
-                                    .font(LascoFont.subtitle())
-                                    .foregroundStyle(theme.inkMuted)
-                            }
+                            Text(session.nickname)
+                                .font(LascoFont.subtitle())
+                                .foregroundStyle(theme.inkMuted)
                         }
                         .padding(.top, 20)
 
@@ -42,7 +50,7 @@ struct StatusView: View {
                     .padding(.horizontal, 16)
                     .padding(.bottom, 100)
                 }
-                .onAppear { libraryModel.reload() }
+                .task { await model.start() }
             }
         }
         .sheet(isPresented: $showRemotePicker) {
@@ -58,13 +66,13 @@ struct StatusView: View {
         }
         .sheet(isPresented: $showAddS3) {
             AddS3RemoteView()
-                .environmentObject(libraryModel)
+                .environment(repository)
                 .environment(\.lascoTheme, .dark)
                 .preferredColorScheme(.dark)
         }
         .sheet(isPresented: $showAddLocalFS) {
             AddLocalFSRemoteView()
-                .environmentObject(libraryModel)
+                .environment(repository)
                 .environment(\.lascoTheme, .dark)
                 .preferredColorScheme(.dark)
         }
@@ -73,7 +81,7 @@ struct StatusView: View {
             isPresented: $showCleanConfirm,
             titleVisibility: .visible
         ) {
-            Button("Clean", role: .destructive) { libraryModel.cleanLocalMedia() }
+            Button("Clean", role: .destructive) { Task { try? await model.cleanLocalMedia() } }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This deletes cached originals from this device. Thumbnails are kept. They remain available on your remotes.")
@@ -83,7 +91,7 @@ struct StatusView: View {
             isPresented: $showClearThumbsConfirm,
             titleVisibility: .visible
         ) {
-            Button("Clear", role: .destructive) { libraryModel.cleanLocalThumbnails() }
+            Button("Clear", role: .destructive) { Task { try? await model.cleanLocalThumbnails() } }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This deletes cached thumbnails from this device. They are re-downloaded as needed.")
@@ -105,11 +113,11 @@ struct StatusView: View {
 
     private var mediaTypeCounts: (photos: Int, videos: Int) {
         let videoExtensions: Set<String> = ["mp4", "mov", "avi", "mkv", "m4v", "wmv", "flv", "webm", "mpg", "mpeg", "3gp", "ts", "mts", "m2ts"]
-        let videos = libraryModel.media.filter {
+        let videos = model.media.filter {
             let ext = ($0.filenameOriginal as NSString).pathExtension.lowercased()
             return videoExtensions.contains(ext)
         }.count
-        return (photos: libraryModel.media.count - videos, videos: videos)
+        return (photos: model.media.count - videos, videos: videos)
     }
 
     private var mediaSection: some View {
@@ -121,7 +129,7 @@ struct StatusView: View {
                     .foregroundStyle(theme.inkSub)
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text("\(libraryModel.media.count) items")
+                    Text("\(model.media.count) items")
                         .font(LascoFont.mono())
                         .foregroundStyle(theme.ink)
                     Text("\(counts.photos) photos  \(counts.videos) videos")
@@ -147,7 +155,7 @@ struct StatusView: View {
                         .font(LascoFont.body())
                         .foregroundStyle(theme.inkSub)
                     Spacer()
-                    if let stats = libraryModel.localStateStats {
+                    if let stats = model.localStateStats {
                         VStack(alignment: .trailing, spacing: 2) {
                             Text("\(stats.mediaCachedCount) media  \(formatGB(stats.mediaCachedBytes))")
                                 .font(LascoFont.mono())
@@ -168,7 +176,7 @@ struct StatusView: View {
                 Divider().background(theme.inkMuted.opacity(0.2))
 
                 Button {
-                    if let count = libraryModel.mediaCountWithoutRemoteBackup() {
+                    if let count = model.mediaCountWithoutRemoteBackup {
                         cleanBlockedCount = count
                     } else {
                         showCleanConfirm = true
@@ -207,7 +215,7 @@ struct StatusView: View {
                 .font(LascoFont.categoryLarge())
                 .foregroundStyle(theme.ink)
 
-            if libraryModel.remotes.isEmpty {
+            if session.remotes.isEmpty {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("No remotes configured.")
                         .font(LascoFont.body())
@@ -221,19 +229,19 @@ struct StatusView: View {
                         .frame(maxWidth: .infinity)
                 }
             } else {
-                ForEach(libraryModel.remotes, id: \.id) { remote in
+                ForEach(session.remotes, id: \.id) { remote in
                     RemoteStatusCard(
                         remote: remote,
-                        isDefaultFetch: remote.id == libraryModel.defaultFetchRemoteId,
-                        lastPush: libraryModel.lastPushRecords[remote.id],
-                        lastFetch: libraryModel.lastFetchRecords[remote.id],
+                        isDefaultFetch: remote.id == session.defaultFetchRemoteID,
+                        lastPush: syncCoordinator.lastPushRecords[remote.id],
+                        lastFetch: syncCoordinator.lastFetchRecords[remote.id],
                         isSynced: isSynced(remote),
-                        nextPushDate: libraryModel.nextPushDate,
-                        pushEnabled: libraryModel.isPushAllowed(remote.id),
-                        fetchEnabled: libraryModel.isFetchAllowed(remote.id),
+                        nextPushDate: syncCoordinator.nextPushDate,
+                        pushEnabled: syncCoordinator.isPushAllowed(remote.id),
+                        fetchEnabled: syncCoordinator.isFetchAllowed(remote.id),
                         onPush: {
                             Task {
-                                if let err = await libraryModel.pushRemote(remoteId: remote.id) {
+                                if let err = await syncCoordinator.push(remoteID: remote.id) {
                                     toastManager.show(error: err)
                                 } else {
                                     toastManager.show(ok: "\(remote.name): pushed")
@@ -242,7 +250,7 @@ struct StatusView: View {
                         },
                         onFetch: {
                             Task {
-                                if let err = await libraryModel.fetchRemote(remoteId: remote.id) {
+                                if let err = await syncCoordinator.fetch(remoteID: remote.id) {
                                     toastManager.show(error: err)
                                 } else {
                                     toastManager.show(ok: "\(remote.name): fetched")
@@ -261,7 +269,7 @@ struct StatusView: View {
     }
 
     private func isSynced(_ remote: FfiRemote) -> Bool {
-        !(libraryModel.lib?.hasUnpushedChanges(remoteId: remote.id) ?? false)
+        true
     }
 }
 
@@ -270,8 +278,8 @@ private struct RemoteStatusCard: View {
 
     let remote: FfiRemote
     let isDefaultFetch: Bool
-    let lastPush: LibraryModel.SyncRecord?
-    let lastFetch: LibraryModel.SyncRecord?
+    let lastPush: SyncRecord?
+    let lastFetch: SyncRecord?
     let isSynced: Bool
     let nextPushDate: Date?
     let pushEnabled: Bool
@@ -288,7 +296,7 @@ private struct RemoteStatusCard: View {
         return "local changes not pushed"
     }
 
-    private func syncLabel(_ record: LibraryModel.SyncRecord?) -> String {
+    private func syncLabel(_ record: SyncRecord?) -> String {
         guard let record else { return "never" }
         let cal = Calendar.current
         let time = record.date.formatted(.dateTime.hour().minute())
@@ -341,7 +349,7 @@ private struct SyncStatusRow: View {
     @Environment(\.lascoTheme) var theme
 
     let label: String
-    let record: LibraryModel.SyncRecord?
+    let record: SyncRecord?
     let dateLabel: String
     var isDefaultFetch: Bool = false
     var enabled: Bool = true

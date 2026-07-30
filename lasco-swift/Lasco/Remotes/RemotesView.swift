@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct RemotesView: View {
-    @EnvironmentObject var libraryModel: LibraryModel
     @Environment(ToastManager.self) var toastManager
     @Environment(\.dismiss) private var dismiss
     @Environment(\.lascoTheme) var theme
@@ -11,6 +10,13 @@ struct RemotesView: View {
     @State private var showRemotePicker = false
     @State private var showAddS3 = false
     @State private var showAddLocalFS = false
+    let repository: LibraryRepository
+    let session: LibrarySessionState
+
+    init(repository: LibraryRepository, session: LibrarySessionState) {
+        self.repository = repository
+        self.session = session
+    }
 
     var body: some View {
         ZStack {
@@ -33,7 +39,7 @@ struct RemotesView: View {
                 .padding(.bottom, 32)
 
                 VStack(alignment: .leading, spacing: 12) {
-                    if libraryModel.remotes.isEmpty {
+                    if session.remotes.isEmpty {
                         Text("No remotes configured.")
                             .font(LascoFont.body())
                             .foregroundStyle(theme.inkMuted)
@@ -42,23 +48,23 @@ struct RemotesView: View {
                             .padding(.vertical, 20)
                             .lascoPanel()
                     } else {
-                        ForEach(libraryModel.remotes, id: \.id) { remote in
+                        ForEach(session.remotes, id: \.id) { remote in
                             RemoteCard(
                                 remote: remote,
-                                isDefaultFetch: remote.id == libraryModel.defaultFetchRemoteId,
-                                onDelete: { libraryModel.removeRemote(id: remote.id) },
+                                isDefaultFetch: remote.id == session.defaultFetchRemoteID,
+                                onDelete: { Task { try? await repository.removeRemote(id: remote.id) } },
                                 onTestConnection: {
                                     Task {
-                                        let ok = await libraryModel.connectRemote(remoteId: remote.id)
-                                        if ok {
+                                        do {
+                                            try await repository.connectRemote(id: remote.id)
                                             toastManager.show(ok: "\(remote.name): reachable")
-                                        } else {
+                                        } catch {
                                             toastManager.show(error: "\(remote.name): unreachable")
                                         }
                                     }
                                 },
                                 onSetDefaultFetch: {
-                                    libraryModel.setDefaultFetchRemote(remoteId: remote.id)
+                                    Task { try? await repository.setDefaultFetchRemote(remoteID: remote.id) }
                                 }
                             )
                         }
@@ -90,13 +96,13 @@ struct RemotesView: View {
         }
         .sheet(isPresented: $showAddS3) {
             AddS3RemoteView()
-                .environmentObject(libraryModel)
+                .environment(repository)
                 .environment(\.lascoTheme, .dark)
                 .preferredColorScheme(.dark)
         }
         .sheet(isPresented: $showAddLocalFS) {
             AddLocalFSRemoteView()
-                .environmentObject(libraryModel)
+                .environment(repository)
                 .environment(\.lascoTheme, .dark)
                 .preferredColorScheme(.dark)
         }
