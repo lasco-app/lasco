@@ -34,7 +34,8 @@ struct LascoApp: App {
     var body: some Scene {
         WindowGroup {
             Group {
-                if let repository = directory.activeRepository,
+                if directory.isOpen,
+                   let repository = directory.activeRepository,
                    let session = directory.session,
                    let syncCoordinator = directory.syncCoordinator,
                    let importCoordinator = directory.importCoordinator {

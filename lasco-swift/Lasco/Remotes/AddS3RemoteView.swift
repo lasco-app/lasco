@@ -7,6 +7,8 @@ struct AddS3RemoteView: View {
     @Environment(ToastManager.self) var toastManager
     @Environment(\.lascoTheme) var theme
 
+    let onRemoteReady: @MainActor () async throws -> Void
+
     @FocusState private var nameFieldFocused: Bool
     @State private var name = ""
     @State private var endpoint = ""
@@ -24,6 +26,10 @@ struct AddS3RemoteView: View {
         case failure(String)
     }
     @State private var testState: TestState = .idle
+
+    init(onRemoteReady: @escaping @MainActor () async throws -> Void = {}) {
+        self.onRemoteReady = onRemoteReady
+    }
 
     private var canTest: Bool {
         !endpoint.isEmpty && !bucket.isEmpty && !accessKey.isEmpty && !secretKey.isEmpty
@@ -133,6 +139,8 @@ struct AddS3RemoteView: View {
                         do {
                             let remoteID = try await repository.addRemoteS3(id: name, endpoint: endpoint, bucket: bucket, region: region, pathPrefix: pathPrefix, accessKey: accessKey, secretKey: secretKey)
                             try await repository.initializeRemote(id: remoteID)
+                            _ = try await repository.push(remoteID: remoteID)
+                            try await onRemoteReady()
                             dismiss()
                             toastManager.show(ok: "\(name): initialized")
                         } catch {

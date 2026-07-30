@@ -147,18 +147,28 @@ struct NewLibraryWizard: View {
                     .buttonStyle(LascoSecondaryButtonStyle())
                     .frame(maxWidth: .infinity)
             }
-            .sheet(isPresented: $showAddS3Sheet, onDismiss: {
-                if !(directory.session?.remotes ?? []).isEmpty { advanceFromRemote() }
-            }) {
+            .sheet(isPresented: $showAddS3Sheet) {
                 if let repository = directory.activeRepository {
-                    AddS3RemoteView().environment(repository)
+                    AddS3RemoteView {
+                        try await directory.refreshActiveSession()
+                        guard !(directory.session?.remotes ?? []).isEmpty else {
+                            throw LibraryDirectoryModelError.remoteUnavailableAfterRefresh
+                        }
+                        advanceFromRemote()
+                    }
+                    .environment(repository)
                 }
             }
-            .sheet(isPresented: $showAddLocalFSSheet, onDismiss: {
-                if !(directory.session?.remotes ?? []).isEmpty { advanceFromRemote() }
-            }) {
+            .sheet(isPresented: $showAddLocalFSSheet) {
                 if let repository = directory.activeRepository {
-                    AddLocalFSRemoteView().environment(repository)
+                    AddLocalFSRemoteView {
+                        try await directory.refreshActiveSession()
+                        guard !(directory.session?.remotes ?? []).isEmpty else {
+                            throw LibraryDirectoryModelError.remoteUnavailableAfterRefresh
+                        }
+                        advanceFromRemote()
+                    }
+                    .environment(repository)
                 }
             }
         } else {
@@ -180,6 +190,7 @@ struct NewLibraryWizard: View {
         if let libraryID = directory.openLibraryID {
             directory.clearOnboardingIncomplete(libraryID: libraryID)
         }
+        directory.completeOnboarding()
         onComplete()
     }
 

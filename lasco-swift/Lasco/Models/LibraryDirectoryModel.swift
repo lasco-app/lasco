@@ -6,6 +6,20 @@ struct CreateLibraryResult: Sendable, Equatable {
     let masterKey: String
 }
 
+enum LibraryDirectoryModelError: LocalizedError {
+    case activeSessionUnavailable
+    case remoteUnavailableAfterRefresh
+
+    var errorDescription: String? {
+        switch self {
+        case .activeSessionUnavailable:
+            "The active library session is unavailable."
+        case .remoteUnavailableAfterRefresh:
+            "The remote was not available after refreshing the library session."
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class LibraryDirectoryModel {
@@ -78,8 +92,15 @@ final class LibraryDirectoryModel {
     }
 
     func create(name: String, username: String, password: String) async throws -> CreateLibraryResult {
+        let remainsInOnboarding = showOnboarding
         let created = try await directory.create(name: name, username: username, password: password)
-        await install(library: created.library, nickname: name, username: username)
+        await install(
+            library: created.library,
+            nickname: name,
+            username: username,
+            markOpen: false,
+            showingOnboarding: remainsInOnboarding
+        )
         let result = CreateLibraryResult(libraryID: created.result.libraryId, masterKey: created.result.masterKeyHex)
         setOnboardingStep(1, libraryID: result.libraryID)
         return result
@@ -164,11 +185,29 @@ final class LibraryDirectoryModel {
         UserDefaults.standard.removeObject(forKey: "lasco.onboardingStep.\(libraryID)")
     }
 
+    func completeOnboarding() {
+        isOpen = true
+        showOnboarding = false
+    }
+
     func testS3Remote(endpoint: String, bucket: String, region: String, pathPrefix: String, accessKey: String, secretKey: String) async throws {
         try await directory.testS3Remote(endpoint: endpoint, bucket: bucket, region: region, pathPrefix: pathPrefix, accessKey: accessKey, secretKey: secretKey)
     }
 
-    private func install(library: FfiLibrary, nickname: String, username: String?) async {
+    func refreshActiveSession() async throws {
+        guard let activeRepository, let session else {
+            throw LibraryDirectoryModelError.activeSessionUnavailable
+        }
+        try await session.refresh(using: activeRepository)
+    }
+
+    private func install(
+        library: FfiLibrary,
+        nickname: String,
+        username: String?,
+        markOpen: Bool = true,
+        showingOnboarding: Bool = false
+    ) async {
         let repository = LibraryRepository(library: library)
         let state = LibrarySessionState(libraryID: library.libraryId(), nickname: nickname, username: username)
         let sync = SyncCoordinator(repository: repository, session: state)
@@ -177,13 +216,13 @@ final class LibraryDirectoryModel {
         session = state
         syncCoordinator = sync
         importCoordinator = importer
-        isOpen = true
-        showOnboarding = false
+        isOpen = markOpen
         sessionTask?.cancel()
         sessionTask = Task { [weak state] in
             guard let state else { return }
             await state.listen(using: repository)
         }
         await refreshLibraries()
+        showOnboarding = showingOnboarding
     }
 }

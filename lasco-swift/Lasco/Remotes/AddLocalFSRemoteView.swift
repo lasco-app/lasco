@@ -9,8 +9,14 @@ struct AddLocalFSRemoteView: View {
     @Environment(ToastManager.self) var toastManager
     @Environment(\.lascoTheme) var theme
 
+    let onRemoteReady: @MainActor () async throws -> Void
+
     @FocusState private var nameFieldFocused: Bool
     @State private var name = ""
+
+    init(onRemoteReady: @escaping @MainActor () async throws -> Void = {}) {
+        self.onRemoteReady = onRemoteReady
+    }
 
     private var isValid: Bool { !name.isEmpty }
 
@@ -88,6 +94,8 @@ struct AddLocalFSRemoteView: View {
                         do {
                             let remoteID = try await repository.addRemoteDebugLocalApple(name: remoteName)
                             try await repository.initializeRemote(id: remoteID)
+                            _ = try await repository.push(remoteID: remoteID)
+                            try await onRemoteReady()
                             dismiss()
                             toastManager.show(ok: "\(remoteName): initialized")
                         } catch {
