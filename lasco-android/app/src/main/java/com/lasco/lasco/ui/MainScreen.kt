@@ -40,7 +40,11 @@ private data object HomeKey : NavKey
  * HideTabBarKey preference. Status/Manage get no backstack, single screen.
  */
 @Composable
-fun MainScreen(modifier: Modifier = Modifier, onSignedOut: () -> Unit = {}) {
+fun MainScreen(
+    modifier: Modifier = Modifier,
+    onSignedOut: () -> Unit = {},
+    onDeleteLibrary: () -> Unit = {},
+) {
     var tab by remember { mutableStateOf(AppTab.Home) }
     val homeBackStack = rememberNavBackStack(HomeKey)
     val albumsBackStack = rememberNavBackStack(AlbumKey(null))
@@ -91,7 +95,11 @@ fun MainScreen(modifier: Modifier = Modifier, onSignedOut: () -> Unit = {}) {
                 onPickerVisibleChange = { isAlbumPickerVisible = it },
             )
             AppTab.Status -> StatusScreen(modifier = Modifier.fillMaxSize())
-            AppTab.Manage -> ManageScreen(modifier = Modifier.fillMaxSize(), onSignedOut = onSignedOut)
+            AppTab.Manage -> ManageScreen(
+                modifier = Modifier.fillMaxSize(),
+                onSignedOut = onSignedOut,
+                onDeleteLibrary = onDeleteLibrary,
+            )
         }
 
         if (showTabBar) {

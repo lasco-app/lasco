@@ -19,9 +19,9 @@ import kotlinx.coroutines.launch
 import uniffi.lasco_ffi.FfiAlbum
 
 /**
- * Backs ManageScreen and its Remotes/Users/Settings children. Sign out and
- * delete both clear LascoApp.librarySession, mirroring Swift's LibraryModel
- * resetting lib to nil, the caller then navigates back to the library list.
+ * Backs ManageScreen and its Remotes/Users/Settings children. Sign-out clears
+ * LascoApp.librarySession; library deletion is coordinated by LascoRoot after
+ * the opened-library UI has been removed from composition.
  */
 class ManageViewModel(
     private val repo: LibraryRepository,
@@ -46,13 +46,6 @@ class ManageViewModel(
         val state = sessionState.value
         repo.close()
         app.repository.signOut(state.libraryId, state.username ?: "")
-        app.librarySession = null
-    }
-
-    suspend fun deleteLibrary() {
-        val state = sessionState.value
-        repo.close()
-        app.repository.deleteLibrary(state.libraryId)
         app.librarySession = null
     }
 

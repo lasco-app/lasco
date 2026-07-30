@@ -11,8 +11,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -86,27 +86,36 @@ fun LibraryListScreen(
         }
 
         // List.
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 32.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             when {
-                state.loading -> CircularProgressIndicator(color = colors.ink)
-                state.error != null -> ErrorPanel(title = "Could not load libraries", detail = state.error!!)
-                state.libraries.isEmpty() -> Text(
-                    text = "No libraries yet.",
-                    style = LascoTheme.type.body(),
-                    color = colors.inkMuted,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .lascoPanel()
-                        .padding(horizontal = 16.dp, vertical = 20.dp),
-                )
-                else -> state.libraries.forEach { entry ->
+                state.loading -> item {
+                    CircularProgressIndicator(color = colors.ink)
+                }
+                state.error != null -> item {
+                    ErrorPanel(title = "Could not load libraries", detail = state.error!!)
+                }
+                state.libraries.isEmpty() -> item {
+                    Text(
+                        text = "No libraries yet.",
+                        style = LascoTheme.type.body(),
+                        color = colors.inkMuted,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .lascoPanel()
+                            .padding(horizontal = 16.dp, vertical = 20.dp),
+                    )
+                }
+                else -> items(
+                    items = state.libraries,
+                    key = { it.id },
+                    contentType = { "library" },
+                ) { entry ->
                     LibraryRow(entry, onClick = { if (entry.loadError == null) onOpenLibrary(entry.id) })
                 }
             }

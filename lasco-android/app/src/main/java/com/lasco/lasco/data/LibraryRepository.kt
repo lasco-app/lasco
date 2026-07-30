@@ -14,7 +14,9 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.withContext
@@ -59,6 +61,11 @@ class LibraryRepository(
     // and would wrongly trigger auto push if reused here.
     private val localMutations = MutableSharedFlow<Unit>(extraBufferCapacity = 64)
 
+    // Screen ViewModels are activity-scoped, so their StateFlows can outlive the
+    // composable that collected them. Closing this gate cancels all repository
+    // watches immediately instead of waiting for WhileSubscribed's timeout.
+    private val closed = MutableStateFlow(false)
+
     private val _sessionState = MutableStateFlow(buildSessionState())
     val sessionState: StateFlow<SessionState> = _sessionState.asStateFlow()
 
@@ -84,6 +91,7 @@ class LibraryRepository(
     // Must be called on session end (sign out, delete), or the sync loop and
     // its localMutations collector outlive the repository.
     suspend fun close() {
+        closed.value = true
         sync.close()
         scope.cancel()
     }
@@ -93,10 +101,16 @@ class LibraryRepository(
     // and never stays stale.
     @OptIn(ExperimentalCoroutinesApi::class)
     fun <T> watch(vararg scopes: Change, load: suspend () -> T): Flow<T> =
-        changes
-            .filter { c -> c is Change.All || scopes.any { it == c } }
-            .onStart { emit(Change.All) }
-            .mapLatest { load() }
+        closed.flatMapLatest { isClosed ->
+            if (isClosed) {
+                emptyFlow()
+            } else {
+                changes
+                    .filter { c -> c is Change.All || scopes.any { it == c } }
+                    .onStart { emit(Change.All) }
+                    .mapLatest { load() }
+            }
+        }
 
     // Blocking and proportional to file size. Drop the wrap once the Rust side is async.
     suspend fun mediaByDate(): List<FfiMediaItem> = withContext(io) { lib.mediaByDate() }

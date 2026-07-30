@@ -2,7 +2,9 @@ package com.lasco.lasco.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -10,7 +12,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Text
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lasco.lasco.LascoApp
@@ -20,6 +26,7 @@ import com.lasco.lasco.data.Prefs
 import com.lasco.lasco.ui.library.LibraryListScreen
 import com.lasco.lasco.ui.library.LibraryListViewModel
 import com.lasco.lasco.ui.library.LibraryOpenScreen
+import com.lasco.lasco.ui.components.LascoPrimaryButton
 import com.lasco.lasco.ui.onboarding.AddExistingLibraryScreen
 import com.lasco.lasco.ui.onboarding.NewLibraryWizardScreen
 import com.lasco.lasco.ui.onboarding.OnboardingResume
@@ -39,6 +46,8 @@ private sealed interface Screen {
     data object AddExisting : Screen
     data class OpeningLibrary(val entryId: String) : Screen
     data object Opened : Screen
+    data class DeletingLibrary(val libraryId: String) : Screen
+    data class DeletionFailed(val libraryId: String, val detail: String) : Screen
     data class Onboarding(val resume: OnboardingResume?) : Screen
 }
 
@@ -137,6 +146,37 @@ fun LascoRoot(modifier: Modifier = Modifier, onLibraryOpenChanged: (Boolean) -> 
         Screen.Opened -> MainScreen(
             modifier = modifier,
             onSignedOut = { screen = Screen.LibraryList },
+            onDeleteLibrary = {
+                app.librarySession?.sessionState?.value?.libraryId?.let { libraryId ->
+                    screen = Screen.DeletingLibrary(libraryId)
+                }
+            },
+        )
+        is Screen.DeletingLibrary -> {
+            // This is composed only after MainScreen has left composition. That cancels its
+            // collectors before native library files are removed, preventing them from racing
+            // an FFI read against deletion.
+            LaunchedEffect(current.libraryId) {
+                try {
+                    app.librarySession?.close()
+                    app.librarySession = null
+                    repository.deleteLibrary(current.libraryId)
+                    screen = Screen.LibraryList
+                } catch (e: Throwable) {
+                    app.librarySession = null
+                    screen = Screen.DeletionFailed(
+                        libraryId = current.libraryId,
+                        detail = e.message ?: "The library could not be fully deleted.",
+                    )
+                }
+            }
+            DeletingLibraryScreen(modifier)
+        }
+        is Screen.DeletionFailed -> DeletionFailedScreen(
+            detail = current.detail,
+            onRetry = { screen = Screen.DeletingLibrary(current.libraryId) },
+            onBack = { screen = Screen.LibraryList },
+            modifier = modifier,
         )
         is Screen.Onboarding -> OnboardingScreen(
             resume = current.resume,
@@ -144,5 +184,34 @@ fun LascoRoot(modifier: Modifier = Modifier, onLibraryOpenChanged: (Boolean) -> 
             onLibraryOpened = { screen = Screen.Opened },
             modifier = modifier,
         )
+    }
+}
+
+@Composable
+private fun DeletingLibraryScreen(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier.fillMaxSize().background(LascoTheme.colors.bg),
+        contentAlignment = Alignment.Center,
+    ) {
+        CircularProgressIndicator(color = LascoTheme.colors.ink)
+    }
+}
+
+@Composable
+private fun DeletionFailedScreen(
+    detail: String,
+    onRetry: () -> Unit,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = LascoTheme.colors
+    Column(
+        modifier = modifier.fillMaxSize().background(colors.bg).padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(text = "Could not delete library", style = LascoTheme.type.title(26), color = colors.ink)
+        Text(text = detail, style = LascoTheme.type.body(), color = colors.inkMuted, modifier = Modifier.padding(top = 12.dp))
+        LascoPrimaryButton(text = "Try again", onClick = onRetry, modifier = Modifier.padding(top = 24.dp))
+        LascoPrimaryButton(text = "Back to libraries", onClick = onBack, modifier = Modifier.padding(top = 12.dp))
     }
 }

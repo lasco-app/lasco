@@ -60,7 +60,11 @@ private data object OperationsKey : NavKey
  * expert mode is on.
  */
 @Composable
-fun ManageScreen(modifier: Modifier = Modifier, onSignedOut: () -> Unit = {}) {
+fun ManageScreen(
+    modifier: Modifier = Modifier,
+    onSignedOut: () -> Unit = {},
+    onDeleteLibrary: () -> Unit = {},
+) {
     val backStack = rememberNavBackStack(ManageRootKey)
 
     NavDisplay(
@@ -87,6 +91,7 @@ fun ManageScreen(modifier: Modifier = Modifier, onSignedOut: () -> Unit = {}) {
                     onOpenUsers = { backStack.add(UsersKey) },
                     onOpenOperations = { backStack.add(OperationsKey) },
                     onSignedOut = onSignedOut,
+                    onDeleteLibrary = onDeleteLibrary,
                 )
             }
             entry<RemotesKey> {
@@ -118,6 +123,7 @@ private fun ManageRootScreen(
     onOpenUsers: () -> Unit,
     onOpenOperations: () -> Unit,
     onSignedOut: () -> Unit,
+    onDeleteLibrary: () -> Unit,
 ) {
     val colors = LascoTheme.colors
     val context = LocalContext.current
@@ -245,10 +251,7 @@ private fun ManageRootScreen(
             confirmLabel = "Delete",
             onConfirm = {
                 confirmDelete = false
-                scope.launch {
-                    viewModel.deleteLibrary()
-                    onSignedOut()
-                }
+                onDeleteLibrary()
             },
             onCancel = { confirmDelete = false },
         )
