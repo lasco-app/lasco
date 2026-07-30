@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.NavKey
@@ -129,6 +130,14 @@ fun LascoRoot(modifier: Modifier = Modifier, onLibraryOpenChanged: (Boolean) -> 
     if (current == null) {
         Box(modifier = modifier.fillMaxSize().background(LascoTheme.colors.bg))
         return
+    }
+
+    val openSession = app.librarySession
+    if (current is Screen.Opened && openSession != null) {
+        LifecycleResumeEffect(openSession.sessionState.value.libraryId) {
+            openSession.importNewDeviceMediaIfNeeded()
+            onPauseOrDispose { }
+        }
     }
 
     LaunchedEffect(current) { onLibraryOpenChanged(current is Screen.Opened) }

@@ -49,6 +49,7 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lasco.lasco.data.Prefs
+import com.lasco.lasco.media.DeviceMediaPermissions
 import com.lasco.lasco.ui.components.ErrorBanner
 import com.lasco.lasco.ui.components.LascoField
 import com.lasco.lasco.ui.components.LascoPrimaryButton
@@ -68,11 +69,6 @@ private fun requiredMediaPermissions(): Array<String> =
 
 // Partial access (READ_MEDIA_VISUAL_USER_SELECTED on API 34+) is treated as
 // denied, full access to the camera folder is required.
-private fun hasFullMediaAccess(context: Context): Boolean =
-    requiredMediaPermissions().all {
-        ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
-    }
-
 // Optional, unlike the read permissions. Without it MediaStore hands back
 // copies with the GPS EXIF tags stripped, so photos still import, just
 // without their location. Below API 29 nothing is redacted and the
@@ -422,14 +418,14 @@ private fun PermissionStep(autoSkip: Boolean, onGranted: () -> Unit, onSkip: () 
     // Access can already be granted from an earlier run or an earlier pass
     // through the wizard. Only skipped when moving forward, so stepping back
     // from the next screen does not bounce straight in again.
-    val alreadyGranted = remember { autoSkip && hasFullMediaAccess(context) }
+    val alreadyGranted = remember { autoSkip && DeviceMediaPermissions.canReadFullLibrary(context) }
     LaunchedEffect(alreadyGranted) { if (alreadyGranted) onGranted() }
     if (alreadyGranted) return
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
     ) {
-        if (hasFullMediaAccess(context)) {
+        if (DeviceMediaPermissions.canReadFullLibrary(context)) {
             denied = false
             onGranted()
         } else {
@@ -440,7 +436,7 @@ private fun PermissionStep(autoSkip: Boolean, onGranted: () -> Unit, onSkip: () 
     // Granting in Settings does not restart the app, so without this the step
     // would sit on its denied state after the user comes back having granted.
     LifecycleResumeEffect(denied) {
-        if (denied && hasFullMediaAccess(context)) onGranted()
+        if (denied && DeviceMediaPermissions.canReadFullLibrary(context)) onGranted()
         onPauseOrDispose {}
     }
 
@@ -490,7 +486,7 @@ private fun PermissionStep(autoSkip: Boolean, onGranted: () -> Unit, onSkip: () 
                 LascoPrimaryButton(
                     text = "Continue",
                     onClick = {
-                        if (hasFullMediaAccess(context)) {
+                        if (DeviceMediaPermissions.canReadFullLibrary(context)) {
                             onGranted()
                         } else {
                             permissionLauncher.launch(requiredMediaPermissions())

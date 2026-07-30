@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.withContext
+import com.lasco.lasco.media.IncrementalDeviceMediaImporter
 import uniffi.lasco_ffi.FfiAlbum
 import uniffi.lasco_ffi.FfiAlbumItem
 import uniffi.lasco_ffi.FfiLibrary
@@ -71,6 +72,15 @@ class LibraryRepository(
 
     val sync = SyncController(lib = lib, prefs = prefs, onLibraryChanged = { changes.emit(Change.All) }, scope = scope)
 
+    private val incrementalImporter = IncrementalDeviceMediaImporter(
+        lib = lib,
+        context = appContext,
+        prefs = prefs,
+        onStateChanged = sync::setIncrementalImportState,
+        onImported = ::notifyBatchedLocalMutation,
+        scope = scope,
+    )
+
     init {
         scope.launch { localMutations.collect { sync.schedulePush() } }
     }
@@ -88,12 +98,23 @@ class LibraryRepository(
         changes.emit(Change.All)
     }
 
+    internal suspend fun notifyBatchedLocalMutation() {
+        changes.emit(Change.All)
+        localMutations.emit(Unit)
+    }
+
     // Must be called on session end (sign out, delete), or the sync loop and
     // its localMutations collector outlive the repository.
     suspend fun close() {
         closed.value = true
+        incrementalImporter.close()
         sync.close()
         scope.cancel()
+    }
+
+    /** Queues an incremental DCIM import for this open session. */
+    fun importNewDeviceMediaIfNeeded() {
+        incrementalImporter.requestImport()
     }
 
     // Reruns load on any of the given scopes (or Change.All), and once per

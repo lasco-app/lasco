@@ -96,6 +96,10 @@ class SyncController(
         commands.trySend(Cmd.StopCountdown)
     }
 
+    fun setIncrementalImportState(state: IncrementalImportState) {
+        _syncState.update { it.copy(incrementalImportState = state) }
+    }
+
     /**
      * Pushes one remote, returning an error message or null on success,
      * mirroring Swift's LibraryModel.pushRemote. Clears any pending countdown

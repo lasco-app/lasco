@@ -85,7 +85,7 @@ class DeviceMediaStore(private val context: Context) {
             projection,
             selectionParts.joinToString(" AND "),
             selectionArgs.toTypedArray(),
-            null,
+            "${FileColumns.DATE_ADDED} ASC, ${FileColumns._ID} ASC",
         )?.use { cursor ->
             val idIdx = cursor.getColumnIndexOrThrow(FileColumns._ID)
             val nameIdx = cursor.getColumnIndexOrThrow(FileColumns.DISPLAY_NAME)

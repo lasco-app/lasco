@@ -2,6 +2,13 @@ package com.lasco.lasco.data
 
 import uniffi.lasco_ffi.FfiSyncResult
 
+sealed interface IncrementalImportState {
+    data object Idle : IncrementalImportState
+    data object Scanning : IncrementalImportState
+    data class Importing(val done: Int, val total: Int) : IncrementalImportState
+    data class Failed(val message: String) : IncrementalImportState
+}
+
 /**
  * Transient sync and import state, kept separate from SessionState so that
  * state stays lean. FfiSyncResult only carries pushed and pulled counts,
@@ -11,6 +18,7 @@ data class SyncState(
     val busyRemoteIds: Set<String> = emptySet(),
     val fetchInProgress: Boolean = false,
     val bulkImportProgress: Pair<Int, Int>? = null,
+    val incrementalImportState: IncrementalImportState = IncrementalImportState.Idle,
     val lastSyncResult: FfiSyncResult? = null,
     // When the scheduled auto push fires, on SystemClock.elapsedRealtime's
     // monotonic clock, or null when none is scheduled. A deadline rather than
