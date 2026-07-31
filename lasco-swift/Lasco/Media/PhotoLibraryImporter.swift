@@ -186,7 +186,7 @@ actor PhotoLibraryImporter {
     /// Imports PHAssets created after the last recorded watermark date.
     /// On first run, stores the current date and imports nothing.
     /// Returns the number of newly imported assets.
-    func importNewAssets(libraryId: String, albumId: String, repository: any LibraryRepositoryProtocol) async -> Int {
+    func importNewAssets(libraryId: String, albumId: String?, repository: any LibraryRepositoryProtocol) async -> Int {
         let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
         guard status == .authorized || status == .limited else { return 0 }
 
@@ -227,12 +227,12 @@ actor PhotoLibraryImporter {
     // MARK: - Single asset import
 
     @discardableResult
-    func importPHAsset(_ asset: PHAsset, into albumId: String, repository: any LibraryRepositoryProtocol) async throws -> [String] {
+    func importPHAsset(_ asset: PHAsset, into albumId: String?, repository: any LibraryRepositoryProtocol) async throws -> [String] {
         try await importPHAssetResources(asset, into: albumId, repository: repository).linkableMediaIDs
     }
 
     @discardableResult
-    func importPHAssetResources(_ asset: PHAsset, into albumId: String, repository: any LibraryRepositoryProtocol) async throws -> ImportedAsset {
+    func importPHAssetResources(_ asset: PHAsset, into albumId: String?, repository: any LibraryRepositoryProtocol) async throws -> ImportedAsset {
         let analysis = Self.analyzeAsset(asset)
         guard analysis.isImportable else {
             return ImportedAsset(linkableMediaIDs: [], allMediaIDs: [])
@@ -286,7 +286,7 @@ actor PhotoLibraryImporter {
             if let aaeMediaId { allMediaIDs.append(aaeMediaId) }
         }
 
-        // The Live Photo's motion video is imported first, kept out of the default album, and
+        // The Live Photo's motion video is imported first without album membership, and
         // linked from the still below. It never becomes a standalone album item.
         var livePhotoMediaId: String?
         if hasStill, let livePhotoVideoResource {

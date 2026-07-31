@@ -47,12 +47,6 @@ impl FfiLibrary {
         Ok(())
     }
 
-    pub fn get_default_upload_album(&self) -> Option<String> {
-        let library_id = self.inner.library_id();
-        let lib_config = LibraryJson::load(&self.app_dir, &library_id).ok()??;
-        lib_config.default_upload_album.map(|id| id.to_string())
-    }
-
     pub fn get_auto_import_device_media(&self) -> bool {
         let library_id = self.inner.library_id();
         LibraryJson::load(&self.app_dir, &library_id)
@@ -67,22 +61,6 @@ impl FfiLibrary {
         let mut lib_config =
             LibraryJson::load(&self.app_dir, &library_id)?.ok_or(LascoError::NotFound)?;
         lib_config.auto_import_device_media = enabled;
-        lib_config.save(&self.app_dir, &library_id)?;
-        Ok(())
-    }
-
-    pub fn set_default_upload_album(&self, album_id: Option<String>) -> Result<(), LascoError> {
-        let library_id = self.inner.library_id();
-        let mut lib_config =
-            LibraryJson::load(&self.app_dir, &library_id)?.ok_or(LascoError::NotFound)?;
-        lib_config.default_upload_album = match album_id {
-            Some(s) => Some(AlbumUuid::from_uuid(uuid::Uuid::parse_str(&s).map_err(
-                |e| LascoError::Other {
-                    msg: format!("invalid album id: {e}"),
-                },
-            )?)),
-            None => None,
-        };
         lib_config.save(&self.app_dir, &library_id)?;
         Ok(())
     }

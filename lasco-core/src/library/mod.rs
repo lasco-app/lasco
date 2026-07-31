@@ -10,16 +10,15 @@ pub mod user;
 use std::fmt;
 use std::sync::Arc;
 
-use chrono::Utc;
 use uuid::Uuid;
 
 use crate::encryption::master_key::{MasterKey, find_master_key, generate_master_key, write_mk_file};
 use crate::encryption::library_salt::{generate_salt, write_salt_file};
 use crate::error::LibraryError;
-use crate::identifiers::{AlbumUuid, OpUuid};
+use crate::identifiers::OpUuid;
 use crate::state::OperationState;
 use crate::operations::local_ops as op_log;
-use crate::operations::{AlbumName, LibraryPassword, LibraryUsername, Operation, OperationGroup};
+use crate::operations::{LibraryPassword, LibraryUsername, Operation, OperationGroup};
 use crate::library::local_dirs::LocalDirs;
 use crate::library::sync_policy::{FetchSlotGuard, RemoteSyncGuard, SyncPolicy};
 
@@ -289,19 +288,6 @@ impl Library {
         })
     }
 
-    pub async fn setup_default_album(
-        &self,
-        album_name: AlbumName,
-    ) -> Result<AlbumUuid> {
-        let album_id = AlbumUuid::from_uuid(Uuid::new_v4());
-        self.append_to_pending(Operation::AlbumCreation {
-            timestamp: Utc::now(),
-            album_id,
-            name: album_name,
-            album_id_parent: None,
-        })?;
-        Ok(album_id)
-    }
 }
 
 #[cfg(test)]

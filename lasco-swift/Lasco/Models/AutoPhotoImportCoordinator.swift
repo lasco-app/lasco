@@ -29,14 +29,12 @@ final class AutoPhotoImportCoordinator {
 
     #if canImport(UIKit)
     func importFromPhotoLibrary() async {
-        guard session.autoImportDeviceMedia,
-              let albumID = session.defaultUploadAlbumID,
-              importTask == nil else { return }
+        guard session.autoImportDeviceMedia, importTask == nil else { return }
         isImporting = true
         let task = Task { [photoImporter, repository, session] in
             await photoImporter.importNewAssets(
                 libraryId: session.libraryID,
-                albumId: albumID,
+                albumId: nil,
                 repository: repository
             )
         }

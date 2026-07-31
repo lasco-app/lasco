@@ -4,7 +4,6 @@ import Observation
 struct LibrarySessionSnapshot: Sendable, Equatable {
     let users: [String]
     let remotes: [FfiRemote]
-    let defaultUploadAlbumID: String?
     let defaultFetchRemoteID: String?
     let autoImportDeviceMedia: Bool
 }
@@ -80,7 +79,6 @@ protocol LibraryRepositoryProtocol: Sendable {
     func mediaIDsWithoutRemoteBackup() async throws -> [String]
     func allMediaIDs() async -> [String]
 
-    func setDefaultUploadAlbum(albumID: String?) async throws
     func setDefaultFetchRemote(remoteID: String?) async throws
     func setAutoImportDeviceMedia(enabled: Bool) async throws
     func addUser(username: String, password: String) async throws
@@ -177,7 +175,6 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         return LibrarySessionSnapshot(
             users: try library.userList(),
             remotes: library.listRemotes(),
-            defaultUploadAlbumID: library.getDefaultUploadAlbum(),
             defaultFetchRemoteID: library.getDefaultFetchRemote(),
             autoImportDeviceMedia: library.getAutoImportDeviceMedia()
         )
@@ -405,12 +402,6 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         return library.allMediaIds()
     }
 
-    func setDefaultUploadAlbum(albumID: String?) async throws {
-        try ensureOpen()
-        try library.setDefaultUploadAlbum(albumId: albumID)
-        await notify(.session)
-    }
-
     func setDefaultFetchRemote(remoteID: String?) async throws {
         try ensureOpen()
         try library.setDefaultFetchRemote(remoteId: remoteID)
@@ -612,7 +603,6 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     func evictLocalThumbnails(mediaIDs: [String]) async throws { try await storage.evictLocalThumbnails(mediaIDs: mediaIDs) }
     func mediaIDsWithoutRemoteBackup() async throws -> [String] { try await storage.mediaIDsWithoutRemoteBackup() }
     func allMediaIDs() async -> [String] { await storage.allMediaIDs() }
-    func setDefaultUploadAlbum(albumID: String?) async throws { try await storage.setDefaultUploadAlbum(albumID: albumID) }
     func setDefaultFetchRemote(remoteID: String?) async throws { try await storage.setDefaultFetchRemote(remoteID: remoteID) }
     func setAutoImportDeviceMedia(enabled: Bool) async throws { try await storage.setAutoImportDeviceMedia(enabled: enabled) }
     func addUser(username: String, password: String) async throws { try await storage.addUser(username: username, password: password) }

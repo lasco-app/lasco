@@ -50,8 +50,8 @@ sealed interface ImportState {
  * entire time an import is in progress, so the ViewModel cannot be cleared
  * mid run.
  *
- * Only the camera folder (DCIM and its subfolders) is scanned, and everything lands in the
- * default upload album, no album replication like the iOS wizard does.
+ * Only the camera folder (DCIM and its subfolders) is scanned. Imported media remains
+ * unassigned, so it is visible through the orphan-media view.
  */
 class InitialImportController(
     private val lib: FfiLibrary,
@@ -134,7 +134,6 @@ class InitialImportController(
     }
 
     private suspend fun importScan(scan: DeviceScan, remoteId: String) {
-        val albumId = lib.getDefaultUploadAlbum()
         val total = scan.rows.size
 
         // Read before the first row so the incremental import later picks up
@@ -174,7 +173,7 @@ class InitialImportController(
                             // One unreadable row must not abort the whole run,
                             // the same per item tolerance as the iOS importer.
                             try {
-                                chunkIds += importer.import(row, albumId, rowIndex)
+                                chunkIds += importer.import(row, albumId = null, tempIndex = rowIndex)
                                 if (row.isVideo) videosImported++ else photosImported++
                             } catch (e: CancellationException) {
                                 throw e

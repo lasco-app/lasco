@@ -43,7 +43,6 @@ struct ContentView: View {
     @State private var selection: Set<String> = []
     @State private var isSelecting = false
     @State private var albumsForMedia: AlbumList? = nil
-    @State private var showingDefaultAlbumPicker = false
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -122,16 +121,6 @@ struct ContentView: View {
             }
         }
         .background(theme.bg)
-        .sheet(isPresented: $showingDefaultAlbumPicker) {
-            AlbumPickerView(repository: repository, title: "Default upload album") { album in
-                Task { try? await repository.setDefaultUploadAlbum(albumID: album.albumId) }
-                showingDefaultAlbumPicker = false
-            } onCancel: {
-                showingDefaultAlbumPicker = false
-            }
-            .environment(\.lascoTheme, .dark)
-            .preferredColorScheme(.dark)
-        }
         .fileImporter(
             isPresented: $showingImportMedia,
             allowedContentTypes: [.image, .movie],
@@ -277,24 +266,6 @@ struct ContentView: View {
                 .padding(20)
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else {
-            if session.defaultUploadAlbumID == nil {
-                HStack(spacing: 12) {
-                    Text("Auto-import paused: no default upload album set.")
-                        .font(LascoFont.body())
-                        .foregroundStyle(theme.ink)
-                    Spacer()
-                    Button("Set album →") {
-                        showingDefaultAlbumPicker = true
-                    }
-                    .buttonStyle(.plain)
-                    .font(LascoFont.body())
-                    .foregroundStyle(theme.ink)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(theme.pink)
-            }
-
             LazyVGrid(columns: gridColumns, spacing: 3) {
                 ForEach(media, id: \.mediaId) { item in
                     let isSelected = selection.contains(item.mediaId)

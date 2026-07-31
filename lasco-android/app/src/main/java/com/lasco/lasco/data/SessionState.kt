@@ -14,7 +14,6 @@ data class SessionState(
     val username: String?,
     val users: List<String>,
     val remotes: List<FfiRemote>,
-    val defaultUploadAlbumId: String?,
     val defaultFetchRemoteId: String?,
     val autoImportDeviceMedia: Boolean,
 )

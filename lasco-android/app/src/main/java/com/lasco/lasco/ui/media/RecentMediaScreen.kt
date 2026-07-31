@@ -59,7 +59,6 @@ fun RecentMediaScreen(
     val media by viewModel.media.collectAsStateWithLifecycle()
     val showingOrphans by viewModel.showingOrphans.collectAsStateWithLifecycle()
     val repo = LibraryRepository.from(LocalContext.current)
-    val sessionState by repo.sessionState.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
@@ -181,16 +180,6 @@ fun RecentMediaScreen(
                 }
             }
 
-            if (sessionState.defaultUploadAlbumId == null) {
-                Text(
-                    text = "Auto-import paused. Set a default album to enable it.",
-                    style = LascoTheme.type.body(14),
-                    color = colors.inkMuted,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 16.dp),
-                )
-            }
         }
 
         if (media.isEmpty()) {

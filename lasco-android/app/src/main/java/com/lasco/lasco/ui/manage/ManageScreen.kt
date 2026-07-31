@@ -35,7 +35,6 @@ import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
-import com.lasco.lasco.ui.components.AlbumPickerDialog
 import com.lasco.lasco.ui.components.LascoConfirmDialog
 import com.lasco.lasco.ui.theme.LascoTheme
 import com.lasco.lasco.ui.theme.lascoPanel
@@ -142,17 +141,13 @@ private fun ManageRootScreen(
     val colors = LascoTheme.colors
     val context = LocalContext.current
     val session by manageViewModel.sessionState.collectAsStateWithLifecycle()
-    val albums by manageViewModel.albums.collectAsStateWithLifecycle()
     val expertMode by manageViewModel.prefs.expertMode.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 
     var showSettings by remember { mutableStateOf(false) }
-    var showAlbumPicker by remember { mutableStateOf(false) }
     var showLicenses by remember { mutableStateOf(false) }
     var confirmSignOut by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
-
-    val defaultAlbumName = albums.firstOrNull { it.albumId == session.defaultUploadAlbumId }?.name ?: "None"
 
     Column(
         modifier = modifier
@@ -177,21 +172,6 @@ private fun ManageRootScreen(
                 onClick = { confirmSignOut = true },
                 labelColor = colors.error,
             )
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Column(modifier = Modifier.fillMaxWidth().lascoPanel()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { showAlbumPicker = true }
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
-            ) {
-                Text(text = "Default import album", style = LascoTheme.type.body(), color = colors.inkSub)
-                Spacer(modifier = Modifier.weight(1f))
-                Text(text = defaultAlbumName, style = LascoTheme.type.mono(), color = colors.inkMuted)
-            }
         }
 
         if (expertMode) {
@@ -227,17 +207,6 @@ private fun ManageRootScreen(
 
     if (showSettings) {
         SettingsDialog(onDismiss = { showSettings = false })
-    }
-    if (showAlbumPicker) {
-        AlbumPickerDialog(
-            title = "Default import album",
-            albums = albums,
-            onSelect = {
-                manageViewModel.setDefaultUploadAlbum(it.albumId)
-                showAlbumPicker = false
-            },
-            onCancel = { showAlbumPicker = false },
-        )
     }
     if (showLicenses) {
         LicenseDialog(onDismiss = { showLicenses = false })

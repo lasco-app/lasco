@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 use crate::config_json::{library_data_dir, ConfigJson, LibraryNickname};
-use crate::identifiers::{AlbumUuid, LibraryId, RemoteUuid};
+use crate::identifiers::{LibraryId, RemoteUuid};
 use crate::operations::LibraryUsername;
 
 pub const LIBRARY_JSON_VERSION: u32 = 1;
@@ -82,9 +82,6 @@ pub struct LibraryJson {
     pub active_password_uuid: Option<Uuid>,
     /// Default remote for fetching operations
     pub default_fetch_remote: Option<RemoteUuid>,
-    /// Device-local default upload album
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub default_upload_album: Option<AlbumUuid>,
     /// Whether to automatically import new device media into this library
     #[serde(default)]
     pub auto_import_device_media: bool,
@@ -233,7 +230,6 @@ mod tests {
             default_username: None,
             active_password_uuid: None,
             default_fetch_remote: None,
-            default_upload_album: None,
             auto_import_device_media: false,
             remotes: vec![RemoteConfig {
                 remote_uuid: RemoteUuid::new(),
@@ -265,6 +261,7 @@ mod tests {
         let json = serde_json::to_string(&library).unwrap();
         let deserialized: LibraryJson = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.nickname.0, "test");
+        assert!(!json.contains("upload_album"));
     }
 
     #[test]

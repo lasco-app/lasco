@@ -734,11 +734,9 @@ struct NewLibraryWizard: View {
     private func prepareInitialPhotoImport() async {
         guard let activeSession = directory.activeSession else { return }
         try? await activeSession.refresh()
-        guard initialImportController == nil,
-              let defaultAlbumID = activeSession.state.defaultUploadAlbumID else { return }
+        guard initialImportController == nil else { return }
         let controller = InitialPhotoImportController(
             repository: activeSession.repository,
-            defaultUploadAlbumID: defaultAlbumID,
             pushChunk: { remoteID in await activeSession.syncCoordinator.push(remoteID: remoteID) }
         )
         initialImportController = controller

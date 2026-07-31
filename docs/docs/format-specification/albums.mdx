@@ -9,12 +9,6 @@ sidebar_label: Albums
 
 Albums form a **forest**: a set of trees where each album has at most one parent album, and roots have no parent. An album's position in the tree is determined solely by its `album_id_parent` field, which is updated by reparent operations.
 
-## Default upload album
-
-A default upload album can be designated per device in `library.json` (`default_upload_album` field).
-
----
-
 ## Disconnected albums
 
 An album is **connected** if following its `album_id_parent` chain eventually reaches `None` (a root). An album is **disconnected** if that chain cycles or leads to a deleted album before reaching `None`.

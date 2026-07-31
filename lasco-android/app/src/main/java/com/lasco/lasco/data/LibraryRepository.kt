@@ -350,11 +350,6 @@ class LibraryRepository(
         refreshSessionState()
     }
 
-    suspend fun setDefaultUploadAlbum(albumId: String?) {
-        lib.setDefaultUploadAlbum(albumId)
-        refreshSessionState()
-    }
-
     suspend fun setAutoImportDeviceMedia(enabled: Boolean) {
         lib.setAutoImportDeviceMedia(enabled)
         refreshSessionState()
@@ -375,7 +370,6 @@ class LibraryRepository(
         username = username,
         users = lib.userList(),
         remotes = lib.listRemotes(),
-        defaultUploadAlbumId = lib.getDefaultUploadAlbum(),
         defaultFetchRemoteId = lib.getDefaultFetchRemote(),
         autoImportDeviceMedia = lib.getAutoImportDeviceMedia(),
     )

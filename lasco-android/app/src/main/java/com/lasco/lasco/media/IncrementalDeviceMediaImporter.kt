@@ -60,7 +60,6 @@ class IncrementalDeviceMediaImporter(
 
             if (!lib.getAutoImportDeviceMedia()) return
 
-            val albumId = lib.getDefaultUploadAlbum() ?: return
             val libraryId = lib.libraryId()
             val watermark = prefs.importWatermark(libraryId)
             if (watermark == null) {
@@ -88,7 +87,7 @@ class IncrementalDeviceMediaImporter(
                 scan.rows.forEachIndexed { index, row ->
                     ensureActive()
                     try {
-                        importer.import(row, albumId, index)
+                        importer.import(row, albumId = null, tempIndex = index)
                     } catch (error: Throwable) {
                         if (error is CancellationException) throw error
                         throw IOException(

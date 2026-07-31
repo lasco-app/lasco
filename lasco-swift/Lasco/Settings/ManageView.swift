@@ -7,7 +7,6 @@ struct ManageView: View {
 
     @State private var showGlobalSettings = false
     @State private var showOperations = false
-    @State private var showDefaultAlbumPicker = false
     @State private var showDeleteConfirm = false
     @State private var showLicense = false
     @AppStorage("expertMode") private var expertMode = false
@@ -123,35 +122,6 @@ struct ManageView: View {
                         .lascoPanel()
 
                         VStack(alignment: .leading, spacing: 0) {
-                            Button {
-                                showDefaultAlbumPicker = true
-                            } label: {
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Default import album")
-                                            .font(LascoFont.body())
-                                            .foregroundStyle(theme.inkSub)
-                                        if let albumID = session.defaultUploadAlbumID {
-                                            Text(albumID)
-                                                .font(LascoFont.pixel())
-                                                .foregroundStyle(theme.inkMuted)
-                                        } else {
-                                            Text("No default album for import set.")
-                                                .font(LascoFont.pixel())
-                                                .foregroundStyle(theme.inkMuted)
-                                        }
-                                    }
-                                    Spacer()
-                                    Text("→")
-                                        .font(LascoFont.mono())
-                                        .foregroundStyle(theme.inkMuted)
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 14)
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-
                             #if canImport(UIKit)
                             Divider()
                                 .background(theme.inkMuted.opacity(0.2))
@@ -300,16 +270,6 @@ struct ManageView: View {
             LicenseView()
                 .environment(\.lascoTheme, .dark)
                 .preferredColorScheme(.dark)
-        }
-        .sheet(isPresented: $showDefaultAlbumPicker) {
-            AlbumPickerView(repository: repository, title: "Default import album") { album in
-                Task { try? await repository.setDefaultUploadAlbum(albumID: album.albumId) }
-                showDefaultAlbumPicker = false
-            } onCancel: {
-                showDefaultAlbumPicker = false
-            }
-            .environment(\.lascoTheme, .dark)
-            .preferredColorScheme(.dark)
         }
     }
 }

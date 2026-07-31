@@ -7,16 +7,11 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.lasco.lasco.LascoApp
-import com.lasco.lasco.data.Change
 import com.lasco.lasco.data.LibraryRepository
 import com.lasco.lasco.data.Prefs
 import com.lasco.lasco.data.SessionState
 import com.lasco.lasco.data.SyncState
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
-import uniffi.lasco_ffi.FfiAlbum
 
 /**
  * Backs ManageScreen and its Remotes/Users/Settings children. Sign-out clears
@@ -31,14 +26,6 @@ class ManageViewModel(
     val sessionState: StateFlow<SessionState> = repo.sessionState
 
     val syncState: StateFlow<SyncState> = repo.sync.syncState
-
-    val albums: StateFlow<List<FfiAlbum>> =
-        repo.watch(Change.AlbumList) { repo.listAlbums() }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-
-    fun setDefaultUploadAlbum(albumId: String?) {
-        viewModelScope.launch { repo.setDefaultUploadAlbum(albumId) }
-    }
 
     // Close first, it waits for a push in flight. Signing out or deleting
     // under a running push would pull the library out from under it.

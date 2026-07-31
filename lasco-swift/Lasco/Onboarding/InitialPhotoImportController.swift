@@ -22,12 +22,10 @@ final class InitialPhotoImportController {
     private let repository: any LibraryRepositoryProtocol
     private let photoImporter = PhotoLibraryImporter()
     private let pushChunk: PushChunk
-    private let defaultUploadAlbumID: String
     private var importTask: Task<Void, Never>?
 
-    init(repository: any LibraryRepositoryProtocol, defaultUploadAlbumID: String, pushChunk: @escaping PushChunk) {
+    init(repository: any LibraryRepositoryProtocol, pushChunk: @escaping PushChunk) {
         self.repository = repository
-        self.defaultUploadAlbumID = defaultUploadAlbumID
         self.pushChunk = pushChunk
     }
 
@@ -93,7 +91,7 @@ final class InitialPhotoImportController {
                     return
                 }
                 do {
-                    let imported = try await photoImporter.importPHAssetResources(asset, into: defaultUploadAlbumID, repository: repository)
+                    let imported = try await photoImporter.importPHAssetResources(asset, into: nil, repository: repository)
                     if !imported.linkableMediaIDs.isEmpty {
                         assetMediaMap[asset.localIdentifier] = imported.linkableMediaIDs
                     }
@@ -130,7 +128,7 @@ final class InitialPhotoImportController {
             await repository.notifyPhotoImportChanged(initialImport: true)
             return
         }
-        await linkAlbumMemberships(nodes: nodes, albumIDMap: albumIDMap, assetMediaMap: assetMediaMap, defaultAlbumID: defaultUploadAlbumID)
+        await linkAlbumMemberships(nodes: nodes, albumIDMap: albumIDMap, assetMediaMap: assetMediaMap)
         guard !Task.isCancelled else {
             await repository.notifyPhotoImportChanged(initialImport: true)
             return
@@ -167,8 +165,7 @@ final class InitialPhotoImportController {
     private func linkAlbumMemberships(
         nodes: [PhotoLibraryImporter.AlbumNode],
         albumIDMap: [String: String],
-        assetMediaMap: [String: [String]],
-        defaultAlbumID: String
+        assetMediaMap: [String: [String]]
     ) async {
         var assetAlbumIDs: [String: [String]] = [:]
         for node in nodes {
@@ -180,7 +177,7 @@ final class InitialPhotoImportController {
         for (assetID, albumIDs) in assetAlbumIDs {
             guard !Task.isCancelled, let primaryAlbumID = albumIDs.first, let mediaIDs = assetMediaMap[assetID] else { return }
             for mediaID in mediaIDs {
-                try? await repository.moveMediaWithoutNotification(id: mediaID, from: defaultAlbumID, to: primaryAlbumID)
+                try? await repository.addMediaToAlbumWithoutNotification(albumID: primaryAlbumID, mediaID: mediaID)
             }
             for additionalAlbumID in albumIDs.dropFirst() {
                 for mediaID in mediaIDs {

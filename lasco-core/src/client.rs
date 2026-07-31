@@ -10,7 +10,7 @@ use crate::identifiers::LibraryId;
 use crate::library::Library;
 use crate::library::local_dirs::LocalDirs;
 use crate::library_json::{save_library, LibraryJson, RemoteConfig, RemoteKind, S3Config};
-use crate::operations::{AlbumName, LibraryPassword, LibraryUsername};
+use crate::operations::{LibraryPassword, LibraryUsername};
 use crate::s3_secret::{encrypt_s3_secret_key, resolve_s3_credentials};
 use crate::session::{session_load_master_key, session_store_master_key};
 use crate::storage::{Storage, StorageLocalFs, StorageS3};
@@ -137,11 +137,6 @@ pub async fn create_library(
     .await
     .context("failed to initialise library")?;
 
-    let album_id = lib
-        .setup_default_album(AlbumName(nickname.clone()))
-        .await
-        .context("failed to create default album")?;
-
     let library_config = LibraryJson {
         version: crate::library_json::LIBRARY_JSON_VERSION,
         nickname: LibraryNickname(nickname),
@@ -149,7 +144,6 @@ pub async fn create_library(
         default_username: Some(username.clone()),
         active_password_uuid: Some(password_uuid),
         remotes: vec![],
-        default_upload_album: Some(album_id),
         auto_import_device_media: false,
     };
 
@@ -314,7 +308,6 @@ pub async fn add_existing_library_s3(
         default_username: Some(effective_username.clone()),
         active_password_uuid: Some(active_password_uuid),
         default_fetch_remote: Some(remote_uuid),
-        default_upload_album: None,
         auto_import_device_media: false,
         remotes: vec![remote_config],
     };

@@ -859,10 +859,6 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
-
-
-
-
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -934,8 +930,6 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_get_auto_import_device_media(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_get_default_fetch_remote(
 ): Short
-fun uniffi_lasco_ffi_checksum_method_ffilibrary_get_default_upload_album(
-): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_bytes(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_bytes_async(
@@ -1003,8 +997,6 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_set_album_thumbnail(
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_set_auto_import_device_media(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_set_default_fetch_remote(
-): Short
-fun uniffi_lasco_ffi_checksum_method_ffilibrary_set_default_upload_album(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_set_media_thumbnail(
 ): Short
@@ -1117,8 +1109,6 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_get_auto_import_device_media(`ptr`: Po
 ): Byte
 fun uniffi_lasco_ffi_fn_method_ffilibrary_get_default_fetch_remote(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-fun uniffi_lasco_ffi_fn_method_ffilibrary_get_default_upload_album(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_get_media_bytes(`ptr`: Pointer,`mediaId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_get_media_bytes_async(`ptr`: Pointer,`mediaId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,
@@ -1186,8 +1176,6 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_set_album_thumbnail(`ptr`: Pointer,`al
 fun uniffi_lasco_ffi_fn_method_ffilibrary_set_auto_import_device_media(`ptr`: Pointer,`enabled`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_set_default_fetch_remote(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-): Unit
-fun uniffi_lasco_ffi_fn_method_ffilibrary_set_default_upload_album(`ptr`: Pointer,`albumId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_set_media_thumbnail(`ptr`: Pointer,`mediaId`: RustBuffer.ByValue,`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -1425,9 +1413,6 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_get_default_fetch_remote() != 36830.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_get_default_upload_album() != 15320.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_bytes() != 42692.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1528,9 +1513,6 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_set_default_fetch_remote() != 6151.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_set_default_upload_album() != 50440.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_set_media_thumbnail() != 53065.toShort()) {
@@ -2071,8 +2053,6 @@ public interface FfiLibraryInterface {
     
     fun `getDefaultFetchRemote`(): kotlin.String?
     
-    fun `getDefaultUploadAlbum`(): kotlin.String?
-    
     fun `getMediaBytes`(`mediaId`: kotlin.String, `appSupportDir`: kotlin.String?): kotlin.ByteArray
     
     suspend fun `getMediaBytesAsync`(`mediaId`: kotlin.String, `appSupportDir`: kotlin.String?): kotlin.ByteArray
@@ -2140,8 +2120,6 @@ public interface FfiLibraryInterface {
     fun `setAutoImportDeviceMedia`(`enabled`: kotlin.Boolean)
     
     fun `setDefaultFetchRemote`(`remoteId`: kotlin.String?)
-    
-    fun `setDefaultUploadAlbum`(`albumId`: kotlin.String?)
     
     fun `setMediaThumbnail`(`mediaId`: kotlin.String, `data`: kotlin.ByteArray)
     
@@ -2503,18 +2481,6 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     callWithPointer {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_get_default_fetch_remote(
-        it, _status)
-}
-    }
-    )
-    }
-    
-
-    override fun `getDefaultUploadAlbum`(): kotlin.String? {
-            return FfiConverterOptionalString.lift(
-    callWithPointer {
-    uniffiRustCall() { _status ->
-    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_get_default_upload_album(
         it, _status)
 }
     }
@@ -2966,18 +2932,6 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     uniffiRustCallWithError(LascoException) { _status ->
     UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_set_default_fetch_remote(
         it, FfiConverterOptionalString.lower(`remoteId`),_status)
-}
-    }
-    
-    
-
-    
-    @Throws(LascoException::class)override fun `setDefaultUploadAlbum`(`albumId`: kotlin.String?)
-        = 
-    callWithPointer {
-    uniffiRustCallWithError(LascoException) { _status ->
-    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_set_default_upload_album(
-        it, FfiConverterOptionalString.lower(`albumId`),_status)
 }
     }
     

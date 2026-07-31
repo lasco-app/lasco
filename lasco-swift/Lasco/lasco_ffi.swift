@@ -591,8 +591,6 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     
     func getDefaultFetchRemote()  -> String?
     
-    func getDefaultUploadAlbum()  -> String?
-    
     func getMediaBytes(mediaId: String, appSupportDir: String?) throws  -> Data
     
     func getMediaBytesAsync(mediaId: String, appSupportDir: String?) async throws  -> Data
@@ -660,8 +658,6 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     func setAutoImportDeviceMedia(enabled: Bool) throws 
     
     func setDefaultFetchRemote(remoteId: String?) throws 
-    
-    func setDefaultUploadAlbum(albumId: String?) throws 
     
     func setMediaThumbnail(mediaId: String, data: Data) throws 
     
@@ -918,13 +914,6 @@ nonisolated open func getAutoImportDeviceMedia() -> Bool  {
 nonisolated open func getDefaultFetchRemote() -> String?  {
     return try!  FfiConverterOptionString.lift(try! rustCall() {
     uniffi_lasco_ffi_fn_method_ffilibrary_get_default_fetch_remote(self.uniffiClonePointer(),$0
-    )
-})
-}
-    
-nonisolated open func getDefaultUploadAlbum() -> String?  {
-    return try!  FfiConverterOptionString.lift(try! rustCall() {
-    uniffi_lasco_ffi_fn_method_ffilibrary_get_default_upload_album(self.uniffiClonePointer(),$0
     )
 })
 }
@@ -1218,13 +1207,6 @@ nonisolated open func setAutoImportDeviceMedia(enabled: Bool)throws   {try rustC
 nonisolated open func setDefaultFetchRemote(remoteId: String?)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_set_default_fetch_remote(self.uniffiClonePointer(),
         FfiConverterOptionString.lower(remoteId),$0
-    )
-}
-}
-    
-nonisolated open func setDefaultUploadAlbum(albumId: String?)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
-    uniffi_lasco_ffi_fn_method_ffilibrary_set_default_upload_album(self.uniffiClonePointer(),
-        FfiConverterOptionString.lower(albumId),$0
     )
 }
 }
@@ -3162,9 +3144,6 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_get_default_fetch_remote() != 36830) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_get_default_upload_album() != 15320) {
-        return InitializationResult.apiChecksumMismatch
-    }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_bytes() != 42692) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -3265,9 +3244,6 @@ nonisolated private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_set_default_fetch_remote() != 6151) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_set_default_upload_album() != 50440) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_set_media_thumbnail() != 53065) {
