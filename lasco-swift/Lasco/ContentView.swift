@@ -21,11 +21,11 @@ struct ContentView: View {
     let openAlbum: (FfiAlbum) -> Void
     let repository: LibraryRepository
     let session: LibrarySessionState
-    let importCoordinator: ImportCoordinator
+    let importCoordinator: MediaImportCoordinator
 
     @State private var model: RecentMediaModel
 
-    init(repository: LibraryRepository, session: LibrarySessionState, importCoordinator: ImportCoordinator, openAlbum: @escaping (FfiAlbum) -> Void) {
+    init(repository: LibraryRepository, session: LibrarySessionState, importCoordinator: MediaImportCoordinator, openAlbum: @escaping (FfiAlbum) -> Void) {
         self.repository = repository
         self.session = session
         self.importCoordinator = importCoordinator

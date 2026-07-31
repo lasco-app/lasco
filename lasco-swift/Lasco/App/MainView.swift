@@ -10,7 +10,7 @@ struct MainView: View {
     let repository: LibraryRepository
     let session: LibrarySessionState
     let syncCoordinator: SyncCoordinator
-    let importCoordinator: ImportCoordinator
+    let importCoordinator: MediaImportCoordinator
 
     var body: some View {
         ZStack(alignment: .bottom) {

@@ -25,15 +25,11 @@ enum LibraryDirectoryModelError: LocalizedError {
 final class LibraryDirectoryModel {
     private(set) var libraries: [FfiLibraryEntry] = []
     private(set) var librariesError: String?
-    private(set) var activeRepository: LibraryRepository?
-    private(set) var session: LibrarySessionState?
-    private(set) var syncCoordinator: SyncCoordinator?
-    private(set) var importCoordinator: ImportCoordinator?
+    private(set) var activeSession: ActiveLibrarySession?
     private(set) var isOpen = false
 
     let onboarding: OnboardingCoordinator
     private let directory: LibraryDirectoryRepository
-    private var sessionTask: Task<Void, Never>?
 
     init(
         directory: LibraryDirectoryRepository = LibraryDirectoryRepository(),
@@ -48,9 +44,14 @@ final class LibraryDirectoryModel {
         set { onboarding.showOnboarding = newValue }
     }
 
-    var openLibraryID: String? { session?.libraryID }
-    var openNickname: String? { session?.nickname }
-    var openUsername: String? { session?.username }
+    // Transitional accessors keep views decoupled from the directory/session split.
+    var activeRepository: LibraryRepository? { activeSession?.repository }
+    var session: LibrarySessionState? { activeSession?.state }
+    var syncCoordinator: SyncCoordinator? { activeSession?.syncCoordinator }
+    var mediaImportCoordinator: MediaImportCoordinator? { activeSession?.mediaImportCoordinator }
+    var openLibraryID: String? { activeSession?.state.libraryID }
+    var openNickname: String? { activeSession?.state.nickname }
+    var openUsername: String? { activeSession?.state.username }
 
     func start() async {
         await refreshLibraries()
@@ -139,15 +140,15 @@ final class LibraryDirectoryModel {
     }
 
     func signOut() async {
-        guard let session else { return }
-        try? await directory.clearSession(libraryID: session.libraryID)
+        guard let activeSession else { return }
+        try? await directory.clearSession(libraryID: activeSession.state.libraryID)
         await closeActive()
         showOnboarding = libraries.isEmpty
     }
 
     func deleteCurrentLibrary() async -> Bool {
-        guard let session else { return false }
-        let libraryID = session.libraryID
+        guard let activeSession else { return false }
+        let libraryID = activeSession.state.libraryID
         await closeActive()
         do {
             try await directory.delete(libraryID: libraryID)
@@ -161,15 +162,8 @@ final class LibraryDirectoryModel {
     }
 
     func closeActive() async {
-        sessionTask?.cancel()
-        sessionTask = nil
-        await syncCoordinator?.close()
-        importCoordinator?.close()
-        if let activeRepository { await activeRepository.close() }
-        activeRepository = nil
-        session = nil
-        syncCoordinator = nil
-        importCoordinator = nil
+        if let activeSession { await activeSession.close() }
+        activeSession = nil
         isOpen = false
     }
 
@@ -195,10 +189,10 @@ final class LibraryDirectoryModel {
     }
 
     func refreshActiveSession() async throws {
-        guard let activeRepository, let session else {
+        guard let activeSession else {
             throw LibraryDirectoryModelError.activeSessionUnavailable
         }
-        try await session.refresh(using: activeRepository)
+        try await activeSession.state.refresh(using: activeSession.repository)
     }
 
     private func install(
@@ -208,20 +202,11 @@ final class LibraryDirectoryModel {
         markOpen: Bool = true,
         showingOnboarding: Bool = false
     ) async {
-        let repository = LibraryRepository(library: library)
-        let state = LibrarySessionState(libraryID: library.libraryId(), nickname: nickname, username: username)
-        let sync = SyncCoordinator(repository: repository, session: state)
-        let importer = ImportCoordinator(repository: repository, session: state)
-        activeRepository = repository
-        session = state
-        syncCoordinator = sync
-        importCoordinator = importer
-        isOpen = markOpen
-        sessionTask?.cancel()
-        sessionTask = Task { [weak state] in
-            guard let state else { return }
-            await state.listen(using: repository)
+        if let activeSession {
+            await activeSession.close()
         }
+        activeSession = ActiveLibrarySession(library: library, nickname: nickname, username: username)
+        isOpen = markOpen
         await refreshLibraries()
         showOnboarding = showingOnboarding
     }

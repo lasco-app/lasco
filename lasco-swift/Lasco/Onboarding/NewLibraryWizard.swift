@@ -29,10 +29,7 @@ struct NewLibraryWizard: View {
 
     #if os(iOS)
     @Environment(\.scenePhase) private var scenePhase
-    @State private var libraryScan: PhotoLibraryImporter.LibraryScan? = nil
-    @State private var scanLoading = false
-    @State private var isBulkImporting = false
-    @State private var importResult: (photos: Int, videos: Int)? = nil
+    @State private var initialImportController: InitialPhotoImportController?
     @State private var photoPermissionDenied = false
     @State private var showIgnoredDetail = false
     #endif
@@ -93,6 +90,9 @@ struct NewLibraryWizard: View {
             if let libraryID = directory.openLibraryID {
                 directory.setOnboardingStep(newValue, libraryID: libraryID)
             }
+        }
+        .onDisappear {
+            Task { await initialImportController?.cancelAndWait() }
         }
         #if os(iOS)
         .onChange(of: scenePhase) { _, newPhase in
@@ -530,14 +530,14 @@ struct NewLibraryWizard: View {
     }
 
     private var importOrSuccessStep: some View {
-        if let result = importResult {
+        if let result = initialImportController?.result {
             return AnyView(importSuccessStep(photos: result.photos, videos: result.videos))
         }
         return AnyView(importStep)
     }
 
     private var importOrSuccessButtons: some View {
-        if importResult != nil {
+        if initialImportController?.result != nil {
             return AnyView(
                 Button("Continue") {
                     slideForward = true
@@ -563,7 +563,7 @@ struct NewLibraryWizard: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .lineSpacing(4)
 
-            if scanLoading {
+            if initialImportController?.isScanning == true {
                 HStack(spacing: 12) {
                     ProgressView()
                         .tint(Color.Lasco.inkMuted)
@@ -571,7 +571,7 @@ struct NewLibraryWizard: View {
                         .font(LascoFont.body(14))
                         .foregroundStyle(Color.Lasco.inkMuted)
                 }
-            } else if let scan = libraryScan {
+            } else if let scan = initialImportController?.scan {
                 VStack(alignment: .leading, spacing: 0) {
                     importStatRow(label: "Photos", value: "\(scan.photoCount)")
                     importStatRow(label: "Videos", value: "\(scan.videoCount)")
@@ -594,12 +594,10 @@ struct NewLibraryWizard: View {
         .padding(.bottom, 160)
         .frame(maxWidth: .infinity, alignment: .leading)
         .task {
-            scanLoading = true
-            libraryScan = await directory.importCoordinator?.scanPhotoLibrary()
-            scanLoading = false
+            await prepareInitialPhotoImport()
         }
         .sheet(isPresented: $showIgnoredDetail) {
-            if let scan = libraryScan {
+            if let scan = initialImportController?.scan {
                 IgnoredAssetsView(ignoredAssets: scan.ignoredAssets)
             }
         }
@@ -607,8 +605,8 @@ struct NewLibraryWizard: View {
 
     private var importButtons: some View {
         VStack(spacing: 12) {
-            if isBulkImporting {
-                let progress = directory.importCoordinator?.progress
+            if initialImportController?.isImporting == true {
+                let progress = initialImportController?.progress
                 let done = progress?.done ?? 0
                 let total = max(progress?.total ?? 1, 1)
 
@@ -624,19 +622,22 @@ struct NewLibraryWizard: View {
                 .padding(.vertical, 8)
             } else {
                 Button("Import Now") {
-                    if let scan = libraryScan {
-                        isBulkImporting = true
+                    if let controller = initialImportController {
                         Task {
-                            await directory.importCoordinator?.importFromPhotoLibraryWithAlbums(assets: scan.assets)
-                            isBulkImporting = false
-                            importResult = (photos: scan.photoCount, videos: scan.videoCount)
+                            await controller.start(remoteID: directory.session?.remotes.first?.id)
                         }
                     }
                 }
                 .buttonStyle(LascoPrimaryButtonStyle())
                 .frame(maxWidth: .infinity)
-                .disabled(libraryScan == nil)
-                .opacity(libraryScan == nil ? 0.45 : 1)
+                .disabled(initialImportController?.scan == nil)
+                .opacity(initialImportController?.scan == nil ? 0.45 : 1)
+
+                if let error = initialImportController?.error {
+                    Text(error)
+                        .font(LascoFont.body(13))
+                        .foregroundStyle(Color.Lasco.pink)
+                }
 
                 Button("Skip for now") {
                     slideForward = true
@@ -724,6 +725,20 @@ struct NewLibraryWizard: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+    }
+
+    private func prepareInitialPhotoImport() async {
+        try? await directory.refreshActiveSession()
+        guard initialImportController == nil,
+              let activeSession = directory.activeSession,
+              let defaultAlbumID = activeSession.state.defaultUploadAlbumID else { return }
+        let controller = InitialPhotoImportController(
+            repository: activeSession.repository,
+            defaultUploadAlbumID: defaultAlbumID,
+            pushChunk: { remoteID in await activeSession.syncCoordinator.push(remoteID: remoteID) }
+        )
+        initialImportController = controller
+        await controller.scanPhotoLibrary()
     }
     #endif
 }

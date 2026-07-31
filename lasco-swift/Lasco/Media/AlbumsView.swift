@@ -124,10 +124,10 @@ struct AlbumsView: View {
     @Binding var pendingAlbum: FfiAlbum?
     let repository: LibraryRepository
     let session: LibrarySessionState
-    let importCoordinator: ImportCoordinator
+    let importCoordinator: MediaImportCoordinator
     @State private var model: AlbumListModel
 
-    init(repository: LibraryRepository, session: LibrarySessionState, importCoordinator: ImportCoordinator, pendingAlbum: Binding<FfiAlbum?>) {
+    init(repository: LibraryRepository, session: LibrarySessionState, importCoordinator: MediaImportCoordinator, pendingAlbum: Binding<FfiAlbum?>) {
         self.repository = repository
         self.session = session
         self.importCoordinator = importCoordinator
@@ -176,7 +176,7 @@ struct AlbumsView: View {
 struct AlbumContentView: View {
     @Environment(AlbumListModel.self) private var albumModel
     @Environment(LibraryRepository.self) private var repository
-    @Environment(ImportCoordinator.self) private var importCoordinator
+    @Environment(MediaImportCoordinator.self) private var importCoordinator
     @Environment(\.dismiss) private var dismiss
     @Environment(\.lascoTheme) var theme
     @Environment(ToastManager.self) var toastManager

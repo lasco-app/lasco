@@ -31,6 +31,7 @@ struct MediaImportSource: Sendable {
 protocol LibraryRepositoryProtocol: Sendable {
     func changes() async -> AsyncStream<LibraryChange>
     func notifyChanged(_ change: LibraryChange) async
+    func notifyPhotoImportChanged(initialImport: Bool) async
 
     func mediaByDate() async throws -> [FfiMediaItem]
     func listAlbums() async throws -> [FfiAlbum]
@@ -53,9 +54,12 @@ protocol LibraryRepositoryProtocol: Sendable {
     func renameMedia(id: String, name: String?) async throws
     func deleteMedia(id: String) async throws
     func addMediaToAlbum(albumID: String, mediaID: String) async throws
+    func addMediaToAlbumWithoutNotification(albumID: String, mediaID: String) async throws
     func removeMediaFromAlbum(albumID: String, mediaID: String) async throws
     func moveMedia(id: String, from: String, to: String) async throws
+    func moveMediaWithoutNotification(id: String, from: String, to: String) async throws
     func createAlbum(name: String, parentID: String?) async throws -> String
+    func createAlbumWithoutNotification(name: String, parentID: String?) async throws -> String
     func renameAlbum(id: String, name: String) async throws
     func reparentAlbum(id: String, parentID: String?) async throws
     func deleteAlbum(id: String) async throws
@@ -125,6 +129,16 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
 
     func notifyChanged(_ change: LibraryChange) async {
         await changeHub.notify(change)
+    }
+
+    func notifyPhotoImportChanged(initialImport: Bool) async {
+        await notify(.mediaList)
+        await notify(.albumList)
+        // Initial import is explicitly pushed chunk-by-chunk. Auto import is a normal
+        // local mutation and intentionally goes through SyncCoordinator's debounce.
+        if !initialImport {
+            await notify(.localMutation)
+        }
     }
 
     func mediaByDate() async throws -> [FfiMediaItem] {
@@ -237,6 +251,11 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         await notifyAlbumMediaChange([albumID])
     }
 
+    func addMediaToAlbumWithoutNotification(albumID: String, mediaID: String) async throws {
+        try ensureOpen()
+        try library.addMediaToAlbum(albumId: albumID, mediaId: mediaID)
+    }
+
     func removeMediaFromAlbum(albumID: String, mediaID: String) async throws {
         try ensureOpen()
         try library.removeMediaFromAlbum(albumId: albumID, mediaId: mediaID)
@@ -249,12 +268,22 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         await notifyAlbumMediaChange([from, to])
     }
 
+    func moveMediaWithoutNotification(id: String, from: String, to: String) async throws {
+        try ensureOpen()
+        try library.moveMediaToAlbum(mediaId: id, fromAlbumId: from, toAlbumId: to)
+    }
+
     func createAlbum(name: String, parentID: String?) async throws -> String {
         try ensureOpen()
         let id = try library.createAlbum(name: name, parentAlbumId: parentID)
         await notify(.albumList)
         await notify(.album(id))
         return id
+    }
+
+    func createAlbumWithoutNotification(name: String, parentID: String?) async throws -> String {
+        try ensureOpen()
+        return try library.createAlbum(name: name, parentAlbumId: parentID)
     }
 
     func renameAlbum(id: String, name: String) async throws {
@@ -531,6 +560,7 @@ final class LibraryRepository: LibraryRepositoryProtocol {
 
     func changes() async -> AsyncStream<LibraryChange> { await storage.changes() }
     func notifyChanged(_ change: LibraryChange) async { await storage.notifyChanged(change) }
+    func notifyPhotoImportChanged(initialImport: Bool) async { await storage.notifyPhotoImportChanged(initialImport: initialImport) }
     func mediaByDate() async throws -> [FfiMediaItem] { try await storage.mediaByDate() }
     func listAlbums() async throws -> [FfiAlbum] { try await storage.listAlbums() }
     func albumItems(albumID: String, ascending: Bool) async throws -> [FfiAlbumItem] { try await storage.albumItems(albumID: albumID, ascending: ascending) }
@@ -550,9 +580,12 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     func renameMedia(id: String, name: String?) async throws { try await storage.renameMedia(id: id, name: name) }
     func deleteMedia(id: String) async throws { try await storage.deleteMedia(id: id) }
     func addMediaToAlbum(albumID: String, mediaID: String) async throws { try await storage.addMediaToAlbum(albumID: albumID, mediaID: mediaID) }
+    func addMediaToAlbumWithoutNotification(albumID: String, mediaID: String) async throws { try await storage.addMediaToAlbumWithoutNotification(albumID: albumID, mediaID: mediaID) }
     func removeMediaFromAlbum(albumID: String, mediaID: String) async throws { try await storage.removeMediaFromAlbum(albumID: albumID, mediaID: mediaID) }
     func moveMedia(id: String, from: String, to: String) async throws { try await storage.moveMedia(id: id, from: from, to: to) }
+    func moveMediaWithoutNotification(id: String, from: String, to: String) async throws { try await storage.moveMediaWithoutNotification(id: id, from: from, to: to) }
     func createAlbum(name: String, parentID: String?) async throws -> String { try await storage.createAlbum(name: name, parentID: parentID) }
+    func createAlbumWithoutNotification(name: String, parentID: String?) async throws -> String { try await storage.createAlbumWithoutNotification(name: name, parentID: parentID) }
     func renameAlbum(id: String, name: String) async throws { try await storage.renameAlbum(id: id, name: name) }
     func reparentAlbum(id: String, parentID: String?) async throws { try await storage.reparentAlbum(id: id, parentID: parentID) }
     func deleteAlbum(id: String) async throws { try await storage.deleteAlbum(id: id) }

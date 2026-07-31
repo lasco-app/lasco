@@ -35,15 +35,12 @@ struct LascoApp: App {
         WindowGroup {
             Group {
                 if directory.isOpen,
-                   let repository = directory.activeRepository,
-                   let session = directory.session,
-                   let syncCoordinator = directory.syncCoordinator,
-                   let importCoordinator = directory.importCoordinator {
+                   let activeSession = directory.activeSession {
                     MainView(
-                        repository: repository,
-                        session: session,
-                        syncCoordinator: syncCoordinator,
-                        importCoordinator: importCoordinator
+                        repository: activeSession.repository,
+                        session: activeSession.state,
+                        syncCoordinator: activeSession.syncCoordinator,
+                        importCoordinator: activeSession.mediaImportCoordinator
                     )
                         .environment(toastManager)
                         .preferredColorScheme(.dark)
@@ -77,11 +74,10 @@ struct LascoApp: App {
         #if canImport(UIKit)
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active,
-                  let syncCoordinator = directory.syncCoordinator,
-                  let importCoordinator = directory.importCoordinator else { return }
+                  let activeSession = directory.activeSession else { return }
             Task {
-                await syncCoordinator.fetchDefaultRemote()
-                await importCoordinator.autoImportFromPhotoLibrary()
+                await activeSession.syncCoordinator.fetchDefaultRemote()
+                await activeSession.autoPhotoImportCoordinator.importFromPhotoLibrary()
             }
         }
         #endif

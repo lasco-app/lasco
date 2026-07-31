@@ -36,6 +36,11 @@ actor PhotoLibraryImporter {
         case video
     }
 
+    struct ImportedAsset {
+        let linkableMediaIDs: [String]
+        let allMediaIDs: [String]
+    }
+
     struct AssetAnalysis {
         let photoResource: PHAssetResource?
         let fullSizePhotoResource: PHAssetResource?
@@ -204,6 +209,7 @@ actor PhotoLibraryImporter {
 
         var imported = 0
         for i in 0..<result.count {
+            guard !Task.isCancelled else { return imported }
             let asset = result.object(at: i)
             do {
                 let ids = try await importPHAsset(asset, into: albumId, repository: repository)
@@ -213,6 +219,7 @@ actor PhotoLibraryImporter {
             }
         }
 
+        guard !Task.isCancelled else { return imported }
         setLastImportDate(now, libraryId: libraryId)
         return imported
     }
@@ -221,8 +228,15 @@ actor PhotoLibraryImporter {
 
     @discardableResult
     func importPHAsset(_ asset: PHAsset, into albumId: String, repository: any LibraryRepositoryProtocol) async throws -> [String] {
+        try await importPHAssetResources(asset, into: albumId, repository: repository).linkableMediaIDs
+    }
+
+    @discardableResult
+    func importPHAssetResources(_ asset: PHAsset, into albumId: String, repository: any LibraryRepositoryProtocol) async throws -> ImportedAsset {
         let analysis = Self.analyzeAsset(asset)
-        guard analysis.isImportable else { return [] }
+        guard analysis.isImportable else {
+            return ImportedAsset(linkableMediaIDs: [], allMediaIDs: [])
+        }
 
         let photoResource = analysis.photoResource
         let fullSizePhotoResource = analysis.fullSizePhotoResource
@@ -240,7 +254,8 @@ actor PhotoLibraryImporter {
         }
 
         let hasStill = analysis.hasStill
-        var mediaIds: [String] = []
+        var linkableMediaIDs: [String] = []
+        var allMediaIDs: [String] = []
         var didSetThumbnail = false
 
         func importResource(_ resource: PHAssetResource, albumId: String?, appleAaeMediaId: String?, appleLivePhotoMediaId: String?, allowThumbnail: Bool) async throws -> String {
@@ -268,6 +283,7 @@ actor PhotoLibraryImporter {
         var aaeMediaId: String?
         if isEdited, let adjustmentDataResource {
             aaeMediaId = try await importResource(adjustmentDataResource, albumId: nil, appleAaeMediaId: nil, appleLivePhotoMediaId: nil, allowThumbnail: false)
+            if let aaeMediaId { allMediaIDs.append(aaeMediaId) }
         }
 
         // The Live Photo's motion video is imported first, kept out of the default album, and
@@ -275,29 +291,34 @@ actor PhotoLibraryImporter {
         var livePhotoMediaId: String?
         if hasStill, let livePhotoVideoResource {
             livePhotoMediaId = try await importResource(livePhotoVideoResource, albumId: nil, appleAaeMediaId: nil, appleLivePhotoMediaId: nil, allowThumbnail: false)
+            if let livePhotoMediaId { allMediaIDs.append(livePhotoMediaId) }
         }
 
         if let photoResource {
             let id = try await importResource(photoResource, albumId: albumId, appleAaeMediaId: aaeMediaId, appleLivePhotoMediaId: livePhotoMediaId, allowThumbnail: true)
-            mediaIds.append(id)
+            linkableMediaIDs.append(id)
+            allMediaIDs.append(id)
         } else if let fullSizePhotoResource {
             let id = try await importResource(fullSizePhotoResource, albumId: albumId, appleAaeMediaId: nil, appleLivePhotoMediaId: livePhotoMediaId, allowThumbnail: true)
-            mediaIds.append(id)
+            linkableMediaIDs.append(id)
+            allMediaIDs.append(id)
         } else if let livePhotoVideoResource, !hasStill {
             // No still was present, so the paired video is not part of a Live Photo pairing.
             // Import it as a normal standalone video.
             let id = try await importResource(livePhotoVideoResource, albumId: albumId, appleAaeMediaId: nil, appleLivePhotoMediaId: nil, allowThumbnail: true)
-            mediaIds.append(id)
+            linkableMediaIDs.append(id)
+            allMediaIDs.append(id)
         }
 
         for resource in otherResources {
             let t: PHAssetResourceType = resource.type
             let isVideoOnly = !hasStill && (t == .video || t == .fullSizeVideo)
             let id = try await importResource(resource, albumId: albumId, appleAaeMediaId: nil, appleLivePhotoMediaId: nil, allowThumbnail: isVideoOnly)
-            mediaIds.append(id)
+            linkableMediaIDs.append(id)
+            allMediaIDs.append(id)
         }
 
-        return mediaIds
+        return ImportedAsset(linkableMediaIDs: linkableMediaIDs, allMediaIDs: allMediaIDs)
     }
 
     private func downloadResource(_ resource: PHAssetResource) async throws -> URL {
