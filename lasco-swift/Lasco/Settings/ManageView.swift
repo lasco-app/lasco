@@ -13,12 +13,10 @@ struct ManageView: View {
     @AppStorage("expertMode") private var expertMode = false
     let repository: LibraryRepository
     let session: LibrarySessionState
-    @State private var model: ManageModel
 
     init(repository: LibraryRepository, session: LibrarySessionState) {
         self.repository = repository
         self.session = session
-        _model = State(initialValue: ManageModel(repository: repository, session: session))
     }
 
     var body: some View {
@@ -133,7 +131,7 @@ struct ManageView: View {
                                         Text("Default import album")
                                             .font(LascoFont.body())
                                             .foregroundStyle(theme.inkSub)
-                                        if let albumID = model.defaultUploadAlbumID {
+                                        if let albumID = session.defaultUploadAlbumID {
                                             Text(albumID)
                                                 .font(LascoFont.pixel())
                                                 .foregroundStyle(theme.inkMuted)
@@ -159,8 +157,10 @@ struct ManageView: View {
                                 .background(theme.inkMuted.opacity(0.2))
 
                             Toggle(isOn: Binding(
-                                get: { model.autoImportDeviceMedia },
-                                set: { enabled in Task { try? await model.setAutoImportDeviceMedia(enabled) } }
+                                get: { session.autoImportDeviceMedia },
+                                set: { enabled in
+                                    Task { try? await repository.setAutoImportDeviceMedia(enabled: enabled) }
+                                }
                             )) {
                                 Text("Auto-import device media")
                                     .font(LascoFont.body())
@@ -303,7 +303,7 @@ struct ManageView: View {
         }
         .sheet(isPresented: $showDefaultAlbumPicker) {
             AlbumPickerView(repository: repository, title: "Default import album") { album in
-                Task { try? await model.setDefaultUploadAlbum(id: album.albumId) }
+                Task { try? await repository.setDefaultUploadAlbum(albumID: album.albumId) }
                 showDefaultAlbumPicker = false
             } onCancel: {
                 showDefaultAlbumPicker = false
@@ -311,6 +311,5 @@ struct ManageView: View {
             .environment(\.lascoTheme, .dark)
             .preferredColorScheme(.dark)
         }
-        .task { await model.start() }
     }
 }
