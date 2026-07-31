@@ -2,8 +2,8 @@ use std::path::Path;
 
 use chrono::Utc;
 
-use crate::encryption::blob::BlobEncrypted;
 use crate::encryption::blob::decrypt_blob;
+use crate::encryption::blob::BlobEncrypted;
 use crate::encryption::blob_key::derive_blob_key;
 use crate::error::{LibraryError, OperationError};
 use crate::identifiers::{AlbumUuid, GroupUuid, MediaUuid};
@@ -18,7 +18,10 @@ pub type Result<T> = std::result::Result<T, LibraryError>;
 /// Writes `data` to a temp file next to `path` then renames it into place, so a concurrent
 /// reader never observes a partially-written file.
 fn write_atomic(path: &Path, data: &[u8]) -> std::io::Result<()> {
-    let tmp_name = format!("{}.tmp", path.file_name().unwrap_or_default().to_string_lossy());
+    let tmp_name = format!(
+        "{}.tmp",
+        path.file_name().unwrap_or_default().to_string_lossy()
+    );
     let tmp = path.with_file_name(tmp_name);
     std::fs::write(&tmp, data)?;
     std::fs::rename(&tmp, path)
@@ -28,8 +31,15 @@ fn write_atomic(path: &Path, data: &[u8]) -> std::io::Result<()> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MediaListScope {
     /// Media in at least one non-deleted album or group. Used everywhere the media is
-    /// meant to be user-visible.
+    /// meant to be album-visible.
     Reachable,
+    /// Every primary media item, whether it belongs to an album or is orphaned.
+    /// Companion resources referenced by another media item (AAE and Live Photo video)
+    /// are excluded.
+    Visible,
+    /// Primary media with no live album or group membership. Companion resources
+    /// referenced by another media item (AAE and Live Photo video) are excluded.
+    Orphaned,
     /// Every known media entry, including AAE sidecars and media orphaned from all albums.
     All,
 }
@@ -54,6 +64,59 @@ impl Library {
                     Some(MediaEntry::from_state(entry, group_ids))
                 })
                 .collect(),
+            MediaListScope::Visible => {
+                let companion_ids: std::collections::HashSet<_> = state
+                    .reconstructed
+                    .media
+                    .values()
+                    .flat_map(|entry| [entry.apple_aae_media_id, entry.apple_live_photo_media_id])
+                    .flatten()
+                    .collect();
+
+                state
+                    .reconstructed
+                    .media
+                    .values()
+                    .filter(|entry| !companion_ids.contains(&entry.media_id))
+                    .map(|entry| {
+                        let group_ids = state
+                            .views
+                            .media_group_membership
+                            .get(&entry.media_id)
+                            .cloned()
+                            .unwrap_or_default();
+                        MediaEntry::from_state(entry, group_ids)
+                    })
+                    .collect()
+            }
+            MediaListScope::Orphaned => {
+                let companion_ids: std::collections::HashSet<_> = state
+                    .reconstructed
+                    .media
+                    .values()
+                    .flat_map(|entry| [entry.apple_aae_media_id, entry.apple_live_photo_media_id])
+                    .flatten()
+                    .collect();
+
+                state
+                    .reconstructed
+                    .media
+                    .values()
+                    .filter(|entry| {
+                        !state.views.reachable_media_ids.contains(&entry.media_id)
+                            && !companion_ids.contains(&entry.media_id)
+                    })
+                    .map(|entry| {
+                        let group_ids = state
+                            .views
+                            .media_group_membership
+                            .get(&entry.media_id)
+                            .cloned()
+                            .unwrap_or_default();
+                        MediaEntry::from_state(entry, group_ids)
+                    })
+                    .collect()
+            }
             MediaListScope::All => state
                 .reconstructed
                 .media
@@ -108,7 +171,9 @@ impl Library {
         }
 
         let storage = storage.ok_or(LibraryError::MediaNotFound(media_id))?;
-        let blob_bytes = self.download_media_blob(media_id, year, month, storage).await?;
+        let blob_bytes = self
+            .download_media_blob(media_id, year, month, storage)
+            .await?;
         let plaintext = self.decrypt_media_blob(media_id, &blob_bytes)?;
 
         if let Some(parent) = data_path.parent() {
@@ -142,7 +207,11 @@ impl Library {
                 return Err(LibraryError::MediaNotFound(media_id));
             }
         }
-        self.append_to_pending(Operation::MediaRename { timestamp: Utc::now(), media_id, name })?;
+        self.append_to_pending(Operation::MediaRename {
+            timestamp: Utc::now(),
+            media_id,
+            name,
+        })?;
         self.load_local_state().await?;
         Ok(())
     }
@@ -157,7 +226,10 @@ impl Library {
         storage: Option<&dyn Storage>,
     ) -> Result<Vec<u8>> {
         let (year, month) = self.media_year_month(media_id)?;
-        let thumb_path = self.inner.local_dirs.media_thumb_path(year, month, &media_id);
+        let thumb_path = self
+            .inner
+            .local_dirs
+            .media_thumb_path(year, month, &media_id);
         let blob_bytes = match std::fs::read(&thumb_path) {
             Ok(bytes) => bytes,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -191,7 +263,6 @@ impl Library {
         let blob_bytes = std::fs::read(&data_path)?;
         self.decrypt_media_blob(media_id, &blob_bytes)
     }
-
 
     pub(crate) fn media_year_month(&self, media_id: MediaUuid) -> Result<(u16, u8)> {
         let state = self.inner.operation_state.read();
@@ -333,15 +404,14 @@ fn write_dest(path: &Path, data: &[u8]) -> std::io::Result<()> {
     std::fs::write(path, data)
 }
 
-
 #[cfg(test)]
 mod tests {
-    use tempfile::TempDir;
-    use uuid::Uuid;
     use crate::identifiers::LibraryId;
+    use crate::library::local_dirs::LocalDirs;
     use crate::library::Credentials;
     use crate::operations::MediaFilename;
-    use crate::library::local_dirs::LocalDirs;
+    use tempfile::TempDir;
+    use uuid::Uuid;
 
     use super::super::upload::MediaAddSource;
     use super::*;
@@ -364,12 +434,30 @@ mod tests {
         (lib, local_dirs)
     }
 
-    async fn add_media_to_album(lib: &Library, tmp: &TempDir, name: &str, content: &[u8]) -> (MediaUuid, AlbumUuid) {
+    async fn add_media_to_album(
+        lib: &Library,
+        tmp: &TempDir,
+        name: &str,
+        content: &[u8],
+    ) -> (MediaUuid, AlbumUuid) {
         use crate::operations::AlbumName;
-        let album_id = lib.album_create(AlbumName("Test Album".into()), None).await.unwrap();
+        let album_id = lib
+            .album_create(AlbumName("Test Album".into()), None)
+            .await
+            .unwrap();
         let src = tmp.path().join(name);
         std::fs::write(&src, content).unwrap();
-        let media_id = lib.media_add(MediaAddSource::CopyFrom(src), Some(album_id), None, None, None).await.unwrap().id();
+        let media_id = lib
+            .media_add(
+                MediaAddSource::CopyFrom(src),
+                Some(album_id),
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap()
+            .id();
         (media_id, album_id)
     }
 
@@ -392,10 +480,82 @@ mod tests {
         lib.album_remove_media(album_id, media_id).await.unwrap();
 
         let list = lib.media_list(MediaListScope::Reachable);
-        assert!(!list.iter().any(|e| e.media_id == media_id), "must not be in list");
+        assert!(
+            !list.iter().any(|e| e.media_id == media_id),
+            "must not be in list"
+        );
 
         let shown = lib.media_show(media_id).unwrap();
-        assert_eq!(shown.media_id, media_id, "media_show must still return metadata");
+        assert_eq!(
+            shown.media_id, media_id,
+            "media_show must still return metadata"
+        );
+    }
+
+    #[tokio::test]
+    async fn orphaned_media_list_includes_only_primary_unreachable_media() {
+        let tmp = TempDir::new().unwrap();
+        let (lib, _) = make_library(&tmp).await;
+        let (reachable_id, album_id) =
+            add_media_to_album(&lib, &tmp, "reachable.jpg", b"reachable").await;
+        let orphan_source = tmp.path().join("orphan.jpg");
+        std::fs::write(&orphan_source, b"orphan").unwrap();
+        let orphan_id = lib
+            .media_add(
+                MediaAddSource::CopyFrom(orphan_source),
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap()
+            .id();
+
+        let companion_source = tmp.path().join("companion.mov");
+        std::fs::write(&companion_source, b"companion").unwrap();
+        let companion_id = lib
+            .media_add(
+                MediaAddSource::CopyFrom(companion_source),
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap()
+            .id();
+        let primary_source = tmp.path().join("primary.jpg");
+        std::fs::write(&primary_source, b"primary").unwrap();
+        let primary_id = lib
+            .media_add(
+                MediaAddSource::CopyFrom(primary_source),
+                Some(album_id),
+                None,
+                None,
+                Some(companion_id),
+            )
+            .await
+            .unwrap()
+            .id();
+
+        let orphaned = lib.media_list(MediaListScope::Orphaned);
+        assert!(orphaned.iter().any(|entry| entry.media_id == orphan_id));
+        assert!(!orphaned.iter().any(|entry| entry.media_id == reachable_id));
+        assert!(!orphaned.iter().any(|entry| entry.media_id == primary_id));
+        assert!(!orphaned.iter().any(|entry| entry.media_id == companion_id));
+
+        let visible = lib.media_list(MediaListScope::Visible);
+        assert!(visible.iter().any(|entry| entry.media_id == reachable_id));
+        assert!(visible.iter().any(|entry| entry.media_id == orphan_id));
+        assert!(visible.iter().any(|entry| entry.media_id == primary_id));
+        assert!(!visible.iter().any(|entry| entry.media_id == companion_id));
+
+        lib.album_add_media(album_id, orphan_id).await.unwrap();
+        assert!(!lib
+            .media_list(MediaListScope::Orphaned)
+            .iter()
+            .any(|entry| entry.media_id == orphan_id));
     }
 
     #[tokio::test]
@@ -431,7 +591,10 @@ mod tests {
 
         lib.album_remove_media(album_id, media_id).await.unwrap();
 
-        assert!(!lib.media_list(MediaListScope::Reachable).iter().any(|e| e.media_id == media_id));
+        assert!(!lib
+            .media_list(MediaListScope::Reachable)
+            .iter()
+            .any(|e| e.media_id == media_id));
         let entry = lib.media_show(media_id).unwrap();
         assert_eq!(entry.media_id, media_id);
         assert_eq!(entry.filename_original, MediaFilename("img.jpg".into()));
@@ -446,7 +609,9 @@ mod tests {
         let before = lib.media_show(media_id).unwrap();
         assert_eq!(before.name, None);
 
-        lib.media_rename(media_id, Some(MediaName("Holiday".into()))).await.unwrap();
+        lib.media_rename(media_id, Some(MediaName("Holiday".into())))
+            .await
+            .unwrap();
         let renamed = lib.media_show(media_id).unwrap();
         assert_eq!(renamed.name, Some(MediaName("Holiday".into())));
 

@@ -34,6 +34,7 @@ protocol LibraryRepositoryProtocol: Sendable {
     func notifyPhotoImportChanged(initialImport: Bool) async
 
     func mediaByDate() async throws -> [FfiMediaItem]
+    func orphanMediaByDate() async throws -> [FfiMediaItem]
     func listAlbums() async throws -> [FfiAlbum]
     func albumItems(albumID: String, ascending: Bool) async throws -> [FfiAlbumItem]
     func showMedia(id: String) async throws -> FfiMediaItem
@@ -72,7 +73,7 @@ protocol LibraryRepositoryProtocol: Sendable {
 
     func importMedia(source: MediaImportSource, albumID: String?) async throws -> String
     func importMediaWithoutNotification(source: MediaImportSource, albumID: String?) async throws -> String
-    func importMediaBatch(_ sources: [MediaImportSource], albumID: String) async throws -> [String]
+    func importMediaBatch(_ sources: [MediaImportSource], albumID: String?) async throws -> [String]
     func setMediaThumbnail(mediaID: String, data: Data) async throws
     func evictLocalData(mediaIDs: [String]) async throws
     func evictLocalThumbnails(mediaIDs: [String]) async throws
@@ -144,6 +145,11 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
     func mediaByDate() async throws -> [FfiMediaItem] {
         try ensureOpen()
         return try library.mediaByDate()
+    }
+
+    func orphanMediaByDate() async throws -> [FfiMediaItem] {
+        try ensureOpen()
+        return try library.orphanMediaByDate()
     }
 
     func listAlbums() async throws -> [FfiAlbum] {
@@ -364,7 +370,7 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         return try _importMediaWithoutNotification(source: source, albumID: albumID)
     }
 
-    func importMediaBatch(_ sources: [MediaImportSource], albumID: String) async throws -> [String] {
+    func importMediaBatch(_ sources: [MediaImportSource], albumID: String?) async throws -> [String] {
         try ensureOpen()
         var ids: [String] = []
         for source in sources {
@@ -501,11 +507,13 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
             originalFilename: source.originalFilename,
             appleAaeMediaId: source.appleAaeMediaID,
             appleLivePhotoMediaId: source.appleLivePhotoMediaID
-        )
+        ).mediaId
     }
 
-    private func notifyImport(albumID: String) async {
-        await notify(.album(albumID))
+    private func notifyImport(albumID: String?) async {
+        if let albumID {
+            await notify(.album(albumID))
+        }
         await notify(.albumList)
         await notify(.mediaList)
         await notify(.localMutation)
@@ -562,6 +570,7 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     func notifyChanged(_ change: LibraryChange) async { await storage.notifyChanged(change) }
     func notifyPhotoImportChanged(initialImport: Bool) async { await storage.notifyPhotoImportChanged(initialImport: initialImport) }
     func mediaByDate() async throws -> [FfiMediaItem] { try await storage.mediaByDate() }
+    func orphanMediaByDate() async throws -> [FfiMediaItem] { try await storage.orphanMediaByDate() }
     func listAlbums() async throws -> [FfiAlbum] { try await storage.listAlbums() }
     func albumItems(albumID: String, ascending: Bool) async throws -> [FfiAlbumItem] { try await storage.albumItems(albumID: albumID, ascending: ascending) }
     func showMedia(id: String) async throws -> FfiMediaItem { try await storage.showMedia(id: id) }
@@ -597,7 +606,7 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     func createGroupFromSelectedMedia(mediaIDs: [String], albumID: String) async throws { try await storage.createGroupFromSelectedMedia(mediaIDs: mediaIDs, albumID: albumID) }
     func importMedia(source: MediaImportSource, albumID: String?) async throws -> String { try await storage.importMedia(source: source, albumID: albumID) }
     func importMediaWithoutNotification(source: MediaImportSource, albumID: String?) async throws -> String { try await storage.importMediaWithoutNotification(source: source, albumID: albumID) }
-    func importMediaBatch(_ sources: [MediaImportSource], albumID: String) async throws -> [String] { try await storage.importMediaBatch(sources, albumID: albumID) }
+    func importMediaBatch(_ sources: [MediaImportSource], albumID: String?) async throws -> [String] { try await storage.importMediaBatch(sources, albumID: albumID) }
     func setMediaThumbnail(mediaID: String, data: Data) async throws { try await storage.setMediaThumbnail(mediaID: mediaID, data: data) }
     func evictLocalData(mediaIDs: [String]) async throws { try await storage.evictLocalData(mediaIDs: mediaIDs) }
     func evictLocalThumbnails(mediaIDs: [String]) async throws { try await storage.evictLocalThumbnails(mediaIDs: mediaIDs) }

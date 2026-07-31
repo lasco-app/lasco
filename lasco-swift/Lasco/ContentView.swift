@@ -1,5 +1,8 @@
 import SwiftUI
 import UniformTypeIdentifiers
+#if canImport(PhotosUI)
+import PhotosUI
+#endif
 #if canImport(UIKit)
 import UIKit
 #else
@@ -34,8 +37,8 @@ struct ContentView: View {
     }
 
     @State private var showingImportMedia = false
-    @State private var pendingImportUrls: [URL] = []
-    @State private var showingAlbumPicker = false
+    @State private var showingPhotosPicker = false
+    @State private var photosPickerItems: [PhotosPickerItem] = []
     @State private var path: [LibraryDestination] = []
     @State private var selection: Set<String> = []
     @State private var isSelecting = false
@@ -119,18 +122,6 @@ struct ContentView: View {
             }
         }
         .background(theme.bg)
-        .sheet(isPresented: $showingAlbumPicker) {
-            AlbumPickerView(repository: repository, title: "Choose import destination") { album in
-                showingAlbumPicker = false
-                doImport(urls: pendingImportUrls, album: album)
-                pendingImportUrls = []
-            } onCancel: {
-                showingAlbumPicker = false
-                pendingImportUrls = []
-            }
-            .environment(\.lascoTheme, .dark)
-            .preferredColorScheme(.dark)
-        }
         .sheet(isPresented: $showingDefaultAlbumPicker) {
             AlbumPickerView(repository: repository, title: "Default upload album") { album in
                 Task { try? await repository.setDefaultUploadAlbum(albumID: album.albumId) }
@@ -150,26 +141,40 @@ struct ContentView: View {
             case .failure(let err):
                 toastManager.show(error: err.localizedDescription)
             case .success(let urls):
-                if let defaultAlbumID = session.defaultUploadAlbumID {
-                    Task {
-                        if let albums = try? await repository.listAlbums(),
-                           let defaultAlbum = albums.first(where: { $0.albumId == defaultAlbumID }) {
-                            doImport(urls: urls, album: defaultAlbum)
-                        } else {
-                            pendingImportUrls = urls
-                            showingAlbumPicker = true
-                        }
-                    }
-                } else {
-                    pendingImportUrls = urls
-                    showingAlbumPicker = true
-                }
+                doImport(urls: urls)
             }
         }
+        #if canImport(UIKit)
+        .photosPicker(
+            isPresented: $showingPhotosPicker,
+            selection: $photosPickerItems,
+            maxSelectionCount: 0,
+            matching: .any(of: [.images, .videos]),
+            photoLibrary: .shared()
+        )
+        .onChange(of: photosPickerItems) { _, items in
+            guard !items.isEmpty else { return }
+            let captured = items
+            photosPickerItems = []
+            Task {
+                let urls = await temporaryURLs(for: captured)
+                guard !urls.isEmpty else {
+                    toastManager.show(error: "Could not read the selected photos")
+                    return
+                }
+                doImport(urls: urls)
+            }
+        }
+        #endif
         .onAppear {
             AppLogger.log(.info, "home screen shown — \(model.media.count) media items")
         }
         .task { await model.start() }
+        .onChange(of: model.showingOrphans) {
+            selection = []
+            isSelecting = false
+            Task { await model.load() }
+        }
         .environment(repository)
     }
 
@@ -181,6 +186,14 @@ struct ContentView: View {
                 .font(LascoFont.categoryLarge())
                 .foregroundStyle(theme.ink)
             Spacer()
+            Toggle(isOn: $model.showingOrphans) {
+                Text(model.showingOrphans ? "Orphan" : "All")
+                    .font(LascoFont.body())
+                    .foregroundStyle(theme.inkSub)
+            }
+                .accessibilityLabel("Media filter")
+                .accessibilityValue(model.showingOrphans ? "On" : "Off")
+            addMenu
         }
         .padding(.top, 20)
         .padding(.bottom, 8)
@@ -258,7 +271,7 @@ struct ContentView: View {
     @ViewBuilder
     private func mediaContent(media: [FfiMediaItem], gridColumns: [GridItem]) -> some View {
         if media.isEmpty {
-            Text("No media yet.")
+            Text(model.showingOrphans ? "No orphan media." : "No media yet.")
                 .font(LascoFont.title())
                 .foregroundStyle(theme.inkSub)
                 .padding(20)
@@ -340,12 +353,60 @@ struct ContentView: View {
 
     // MARK: Import helpers
 
-    private func doImport(urls: [URL], album: FfiAlbum) {
+    private var addMenu: some View {
+        Menu {
+            #if canImport(UIKit)
+            Button {
+                showingPhotosPicker = true
+            } label: {
+                Label("Import from Photos…", systemImage: "photo.on.rectangle")
+            }
+            #endif
+            Button {
+                showingImportMedia = true
+            } label: {
+                Label("Import from Files…", systemImage: "square.and.arrow.down")
+            }
+        } label: {
+            Image("plus")
+                .renderingMode(.template)
+                .resizable()
+                .frame(width: 18, height: 18)
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(theme.ink)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Import orphan media")
+    }
+
+    #if canImport(UIKit)
+    private func temporaryURLs(for items: [PhotosPickerItem]) async -> [URL] {
+        var urls: [URL] = []
+        for item in items {
+            guard let data = try? await item.loadTransferable(type: Data.self) else { continue }
+            let fileExtension = item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }) ? "mov" : "jpg"
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+                .appendingPathExtension(fileExtension)
+            do {
+                try data.write(to: url)
+                urls.append(url)
+            } catch {
+                AppLogger.log(.error, "could not write selected photo to a temporary file: \(error)")
+            }
+        }
+        return urls
+    }
+    #endif
+
+    private func doImport(urls: [URL]) {
         Task {
-            if let err = await importCoordinator.importMedia(urls: urls, albumID: album.albumId) {
+            if let err = await importCoordinator.importMedia(urls: urls) {
                 toastManager.show(error: err)
             } else {
-                toastManager.show(ok: "Imported \(urls.count) item(s) to \(album.name)")
+                toastManager.show(ok: "Imported \(urls.count) item(s) as orphan media")
             }
         }
     }

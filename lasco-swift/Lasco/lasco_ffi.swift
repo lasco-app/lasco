@@ -605,7 +605,7 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     
     func hasUnpushedChanges(remoteId: String)  -> Bool
     
-    func importMedia(path: String, albumId: String?, originalFilename: String?, appleAaeMediaId: String?, appleLivePhotoMediaId: String?) throws  -> String
+    func importMedia(path: String, albumId: String?, originalFilename: String?, appleAaeMediaId: String?, appleLivePhotoMediaId: String?) throws  -> FfiMediaAddResult
     
     func initializeRemote(remoteId: String, appSupportDir: String?) throws 
     
@@ -634,6 +634,8 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     func mediaInAlbum(albumId: String) throws  -> [FfiMediaItem]
     
     func moveMediaToAlbum(mediaId: String, fromAlbumId: String, toAlbumId: String) throws 
+    
+    func orphanMediaByDate() throws  -> [FfiMediaItem]
     
     func pendingMediaCount()  -> UInt32
     
@@ -995,8 +997,8 @@ nonisolated open func hasUnpushedChanges(remoteId: String) -> Bool  {
 })
 }
     
-nonisolated open func importMedia(path: String, albumId: String?, originalFilename: String?, appleAaeMediaId: String?, appleLivePhotoMediaId: String?)throws  -> String  {
-    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+nonisolated open func importMedia(path: String, albumId: String?, originalFilename: String?, appleAaeMediaId: String?, appleLivePhotoMediaId: String?)throws  -> FfiMediaAddResult  {
+    return try  FfiConverterTypeFfiMediaAddResult_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_import_media(self.uniffiClonePointer(),
         FfiConverterString.lower(path),
         FfiConverterOptionString.lower(albumId),
@@ -1109,6 +1111,13 @@ nonisolated open func moveMediaToAlbum(mediaId: String, fromAlbumId: String, toA
         FfiConverterString.lower(toAlbumId),$0
     )
 }
+}
+    
+nonisolated open func orphanMediaByDate()throws  -> [FfiMediaItem]  {
+    return try  FfiConverterSequenceTypeFfiMediaItem.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date(self.uniffiClonePointer(),$0
+    )
+})
 }
     
 nonisolated open func pendingMediaCount() -> UInt32  {
@@ -1915,6 +1924,76 @@ nonisolated public func FfiConverterTypeFfiLocalStateStats_lift(_ buf: RustBuffe
 #endif
 nonisolated public func FfiConverterTypeFfiLocalStateStats_lower(_ value: FfiLocalStateStats) -> RustBuffer {
     return FfiConverterTypeFfiLocalStateStats.lower(value)
+}
+
+
+nonisolated public struct FfiMediaAddResult {
+    public var mediaId: String
+    public var alreadyExisted: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(mediaId: String, alreadyExisted: Bool) {
+        self.mediaId = mediaId
+        self.alreadyExisted = alreadyExisted
+    }
+}
+
+#if compiler(>=6)
+nonisolated extension FfiMediaAddResult: Sendable {}
+#endif
+
+
+nonisolated extension FfiMediaAddResult: Equatable, Hashable {
+    public static func ==(lhs: FfiMediaAddResult, rhs: FfiMediaAddResult) -> Bool {
+        if lhs.mediaId != rhs.mediaId {
+            return false
+        }
+        if lhs.alreadyExisted != rhs.alreadyExisted {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(mediaId)
+        hasher.combine(alreadyExisted)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public struct FfiConverterTypeFfiMediaAddResult: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiMediaAddResult {
+        return
+            try FfiMediaAddResult(
+                mediaId: FfiConverterString.read(from: &buf), 
+                alreadyExisted: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiMediaAddResult, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.mediaId, into: &buf)
+        FfiConverterBool.write(value.alreadyExisted, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public func FfiConverterTypeFfiMediaAddResult_lift(_ buf: RustBuffer) throws -> FfiMediaAddResult {
+    return try FfiConverterTypeFfiMediaAddResult.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public func FfiConverterTypeFfiMediaAddResult_lower(_ value: FfiMediaAddResult) -> RustBuffer {
+    return FfiConverterTypeFfiMediaAddResult.lower(value)
 }
 
 
@@ -3104,7 +3183,7 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_has_unpushed_changes() != 6244) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_import_media() != 39206) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_import_media() != 30935) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_initialize_remote() != 24286) {
@@ -3147,6 +3226,9 @@ nonisolated private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_move_media_to_album() != 47806) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date() != 1863) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_pending_media_count() != 40879) {

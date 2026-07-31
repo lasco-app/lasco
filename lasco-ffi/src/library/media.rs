@@ -11,7 +11,9 @@ use crate::error::LascoError;
 #[uniffi::export]
 impl FfiLibrary {
     pub fn load_local_state(&self) -> Result<(), LascoError> {
-        self.rt.block_on(self.inner.load_local_state()).map_err(Into::into)
+        self.rt
+            .block_on(self.inner.load_local_state())
+            .map_err(Into::into)
     }
 
     pub fn library_id(&self) -> String {
@@ -21,18 +23,23 @@ impl FfiLibrary {
     pub fn get_default_fetch_remote(&self) -> Option<String> {
         let library_id = self.inner.library_id();
         let lib_config = LibraryJson::load(&self.app_dir, &library_id).ok()??;
-        lib_config.default_fetch_remote.as_ref().map(|id| id.to_string())
+        lib_config
+            .default_fetch_remote
+            .as_ref()
+            .map(|id| id.to_string())
     }
 
     pub fn set_default_fetch_remote(&self, remote_id: Option<String>) -> Result<(), LascoError> {
         let library_id = self.inner.library_id();
-        let mut lib_config = LibraryJson::load(&self.app_dir, &library_id)?
-            .ok_or(LascoError::NotFound)?;
+        let mut lib_config =
+            LibraryJson::load(&self.app_dir, &library_id)?.ok_or(LascoError::NotFound)?;
         lib_config.default_fetch_remote = match remote_id {
             Some(s) => Some(
                 s.parse::<uuid::Uuid>()
                     .map(lasco_core::identifiers::RemoteUuid::from_uuid)
-                    .map_err(|e| LascoError::Other { msg: format!("invalid remote id: {e}") })?,
+                    .map_err(|e| LascoError::Other {
+                        msg: format!("invalid remote id: {e}"),
+                    })?,
             ),
             None => None,
         };
@@ -57,8 +64,8 @@ impl FfiLibrary {
 
     pub fn set_auto_import_device_media(&self, enabled: bool) -> Result<(), LascoError> {
         let library_id = self.inner.library_id();
-        let mut lib_config = LibraryJson::load(&self.app_dir, &library_id)?
-            .ok_or(LascoError::NotFound)?;
+        let mut lib_config =
+            LibraryJson::load(&self.app_dir, &library_id)?.ok_or(LascoError::NotFound)?;
         lib_config.auto_import_device_media = enabled;
         lib_config.save(&self.app_dir, &library_id)?;
         Ok(())
@@ -66,24 +73,21 @@ impl FfiLibrary {
 
     pub fn set_default_upload_album(&self, album_id: Option<String>) -> Result<(), LascoError> {
         let library_id = self.inner.library_id();
-        let mut lib_config = LibraryJson::load(&self.app_dir, &library_id)?
-            .ok_or(LascoError::NotFound)?;
+        let mut lib_config =
+            LibraryJson::load(&self.app_dir, &library_id)?.ok_or(LascoError::NotFound)?;
         lib_config.default_upload_album = match album_id {
-            Some(s) => Some(AlbumUuid::from_uuid(
-                uuid::Uuid::parse_str(&s)
-                    .map_err(|e| LascoError::Other { msg: format!("invalid album id: {e}") })?,
-            )),
+            Some(s) => Some(AlbumUuid::from_uuid(uuid::Uuid::parse_str(&s).map_err(
+                |e| LascoError::Other {
+                    msg: format!("invalid album id: {e}"),
+                },
+            )?)),
             None => None,
         };
         lib_config.save(&self.app_dir, &library_id)?;
         Ok(())
     }
 
-    pub fn set_media_thumbnail(
-        &self,
-        media_id: String,
-        data: Vec<u8>,
-    ) -> Result<(), LascoError> {
+    pub fn set_media_thumbnail(&self, media_id: String, data: Vec<u8>) -> Result<(), LascoError> {
         let media_uuid = uuid::Uuid::parse_str(&media_id)
             .map(lasco_core::identifiers::MediaUuid::from_uuid)
             .map_err(|e| LascoError::Other { msg: e.to_string() })?;
@@ -92,11 +96,7 @@ impl FfiLibrary {
             .map_err(LascoError::from)
     }
 
-    pub fn rename_media(
-        &self,
-        media_id: String,
-        name: Option<String>,
-    ) -> Result<(), LascoError> {
+    pub fn rename_media(&self, media_id: String, name: Option<String>) -> Result<(), LascoError> {
         let media_uuid = uuid::Uuid::parse_str(&media_id)
             .map(lasco_core::identifiers::MediaUuid::from_uuid)
             .map_err(|e| LascoError::Other { msg: e.to_string() })?;
@@ -106,11 +106,18 @@ impl FfiLibrary {
             .map_err(LascoError::from)
     }
 
-    pub fn get_media_thumbnail(&self, media_id: String, app_support_dir: Option<String>) -> Result<Vec<u8>, LascoError> {
+    pub fn get_media_thumbnail(
+        &self,
+        media_id: String,
+        app_support_dir: Option<String>,
+    ) -> Result<Vec<u8>, LascoError> {
         let media_uuid = uuid::Uuid::parse_str(&media_id)
             .map(lasco_core::identifiers::MediaUuid::from_uuid)
             .map_err(|e| LascoError::Other { msg: e.to_string() })?;
-        match self.rt.block_on(self.inner.media_get_thumbnail(media_uuid, None)) {
+        match self
+            .rt
+            .block_on(self.inner.media_get_thumbnail(media_uuid, None))
+        {
             Ok(b) => Ok(b),
             Err(lasco_core::error::LibraryError::MediaNotFound(_)) => {
                 let lib_config = self.load_library_json()?;
@@ -120,20 +127,31 @@ impl FfiLibrary {
                     .ok_or(LascoError::NotFound)?
                     .remote_uuid
                     .to_string();
-                let storage = self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
+                let storage =
+                    self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
                 self.rt
-                    .block_on(self.inner.media_get_thumbnail(media_uuid, Some(storage.as_ref())))
+                    .block_on(
+                        self.inner
+                            .media_get_thumbnail(media_uuid, Some(storage.as_ref())),
+                    )
                     .map_err(LascoError::from)
             }
             Err(e) => Err(LascoError::from(e)),
         }
     }
 
-    pub fn get_media_bytes(&self, media_id: String, app_support_dir: Option<String>) -> Result<Vec<u8>, LascoError> {
+    pub fn get_media_bytes(
+        &self,
+        media_id: String,
+        app_support_dir: Option<String>,
+    ) -> Result<Vec<u8>, LascoError> {
         let media_uuid = uuid::Uuid::parse_str(&media_id)
             .map(lasco_core::identifiers::MediaUuid::from_uuid)
             .map_err(|e| LascoError::Other { msg: e.to_string() })?;
-        match self.rt.block_on(self.inner.media_get_bytes(media_uuid, None)) {
+        match self
+            .rt
+            .block_on(self.inner.media_get_bytes(media_uuid, None))
+        {
             Ok(b) => Ok(b),
             Err(lasco_core::error::LibraryError::MediaNotFound(_)) => {
                 let lib_config = self.load_library_json()?;
@@ -143,9 +161,13 @@ impl FfiLibrary {
                     .ok_or(LascoError::NotFound)?
                     .remote_uuid
                     .to_string();
-                let storage = self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
+                let storage =
+                    self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
                 self.rt
-                    .block_on(self.inner.media_get_bytes(media_uuid, Some(storage.as_ref())))
+                    .block_on(
+                        self.inner
+                            .media_get_bytes(media_uuid, Some(storage.as_ref())),
+                    )
                     .map_err(LascoError::from)
             }
             Err(e) => Err(LascoError::from(e)),
@@ -170,14 +192,19 @@ impl FfiLibrary {
                     .ok_or(LascoError::NotFound)?
                     .remote_uuid
                     .to_string();
-                let storage = self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
+                let storage =
+                    self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
                 let inner = self.inner.clone();
                 // Storage backends like S3 rely on hyper/tokio networking, which
                 // needs an active reactor. Uniffi polls this future from its own
                 // foreign executor with no reactor entered, so the remote fetch
                 // is spawned onto our own tokio runtime instead of awaited inline.
                 self.rt
-                    .spawn(async move { inner.media_get_thumbnail(media_uuid, Some(storage.as_ref())).await })
+                    .spawn(async move {
+                        inner
+                            .media_get_thumbnail(media_uuid, Some(storage.as_ref()))
+                            .await
+                    })
                     .await
                     .map_err(|e| LascoError::Other { msg: e.to_string() })?
                     .map_err(LascoError::from)
@@ -204,14 +231,19 @@ impl FfiLibrary {
                     .ok_or(LascoError::NotFound)?
                     .remote_uuid
                     .to_string();
-                let storage = self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
+                let storage =
+                    self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
                 let inner = self.inner.clone();
                 // Storage backends like S3 rely on hyper/tokio networking, which
                 // needs an active reactor. Uniffi polls this future from its own
                 // foreign executor with no reactor entered, so the remote fetch
                 // is spawned onto our own tokio runtime instead of awaited inline.
                 self.rt
-                    .spawn(async move { inner.media_get_bytes(media_uuid, Some(storage.as_ref())).await })
+                    .spawn(async move {
+                        inner
+                            .media_get_bytes(media_uuid, Some(storage.as_ref()))
+                            .await
+                    })
                     .await
                     .map_err(|e| LascoError::Other { msg: e.to_string() })?
                     .map_err(LascoError::from)
@@ -295,14 +327,28 @@ impl FfiLibrary {
         let media_uuid = uuid::Uuid::parse_str(&media_id)
             .map(lasco_core::identifiers::MediaUuid::from_uuid)
             .map_err(|e| LascoError::Other { msg: e.to_string() })?;
-        let entry = self.inner.media_show(media_uuid).map_err(LascoError::from)?;
+        let entry = self
+            .inner
+            .media_show(media_uuid)
+            .map_err(LascoError::from)?;
         Ok(media_entry_to_ffi(entry))
     }
 
     pub fn media_by_date(&self) -> Result<Vec<FfiMediaItem>, LascoError> {
         let mut items: Vec<_> = self
             .inner
-            .media_list(lasco_core::library::media::query::MediaListScope::Reachable)
+            .media_list(lasco_core::library::media::query::MediaListScope::Visible)
+            .into_iter()
+            .map(media_entry_to_ffi)
+            .collect();
+        items.sort_by(|a, b| b.date.cmp(&a.date));
+        Ok(items)
+    }
+
+    pub fn orphan_media_by_date(&self) -> Result<Vec<FfiMediaItem>, LascoError> {
+        let mut items: Vec<_> = self
+            .inner
+            .media_list(lasco_core::library::media::query::MediaListScope::Orphaned)
             .into_iter()
             .map(media_entry_to_ffi)
             .collect();
@@ -347,7 +393,9 @@ impl FfiLibrary {
                     .map_err(|e| LascoError::Other { msg: e.to_string() })
             })
             .collect::<Result<Vec<_>, _>>()?;
-        self.inner.evict_local_data(&uuids).map_err(LascoError::from)
+        self.inner
+            .evict_local_data(&uuids)
+            .map_err(LascoError::from)
     }
 
     pub fn evict_local_thumbnails(&self, media_ids: Vec<String>) -> Result<(), LascoError> {
@@ -359,7 +407,9 @@ impl FfiLibrary {
                     .map_err(|e| LascoError::Other { msg: e.to_string() })
             })
             .collect::<Result<Vec<_>, _>>()?;
-        self.inner.evict_local_thumbnails(&uuids).map_err(LascoError::from)
+        self.inner
+            .evict_local_thumbnails(&uuids)
+            .map_err(LascoError::from)
     }
 
     pub fn all_media_ids(&self) -> Vec<String> {
@@ -391,7 +441,12 @@ impl FfiLibrary {
         let media_dir = local_dirs.media_dir();
         let (media_cached_count, media_cached_bytes) = count_files_with_ext(&media_dir, "data");
         let (thumb_cached_count, thumb_cached_bytes) = count_files_with_ext(&media_dir, "thumb");
-        FfiLocalStateStats { media_cached_count, media_cached_bytes, thumb_cached_count, thumb_cached_bytes }
+        FfiLocalStateStats {
+            media_cached_count,
+            media_cached_bytes,
+            thumb_cached_count,
+            thumb_cached_bytes,
+        }
     }
 
     pub fn delete_media(&self, media_id: String) -> Result<(), LascoError> {
@@ -405,7 +460,9 @@ impl FfiLibrary {
 }
 
 fn count_files_with_ext(dir: &std::path::Path, ext: &str) -> (u32, u64) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return (0, 0) };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return (0, 0);
+    };
     let mut count = 0u32;
     let mut bytes = 0u64;
     for entry in entries.flatten() {

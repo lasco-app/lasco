@@ -14,7 +14,7 @@ final class MediaImportCoordinator {
         self.repository = repository
     }
 
-    func importMedia(urls: [URL], albumID: String) async -> String? {
+    func importMedia(urls: [URL], albumID: String? = nil) async -> String? {
         guard importTask == nil else { return nil }
         isImporting = true
         progress = (0, urls.count)
@@ -34,7 +34,7 @@ final class MediaImportCoordinator {
         progress = nil
     }
 
-    private func performImportMedia(urls: [URL], albumID: String) async -> String? {
+    private func performImportMedia(urls: [URL], albumID: String?) async -> String? {
         var sources: [MediaImportSource] = []
         for url in urls {
             let accessed = url.startAccessingSecurityScopedResource()

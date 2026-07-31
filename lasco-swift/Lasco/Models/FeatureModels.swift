@@ -5,6 +5,7 @@ import Observation
 @Observable
 final class RecentMediaModel {
     private(set) var media: [FfiMediaItem] = []
+    var showingOrphans = false
     private let repository: any LibraryRepositoryProtocol
 
     init(repository: any LibraryRepositoryProtocol) {
@@ -22,7 +23,7 @@ final class RecentMediaModel {
 
     func load() async {
         do {
-            media = try await repository.mediaByDate()
+            media = try await (showingOrphans ? repository.orphanMediaByDate() : repository.mediaByDate())
         } catch is CancellationError {
         } catch {
             AppLogger.log(.error, "recent media query failed: \(error)")
