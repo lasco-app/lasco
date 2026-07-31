@@ -43,6 +43,12 @@ class ManageViewModel(
         }
     }
 
+    fun setRemoteAutoPush(remoteId: String, enabled: Boolean) {
+        viewModelScope.launch {
+            repo.setRemoteAutoPush(remoteId, enabled)
+        }
+    }
+
     companion object {
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {

@@ -661,6 +661,8 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     
     func setMediaThumbnail(mediaId: String, data: Data) throws 
     
+    func setRemoteAutoPush(remoteId: String, enabled: Bool) throws 
+    
     func showMedia(mediaId: String) throws  -> FfiMediaItem
     
     func sync(appSupportDir: String?) throws  -> FfiSyncResult
@@ -1215,6 +1217,14 @@ nonisolated open func setMediaThumbnail(mediaId: String, data: Data)throws   {tr
     uniffi_lasco_ffi_fn_method_ffilibrary_set_media_thumbnail(self.uniffiClonePointer(),
         FfiConverterString.lower(mediaId),
         FfiConverterData.lower(data),$0
+    )
+}
+}
+    
+nonisolated open func setRemoteAutoPush(remoteId: String, enabled: Bool)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_set_remote_auto_push(self.uniffiClonePointer(),
+        FfiConverterString.lower(remoteId),
+        FfiConverterBool.lower(enabled),$0
     )
 }
 }
@@ -2288,6 +2298,7 @@ nonisolated public func FfiConverterTypeFfiOperationGroup_lower(_ value: FfiOper
 nonisolated public struct FfiRemote {
     public var id: String
     public var name: String
+    public var autoPush: Bool
     public var kind: String
     public var endpoint: String?
     public var bucket: String?
@@ -2296,9 +2307,10 @@ nonisolated public struct FfiRemote {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(id: String, name: String, kind: String, endpoint: String?, bucket: String?, region: String?, path: String?) {
+    public init(id: String, name: String, autoPush: Bool, kind: String, endpoint: String?, bucket: String?, region: String?, path: String?) {
         self.id = id
         self.name = name
+        self.autoPush = autoPush
         self.kind = kind
         self.endpoint = endpoint
         self.bucket = bucket
@@ -2318,6 +2330,9 @@ nonisolated extension FfiRemote: Equatable, Hashable {
             return false
         }
         if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.autoPush != rhs.autoPush {
             return false
         }
         if lhs.kind != rhs.kind {
@@ -2341,6 +2356,7 @@ nonisolated extension FfiRemote: Equatable, Hashable {
     public func hash(into hasher: inout Hasher) {
         hasher.combine(id)
         hasher.combine(name)
+        hasher.combine(autoPush)
         hasher.combine(kind)
         hasher.combine(endpoint)
         hasher.combine(bucket)
@@ -2360,6 +2376,7 @@ nonisolated public struct FfiConverterTypeFfiRemote: FfiConverterRustBuffer {
             try FfiRemote(
                 id: FfiConverterString.read(from: &buf), 
                 name: FfiConverterString.read(from: &buf), 
+                autoPush: FfiConverterBool.read(from: &buf), 
                 kind: FfiConverterString.read(from: &buf), 
                 endpoint: FfiConverterOptionString.read(from: &buf), 
                 bucket: FfiConverterOptionString.read(from: &buf), 
@@ -2371,6 +2388,7 @@ nonisolated public struct FfiConverterTypeFfiRemote: FfiConverterRustBuffer {
     public static func write(_ value: FfiRemote, into buf: inout [UInt8]) {
         FfiConverterString.write(value.id, into: &buf)
         FfiConverterString.write(value.name, into: &buf)
+        FfiConverterBool.write(value.autoPush, into: &buf)
         FfiConverterString.write(value.kind, into: &buf)
         FfiConverterOptionString.write(value.endpoint, into: &buf)
         FfiConverterOptionString.write(value.bucket, into: &buf)
@@ -3247,6 +3265,9 @@ nonisolated private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_set_media_thumbnail() != 53065) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_set_remote_auto_push() != 6699) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_show_media() != 58267) {

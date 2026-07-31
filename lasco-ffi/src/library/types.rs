@@ -73,6 +73,7 @@ pub struct FfiLibraryEntry {
 pub struct FfiRemote {
     pub id: String,
     pub name: String,
+    pub auto_push: bool,
     pub kind: String,
     pub endpoint: Option<String>,
     pub bucket: Option<String>,

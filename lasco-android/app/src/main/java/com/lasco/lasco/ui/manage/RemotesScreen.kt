@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
+import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -110,6 +111,7 @@ fun RemotesScreen(
                             feedback = "${remote.name}: set as default fetch"
                         }
                     },
+                    onSetAutoPush = { enabled -> manageViewModel.setRemoteAutoPush(remote.id, enabled) },
                     onDelete = { pendingDelete = remote },
                 )
                 Spacer(modifier = Modifier.height(12.dp))
@@ -164,6 +166,7 @@ private fun RemoteCard(
     busy: Boolean,
     onTestConnection: () -> Unit,
     onSetDefaultFetch: () -> Unit,
+    onSetAutoPush: (Boolean) -> Unit,
     onDelete: () -> Unit,
 ) {
     val colors = LascoTheme.colors
@@ -188,6 +191,11 @@ private fun RemoteCard(
         }
         if (summary.isNotBlank()) {
             Text(text = summary, style = LascoTheme.type.mono(11), color = colors.inkMuted)
+        }
+        Row {
+            Text(text = "Auto push", style = LascoTheme.type.body(13), color = colors.ink)
+            Spacer(modifier = Modifier.width(8.dp))
+            Switch(checked = remote.autoPush, onCheckedChange = onSetAutoPush)
         }
         Spacer(modifier = Modifier.height(10.dp))
         Row {

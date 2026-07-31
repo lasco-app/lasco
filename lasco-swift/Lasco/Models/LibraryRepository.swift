@@ -80,6 +80,7 @@ protocol LibraryRepositoryProtocol: Sendable {
     func allMediaIDs() async -> [String]
 
     func setDefaultFetchRemote(remoteID: String?) async throws
+    func setRemoteAutoPush(remoteID: String, enabled: Bool) async throws
     func setAutoImportDeviceMedia(enabled: Bool) async throws
     func addUser(username: String, password: String) async throws
     func addRemoteFixedPath(name: String, path: String) async throws -> String
@@ -408,6 +409,12 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         await notify(.session)
     }
 
+    func setRemoteAutoPush(remoteID: String, enabled: Bool) async throws {
+        try ensureOpen()
+        try library.setRemoteAutoPush(remoteId: remoteID, enabled: enabled)
+        await notify(.session)
+    }
+
     func setAutoImportDeviceMedia(enabled: Bool) async throws {
         try ensureOpen()
         try library.setAutoImportDeviceMedia(enabled: enabled)
@@ -604,6 +611,7 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     func mediaIDsWithoutRemoteBackup() async throws -> [String] { try await storage.mediaIDsWithoutRemoteBackup() }
     func allMediaIDs() async -> [String] { await storage.allMediaIDs() }
     func setDefaultFetchRemote(remoteID: String?) async throws { try await storage.setDefaultFetchRemote(remoteID: remoteID) }
+    func setRemoteAutoPush(remoteID: String, enabled: Bool) async throws { try await storage.setRemoteAutoPush(remoteID: remoteID, enabled: enabled) }
     func setAutoImportDeviceMedia(enabled: Bool) async throws { try await storage.setAutoImportDeviceMedia(enabled: enabled) }
     func addUser(username: String, password: String) async throws { try await storage.addUser(username: username, password: password) }
     func addRemoteFixedPath(name: String, path: String) async throws -> String { try await storage.addRemoteFixedPath(name: name, path: path) }

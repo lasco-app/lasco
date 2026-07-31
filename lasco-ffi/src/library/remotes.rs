@@ -62,6 +62,7 @@ impl FfiLibrary {
         let remote_config = RemoteConfig {
             remote_uuid,
             name,
+            auto_push: true,
             kind: RemoteKind::FixedPath(FixedPathConfig {
                 root_dir: PathBuf::from(&path),
             }),
@@ -94,6 +95,7 @@ impl FfiLibrary {
         let remote_config = RemoteConfig {
             remote_uuid,
             name: name.clone(),
+            auto_push: true,
             kind: RemoteKind::DebugLocalApple(DebugLocalAppleConfig {
                 local_dir_name: name,
             }),
@@ -126,6 +128,7 @@ impl FfiLibrary {
         let remote_config = RemoteConfig {
             remote_uuid,
             name: name.clone(),
+            auto_push: true,
             kind: RemoteKind::DebugLocalAndroid(DebugLocalAndroidConfig {
                 local_dir_name: name,
             }),
@@ -174,6 +177,7 @@ impl FfiLibrary {
         let remote_config = RemoteConfig {
             remote_uuid,
             name,
+            auto_push: true,
             kind: RemoteKind::S3(lasco_core::library_json::S3Config {
                 endpoint,
                 bucket,
@@ -215,6 +219,25 @@ impl FfiLibrary {
             .map_err(|e| LascoError::Other { msg: e.to_string() })?;
 
         self.remotes.lock().unwrap().retain(|r| r.id != remote_id);
+        Ok(())
+    }
+
+    pub fn set_remote_auto_push(&self, remote_id: String, enabled: bool) -> Result<(), LascoError> {
+        let library_id = self.inner.library_id();
+        let mut lib_config = self.load_library_json()?;
+        let remote = lib_config
+            .remotes
+            .iter_mut()
+            .find(|r| r.remote_uuid.to_string() == remote_id)
+            .ok_or_else(|| LascoError::Other {
+                msg: format!("remote '{}' not found", remote_id),
+            })?;
+
+        remote.auto_push = enabled;
+        save_library(&self.app_dir, &library_id, &lib_config)
+            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+
+        self.remotes.lock().unwrap().iter_mut().find(|r| r.id == remote_id).map(|r| r.auto_push = enabled);
         Ok(())
     }
 
@@ -386,7 +409,16 @@ pub(super) fn remote_config_to_ffi(r: &RemoteConfig) -> FfiRemote {
             Some(cfg.local_dir_name.clone()),
         ),
     };
-    FfiRemote { id: r.remote_uuid.to_string(), name: r.name.clone(), kind, endpoint, bucket, region, path }
+    FfiRemote {
+        id: r.remote_uuid.to_string(),
+        name: r.name.clone(),
+        auto_push: r.auto_push,
+        kind,
+        endpoint,
+        bucket,
+        region,
+        path,
+    }
 }
 
 pub(super) fn media_entry_to_ffi(e: lasco_core::library::media::MediaEntry) -> FfiMediaItem {

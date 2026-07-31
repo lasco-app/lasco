@@ -16,6 +16,8 @@ pub const LIBRARY_JSON_VERSION: u32 = 1;
 pub struct RemoteConfig {
     pub remote_uuid: RemoteUuid,
     pub name: String,
+    #[serde(default)]
+    pub auto_push: bool,
     pub kind: RemoteKind,
 }
 
@@ -234,6 +236,7 @@ mod tests {
             remotes: vec![RemoteConfig {
                 remote_uuid: RemoteUuid::new(),
                 name: "local".to_string(),
+                auto_push: true,
                 kind: RemoteKind::FixedPath(FixedPathConfig {
                     root_dir: remote_path,
                 }),
@@ -283,6 +286,7 @@ mod tests {
         library.remotes.push(RemoteConfig {
             remote_uuid: RemoteUuid::new(),
             name: "local".to_string(),
+            auto_push: true,
             kind: RemoteKind::FixedPath(FixedPathConfig {
                 root_dir: PathBuf::from("/tmp/remote2"),
             }),

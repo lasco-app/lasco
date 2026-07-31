@@ -131,7 +131,7 @@ class SyncController(
     }
 
     private suspend fun pushAllRemotes() {
-        for (remote in lib.listRemotes()) push(remote.id)
+        for (remote in lib.listRemotes().filter { it.autoPush }) push(remote.id)
     }
 
     private suspend fun push(remoteId: String): String? {

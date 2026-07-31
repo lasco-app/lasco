@@ -859,6 +859,8 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -999,6 +1001,8 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_set_auto_import_device_media(
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_set_default_fetch_remote(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_set_media_thumbnail(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_set_remote_auto_push(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_show_media(
 ): Short
@@ -1178,6 +1182,8 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_set_auto_import_device_media(`ptr`: Po
 fun uniffi_lasco_ffi_fn_method_ffilibrary_set_default_fetch_remote(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_set_media_thumbnail(`ptr`: Pointer,`mediaId`: RustBuffer.ByValue,`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_lasco_ffi_fn_method_ffilibrary_set_remote_auto_push(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`enabled`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_show_media(`ptr`: Pointer,`mediaId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -1516,6 +1522,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_set_media_thumbnail() != 53065.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_set_remote_auto_push() != 6699.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_show_media() != 58267.toShort()) {
@@ -2122,6 +2131,8 @@ public interface FfiLibraryInterface {
     fun `setDefaultFetchRemote`(`remoteId`: kotlin.String?)
     
     fun `setMediaThumbnail`(`mediaId`: kotlin.String, `data`: kotlin.ByteArray)
+    
+    fun `setRemoteAutoPush`(`remoteId`: kotlin.String, `enabled`: kotlin.Boolean)
     
     fun `showMedia`(`mediaId`: kotlin.String): FfiMediaItem
     
@@ -2950,6 +2961,18 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    @Throws(LascoException::class)override fun `setRemoteAutoPush`(`remoteId`: kotlin.String, `enabled`: kotlin.Boolean)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_set_remote_auto_push(
+        it, FfiConverterString.lower(`remoteId`),FfiConverterBoolean.lower(`enabled`),_status)
+}
+    }
+    
+    
+
+    
     @Throws(LascoException::class)override fun `showMedia`(`mediaId`: kotlin.String): FfiMediaItem {
             return FfiConverterTypeFfiMediaItem.lift(
     callWithPointer {
@@ -3526,6 +3549,7 @@ public object FfiConverterTypeFfiOperationGroup: FfiConverterRustBuffer<FfiOpera
 data class FfiRemote (
     var `id`: kotlin.String, 
     var `name`: kotlin.String, 
+    var `autoPush`: kotlin.Boolean, 
     var `kind`: kotlin.String, 
     var `endpoint`: kotlin.String?, 
     var `bucket`: kotlin.String?, 
@@ -3544,6 +3568,7 @@ public object FfiConverterTypeFfiRemote: FfiConverterRustBuffer<FfiRemote> {
         return FfiRemote(
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
             FfiConverterString.read(buf),
             FfiConverterOptionalString.read(buf),
             FfiConverterOptionalString.read(buf),
@@ -3555,6 +3580,7 @@ public object FfiConverterTypeFfiRemote: FfiConverterRustBuffer<FfiRemote> {
     override fun allocationSize(value: FfiRemote) = (
             FfiConverterString.allocationSize(value.`id`) +
             FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterBoolean.allocationSize(value.`autoPush`) +
             FfiConverterString.allocationSize(value.`kind`) +
             FfiConverterOptionalString.allocationSize(value.`endpoint`) +
             FfiConverterOptionalString.allocationSize(value.`bucket`) +
@@ -3565,6 +3591,7 @@ public object FfiConverterTypeFfiRemote: FfiConverterRustBuffer<FfiRemote> {
     override fun write(value: FfiRemote, buf: ByteBuffer) {
             FfiConverterString.write(value.`id`, buf)
             FfiConverterString.write(value.`name`, buf)
+            FfiConverterBoolean.write(value.`autoPush`, buf)
             FfiConverterString.write(value.`kind`, buf)
             FfiConverterOptionalString.write(value.`endpoint`, buf)
             FfiConverterOptionalString.write(value.`bucket`, buf)

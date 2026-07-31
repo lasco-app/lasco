@@ -134,7 +134,7 @@ final class SyncCoordinator {
                 try await Task.sleep(for: .seconds(30))
                 guard let self, !Task.isCancelled else { return }
                 nextPushDate = nil
-                for remote in session.remotes {
+                for remote in session.remotes where remote.autoPush {
                     _ = await push(remoteID: remote.id)
                 }
             } catch is CancellationError {

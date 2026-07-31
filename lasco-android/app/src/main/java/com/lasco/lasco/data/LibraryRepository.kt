@@ -350,6 +350,11 @@ class LibraryRepository(
         refreshSessionState()
     }
 
+    suspend fun setRemoteAutoPush(remoteId: String, enabled: Boolean) {
+        lib.setRemoteAutoPush(remoteId, enabled)
+        refreshSessionState()
+    }
+
     suspend fun setAutoImportDeviceMedia(enabled: Boolean) {
         lib.setAutoImportDeviceMedia(enabled)
         refreshSessionState()

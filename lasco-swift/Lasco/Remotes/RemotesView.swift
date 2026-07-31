@@ -65,6 +65,9 @@ struct RemotesView: View {
                                 },
                                 onSetDefaultFetch: {
                                     Task { try? await repository.setDefaultFetchRemote(remoteID: remote.id) }
+                                },
+                                onSetAutoPush: { enabled in
+                                    Task { try? await repository.setRemoteAutoPush(remoteID: remote.id, enabled: enabled) }
                                 }
                             )
                         }
@@ -167,6 +170,7 @@ private struct RemoteCard: View {
     let onDelete: () -> Void
     let onTestConnection: () -> Void
     let onSetDefaultFetch: () -> Void
+    let onSetAutoPush: (Bool) -> Void
 
     @State private var showDeleteConfirm = false
     @Environment(\.lascoTheme) var theme
@@ -179,6 +183,12 @@ private struct RemoteCard: View {
                         Text(remote.name)
                             .font(LascoFont.body())
                             .foregroundStyle(theme.ink)
+                        Toggle("Auto push", isOn: Binding(
+                            get: { remote.autoPush },
+                            set: onSetAutoPush
+                        ))
+                        .font(LascoFont.body())
+                        .foregroundStyle(theme.ink)
                         if isDefaultFetch {
                             Text("DEFAULT FETCH")
                                 .font(LascoFont.mono())

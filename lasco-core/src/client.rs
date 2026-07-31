@@ -291,6 +291,7 @@ pub async fn add_existing_library_s3(
     let remote_config = RemoteConfig {
         remote_uuid,
         name: remote_id.clone(),
+        auto_push: true,
         kind: RemoteKind::S3(S3Config {
             endpoint,
             bucket,
