@@ -36,6 +36,7 @@ import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import com.lasco.lasco.ui.components.LascoConfirmDialog
+import com.lasco.lasco.ui.components.LascoToggle
 import com.lasco.lasco.ui.theme.LascoTheme
 import com.lasco.lasco.ui.theme.lascoPanel
 import kotlinx.coroutines.launch
@@ -174,6 +175,16 @@ private fun ManageRootScreen(
             )
         }
 
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Column(modifier = Modifier.fillMaxWidth().lascoPanel()) {
+            ManageToggleRow(
+                label = "Auto-import device media",
+                checked = session.autoImportDeviceMedia,
+                onCheckedChange = manageViewModel::setAutoImportDeviceMedia,
+            )
+        }
+
         if (expertMode) {
             Spacer(modifier = Modifier.height(16.dp))
             Column(modifier = Modifier.fillMaxWidth().lascoPanel()) {
@@ -252,5 +263,23 @@ private fun ManageRow(label: String, onClick: () -> Unit, labelColor: Color? = n
         Text(text = label, style = LascoTheme.type.body(), color = labelColor ?: colors.inkSub)
         Spacer(modifier = Modifier.weight(1f))
         Text(text = "→", style = LascoTheme.type.mono(), color = colors.inkMuted)
+    }
+}
+
+@Composable
+private fun ManageToggleRow(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    val colors = LascoTheme.colors
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+    ) {
+        Text(text = label, style = LascoTheme.type.body(), color = colors.inkSub)
+        Spacer(modifier = Modifier.weight(1f))
+        LascoToggle(checked = checked, onCheckedChange = onCheckedChange)
     }
 }

@@ -12,6 +12,7 @@ import com.lasco.lasco.data.Prefs
 import com.lasco.lasco.data.SessionState
 import com.lasco.lasco.data.SyncState
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 
 /**
  * Backs ManageScreen and its Remotes/Users/Settings children. Sign-out clears
@@ -34,6 +35,12 @@ class ManageViewModel(
         repo.close()
         app.repository.signOut(state.libraryId, state.username ?: "")
         app.librarySession = null
+    }
+
+    fun setAutoImportDeviceMedia(enabled: Boolean) {
+        viewModelScope.launch {
+            repo.setAutoImportDeviceMedia(enabled)
+        }
     }
 
     companion object {
