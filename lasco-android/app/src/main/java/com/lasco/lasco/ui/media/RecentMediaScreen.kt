@@ -1,5 +1,9 @@
 package com.lasco.lasco.ui.media
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -17,6 +21,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -32,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lasco.lasco.data.LibraryRepository
+import com.lasco.lasco.media.MediaImporter
 import com.lasco.lasco.ui.components.AlbumPickerDialog
 import com.lasco.lasco.ui.components.MediaThumbnail
 import com.lasco.lasco.ui.theme.LascoTheme
@@ -51,13 +57,17 @@ fun RecentMediaScreen(
 ) {
     val colors = LascoTheme.colors
     val media by viewModel.media.collectAsStateWithLifecycle()
+    val showingOrphans by viewModel.showingOrphans.collectAsStateWithLifecycle()
     val repo = LibraryRepository.from(LocalContext.current)
     val sessionState by repo.sessionState.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     var isSelecting by remember { mutableStateOf(false) }
     var selection by remember { mutableStateOf(setOf<String>()) }
     var albumPicker by remember { mutableStateOf<List<uniffi.lasco_ffi.FfiAlbum>?>(null) }
+    var isImporting by remember { mutableStateOf(false) }
+    var showImportMenu by remember { mutableStateOf(false) }
 
     fun clearSelection() {
         isSelecting = false
@@ -77,6 +87,25 @@ fun RecentMediaScreen(
         }
     }
 
+    fun importUris(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        isImporting = true
+        scope.launch {
+            try {
+                MediaImporter.importUris(context, repo, uris, albumId = null)
+            } finally {
+                isImporting = false
+            }
+        }
+    }
+
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia(),
+    ) { uris -> importUris(uris) }
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments(),
+    ) { uris -> importUris(uris) }
+
     albumPicker?.let { albums ->
         AlbumPickerDialog(
             title = "Open album",
@@ -89,12 +118,8 @@ fun RecentMediaScreen(
         )
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(colors.bg)
-            .padding(horizontal = 20.dp),
-    ) {
+    Box(modifier = modifier.fillMaxSize().background(colors.bg)) {
+    Column(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         if (isSelecting) {
             SelectionBar(
                 count = selection.size,
@@ -102,12 +127,59 @@ fun RecentMediaScreen(
                 onOpenAlbum = { selection.firstOrNull()?.let { openContainingAlbums(it) } },
             )
         } else {
-            Text(
-                text = "LIBRARY",
-                style = LascoTheme.type.categoryLarge(),
-                color = colors.ink,
-                modifier = Modifier.padding(top = 24.dp, bottom = 16.dp),
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "LIBRARY",
+                    style = LascoTheme.type.categoryLarge(),
+                    color = colors.ink,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = if (showingOrphans) "Orphan" else "All",
+                    style = LascoTheme.type.body(14),
+                    color = colors.inkSub,
+                )
+                Switch(
+                    checked = showingOrphans,
+                    onCheckedChange = {
+                        clearSelection()
+                        viewModel.setShowingOrphans(it)
+                    },
+                    modifier = Modifier.padding(start = 4.dp),
+                )
+                Box {
+                    Text(
+                        text = "＋",
+                        style = LascoTheme.type.body(20),
+                        color = colors.ink,
+                        modifier = Modifier.padding(start = 12.dp).clickable { showImportMenu = true },
+                    )
+                    DropdownMenu(
+                        expanded = showImportMenu,
+                        onDismissRequest = { showImportMenu = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Import from device Photos") },
+                            onClick = {
+                                showImportMenu = false
+                                photoPickerLauncher.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo),
+                                )
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Import from Files") },
+                            onClick = {
+                                showImportMenu = false
+                                filePickerLauncher.launch(arrayOf("image/*", "video/*"))
+                            },
+                        )
+                    }
+                }
+            }
 
             if (sessionState.defaultUploadAlbumId == null) {
                 Text(
@@ -122,7 +194,11 @@ fun RecentMediaScreen(
         }
 
         if (media.isEmpty()) {
-            Text(text = "No media yet.", style = LascoTheme.type.body(), color = colors.inkMuted)
+            Text(
+                text = if (showingOrphans) "No orphan media." else "No media yet.",
+                style = LascoTheme.type.body(),
+                color = colors.inkMuted,
+            )
         } else {
             BoxWithConstraints {
                 val columns = if (maxWidth > 500.dp) 3 else 2
@@ -159,6 +235,18 @@ fun RecentMediaScreen(
                 }
             }
         }
+    }
+    if (isImporting) {
+        Box(
+            modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                androidx.compose.material3.CircularProgressIndicator(color = colors.ink)
+                Text(text = "Importing…", color = colors.ink, modifier = Modifier.padding(top = 12.dp))
+            }
+        }
+    }
     }
 }
 

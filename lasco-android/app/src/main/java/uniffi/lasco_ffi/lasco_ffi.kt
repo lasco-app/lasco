@@ -861,6 +861,8 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -975,6 +977,8 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_media_ids_without_remote_backup(
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_media_in_album(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_move_media_to_album(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_pending_media_count(
 ): Short
@@ -1157,6 +1161,8 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_media_in_album(`ptr`: Pointer,`albumId
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_move_media_to_album(`ptr`: Pointer,`mediaId`: RustBuffer.ByValue,`fromAlbumId`: RustBuffer.ByValue,`toAlbumId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_pending_media_count(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Int
 fun uniffi_lasco_ffi_fn_method_ffilibrary_push_remote(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1483,6 +1489,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_move_media_to_album() != 47806.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date() != 1863.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_pending_media_count() != 40879.toShort()) {
@@ -2105,6 +2114,8 @@ public interface FfiLibraryInterface {
     fun `mediaInAlbum`(`albumId`: kotlin.String): List<FfiMediaItem>
     
     fun `moveMediaToAlbum`(`mediaId`: kotlin.String, `fromAlbumId`: kotlin.String, `toAlbumId`: kotlin.String)
+    
+    fun `orphanMediaByDate`(): List<FfiMediaItem>
     
     fun `pendingMediaCount`(): kotlin.UInt
     
@@ -2791,6 +2802,19 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
 }
     }
     
+    
+
+    
+    @Throws(LascoException::class)override fun `orphanMediaByDate`(): List<FfiMediaItem> {
+            return FfiConverterSequenceTypeFfiMediaItem.lift(
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date(
+        it, _status)
+}
+    }
+    )
+    }
     
 
     override fun `pendingMediaCount`(): kotlin.UInt {

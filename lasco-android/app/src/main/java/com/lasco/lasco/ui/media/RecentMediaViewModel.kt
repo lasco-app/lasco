@@ -10,6 +10,9 @@ import com.lasco.lasco.data.Change
 import com.lasco.lasco.data.LibraryRepository
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import uniffi.lasco_ffi.FfiMediaItem
 
@@ -20,9 +23,21 @@ import uniffi.lasco_ffi.FfiMediaItem
 class RecentMediaViewModel(
     repo: LibraryRepository,
 ) : ViewModel() {
+    private val _showingOrphans = MutableStateFlow(false)
+    val showingOrphans: StateFlow<Boolean> = _showingOrphans.asStateFlow()
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val media: StateFlow<List<FfiMediaItem>> =
-        repo.watch(Change.MediaList) { repo.mediaByDate() }
+        showingOrphans.flatMapLatest { showingOrphans ->
+            repo.watch(Change.MediaList) {
+                if (showingOrphans) repo.orphanMediaByDate() else repo.mediaByDate()
+            }
+        }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun setShowingOrphans(value: Boolean) {
+        _showingOrphans.value = value
+    }
 
     companion object {
         val Factory: ViewModelProvider.Factory = viewModelFactory {

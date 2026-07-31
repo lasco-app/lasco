@@ -14,7 +14,7 @@ import kotlinx.coroutines.withContext
 // Swift's AlbumsView (temp-file copy then importMedia), not the full PHAsset/iCloud sync
 // handled by PhotoLibraryImporter.swift.
 object MediaImporter {
-    suspend fun importUris(context: Context, repo: LibraryRepository, uris: List<Uri>, albumId: String) =
+    suspend fun importUris(context: Context, repo: LibraryRepository, uris: List<Uri>, albumId: String?) =
         withContext(Dispatchers.IO) {
             for (uri in uris) {
                 val originalFilename = queryDisplayName(context, uri)

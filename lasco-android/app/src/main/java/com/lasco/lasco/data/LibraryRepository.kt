@@ -136,6 +136,10 @@ class LibraryRepository(
     // Blocking and proportional to file size. Drop the wrap once the Rust side is async.
     suspend fun mediaByDate(): List<FfiMediaItem> = withContext(io) { lib.mediaByDate() }
 
+    // Primary media that is not reachable from any live album or group. The
+    // FFI query excludes AAE and Live Photo companion resources for us.
+    suspend fun orphanMediaByDate(): List<FfiMediaItem> = withContext(io) { lib.orphanMediaByDate() }
+
     suspend fun listAlbums(): List<FfiAlbum> = lib.listAlbums()
 
     suspend fun mediaInAlbum(albumId: String): List<FfiMediaItem> = lib.mediaInAlbum(albumId)
@@ -172,6 +176,7 @@ class LibraryRepository(
     suspend fun deleteAlbum(albumId: String) {
         lib.deleteAlbum(albumId)
         changes.emit(Change.AlbumList)
+        changes.emit(Change.MediaList)
         localMutations.emit(Unit)
     }
 
@@ -193,6 +198,7 @@ class LibraryRepository(
         changes.emit(Change.Album(fromAlbumId))
         changes.emit(Change.Album(toAlbumId))
         changes.emit(Change.AlbumList)
+        changes.emit(Change.MediaList)
         localMutations.emit(Unit)
     }
 
@@ -200,6 +206,7 @@ class LibraryRepository(
         lib.removeMediaFromAlbum(albumId, mediaId)
         changes.emit(Change.Album(albumId))
         changes.emit(Change.AlbumList)
+        changes.emit(Change.MediaList)
         localMutations.emit(Unit)
     }
 
@@ -207,6 +214,7 @@ class LibraryRepository(
         lib.addMediaToAlbum(albumId, mediaId)
         changes.emit(Change.Album(albumId))
         changes.emit(Change.AlbumList)
+        changes.emit(Change.MediaList)
         localMutations.emit(Unit)
     }
 
@@ -230,6 +238,7 @@ class LibraryRepository(
     suspend fun deleteGroup(groupId: String, albumId: String) {
         lib.deleteGroup(groupId)
         changes.emit(Change.Album(albumId))
+        changes.emit(Change.MediaList)
         localMutations.emit(Unit)
     }
 

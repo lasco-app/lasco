@@ -556,6 +556,12 @@ mod tests {
             .media_list(MediaListScope::Orphaned)
             .iter()
             .any(|entry| entry.media_id == orphan_id));
+
+        lib.album_remove_media(album_id, orphan_id).await.unwrap();
+        assert!(lib
+            .media_list(MediaListScope::Orphaned)
+            .iter()
+            .any(|entry| entry.media_id == orphan_id));
     }
 
     #[tokio::test]
