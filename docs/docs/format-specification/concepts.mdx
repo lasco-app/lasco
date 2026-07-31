@@ -46,7 +46,7 @@ A `salt.bin` (32 random bytes, generated once at library creation) is mixed into
 
 Albums are used to gather media items (or groups of media items). Albums can hold other albums. Basically think about them like a folder arborescence.
 
-There is always a **Default album** that automatically receives every newly added media item. This is enforced by the client: whenever a media item is created, an `AlbumMediaAdd` operation targeting the Default album is emitted alongside the `MediaCreation` operation. A media item removed from all albums is still stored on the server but cannot easily be browsed or recovered.
+A media item may be created without being assigned to an album. This is **orphan media**: it remains a normal, browsable item in the library and can later be added to one or more albums with `AlbumMediaAdd` operations. When a media item is removed from its last album, it becomes orphan media again. Clients should offer both an all-media view and an orphan-only view so unassigned media can be found and organized.
 
 ---
 
