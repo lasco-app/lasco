@@ -75,6 +75,8 @@ final class ImportCoordinator {
     }
 
     #if canImport(UIKit)
+    private static let importChunkSize = 32
+
     func scanPhotoLibrary() async -> PhotoLibraryImporter.LibraryScan? {
         await photoImporter.scanLibrary()
     }
@@ -84,7 +86,7 @@ final class ImportCoordinator {
         isImporting = true
         progress = (0, assets.count)
         let task = Task { [weak self] in
-            await self?.performPhotoLibraryImport(assets: assets, albumID: albumID)
+            await self?.performPhotoLibraryImport(assets: assets, defaultAlbumID: albumID)
         }
         cancelImportTask = { task.cancel() }
         defer {
@@ -95,17 +97,102 @@ final class ImportCoordinator {
         await task.value
     }
 
-    private func performPhotoLibraryImport(assets: [PHAsset], albumID: String) async {
+    private func performPhotoLibraryImport(assets: [PHAsset], defaultAlbumID: String) async {
+        let nodes = await photoImporter.scanAlbumTree()
+        guard !Task.isCancelled else { return }
+
+        let albumIDMap = await importAlbumStructure(nodes)
+        guard !Task.isCancelled else { return }
+
+        let assetMediaMap = await importAssets(assets, into: defaultAlbumID)
+        guard !Task.isCancelled else { return }
+
+        await linkAlbumMemberships(
+            nodes: nodes,
+            albumIDMap: albumIDMap,
+            assetMediaMap: assetMediaMap,
+            defaultAlbumID: defaultAlbumID
+        )
+        await repository.notifyChanged(.all)
+    }
+
+    private func importAssets(_ assets: [PHAsset], into albumID: String) async -> [String: [String]] {
+        var assetMediaMap: [String: [String]] = [:]
+
         for (index, asset) in assets.enumerated() {
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled else { return assetMediaMap }
             do {
-                _ = try await photoImporter.importPHAsset(asset, into: albumID, repository: repository)
+                let mediaIDs = try await photoImporter.importPHAsset(asset, into: albumID, repository: repository)
+                if !mediaIDs.isEmpty {
+                    assetMediaMap[asset.localIdentifier] = mediaIDs
+                }
             } catch {
                 AppLogger.log(.error, "photo import failed: \(error)")
             }
             progress = (index + 1, assets.count)
-            if (index + 1).isMultiple(of: 32) || index == assets.count - 1 {
+
+            if (index + 1).isMultiple(of: Self.importChunkSize) || index == assets.count - 1 {
                 await repository.notifyChanged(.all)
+            }
+        }
+
+        return assetMediaMap
+    }
+
+    /// Recreates the Photos folder/album hierarchy in parent-before-child order.
+    private func importAlbumStructure(_ nodes: [PhotoLibraryImporter.AlbumNode]) async -> [String: String] {
+        var albumIDMap: [String: String] = [:]
+
+        for node in nodes {
+            guard !Task.isCancelled else { return albumIDMap }
+            let parentID = node.parentIosId.flatMap { albumIDMap[$0] }
+            do {
+                albumIDMap[node.iosId] = try await repository.createAlbum(name: node.name, parentID: parentID)
+            } catch {
+                AppLogger.log(.error, "importAlbumStructure: create '\(node.name)' failed: \(error)")
+            }
+        }
+
+        return albumIDMap
+    }
+
+    /// Moves imported media to its first Photos album, then links it to every additional
+    /// Photos album that contains the same asset. Assets without album membership remain in
+    /// the default upload album.
+    private func linkAlbumMemberships(
+        nodes: [PhotoLibraryImporter.AlbumNode],
+        albumIDMap: [String: String],
+        assetMediaMap: [String: [String]],
+        defaultAlbumID: String
+    ) async {
+        var assetAlbumIDs: [String: [String]] = [:]
+        for node in nodes {
+            guard let albumID = albumIDMap[node.iosId], !node.memberAssetIds.isEmpty else { continue }
+            for assetID in node.memberAssetIds {
+                assetAlbumIDs[assetID, default: []].append(albumID)
+            }
+        }
+
+        for (assetID, albumIDs) in assetAlbumIDs {
+            guard !Task.isCancelled else { return }
+            guard let mediaIDs = assetMediaMap[assetID], let primaryAlbumID = albumIDs.first else { continue }
+
+            for mediaID in mediaIDs {
+                do {
+                    try await repository.moveMedia(id: mediaID, from: defaultAlbumID, to: primaryAlbumID)
+                } catch {
+                    AppLogger.log(.error, "linkAlbumMemberships: move media \(mediaID) to album \(primaryAlbumID) failed: \(error)")
+                }
+            }
+
+            for additionalAlbumID in albumIDs.dropFirst() {
+                for mediaID in mediaIDs {
+                    do {
+                        try await repository.addMediaToAlbum(albumID: additionalAlbumID, mediaID: mediaID)
+                    } catch {
+                        AppLogger.log(.error, "linkAlbumMemberships: add media \(mediaID) to album \(additionalAlbumID) failed: \(error)")
+                    }
+                }
             }
         }
     }
