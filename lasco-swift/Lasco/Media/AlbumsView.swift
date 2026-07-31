@@ -364,11 +364,10 @@ struct AlbumContentView: View {
                 .environment(\.lascoTheme, .dark)
                 .preferredColorScheme(.dark)
         }
-        #if canImport(UIKit)
         .sheet(isPresented: $showingThumbnailPicker) {
             if let albumId = album?.albumId {
                 ThumbnailPickerSheet(albumId: albumId, albumName: title, media: albumMediaItems) { mediaId in
-                albumModel.setAlbumThumbnail(albumID: albumId, mediaID: mediaId)
+                    albumModel.setAlbumThumbnail(albumID: albumId, mediaID: mediaId)
                     showingThumbnailPicker = false
                 }
                 .environment(repository)
@@ -376,6 +375,7 @@ struct AlbumContentView: View {
                 .preferredColorScheme(.dark)
             }
         }
+        #if canImport(UIKit)
         .fileImporter(
             isPresented: $showingFileImporter,
             allowedContentTypes: [.image, .movie],
@@ -535,47 +535,10 @@ struct AlbumContentView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer()
                 if !isRoot {
-                    Button {
-                        showingAddMedia = true
-                    } label: {
-                        Image("plus").renderingMode(.template).resizable().frame(width: 18, height: 18)
-                            .font(.system(size: 20, weight: .medium))
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(theme.ink)
-                }
-                Button {
-                    newAlbumName = ""
-                    showingNewAlbum = true
-                } label: {
-                    Image("folder").renderingMode(.template).resizable().frame(width: 18, height: 18)
-                        .font(.system(size: 20, weight: .medium))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(theme.ink)
-                if !isRoot {
-                    Menu {
-                        Button {
-                            showingFileImporter = true
-                        } label: {
-                            Label("Import from Files…", systemImage: "square.and.arrow.down")
-                        }
-                        Button {
-                            showingPhotosPicker = true
-                        } label: {
-                            Label("Import from Photos…", systemImage: "photo.on.rectangle")
-                        }
-                        Button {
-                            showingThumbnailPicker = true
-                        } label: {
-                            Label("Set thumbnail…", systemImage: "photo.badge.checkmark")
-                        }
-                    } label: {
-                        Image("ellipses-horizontal").renderingMode(.template).resizable().frame(width: 18, height: 18)
-                            .font(.system(size: 20, weight: .medium))
-                            .foregroundStyle(theme.ink)
-                    }
-                    .buttonStyle(.plain)
+                    addMenu
+                    thumbnailMenu
+                } else {
+                    newAlbumButton
                 }
             }
             if !albumItems.isEmpty {
@@ -602,26 +565,11 @@ struct AlbumContentView: View {
                 Spacer()
                 HStack(spacing: 16) {
                     if !isRoot {
-                        Button {
-                            showingAddMedia = true
-                        } label: {
-                            Image("plus").renderingMode(.template).resizable().frame(width: 18, height: 18)
-                                .font(.system(size: 20, weight: .medium))
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(theme.ink)
+                        addMenu
+                        thumbnailMenu
+                    } else {
+                        newAlbumButton
                     }
-
-                    Button {
-                        newAlbumName = ""
-                        showingNewAlbum = true
-                    } label: {
-                        Image("folder").renderingMode(.template).resizable().frame(width: 18, height: 18)
-                            .font(.system(size: 20, weight: .medium))
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(theme.ink)
-
                 }
             }
             if !albumItems.isEmpty {
@@ -633,6 +581,69 @@ struct AlbumContentView: View {
             }
         }
         .padding(.top, 20)
+    }
+
+    private var newAlbumButton: some View {
+        Button {
+            newAlbumName = ""
+            showingNewAlbum = true
+        } label: {
+            Image("plus").renderingMode(.template).resizable().frame(width: 18, height: 18)
+                .font(.system(size: 20, weight: .medium))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(theme.ink)
+        .accessibilityLabel("Create album")
+    }
+
+    private var addMenu: some View {
+        Menu {
+            #if canImport(UIKit)
+            Button {
+                showingPhotosPicker = true
+            } label: {
+                Label("Import from Photos…", systemImage: "photo.on.rectangle")
+            }
+            Button {
+                showingFileImporter = true
+            } label: {
+                Label("Import from Files…", systemImage: "square.and.arrow.down")
+            }
+            #endif
+            Button {
+                showingAddMedia = true
+            } label: {
+                Label("Add from library…", systemImage: "photo.on.rectangle.angled")
+            }
+            Button {
+                newAlbumName = ""
+                showingNewAlbum = true
+            } label: {
+                Label("Create album", systemImage: "folder.badge.plus")
+            }
+        } label: {
+            Image("plus").renderingMode(.template).resizable().frame(width: 18, height: 18)
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(theme.ink)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Add to album")
+    }
+
+    private var thumbnailMenu: some View {
+        Menu {
+            Button {
+                showingThumbnailPicker = true
+            } label: {
+                Label("Set thumbnail…", systemImage: "photo.badge.checkmark")
+            }
+        } label: {
+            Image("ellipses-horizontal").renderingMode(.template).resizable().frame(width: 18, height: 18)
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(theme.ink)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Album actions")
     }
 
     // MARK: Selection bar
@@ -658,85 +669,69 @@ struct AlbumContentView: View {
             }
 
             Spacer()
+            selectionActionsMenu
+        }
+        .padding(.horizontal, 12)
+        .background(theme.pink)
+        .overlay(Rectangle().stroke(theme.ink, lineWidth: 2).ignoresSafeArea(edges: .top))
+    }
 
-            if case .albums(let ids) = selection, ids.count == 1,
-               let albumId = ids.first,
-               let target = (childAlbums + disconnectedAlbums).first(where: { $0.albumId == albumId }) {
-                Button {
-                    albumToRename = target
-                    renameText = target.name
-                } label: {
-                    Image("pencil").renderingMode(.template).resizable().frame(width: 18, height: 18)
-                        .font(.system(size: 18, weight: .medium))
-                        .frame(width: 48, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(theme.ink)
-            }
+    @ViewBuilder
+    private var selectionActionsMenu: some View {
+        let mediaIds = selection.selectedMediaIds
+        let groupIds = selection.selectedGroupIds
+        let selectedAlbumIds = selection.selectedAlbumIds
+        let canRename = selectedAlbumIds.count == 1
+        let canGroup = mediaIds.count > 1 && groupIds.isEmpty && album != nil
+        let canAddToGroup = groupIds.count == 1 && !mediaIds.isEmpty
+        let canMove = groupIds.isEmpty && (!mediaIds.isEmpty || !selectedAlbumIds.isEmpty)
+        let canRemove = !mediaIds.isEmpty || !groupIds.isEmpty || !selectedAlbumIds.isEmpty
 
-            let mediaIds = selection.selectedMediaIds
-            let groupIds = selection.selectedGroupIds
-
-            if mediaIds.count > 1 && groupIds.isEmpty, let albumId = album?.albumId {
-                Button {
-                    albumModel.createGroupFromSelectedMedia(mediaIDs: Array(mediaIds), albumID: albumId)
-                    selection = .none
-                } label: {
-                    Text("G")
-                        .font(LascoFont.categoryLarge())
-                        .frame(width: 48, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(theme.ink)
-            }
-
-            if groupIds.count == 1 && !mediaIds.isEmpty,
-               let groupId = groupIds.first,
-               let group = albumItems.compactMap({ if case .group(let g) = $0, g.groupId == groupId { return g } else { return nil } }).first {
-                Button {
-                    let existingIds = Set(group.mediaIds)
-                    for mediaId in mediaIds where !existingIds.contains(mediaId) {
-                        albumModel.addMediaToGroup(groupID: groupId, mediaID: mediaId)
+        if canRename || canGroup || canAddToGroup || canMove || canRemove {
+            Menu {
+                if canRename,
+                   let albumId = selectedAlbumIds.first,
+                   let target = (childAlbums + disconnectedAlbums).first(where: { $0.albumId == albumId }) {
+                    Button("Rename album") {
+                        albumToRename = target
+                        renameText = target.name
                     }
-                    selection = .none
-                } label: {
-                    Text("G")
-                        .font(LascoFont.categoryLarge())
-                        .frame(width: 48, height: 44)
-                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(theme.ink)
-            }
-
-            Button {
-                showingMovePicker = true
+                if canGroup, let albumId = album?.albumId {
+                    Button("Group together") {
+                        albumModel.createGroupFromSelectedMedia(mediaIDs: Array(mediaIds), albumID: albumId)
+                        selection = .none
+                    }
+                }
+                if canAddToGroup,
+                   let groupId = groupIds.first,
+                   let group = albumItems.compactMap({ if case .group(let g) = $0, g.groupId == groupId { return g } else { return nil } }).first {
+                    Button("Add to group") {
+                        let existingIds = Set(group.mediaIds)
+                        for mediaId in mediaIds where !existingIds.contains(mediaId) {
+                            albumModel.addMediaToGroup(groupID: groupId, mediaID: mediaId)
+                        }
+                        selection = .none
+                    }
+                }
+                if canMove {
+                    Button("Move to…") { showingMovePicker = true }
+                }
+                if canRemove {
+                    Button(selectedAlbumIds.isEmpty ? "Remove from album" : "Delete", role: .destructive) {
+                        handleRemove()
+                    }
+                }
             } label: {
-                Image("external-link").renderingMode(.template).resizable().frame(width: 18, height: 18)
-                    .font(.system(size: 20, weight: .medium))
-                    .frame(width: 48, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(groupIds.isEmpty ? theme.ink : theme.inkMuted)
-            .disabled(!groupIds.isEmpty)
-
-            Button {
-                handleRemove()
-            } label: {
-                Image("trash").renderingMode(.template).resizable().frame(width: 18, height: 18)
+                Image("ellipses-horizontal").renderingMode(.template).resizable().frame(width: 18, height: 18)
                     .font(.system(size: 18, weight: .medium))
                     .frame(width: 48, height: 44)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .foregroundStyle(theme.ink)
+            .accessibilityLabel("Selected item actions")
         }
-        .padding(.horizontal, 12)
-        .background(theme.pink)
-        .overlay(Rectangle().stroke(theme.ink, lineWidth: 2).ignoresSafeArea(edges: .top))
     }
 
     // MARK: Layout toggle
@@ -1120,7 +1115,6 @@ struct AlbumCell: View {
 
 // MARK: - ThumbnailPickerSheet
 
-#if canImport(UIKit)
 private struct ThumbnailPickerSheet: View {
     let albumId: String
     let albumName: String
@@ -1202,7 +1196,6 @@ private struct ThumbnailPickerCell: View {
             }
     }
 }
-#endif
 
 // MARK: - NewAlbumSheet
 

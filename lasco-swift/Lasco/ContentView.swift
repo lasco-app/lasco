@@ -181,14 +181,6 @@ struct ContentView: View {
                 .font(LascoFont.categoryLarge())
                 .foregroundStyle(theme.ink)
             Spacer()
-            Button {
-                showingImportMedia = true
-            } label: {
-                Image("upload").renderingMode(.template).resizable().frame(width: 18, height: 18)
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundStyle(theme.ink)
-            }
-            .buttonStyle(.plain)
         }
         .padding(.top, 20)
         .padding(.bottom, 8)
