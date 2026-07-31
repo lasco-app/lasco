@@ -18,14 +18,17 @@ final class ActiveLibrarySession {
         self.syncCoordinator = SyncCoordinator(repository: repository, session: state)
         self.mediaImportCoordinator = MediaImportCoordinator(repository: repository)
         self.autoPhotoImportCoordinator = AutoPhotoImportCoordinator(repository: repository, session: state)
-        listenerTask = Task { [weak state] in
-            guard let state else { return }
-            await state.listen(using: repository)
+        listenerTask = Task { [weak state, weak syncCoordinator] in
+            guard let state, let syncCoordinator else { return }
+            await state.listen(using: repository) {
+                syncCoordinator.restorePersistedRecords(for: state.remotes)
+            }
         }
     }
 
     func refresh() async throws {
         try await state.refresh(using: repository)
+        syncCoordinator.restorePersistedRecords(for: state.remotes)
     }
 
     func close() async {

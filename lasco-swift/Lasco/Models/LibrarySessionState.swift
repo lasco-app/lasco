@@ -26,10 +26,14 @@ final class LibrarySessionState {
         autoImportDeviceMedia = snapshot.autoImportDeviceMedia
     }
 
-    func listen(using repository: any LibraryRepositoryProtocol) async {
+    func listen(
+        using repository: any LibraryRepositoryProtocol,
+        onRefresh: @MainActor @escaping () -> Void
+    ) async {
         let stream = await repository.changes()
         do {
             try await refresh(using: repository)
+            onRefresh()
         } catch is CancellationError {
             return
         } catch {
@@ -40,6 +44,7 @@ final class LibrarySessionState {
             guard change == .session || change == .all else { continue }
             do {
                 try await refresh(using: repository)
+                onRefresh()
             } catch is CancellationError {
                 return
             } catch {

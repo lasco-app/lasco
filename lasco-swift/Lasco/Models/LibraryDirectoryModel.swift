@@ -186,7 +186,13 @@ final class LibraryDirectoryModel {
         if let activeSession {
             await activeSession.close()
         }
-        activeSession = ActiveLibrarySession(library: library, nickname: nickname, username: username)
+        let session = ActiveLibrarySession(library: library, nickname: nickname, username: username)
+        activeSession = session
+        do {
+            try await session.refresh()
+        } catch {
+            AppLogger.log(.error, "initial session refresh failed: \(error)")
+        }
         isOpen = markOpen
         await refreshLibraries()
         showOnboarding = showingOnboarding

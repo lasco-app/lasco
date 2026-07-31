@@ -53,7 +53,6 @@ final class SyncCoordinator {
     init(repository: any LibraryRepositoryProtocol, session: LibrarySessionState) {
         self.repository = repository
         self.session = session
-        loadRecords(for: session.remotes)
         changeTask = Task { [weak self] in
             await self?.listenForLocalMutations()
         }
@@ -162,15 +161,25 @@ final class SyncCoordinator {
         }
     }
 
-    private func loadRecords(for remotes: [FfiRemote]) {
+    /// Restores the per-remote sync history once the session has loaded its remotes.
+    ///
+    /// `LibrarySessionState` starts with no remotes, so this must be invoked after
+    /// its asynchronous refresh rather than during `SyncCoordinator` initialization.
+    func restorePersistedRecords(for remotes: [FfiRemote]) {
+        var restoredPushRecords: [String: SyncRecord] = [:]
+        var restoredFetchRecords: [String: SyncRecord] = [:]
+
         for remote in remotes {
             if let date = UserDefaults.standard.object(forKey: "lasco.lastPush.\(remote.id)") as? Date {
-                lastPushRecords[remote.id] = SyncRecord(date: date, success: UserDefaults.standard.bool(forKey: "lasco.lastPushOk.\(remote.id)"))
+                restoredPushRecords[remote.id] = SyncRecord(date: date, success: UserDefaults.standard.bool(forKey: "lasco.lastPushOk.\(remote.id)"))
             }
             if let date = UserDefaults.standard.object(forKey: "lasco.lastFetch.\(remote.id)") as? Date {
-                lastFetchRecords[remote.id] = SyncRecord(date: date, success: UserDefaults.standard.bool(forKey: "lasco.lastFetchOk.\(remote.id)"))
+                restoredFetchRecords[remote.id] = SyncRecord(date: date, success: UserDefaults.standard.bool(forKey: "lasco.lastFetchOk.\(remote.id)"))
             }
         }
+
+        lastPushRecords = restoredPushRecords
+        lastFetchRecords = restoredFetchRecords
     }
 
     private func record(key: String, remoteID: String, success: Bool, in records: inout [String: SyncRecord]) {
