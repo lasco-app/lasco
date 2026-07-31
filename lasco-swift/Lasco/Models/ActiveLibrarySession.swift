@@ -24,6 +24,10 @@ final class ActiveLibrarySession {
         }
     }
 
+    func refresh() async throws {
+        try await state.refresh(using: repository)
+    }
+
     func close() async {
         // Stop every consumer of the repository before making it unavailable.
         listenerTask?.cancel()

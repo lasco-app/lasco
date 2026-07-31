@@ -87,7 +87,7 @@ struct NewLibraryWizard: View {
             }
         }
         .onChange(of: step) { _, newValue in
-            if let libraryID = directory.openLibraryID {
+            if let libraryID = directory.activeSession?.state.libraryID {
                 directory.setOnboardingStep(newValue, libraryID: libraryID)
             }
         }
@@ -148,27 +148,27 @@ struct NewLibraryWizard: View {
                     .frame(maxWidth: .infinity)
             }
             .sheet(isPresented: $showAddS3Sheet) {
-                if let repository = directory.activeRepository {
+                if let activeSession = directory.activeSession {
                     AddS3RemoteView {
-                        try await directory.refreshActiveSession()
-                        guard !(directory.session?.remotes ?? []).isEmpty else {
+                        try await activeSession.refresh()
+                        guard !activeSession.state.remotes.isEmpty else {
                             throw LibraryDirectoryModelError.remoteUnavailableAfterRefresh
                         }
                         advanceFromRemote()
                     }
-                    .environment(repository)
+                    .environment(activeSession.repository)
                 }
             }
             .sheet(isPresented: $showAddLocalFSSheet) {
-                if let repository = directory.activeRepository {
+                if let activeSession = directory.activeSession {
                     AddLocalFSRemoteView {
-                        try await directory.refreshActiveSession()
-                        guard !(directory.session?.remotes ?? []).isEmpty else {
+                        try await activeSession.refresh()
+                        guard !activeSession.state.remotes.isEmpty else {
                             throw LibraryDirectoryModelError.remoteUnavailableAfterRefresh
                         }
                         advanceFromRemote()
                     }
-                    .environment(repository)
+                    .environment(activeSession.repository)
                 }
             }
         } else {
@@ -187,7 +187,7 @@ struct NewLibraryWizard: View {
     }
 
     private func finish() {
-        if let libraryID = directory.openLibraryID {
+        if let libraryID = directory.activeSession?.state.libraryID {
             directory.clearOnboardingIncomplete(libraryID: libraryID)
         }
         directory.completeOnboarding()
@@ -211,7 +211,7 @@ struct NewLibraryWizard: View {
             }
         }
         #if os(iOS)
-        if step == 3 && (directory.session?.remotes ?? []).isEmpty {
+        if step == 3 && (directory.activeSession?.state.remotes ?? []).isEmpty {
             return {
                 slideForward = false
                 withAnimation(.easeInOut(duration: 0.3)) { step = 2 }
@@ -398,7 +398,7 @@ struct NewLibraryWizard: View {
 
     #if os(iOS)
     private var askImportStep: some View {
-        let hasRemote = !(directory.session?.remotes ?? []).isEmpty
+        let hasRemote = !(directory.activeSession?.state.remotes ?? []).isEmpty
 
         return VStack(alignment: .leading, spacing: 20) {
             Text(hasRemote ? "Import your device photos?" : "Can't import your current photo library yet.")
@@ -436,7 +436,7 @@ struct NewLibraryWizard: View {
 
     private var askImportButtons: some View {
         Group {
-            if (directory.session?.remotes ?? []).isEmpty {
+            if (directory.activeSession?.state.remotes ?? []).isEmpty {
                 Button("Get started") { finish() }
                     .buttonStyle(LascoPrimaryButtonStyle())
                     .frame(maxWidth: .infinity)
@@ -624,7 +624,7 @@ struct NewLibraryWizard: View {
                 Button("Import Now") {
                     if let controller = initialImportController {
                         Task {
-                            await controller.start(remoteID: directory.session?.remotes.first?.id)
+                            await controller.start(remoteID: directory.activeSession?.state.remotes.first?.id)
                         }
                     }
                 }
@@ -674,7 +674,9 @@ struct NewLibraryWizard: View {
         VStack(spacing: 12) {
             Button("Yes, auto-import new photos") {
                 Task {
-                    if let repository = directory.activeRepository { try? await repository.setAutoImportDeviceMedia(enabled: true) }
+                    if let activeSession = directory.activeSession {
+                        try? await activeSession.repository.setAutoImportDeviceMedia(enabled: true)
+                    }
                     finish()
                 }
             }
@@ -683,7 +685,9 @@ struct NewLibraryWizard: View {
 
             Button("No, not now") {
                 Task {
-                    if let repository = directory.activeRepository { try? await repository.setAutoImportDeviceMedia(enabled: false) }
+                    if let activeSession = directory.activeSession {
+                        try? await activeSession.repository.setAutoImportDeviceMedia(enabled: false)
+                    }
                     finish()
                 }
             }
@@ -728,9 +732,9 @@ struct NewLibraryWizard: View {
     }
 
     private func prepareInitialPhotoImport() async {
-        try? await directory.refreshActiveSession()
+        guard let activeSession = directory.activeSession else { return }
+        try? await activeSession.refresh()
         guard initialImportController == nil,
-              let activeSession = directory.activeSession,
               let defaultAlbumID = activeSession.state.defaultUploadAlbumID else { return }
         let controller = InitialPhotoImportController(
             repository: activeSession.repository,

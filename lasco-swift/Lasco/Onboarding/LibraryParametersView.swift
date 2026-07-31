@@ -27,18 +27,16 @@ struct LibraryParametersView: View {
                     .padding(.top, 40)
                     .padding(.bottom, 8)
 
-                    if let nickname = directory.openNickname {
+                    if let activeSession = directory.activeSession {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(nickname)
+                            Text(activeSession.state.nickname)
                                 .font(LascoFont.categoryLarge())
                                 .foregroundStyle(theme.ink)
-                            if let id = directory.openLibraryID {
-                                Text(id)
-                                    .font(LascoFont.mono())
-                                    .foregroundStyle(theme.inkMuted)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                            }
+                            Text(activeSession.state.libraryID)
+                                .font(LascoFont.mono())
+                                .foregroundStyle(theme.inkMuted)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
                         }
                         .padding(.horizontal, 32)
                         .padding(.bottom, 32)
@@ -46,8 +44,8 @@ struct LibraryParametersView: View {
 
                     VStack(alignment: .leading, spacing: 0) {
                         NavigationLink {
-                            if let repository = directory.activeRepository, let session = directory.session {
-                                RemotesView(repository: repository, session: session)
+                            if let activeSession = directory.activeSession {
+                                RemotesView(repository: activeSession.repository, session: activeSession.state)
                             }
                         } label: {
                             HStack {

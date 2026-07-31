@@ -7,13 +7,10 @@ struct CreateLibraryResult: Sendable, Equatable {
 }
 
 enum LibraryDirectoryModelError: LocalizedError {
-    case activeSessionUnavailable
     case remoteUnavailableAfterRefresh
 
     var errorDescription: String? {
         switch self {
-        case .activeSessionUnavailable:
-            "The active library session is unavailable."
         case .remoteUnavailableAfterRefresh:
             "The remote was not available after refreshing the library session."
         }
@@ -43,15 +40,6 @@ final class LibraryDirectoryModel {
         get { onboarding.showOnboarding }
         set { onboarding.showOnboarding = newValue }
     }
-
-    // Transitional accessors keep views decoupled from the directory/session split.
-    var activeRepository: LibraryRepository? { activeSession?.repository }
-    var session: LibrarySessionState? { activeSession?.state }
-    var syncCoordinator: SyncCoordinator? { activeSession?.syncCoordinator }
-    var mediaImportCoordinator: MediaImportCoordinator? { activeSession?.mediaImportCoordinator }
-    var openLibraryID: String? { activeSession?.state.libraryID }
-    var openNickname: String? { activeSession?.state.nickname }
-    var openUsername: String? { activeSession?.state.username }
 
     func start() async {
         await refreshLibraries()
@@ -186,13 +174,6 @@ final class LibraryDirectoryModel {
 
     func testS3Remote(endpoint: String, bucket: String, region: String, pathPrefix: String, accessKey: String, secretKey: String) async throws {
         try await directory.testS3Remote(endpoint: endpoint, bucket: bucket, region: region, pathPrefix: pathPrefix, accessKey: accessKey, secretKey: secretKey)
-    }
-
-    func refreshActiveSession() async throws {
-        guard let activeSession else {
-            throw LibraryDirectoryModelError.activeSessionUnavailable
-        }
-        try await activeSession.state.refresh(using: activeSession.repository)
     }
 
     private func install(
