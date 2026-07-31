@@ -193,7 +193,9 @@ fun StatusScreen(modifier: Modifier = Modifier) {
                         remote = remote,
                         isDefaultFetch = remote.id == session.defaultFetchRemoteId,
                         isSynced = unpushed[remote.id] != true,
-                        pushCountdownSeconds = pushCountdownSeconds,
+                        pushCountdownSeconds = pushCountdownSeconds.takeIf {
+                            remote.id in syncState.scheduledAutoPushRemoteIds && remote.autoPush
+                        },
                         lastPush = pushRecords[remote.id],
                         lastFetch = fetchRecords[remote.id],
                         pushEnabled = remote.id !in syncState.busyRemoteIds,

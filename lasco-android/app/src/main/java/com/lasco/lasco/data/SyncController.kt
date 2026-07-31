@@ -49,6 +49,7 @@ class SyncController(
         // means commands arriving mid wait cannot push the deadline back,
         // however often they arrive.
         var deadline: Long? = null
+        var scheduledAutoPushRemoteIds = emptySet<String>()
         try {
             while (true) {
                 val cmd = select<Cmd?> {
@@ -57,23 +58,34 @@ class SyncController(
                 }
                 if (cmd == null && commands.isClosedForReceive) break
                 if (cmd == null) {
+                    val candidateRemoteIds = scheduledAutoPushRemoteIds
                     deadline = null
-                    publishDeadline(null)
-                    pushAllRemotes()
+                    scheduledAutoPushRemoteIds = emptySet()
+                    publishCountdown(null, emptySet())
+                    pushScheduledRemotes(candidateRemoteIds)
                     continue
                 }
                 when (cmd) {
                     Cmd.Mutated -> if (deadline == null) {
-                        deadline = SystemClock.elapsedRealtime() + PUSH_DELAY_MS
-                        publishDeadline(deadline)
+                        val candidateRemoteIds = lib.listRemotes()
+                            .filter { it.autoPush }
+                            .map { it.id }
+                            .toSet()
+                        if (candidateRemoteIds.isNotEmpty()) {
+                            deadline = SystemClock.elapsedRealtime() + PUSH_DELAY_MS
+                            scheduledAutoPushRemoteIds = candidateRemoteIds
+                            publishCountdown(deadline, candidateRemoteIds)
+                        }
                     }
                     Cmd.StopCountdown -> {
                         deadline = null
-                        publishDeadline(null)
+                        scheduledAutoPushRemoteIds = emptySet()
+                        publishCountdown(null, emptySet())
                     }
                     is Cmd.Push -> {
                         deadline = null
-                        publishDeadline(null)
+                        scheduledAutoPushRemoteIds = emptySet()
+                        publishCountdown(null, emptySet())
                         cmd.ack.complete(push(cmd.remoteId))
                     }
                     is Cmd.Fetch -> cmd.ack.complete(fetch(cmd.remoteId))
@@ -130,8 +142,10 @@ class SyncController(
         loop.join()
     }
 
-    private suspend fun pushAllRemotes() {
-        for (remote in lib.listRemotes().filter { it.autoPush }) push(remote.id)
+    private suspend fun pushScheduledRemotes(candidateRemoteIds: Set<String>) {
+        for (remote in lib.listRemotes().filter { it.id in candidateRemoteIds && it.autoPush }) {
+            push(remote.id)
+        }
     }
 
     private suspend fun push(remoteId: String): String? {
@@ -163,8 +177,13 @@ class SyncController(
         }
     }
 
-    private fun publishDeadline(deadline: Long?) {
-        _syncState.update { it.copy(pushDeadlineElapsedMs = deadline) }
+    private fun publishCountdown(deadline: Long?, remoteIds: Set<String>) {
+        _syncState.update {
+            it.copy(
+                pushDeadlineElapsedMs = deadline,
+                scheduledAutoPushRemoteIds = remoteIds,
+            )
+        }
     }
 
     // A caller still awaiting an ack when the library closes under it must not

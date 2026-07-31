@@ -25,4 +25,7 @@ data class SyncState(
     // a remaining count, so this changes twice per schedule instead of once a
     // second, and the UI derives the displayed seconds from it.
     val pushDeadlineElapsedMs: Long? = null,
+    // Immutable set of Auto push remotes eligible when the active countdown
+    // began. Remotes are revalidated against their current setting at expiry.
+    val scheduledAutoPushRemoteIds: Set<String> = emptySet(),
 )
