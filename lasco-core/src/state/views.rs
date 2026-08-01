@@ -70,6 +70,45 @@ pub fn build_computed_views(state: &ReconstructedState) -> ComputedViews {
         }
     }
 
+    // Home and orphan browsing operate on primary media only. Build the date
+    // indexes once when state changes so paged reads do not need to materialize
+    // and sort every media entry.
+    let companion_ids: std::collections::HashSet<_> = state
+        .media
+        .values()
+        .flat_map(|entry| [entry.apple_aae_media_id, entry.apple_live_photo_media_id])
+        .flatten()
+        .collect();
+    for media in state.media.values() {
+        if companion_ids.contains(&media.media_id) {
+            continue;
+        }
+        views
+            .visible_media_by_date
+            .entry(media.date)
+            .or_default()
+            .push(media.media_id);
+        if !views.reachable_media_ids.contains(&media.media_id) {
+            views
+                .orphaned_media_by_date
+                .entry(media.date)
+                .or_default()
+                .push(media.media_id);
+        }
+    }
+
+    // Equal timestamps need a deterministic order so consecutive ranges never
+    // overlap or skip an item merely because a hash-map iteration changed.
+    for ids in views.by_date.values_mut() {
+        ids.sort_by_key(|id| id.0);
+    }
+    for ids in views.visible_media_by_date.values_mut() {
+        ids.sort_by_key(|id| id.0);
+    }
+    for ids in views.orphaned_media_by_date.values_mut() {
+        ids.sort_by_key(|id| id.0);
+    }
+
     // by_content_hash groups all media IDs sharing the same content hash, including unreachable media.
     for media in state.media.values() {
         views

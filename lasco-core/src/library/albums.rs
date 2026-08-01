@@ -1,6 +1,6 @@
 use std::collections::{HashSet, VecDeque};
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::error::LibraryError;
@@ -8,6 +8,7 @@ use crate::identifiers::{AlbumUuid, MediaUuid};
 use crate::library::Library;
 use crate::library::media::MediaEntry;
 use crate::operations::{AlbumName, Operation};
+use crate::state::GroupEntry;
 
 pub type Result<T> = std::result::Result<T, LibraryError>;
 
@@ -20,7 +21,76 @@ pub struct AlbumSummary {
     pub thumbnail_media_id: Option<MediaUuid>,
 }
 
+/// A media or group entry as displayed in an album's date-ordered item list.
+#[derive(Debug, Clone)]
+pub enum AlbumItem {
+    Media(MediaEntry),
+    Group(GroupEntry),
+}
+
+#[derive(Debug, Clone)]
+pub struct DatedAlbumItem {
+    pub item: AlbumItem,
+    pub effective_date: DateTime<Utc>,
+}
+
+impl DatedAlbumItem {
+    fn tie_breaker(&self) -> (u8, uuid::Uuid) {
+        match &self.item {
+            AlbumItem::Media(entry) => (0, entry.media_id.0),
+            AlbumItem::Group(entry) => (1, entry.group_id.0),
+        }
+    }
+}
+
 impl Library {
+    /// Returns direct, non-deleted albums under `parent_album_id`, ordered by
+    /// name and then ID. `None` denotes the root album level.
+    pub fn album_albums(&self, parent_album_id: Option<AlbumUuid>) -> Vec<AlbumSummary> {
+        let state = self.inner.operation_state.read();
+        let mut albums: Vec<_> = state
+            .reconstructed
+            .albums
+            .values()
+            .filter(|entry| !entry.deleted && entry.album_id_parent == parent_album_id)
+            .map(|entry| AlbumSummary {
+                album_id: entry.album_id,
+                album_id_parent: entry.album_id_parent,
+                name: entry.name.clone(),
+                media_count: entry.media_ids.len(),
+                thumbnail_media_id: entry.thumbnail_media_id,
+            })
+            .collect();
+        albums.sort_by(|a, b| a.name.0.cmp(&b.name.0).then_with(|| a.album_id.0.cmp(&b.album_id.0)));
+        albums
+    }
+
+    pub fn album_albums_count(&self, parent_album_id: Option<AlbumUuid>) -> usize {
+        let state = self.inner.operation_state.read();
+        state
+            .reconstructed
+            .albums
+            .values()
+            .filter(|entry| !entry.deleted && entry.album_id_parent == parent_album_id)
+            .count()
+    }
+
+    pub fn album_albums_range(
+        &self,
+        parent_album_id: Option<AlbumUuid>,
+        pos_start_inclusive: usize,
+        pos_end_inclusive: usize,
+    ) -> Vec<AlbumSummary> {
+        if pos_start_inclusive > pos_end_inclusive {
+            return Vec::new();
+        }
+        let take_count = pos_end_inclusive - pos_start_inclusive + 1;
+        self.album_albums(parent_album_id)
+            .into_iter()
+            .skip(pos_start_inclusive)
+            .take(take_count)
+            .collect()
+    }
     pub async fn album_create(
         &self,
         name: AlbumName,
@@ -76,6 +146,89 @@ impl Library {
             })
             .collect();
         Ok(entries)
+    }
+
+    pub fn album_items_count(&self, album_id: AlbumUuid) -> Result<usize> {
+        let state = self.inner.operation_state.read();
+        let media_count = state
+            .views
+            .by_album
+            .get(&album_id)
+            .ok_or(LibraryError::AlbumNotFound(album_id))?
+            .len();
+        let group_count = state
+            .views
+            .groups_by_album
+            .get(&album_id)
+            .map_or(0, Vec::len);
+        Ok(media_count + group_count)
+    }
+
+    /// Returns the inclusive range of media and groups in an album, ordered by
+    /// effective date with a deterministic ID tie-breaker.
+    pub fn album_items_by_date_range(
+        &self,
+        album_id: AlbumUuid,
+        ascending: bool,
+        pos_start_inclusive: usize,
+        pos_end_inclusive: usize,
+    ) -> Result<Vec<DatedAlbumItem>> {
+        if pos_start_inclusive > pos_end_inclusive {
+            return Ok(Vec::new());
+        }
+        let state = self.inner.operation_state.read();
+        let media_ids = state
+            .views
+            .by_album
+            .get(&album_id)
+            .ok_or(LibraryError::AlbumNotFound(album_id))?;
+        let mut items = Vec::with_capacity(
+            media_ids.len() + state.views.groups_by_album.get(&album_id).map_or(0, Vec::len),
+        );
+        for media_id in media_ids {
+            let Some(media) = state.reconstructed.media.get(media_id) else {
+                continue;
+            };
+            let group_ids = state
+                .views
+                .media_group_membership
+                .get(media_id)
+                .cloned()
+                .unwrap_or_default();
+            let entry = MediaEntry::from_state(media, group_ids);
+            items.push(DatedAlbumItem {
+                effective_date: entry.date,
+                item: AlbumItem::Media(entry),
+            });
+        }
+        if let Some(group_ids) = state.views.groups_by_album.get(&album_id) {
+            for group_id in group_ids {
+                let Some(group) = state.reconstructed.groups.get(group_id) else {
+                    continue;
+                };
+                let effective_date = group
+                    .media_ids
+                    .iter()
+                    .filter_map(|media_id| state.reconstructed.media.get(media_id).map(|media| media.date))
+                    .max()
+                    .unwrap_or_default();
+                items.push(DatedAlbumItem {
+                    item: AlbumItem::Group(group.clone()),
+                    effective_date,
+                });
+            }
+        }
+        items.sort_by(|a, b| {
+            let date_order = a.effective_date.cmp(&b.effective_date);
+            let order = if ascending { date_order } else { date_order.reverse() };
+            order.then_with(|| a.tie_breaker().cmp(&b.tie_breaker()))
+        });
+        let take_count = pos_end_inclusive - pos_start_inclusive + 1;
+        Ok(items
+            .into_iter()
+            .skip(pos_start_inclusive)
+            .take(take_count)
+            .collect())
     }
 
     pub fn album_list(&self) -> Vec<AlbumSummary> {
@@ -293,6 +446,26 @@ mod tests {
         assert_eq!(parent.album_id_parent, None);
         let child = albums.iter().find(|a| a.album_id == child_id).unwrap();
         assert_eq!(child.album_id_parent, Some(parent_id));
+    }
+
+    #[tokio::test]
+    async fn album_albums_range_returns_only_direct_albums_in_name_order() {
+        use crate::operations::AlbumName;
+        let tmp = TempDir::new().unwrap();
+        let (lib, _) = make_library(&tmp).await;
+        let zulu = lib.album_create(AlbumName("Zulu".into()), None).await.unwrap();
+        let alpha = lib.album_create(AlbumName("Alpha".into()), None).await.unwrap();
+        let _nested = lib
+            .album_create(AlbumName("Nested".into()), Some(alpha))
+            .await
+            .unwrap();
+
+        assert_eq!(lib.album_albums_count(None), 2);
+        let first = lib.album_albums_range(None, 0, 0);
+        let second = lib.album_albums_range(None, 1, 1);
+        assert_eq!(first[0].album_id, alpha);
+        assert_eq!(second[0].album_id, zulu);
+        assert_eq!(lib.album_albums_count(Some(alpha)), 1);
     }
 
     #[tokio::test]

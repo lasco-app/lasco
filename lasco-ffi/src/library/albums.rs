@@ -1,10 +1,43 @@
 use lasco_core::identifiers::{AlbumUuid, MediaUuid};
+use lasco_core::library::albums::{AlbumItem, AlbumSummary, DatedAlbumItem};
 use lasco_core::operations::AlbumName;
 
 use super::groups::group_entry_to_ffi;
 use super::remotes::media_entry_to_ffi;
 use super::{FfiAlbum, FfiAlbumItem, FfiLibrary, FfiMediaItem};
 use crate::error::LascoError;
+
+use super::media::inclusive_range;
+
+fn album_summary_to_ffi(a: AlbumSummary) -> FfiAlbum {
+    FfiAlbum {
+        album_id: a.album_id.to_string(),
+        name: a.name.0,
+        parent_album_id: a.album_id_parent.map(|p| p.to_string()),
+        media_count: a.media_count as u32,
+        deleted: false,
+        is_disconnected: false,
+        thumbnail_media_id: a.thumbnail_media_id.map(|m| m.to_string()),
+    }
+}
+
+fn dated_album_item_to_ffi(item: DatedAlbumItem) -> FfiAlbumItem {
+    let effective_date = item.effective_date.to_rfc3339();
+    match item.item {
+        AlbumItem::Media(media) => FfiAlbumItem {
+            kind: "media".to_string(),
+            media: Some(media_entry_to_ffi(media)),
+            group: None,
+            effective_date,
+        },
+        AlbumItem::Group(group) => FfiAlbumItem {
+            kind: "group".to_string(),
+            media: None,
+            group: Some(group_entry_to_ffi(&group)),
+            effective_date,
+        },
+    }
+}
 
 #[uniffi::export]
 impl FfiLibrary {
@@ -37,6 +70,35 @@ impl FfiLibrary {
             }
         }
         Ok(albums)
+    }
+
+    pub fn album_albums_count(&self, parent_album_id: Option<String>) -> Result<u32, LascoError> {
+        let parent = parent_album_id
+            .map(|id| uuid::Uuid::parse_str(&id).map(AlbumUuid::from_uuid))
+            .transpose()
+            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+        Ok(self.inner.album_albums_count(parent) as u32)
+    }
+
+    /// Returns direct albums under `parent_album_id`; `None` means root albums.
+    /// Positions are zero-based and both ends of the range are inclusive.
+    pub fn album_albums_range(
+        &self,
+        parent_album_id: Option<String>,
+        pos_start_inclusive: u32,
+        pos_end_inclusive: u32,
+    ) -> Result<Vec<FfiAlbum>, LascoError> {
+        let parent = parent_album_id
+            .map(|id| uuid::Uuid::parse_str(&id).map(AlbumUuid::from_uuid))
+            .transpose()
+            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+        let (start, end) = inclusive_range(pos_start_inclusive, pos_end_inclusive)?;
+        Ok(self
+            .inner
+            .album_albums_range(parent, start, end)
+            .into_iter()
+            .map(album_summary_to_ffi)
+            .collect())
     }
 
     pub fn rename_album(&self, album_id: String, name: String) -> Result<(), LascoError> {
@@ -176,38 +238,41 @@ impl FfiLibrary {
             .map(AlbumUuid::from_uuid)
             .map_err(|e| LascoError::Other { msg: e.to_string() })?;
 
-        let media = self.inner.album_list_media(album_uuid).map_err(LascoError::from)?;
-        let groups = self.inner.album_list_groups(album_uuid).map_err(LascoError::from)?;
+        let count = self.inner.album_items_count(album_uuid).map_err(LascoError::from)?;
+        Ok(self
+            .inner
+            .album_items_by_date_range(album_uuid, ascending, 0, count.saturating_sub(1))
+            .map_err(LascoError::from)?
+            .into_iter()
+            .map(dated_album_item_to_ffi)
+            .collect())
+    }
 
-        let mut items: Vec<FfiAlbumItem> = Vec::with_capacity(media.len() + groups.len());
+    pub fn album_items_count(&self, album_id: String) -> Result<u32, LascoError> {
+        let album_uuid = uuid::Uuid::parse_str(&album_id)
+            .map(AlbumUuid::from_uuid)
+            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+        Ok(self.inner.album_items_count(album_uuid).map_err(LascoError::from)? as u32)
+    }
 
-        for entry in media {
-            let ffi = media_entry_to_ffi(entry);
-            let date = ffi.date.clone();
-            items.push(FfiAlbumItem { kind: "media".to_string(), effective_date: date, media: Some(ffi), group: None });
-        }
-
-        for entry in &groups {
-            let group_media = self.inner.group_list_media(entry.group_id).map_err(LascoError::from)?;
-            let effective_date = group_media
-                .into_iter()
-                .map(|m| media_entry_to_ffi(m).date)
-                .max()
-                .unwrap_or_default();
-            items.push(FfiAlbumItem {
-                kind: "group".to_string(),
-                effective_date,
-                media: None,
-                group: Some(group_entry_to_ffi(entry)),
-            });
-        }
-
-        if ascending {
-            items.sort_by(|a, b| a.effective_date.cmp(&b.effective_date));
-        } else {
-            items.sort_by(|a, b| b.effective_date.cmp(&a.effective_date));
-        }
-
-        Ok(items)
+    /// Positions are zero-based and both ends of the range are inclusive.
+    pub fn album_items_by_date_range(
+        &self,
+        album_id: String,
+        ascending: bool,
+        pos_start_inclusive: u32,
+        pos_end_inclusive: u32,
+    ) -> Result<Vec<FfiAlbumItem>, LascoError> {
+        let album_uuid = uuid::Uuid::parse_str(&album_id)
+            .map(AlbumUuid::from_uuid)
+            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+        let (start, end) = inclusive_range(pos_start_inclusive, pos_end_inclusive)?;
+        Ok(self
+            .inner
+            .album_items_by_date_range(album_uuid, ascending, start, end)
+            .map_err(LascoError::from)?
+            .into_iter()
+            .map(dated_album_item_to_ffi)
+            .collect())
     }
 }

@@ -8,6 +8,15 @@ use super::types::{FfiLocalStateStats, FfiMediaAddResult};
 use super::{FfiLibrary, FfiMediaItem};
 use crate::error::LascoError;
 
+pub(super) fn inclusive_range(start: u32, end: u32) -> Result<(usize, usize), LascoError> {
+    if start > end {
+        return Err(LascoError::Other {
+            msg: "pos_start_inclusive must not exceed pos_end_inclusive".to_string(),
+        });
+    }
+    Ok((start as usize, end as usize))
+}
+
 #[uniffi::export]
 impl FfiLibrary {
     pub fn load_local_state(&self) -> Result<(), LascoError> {
@@ -313,25 +322,61 @@ impl FfiLibrary {
     }
 
     pub fn media_by_date(&self) -> Result<Vec<FfiMediaItem>, LascoError> {
-        let mut items: Vec<_> = self
+        let count = self.inner.media_by_date_count(false);
+        Ok(self
             .inner
-            .media_list(lasco_core::library::media::query::MediaListScope::Visible)
+            .media_by_date_range(false, 0, count.saturating_sub(1))
             .into_iter()
             .map(media_entry_to_ffi)
-            .collect();
-        items.sort_by(|a, b| b.date.cmp(&a.date));
-        Ok(items)
+            .collect())
+    }
+
+    pub fn media_by_date_count(&self) -> u32 {
+        self.inner.media_by_date_count(false) as u32
+    }
+
+    /// Positions are zero-based and both ends of the range are inclusive.
+    pub fn media_by_date_range(
+        &self,
+        pos_start_inclusive: u32,
+        pos_end_inclusive: u32,
+    ) -> Result<Vec<FfiMediaItem>, LascoError> {
+        let (start, end) = inclusive_range(pos_start_inclusive, pos_end_inclusive)?;
+        Ok(self
+            .inner
+            .media_by_date_range(false, start, end)
+            .into_iter()
+            .map(media_entry_to_ffi)
+            .collect())
     }
 
     pub fn orphan_media_by_date(&self) -> Result<Vec<FfiMediaItem>, LascoError> {
-        let mut items: Vec<_> = self
+        let count = self.inner.media_by_date_count(true);
+        Ok(self
             .inner
-            .media_list(lasco_core::library::media::query::MediaListScope::Orphaned)
+            .media_by_date_range(true, 0, count.saturating_sub(1))
             .into_iter()
             .map(media_entry_to_ffi)
-            .collect();
-        items.sort_by(|a, b| b.date.cmp(&a.date));
-        Ok(items)
+            .collect())
+    }
+
+    pub fn orphan_media_by_date_count(&self) -> u32 {
+        self.inner.media_by_date_count(true) as u32
+    }
+
+    /// Positions are zero-based and both ends of the range are inclusive.
+    pub fn orphan_media_by_date_range(
+        &self,
+        pos_start_inclusive: u32,
+        pos_end_inclusive: u32,
+    ) -> Result<Vec<FfiMediaItem>, LascoError> {
+        let (start, end) = inclusive_range(pos_start_inclusive, pos_end_inclusive)?;
+        Ok(self
+            .inner
+            .media_by_date_range(true, start, end)
+            .into_iter()
+            .map(media_entry_to_ffi)
+            .collect())
     }
 
     pub fn media_album_ids(&self, media_id: String) -> Result<Vec<String>, LascoError> {

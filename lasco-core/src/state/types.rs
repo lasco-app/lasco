@@ -56,6 +56,10 @@ pub struct ReconstructedState {
 pub struct ComputedViews {
     pub reachable_media_ids: HashSet<MediaUuid>,
     pub by_date: BTreeMap<DateTime<Utc>, Vec<MediaUuid>>,
+    /// Primary (non-companion) media, ordered into date buckets for browsing.
+    pub visible_media_by_date: BTreeMap<DateTime<Utc>, Vec<MediaUuid>>,
+    /// Primary media that has no live album or group membership.
+    pub orphaned_media_by_date: BTreeMap<DateTime<Utc>, Vec<MediaUuid>>,
     pub by_album: FxHashMap<AlbumUuid, Vec<MediaUuid>>,
     pub album_children: FxHashMap<Option<AlbumUuid>, Vec<AlbumUuid>>,
     pub by_group: FxHashMap<GroupUuid, Vec<MediaUuid>>,

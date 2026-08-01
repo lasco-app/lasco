@@ -45,6 +45,53 @@ pub enum MediaListScope {
 }
 
 impl Library {
+    /// Returns primary visible media ordered by date descending, then ID descending.
+    pub fn media_by_date_count(&self, orphaned: bool) -> usize {
+        let state = self.inner.operation_state.read();
+        let index = if orphaned {
+            &state.views.orphaned_media_by_date
+        } else {
+            &state.views.visible_media_by_date
+        };
+        index.values().map(Vec::len).sum()
+    }
+
+    /// Returns the inclusive position range from the canonical home-media order.
+    pub fn media_by_date_range(
+        &self,
+        orphaned: bool,
+        pos_start_inclusive: usize,
+        pos_end_inclusive: usize,
+    ) -> Vec<MediaEntry> {
+        if pos_start_inclusive > pos_end_inclusive {
+            return Vec::new();
+        }
+        let state = self.inner.operation_state.read();
+        let index = if orphaned {
+            &state.views.orphaned_media_by_date
+        } else {
+            &state.views.visible_media_by_date
+        };
+        let take_count = pos_end_inclusive - pos_start_inclusive + 1;
+        index
+            .iter()
+            .rev()
+            .flat_map(|(_, ids)| ids.iter().rev())
+            .skip(pos_start_inclusive)
+            .take(take_count)
+            .filter_map(|media_id| {
+                let entry = state.reconstructed.media.get(media_id)?;
+                let group_ids = state
+                    .views
+                    .media_group_membership
+                    .get(media_id)
+                    .cloned()
+                    .unwrap_or_default();
+                Some(MediaEntry::from_state(entry, group_ids))
+            })
+            .collect()
+    }
+
     /// Returns media entries matching `scope`.
     pub fn media_list(&self, scope: MediaListScope) -> Vec<MediaEntry> {
         let state = self.inner.operation_state.read();
@@ -469,6 +516,24 @@ mod tests {
 
         let list = lib.media_list(MediaListScope::Reachable);
         assert!(list.iter().any(|e| e.media_id == media_id));
+    }
+
+    #[tokio::test]
+    async fn media_by_date_range_is_counted_and_non_overlapping() {
+        let tmp = TempDir::new().unwrap();
+        let (lib, _) = make_library(&tmp).await;
+        let (first_id, _) = add_media_to_album(&lib, &tmp, "first.jpg", b"first").await;
+        let (second_id, _) = add_media_to_album(&lib, &tmp, "second.jpg", b"second").await;
+
+        assert_eq!(lib.media_by_date_count(false), 2);
+        let first = lib.media_by_date_range(false, 0, 0);
+        let second = lib.media_by_date_range(false, 1, 1);
+        assert_eq!(first.len(), 1);
+        assert_eq!(second.len(), 1);
+        assert_ne!(first[0].media_id, second[0].media_id);
+        assert!(matches!(first[0].media_id, id if id == first_id || id == second_id));
+        assert!(matches!(second[0].media_id, id if id == first_id || id == second_id));
+        assert!(lib.media_by_date_range(false, 2, 3).is_empty());
     }
 
     #[tokio::test]
