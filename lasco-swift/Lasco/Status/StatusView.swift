@@ -269,7 +269,7 @@ struct StatusView: View {
     }
 
     private func isSynced(_ remote: FfiRemote) -> Bool {
-        true
+        model.isSynced(remoteID: remote.id)
     }
 }
 

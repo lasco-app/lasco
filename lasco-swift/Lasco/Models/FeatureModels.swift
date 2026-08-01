@@ -291,6 +291,7 @@ final class StatusModel {
     private(set) var media: [FfiMediaItem] = []
     private(set) var localStateStats: FfiLocalStateStats?
     private(set) var mediaCountWithoutRemoteBackup: Int?
+    private(set) var syncedByRemoteID: [String: Bool] = [:]
     private let repository: any LibraryRepositoryProtocol
 
     init(repository: any LibraryRepositoryProtocol) {
@@ -311,10 +312,18 @@ final class StatusModel {
             async let mediaQuery = repository.mediaByDate()
             async let statsQuery = repository.localStateStats()
             async let backupQuery = repository.mediaIDsWithoutRemoteBackup()
+            async let sessionQuery = repository.sessionSnapshot()
             media = try await mediaQuery
             localStateStats = try await statsQuery
             let unbacked = try await backupQuery
             mediaCountWithoutRemoteBackup = unbacked.isEmpty ? nil : unbacked.count
+            let session = try await sessionQuery
+            var syncStatus: [String: Bool] = [:]
+            for remote in session.remotes {
+                let hasUnpushedChanges = await repository.hasUnpushedChanges(remoteID: remote.id)
+                syncStatus[remote.id] = !hasUnpushedChanges
+            }
+            syncedByRemoteID = syncStatus
         } catch is CancellationError {
         } catch {
             AppLogger.log(.error, "status query failed: \(error)")
@@ -331,8 +340,8 @@ final class StatusModel {
         await load()
     }
 
-    func hasUnpushedChanges(remoteID: String) async -> Bool {
-        await repository.hasUnpushedChanges(remoteID: remoteID)
+    func isSynced(remoteID: String) -> Bool {
+        syncedByRemoteID[remoteID] ?? true
     }
 }
 

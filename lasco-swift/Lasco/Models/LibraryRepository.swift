@@ -282,6 +282,7 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         let id = try library.createAlbum(name: name, parentAlbumId: parentID)
         await notify(.albumList)
         await notify(.album(id))
+        await notify(.localMutation)
         return id
     }
 
@@ -295,6 +296,7 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         try library.renameAlbum(albumId: id, name: name)
         await notify(.albumList)
         await notify(.album(id))
+        await notify(.localMutation)
     }
 
     func reparentAlbum(id: String, parentID: String?) async throws {
@@ -302,6 +304,7 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         try library.reparentAlbum(albumId: id, newParentAlbumId: parentID)
         await notify(.albumList)
         await notify(.album(id))
+        await notify(.localMutation)
     }
 
     func deleteAlbum(id: String) async throws {
@@ -309,6 +312,7 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         try library.deleteAlbum(albumId: id)
         await notify(.albumList)
         await notify(.album(id))
+        await notify(.localMutation)
     }
 
     func setAlbumThumbnail(albumID: String, mediaID: String?) async throws {
@@ -316,6 +320,7 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         try library.setAlbumThumbnail(albumId: albumID, mediaId: mediaID)
         await notify(.albumList)
         await notify(.album(albumID))
+        await notify(.localMutation)
     }
 
     func createGroup(albumID: String) async throws -> String {
