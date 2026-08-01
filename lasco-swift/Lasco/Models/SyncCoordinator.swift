@@ -71,7 +71,13 @@ final class SyncCoordinator {
         _ = await fetch(remoteID: remoteID)
     }
 
-    func push(remoteID: String) async -> String? {
+    func push(remoteID: String, isAutomatic: Bool = false) async -> String? {
+        // A manual push supersedes the pending automatic push. Only the timer is
+        // cancelled; an upload that has already started is left to finish.
+        if !isAutomatic {
+            cancelScheduledPush()
+        }
+
         busyRemotes.insert(remoteID)
         defer { busyRemotes.remove(remoteID) }
         do {
@@ -125,16 +131,26 @@ final class SyncCoordinator {
     }
 
     func schedulePush() {
-        delayedPushTask?.cancel()
+        cancelScheduledPush()
+
+        // Do not advertise (or run) an automatic push when every remote has it
+        // disabled. This also covers local changes made after Auto Push is off.
+        guard session.remotes.contains(where: \.autoPush) else { return }
+
         let date = Date.now.addingTimeInterval(30)
         nextPushDate = date
         delayedPushTask = Task { [weak self] in
             do {
                 try await Task.sleep(for: .seconds(30))
                 guard let self, !Task.isCancelled else { return }
+
+                // From here on this task performs uploads, rather than waiting for
+                // a scheduled one. Clearing its handle keeps a manual push from
+                // cancelling an upload already in progress.
+                delayedPushTask = nil
                 nextPushDate = nil
                 for remote in session.remotes where remote.autoPush {
-                    _ = await push(remoteID: remote.id)
+                    _ = await push(remoteID: remote.id, isAutomatic: true)
                 }
             } catch is CancellationError {
                 return
@@ -156,9 +172,34 @@ final class SyncCoordinator {
     private func listenForLocalMutations() async {
         let stream = await repository.changes()
         for await change in stream {
-            guard change == .localMutation else { continue }
-            schedulePush()
+            switch change {
+            case .localMutation:
+                schedulePush()
+            case .session:
+                await cancelScheduledPushIfNoEligibleRemote()
+            default:
+                continue
+            }
         }
+    }
+
+    private func cancelScheduledPushIfNoEligibleRemote() async {
+        do {
+            let snapshot = try await repository.sessionSnapshot()
+            guard snapshot.remotes.contains(where: \.autoPush) else {
+                cancelScheduledPush()
+                return
+            }
+        } catch is CancellationError {
+        } catch {
+            AppLogger.log(.error, "could not check auto push settings: \(error)")
+        }
+    }
+
+    private func cancelScheduledPush() {
+        delayedPushTask?.cancel()
+        delayedPushTask = nil
+        nextPushDate = nil
     }
 
     /// Restores the per-remote sync history once the session has loaded its remotes.

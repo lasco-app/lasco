@@ -476,7 +476,11 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
 
     func push(remoteID: String) async throws -> UInt32 {
         try ensureOpen()
-        return try await library.pushRemoteAsync(remoteId: remoteID, appSupportDir: appSupportDirectory)
+        let result = try await library.pushRemoteAsync(remoteId: remoteID, appSupportDir: appSupportDirectory)
+        // A successful push changes the per-remote local/remote state. Publish it
+        // so status consumers don't have to be recreated before showing it.
+        await notify(.all)
+        return result
     }
 
     func fetch(remoteID: String) async throws -> UInt32 {

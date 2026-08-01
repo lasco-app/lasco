@@ -236,7 +236,7 @@ struct StatusView: View {
                         lastPush: syncCoordinator.lastPushRecords[remote.id],
                         lastFetch: syncCoordinator.lastFetchRecords[remote.id],
                         isSynced: isSynced(remote),
-                        nextPushDate: syncCoordinator.nextPushDate,
+                        nextPushDate: remote.autoPush ? syncCoordinator.nextPushDate : nil,
                         pushEnabled: syncCoordinator.isPushAllowed(remote.id),
                         fetchEnabled: syncCoordinator.isFetchAllowed(remote.id),
                         onPush: {
