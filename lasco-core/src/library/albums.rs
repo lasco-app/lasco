@@ -8,9 +8,16 @@ use crate::identifiers::{AlbumUuid, MediaUuid};
 use crate::library::Library;
 use crate::library::media::MediaEntry;
 use crate::operations::{AlbumName, Operation};
-use crate::state::GroupEntry;
+use crate::state::{AlbumBrowseItem, GroupEntry};
 
 pub type Result<T> = std::result::Result<T, LibraryError>;
+
+fn inclusive_slice<T>(items: &[T], start: usize, end: usize) -> Option<&[T]> {
+    if start > end || start >= items.len() {
+        return None;
+    }
+    items.get(start..=end.min(items.len() - 1))
+}
 
 #[derive(Debug, Clone)]
 pub struct AlbumSummary {
@@ -34,25 +41,18 @@ pub struct DatedAlbumItem {
     pub effective_date: DateTime<Utc>,
 }
 
-impl DatedAlbumItem {
-    fn tie_breaker(&self) -> (u8, uuid::Uuid) {
-        match &self.item {
-            AlbumItem::Media(entry) => (0, entry.media_id.0),
-            AlbumItem::Group(entry) => (1, entry.group_id.0),
-        }
-    }
-}
-
 impl Library {
     /// Returns direct, non-deleted albums under `parent_album_id`, ordered by
     /// name and then ID. `None` denotes the root album level.
     pub fn album_albums(&self, parent_album_id: Option<AlbumUuid>) -> Vec<AlbumSummary> {
         let state = self.inner.operation_state.read();
-        let mut albums: Vec<_> = state
-            .reconstructed
-            .albums
-            .values()
-            .filter(|entry| !entry.deleted && entry.album_id_parent == parent_album_id)
+        state
+            .views
+            .album_albums_by_name
+            .get(&parent_album_id)
+            .into_iter()
+            .flatten()
+            .filter_map(|album_id| state.reconstructed.albums.get(album_id))
             .map(|entry| AlbumSummary {
                 album_id: entry.album_id,
                 album_id_parent: entry.album_id_parent,
@@ -60,19 +60,16 @@ impl Library {
                 media_count: entry.media_ids.len(),
                 thumbnail_media_id: entry.thumbnail_media_id,
             })
-            .collect();
-        albums.sort_by(|a, b| a.name.0.cmp(&b.name.0).then_with(|| a.album_id.0.cmp(&b.album_id.0)));
-        albums
+            .collect()
     }
 
     pub fn album_albums_count(&self, parent_album_id: Option<AlbumUuid>) -> usize {
         let state = self.inner.operation_state.read();
         state
-            .reconstructed
-            .albums
-            .values()
-            .filter(|entry| !entry.deleted && entry.album_id_parent == parent_album_id)
-            .count()
+            .views
+            .album_albums_by_name
+            .get(&parent_album_id)
+            .map_or(0, Vec::len)
     }
 
     pub fn album_albums_range(
@@ -84,11 +81,22 @@ impl Library {
         if pos_start_inclusive > pos_end_inclusive {
             return Vec::new();
         }
-        let take_count = pos_end_inclusive - pos_start_inclusive + 1;
-        self.album_albums(parent_album_id)
-            .into_iter()
-            .skip(pos_start_inclusive)
-            .take(take_count)
+        let state = self.inner.operation_state.read();
+        let Some(album_ids) = state.views.album_albums_by_name.get(&parent_album_id) else {
+            return Vec::new();
+        };
+        let Some(ids) = inclusive_slice(album_ids, pos_start_inclusive, pos_end_inclusive) else {
+            return Vec::new();
+        };
+        ids.iter()
+            .filter_map(|album_id| state.reconstructed.albums.get(album_id))
+            .map(|entry| AlbumSummary {
+                album_id: entry.album_id,
+                album_id_parent: entry.album_id_parent,
+                name: entry.name.clone(),
+                media_count: entry.media_ids.len(),
+                thumbnail_media_id: entry.thumbnail_media_id,
+            })
             .collect()
     }
     pub async fn album_create(
@@ -108,19 +116,30 @@ impl Library {
     }
 
     pub async fn album_add_media(&self, album_id: AlbumUuid, media_id: MediaUuid) -> Result<()> {
-        self.append_to_pending(Operation::AlbumMediaAdd { timestamp: Utc::now(), album_id, media_id })?;
+        self.append_to_pending(Operation::AlbumMediaAdd {
+            timestamp: Utc::now(),
+            album_id,
+            media_id,
+        })?;
         self.load_local_state().await?;
         Ok(())
     }
 
     pub async fn album_remove_media(&self, album_id: AlbumUuid, media_id: MediaUuid) -> Result<()> {
-        self.append_to_pending(Operation::AlbumMediaRemove { timestamp: Utc::now(), album_id, media_id })?;
+        self.append_to_pending(Operation::AlbumMediaRemove {
+            timestamp: Utc::now(),
+            album_id,
+            media_id,
+        })?;
         self.load_local_state().await?;
         Ok(())
     }
 
     pub async fn album_delete(&self, album_id: AlbumUuid) -> Result<()> {
-        self.append_to_pending(Operation::AlbumDeletion { timestamp: Utc::now(), album_id })?;
+        self.append_to_pending(Operation::AlbumDeletion {
+            timestamp: Utc::now(),
+            album_id,
+        })?;
         self.load_local_state().await?;
         Ok(())
     }
@@ -150,18 +169,12 @@ impl Library {
 
     pub fn album_items_count(&self, album_id: AlbumUuid) -> Result<usize> {
         let state = self.inner.operation_state.read();
-        let media_count = state
+        state
             .views
-            .by_album
+            .album_items_newest
             .get(&album_id)
-            .ok_or(LibraryError::AlbumNotFound(album_id))?
-            .len();
-        let group_count = state
-            .views
-            .groups_by_album
-            .get(&album_id)
-            .map_or(0, Vec::len);
-        Ok(media_count + group_count)
+            .map(Vec::len)
+            .ok_or(LibraryError::AlbumNotFound(album_id))
     }
 
     /// Returns the inclusive range of media and groups in an album, ordered by
@@ -177,67 +190,76 @@ impl Library {
             return Ok(Vec::new());
         }
         let state = self.inner.operation_state.read();
-        let media_ids = state
+        let items = state
             .views
-            .by_album
+            .album_items_newest
             .get(&album_id)
             .ok_or(LibraryError::AlbumNotFound(album_id))?;
-        let mut items = Vec::with_capacity(
-            media_ids.len() + state.views.groups_by_album.get(&album_id).map_or(0, Vec::len),
-        );
-        for media_id in media_ids {
-            let Some(media) = state.reconstructed.media.get(media_id) else {
-                continue;
-            };
-            let group_ids = state
-                .views
-                .media_group_membership
-                .get(media_id)
-                .cloned()
-                .unwrap_or_default();
-            let entry = MediaEntry::from_state(media, group_ids);
-            items.push(DatedAlbumItem {
-                effective_date: entry.date,
-                item: AlbumItem::Media(entry),
-            });
-        }
-        if let Some(group_ids) = state.views.groups_by_album.get(&album_id) {
-            for group_id in group_ids {
-                let Some(group) = state.reconstructed.groups.get(group_id) else {
-                    continue;
-                };
-                let effective_date = group
-                    .media_ids
+        let selected: Vec<&AlbumBrowseItem> = if ascending {
+            if pos_start_inclusive >= items.len() {
+                Vec::new()
+            } else {
+                let canonical_start = items.len() - 1 - pos_end_inclusive.min(items.len() - 1);
+                let canonical_end = items.len() - 1 - pos_start_inclusive;
+                inclusive_slice(items, canonical_start, canonical_end)
+                    .unwrap_or_default()
                     .iter()
-                    .filter_map(|media_id| state.reconstructed.media.get(media_id).map(|media| media.date))
-                    .max()
-                    .unwrap_or_default();
-                items.push(DatedAlbumItem {
-                    item: AlbumItem::Group(group.clone()),
-                    effective_date,
-                });
+                    .rev()
+                    .collect()
             }
-        }
-        items.sort_by(|a, b| {
-            let date_order = a.effective_date.cmp(&b.effective_date);
-            let order = if ascending { date_order } else { date_order.reverse() };
-            order.then_with(|| a.tie_breaker().cmp(&b.tie_breaker()))
-        });
-        let take_count = pos_end_inclusive - pos_start_inclusive + 1;
-        Ok(items
+        } else {
+            inclusive_slice(items, pos_start_inclusive, pos_end_inclusive)
+                .unwrap_or_default()
+                .iter()
+                .collect()
+        };
+        Ok(selected
             .into_iter()
-            .skip(pos_start_inclusive)
-            .take(take_count)
+            .filter_map(|item| match item {
+                AlbumBrowseItem::Media(media_id) => {
+                    let media = state.reconstructed.media.get(media_id)?;
+                    let group_ids = state
+                        .views
+                        .media_group_membership
+                        .get(media_id)
+                        .cloned()
+                        .unwrap_or_default();
+                    Some(DatedAlbumItem {
+                        item: AlbumItem::Media(MediaEntry::from_state(media, group_ids)),
+                        effective_date: media.date,
+                    })
+                }
+                AlbumBrowseItem::Group(group_id) => {
+                    let group = state.reconstructed.groups.get(group_id)?;
+                    let effective_date = group
+                        .media_ids
+                        .iter()
+                        .filter_map(|media_id| {
+                            state
+                                .reconstructed
+                                .media
+                                .get(media_id)
+                                .map(|media| media.date)
+                        })
+                        .max()
+                        .unwrap_or_default();
+                    Some(DatedAlbumItem {
+                        item: AlbumItem::Group(group.clone()),
+                        effective_date,
+                    })
+                }
+            })
             .collect())
     }
 
     pub fn album_list(&self) -> Vec<AlbumSummary> {
         let state = self.inner.operation_state.read();
         state
-            .reconstructed
-            .albums
+            .views
+            .album_albums_by_name
             .values()
-            .filter(|entry| !entry.deleted)
+            .flatten()
+            .filter_map(|album_id| state.reconstructed.albums.get(album_id))
             .map(|entry| AlbumSummary {
                 album_id: entry.album_id,
                 album_id_parent: entry.album_id_parent,
@@ -280,12 +302,20 @@ impl Library {
                 return Err(LibraryError::AlbumNotFound(album_id));
             }
         }
-        self.append_to_pending(Operation::AlbumRename { timestamp: Utc::now(), album_id, name })?;
+        self.append_to_pending(Operation::AlbumRename {
+            timestamp: Utc::now(),
+            album_id,
+            name,
+        })?;
         self.load_local_state().await?;
         Ok(())
     }
 
-    pub async fn album_reparent(&self, album_id: AlbumUuid, new_parent_id: Option<AlbumUuid>) -> Result<()> {
+    pub async fn album_reparent(
+        &self,
+        album_id: AlbumUuid,
+        new_parent_id: Option<AlbumUuid>,
+    ) -> Result<()> {
         {
             let state = self.inner.operation_state.read();
             if !state.reconstructed.albums.contains_key(&album_id) {
@@ -304,11 +334,19 @@ impl Library {
                     if !visited.insert(c) {
                         break;
                     }
-                    cursor = state.reconstructed.albums.get(&c).and_then(|e| e.album_id_parent);
+                    cursor = state
+                        .reconstructed
+                        .albums
+                        .get(&c)
+                        .and_then(|e| e.album_id_parent);
                 }
             }
         }
-        self.append_to_pending(Operation::AlbumReparent { timestamp: Utc::now(), album_id, new_parent_id })?;
+        self.append_to_pending(Operation::AlbumReparent {
+            timestamp: Utc::now(),
+            album_id,
+            new_parent_id,
+        })?;
         self.load_local_state().await?;
         Ok(())
     }
@@ -348,23 +386,39 @@ impl Library {
     }
 
     /// Return (name, parent_id, media_count, thumbnail_media_id) for a non-deleted album, or None.
-    pub fn album_node_by_id(&self, album_id: AlbumUuid) -> Option<(AlbumName, Option<AlbumUuid>, usize, Option<MediaUuid>)> {
+    pub fn album_node_by_id(
+        &self,
+        album_id: AlbumUuid,
+    ) -> Option<(AlbumName, Option<AlbumUuid>, usize, Option<MediaUuid>)> {
         let state = self.inner.operation_state.read();
         let entry = state.reconstructed.albums.get(&album_id)?;
         if entry.deleted {
             return None;
         }
-        Some((entry.name.clone(), entry.album_id_parent, entry.media_ids.len(), entry.thumbnail_media_id))
+        Some((
+            entry.name.clone(),
+            entry.album_id_parent,
+            entry.media_ids.len(),
+            entry.thumbnail_media_id,
+        ))
     }
 
-    pub async fn album_set_thumbnail(&self, album_id: AlbumUuid, media_id: Option<MediaUuid>) -> Result<()> {
+    pub async fn album_set_thumbnail(
+        &self,
+        album_id: AlbumUuid,
+        media_id: Option<MediaUuid>,
+    ) -> Result<()> {
         {
             let state = self.inner.operation_state.read();
             if !state.reconstructed.albums.contains_key(&album_id) {
                 return Err(LibraryError::AlbumNotFound(album_id));
             }
         }
-        self.append_to_pending(Operation::AlbumThumbnailSet { timestamp: Utc::now(), album_id, media_id })?;
+        self.append_to_pending(Operation::AlbumThumbnailSet {
+            timestamp: Utc::now(),
+            album_id,
+            media_id,
+        })?;
         self.load_local_state().await?;
         Ok(())
     }
@@ -390,7 +444,6 @@ impl Library {
             )),
         }
     }
-
 }
 
 #[cfg(test)]
@@ -402,9 +455,9 @@ mod tests {
 
     use crate::error::LibraryError;
     use crate::identifiers::LibraryId;
-    use crate::library::{Credentials, Library};
-    use crate::library::media::upload::MediaAddSource;
     use crate::library::local_dirs::LocalDirs;
+    use crate::library::media::upload::MediaAddSource;
+    use crate::library::{Credentials, Library};
 
     async fn make_library(tmp: &TempDir) -> (Library, LocalDirs) {
         use crate::operations::{LibraryPassword, LibraryUsername};
@@ -437,8 +490,14 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let (lib, _) = make_library(&tmp).await;
 
-        let parent_id = lib.album_create(AlbumName("Parent".into()), None).await.unwrap();
-        let child_id = lib.album_create(AlbumName("Child".into()), Some(parent_id)).await.unwrap();
+        let parent_id = lib
+            .album_create(AlbumName("Parent".into()), None)
+            .await
+            .unwrap();
+        let child_id = lib
+            .album_create(AlbumName("Child".into()), Some(parent_id))
+            .await
+            .unwrap();
 
         let albums = lib.album_list();
         assert_eq!(albums.len(), 2);
@@ -453,8 +512,14 @@ mod tests {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
         let (lib, _) = make_library(&tmp).await;
-        let zulu = lib.album_create(AlbumName("Zulu".into()), None).await.unwrap();
-        let alpha = lib.album_create(AlbumName("Alpha".into()), None).await.unwrap();
+        let zulu = lib
+            .album_create(AlbumName("Zulu".into()), None)
+            .await
+            .unwrap();
+        let alpha = lib
+            .album_create(AlbumName("Alpha".into()), None)
+            .await
+            .unwrap();
         let _nested = lib
             .album_create(AlbumName("Nested".into()), Some(alpha))
             .await
@@ -477,7 +542,17 @@ mod tests {
 
         let album_id = lib.album_create(AlbumName("A".into()), None).await.unwrap();
         let src = write_file(tmp.path(), "photo.jpg", b"data");
-        let media_id = lib.media_add(MediaAddSource::CopyFrom(src), Some(album_id), None, None, None).await.unwrap().id();
+        let media_id = lib
+            .media_add(
+                MediaAddSource::CopyFrom(src),
+                Some(album_id),
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap()
+            .id();
 
         let media = lib.album_list_media(album_id).unwrap();
         assert_eq!(media.len(), 1);
@@ -493,7 +568,17 @@ mod tests {
 
         let album_id = lib.album_create(AlbumName("A".into()), None).await.unwrap();
         let src = write_file(tmp.path(), "photo.jpg", b"data");
-        let media_id = lib.media_add(MediaAddSource::CopyFrom(src), Some(album_id), None, None, None).await.unwrap().id();
+        let media_id = lib
+            .media_add(
+                MediaAddSource::CopyFrom(src),
+                Some(album_id),
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap()
+            .id();
         lib.album_remove_media(album_id, media_id).await.unwrap();
 
         let media = lib.album_list_media(album_id).unwrap();
@@ -507,7 +592,10 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let (lib, _) = make_library(&tmp).await;
 
-        let album_id = lib.album_create(AlbumName("Deletable".into()), None).await.unwrap();
+        let album_id = lib
+            .album_create(AlbumName("Deletable".into()), None)
+            .await
+            .unwrap();
         lib.album_delete(album_id).await.unwrap();
 
         let albums = lib.album_list();
@@ -521,13 +609,30 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let (lib, _) = make_library(&tmp).await;
 
-        let album_id = lib.album_create(AlbumName("Upload".into()), None).await.unwrap();
+        let album_id = lib
+            .album_create(AlbumName("Upload".into()), None)
+            .await
+            .unwrap();
         let src = write_file(tmp.path(), "img.jpg", b"pixels");
-        let media_id = lib.media_add(MediaAddSource::CopyFrom(src), Some(album_id), None, None, None).await.unwrap().id();
+        let media_id = lib
+            .media_add(
+                MediaAddSource::CopyFrom(src),
+                Some(album_id),
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap()
+            .id();
 
         let state = lib.inner.operation_state.read();
         let by_album = &state.views.by_album;
-        assert!(by_album.get(&album_id).map_or(false, |ids| ids.contains(&media_id)));
+        assert!(
+            by_album
+                .get(&album_id)
+                .map_or(false, |ids| ids.contains(&media_id))
+        );
     }
 
     #[tokio::test]
@@ -540,7 +645,17 @@ mod tests {
         let album_a = lib.album_create(AlbumName("A".into()), None).await.unwrap();
         let album_b = lib.album_create(AlbumName("B".into()), None).await.unwrap();
         let src = write_file(tmp.path(), "img.jpg", b"pixels");
-        let media_id = lib.media_add(MediaAddSource::CopyFrom(src), Some(album_a), None, None, None).await.unwrap().id();
+        let media_id = lib
+            .media_add(
+                MediaAddSource::CopyFrom(src),
+                Some(album_a),
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap()
+            .id();
 
         lib.album_add_media(album_b, media_id).await.unwrap();
         let media_b = lib.album_list_media(album_b).unwrap();
@@ -631,7 +746,10 @@ mod tests {
         lib.load_local_state().await.unwrap();
 
         let result = lib.album_resolve_name(&album_name);
-        assert!(matches!(result, Err(LibraryError::AlbumNameAmbiguous(_, _))));
+        assert!(matches!(
+            result,
+            Err(LibraryError::AlbumNameAmbiguous(_, _))
+        ));
 
         if let Err(LibraryError::AlbumNameAmbiguous(_, matches)) = result {
             assert_eq!(matches.len(), 2);
@@ -687,11 +805,24 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let (lib, _) = make_library(&tmp).await;
 
-        let album_id = lib.album_create(AlbumName("Before".into()), None).await.unwrap();
-        lib.album_rename(album_id, AlbumName("After".into())).await.unwrap();
+        let album_id = lib
+            .album_create(AlbumName("Before".into()), None)
+            .await
+            .unwrap();
+        lib.album_rename(album_id, AlbumName("After".into()))
+            .await
+            .unwrap();
 
         let albums = lib.album_list();
-        assert_eq!(albums.iter().find(|a| a.album_id == album_id).unwrap().name.0, "After");
+        assert_eq!(
+            albums
+                .iter()
+                .find(|a| a.album_id == album_id)
+                .unwrap()
+                .name
+                .0,
+            "After"
+        );
     }
 
     #[tokio::test]
@@ -703,7 +834,10 @@ mod tests {
         let (lib, _) = make_library(&tmp).await;
 
         let fake_id = AlbumUuid::from_uuid(uuid::Uuid::new_v4());
-        let err = lib.album_rename(fake_id, AlbumName("X".into())).await.unwrap_err();
+        let err = lib
+            .album_rename(fake_id, AlbumName("X".into()))
+            .await
+            .unwrap_err();
         assert!(matches!(err, LibraryError::AlbumNotFound(_)));
     }
 
@@ -716,7 +850,10 @@ mod tests {
 
         let root_a = lib.album_create(AlbumName("A".into()), None).await.unwrap();
         let root_b = lib.album_create(AlbumName("B".into()), None).await.unwrap();
-        let child = lib.album_create(AlbumName("C".into()), Some(root_a)).await.unwrap();
+        let child = lib
+            .album_create(AlbumName("C".into()), Some(root_a))
+            .await
+            .unwrap();
 
         lib.album_reparent(child, Some(root_b)).await.unwrap();
 
@@ -734,7 +871,10 @@ mod tests {
         let (lib, _) = make_library(&tmp).await;
 
         let album_id = lib.album_create(AlbumName("A".into()), None).await.unwrap();
-        let err = lib.album_reparent(album_id, Some(album_id)).await.unwrap_err();
+        let err = lib
+            .album_reparent(album_id, Some(album_id))
+            .await
+            .unwrap_err();
         assert!(matches!(err, LibraryError::AlbumReparentWouldCycle));
     }
 
@@ -746,7 +886,10 @@ mod tests {
         let (lib, _) = make_library(&tmp).await;
 
         let parent = lib.album_create(AlbumName("P".into()), None).await.unwrap();
-        let child = lib.album_create(AlbumName("C".into()), Some(parent)).await.unwrap();
+        let child = lib
+            .album_create(AlbumName("C".into()), Some(parent))
+            .await
+            .unwrap();
 
         let err = lib.album_reparent(parent, Some(child)).await.unwrap_err();
         assert!(matches!(err, LibraryError::AlbumReparentWouldCycle));
@@ -761,7 +904,9 @@ mod tests {
 
         lib.album_create(AlbumName("A".into()), None).await.unwrap();
         let parent = lib.album_create(AlbumName("B".into()), None).await.unwrap();
-        lib.album_create(AlbumName("C".into()), Some(parent)).await.unwrap();
+        lib.album_create(AlbumName("C".into()), Some(parent))
+            .await
+            .unwrap();
 
         assert!(lib.album_disconnected_ids().is_empty());
     }

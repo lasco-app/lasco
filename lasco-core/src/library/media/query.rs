@@ -2,8 +2,8 @@ use std::path::Path;
 
 use chrono::Utc;
 
-use crate::encryption::blob::decrypt_blob;
 use crate::encryption::blob::BlobEncrypted;
+use crate::encryption::blob::decrypt_blob;
 use crate::encryption::blob_key::derive_blob_key;
 use crate::error::{LibraryError, OperationError};
 use crate::identifiers::{AlbumUuid, GroupUuid, MediaUuid};
@@ -48,12 +48,11 @@ impl Library {
     /// Returns primary visible media ordered by date descending, then ID descending.
     pub fn media_by_date_count(&self, orphaned: bool) -> usize {
         let state = self.inner.operation_state.read();
-        let index = if orphaned {
-            &state.views.orphaned_media_by_date
+        if orphaned {
+            state.views.home_orphaned_newest.len()
         } else {
-            &state.views.visible_media_by_date
-        };
-        index.values().map(Vec::len).sum()
+            state.views.home_visible_newest.len()
+        }
     }
 
     /// Returns the inclusive position range from the canonical home-media order.
@@ -67,18 +66,16 @@ impl Library {
             return Vec::new();
         }
         let state = self.inner.operation_state.read();
-        let index = if orphaned {
-            &state.views.orphaned_media_by_date
+        let ids = if orphaned {
+            &state.views.home_orphaned_newest
         } else {
-            &state.views.visible_media_by_date
+            &state.views.home_visible_newest
         };
-        let take_count = pos_end_inclusive - pos_start_inclusive + 1;
-        index
+        let Some(range) = inclusive_slice(ids, pos_start_inclusive, pos_end_inclusive) else {
+            return Vec::new();
+        };
+        range
             .iter()
-            .rev()
-            .flat_map(|(_, ids)| ids.iter().rev())
-            .skip(pos_start_inclusive)
-            .take(take_count)
             .filter_map(|media_id| {
                 let entry = state.reconstructed.media.get(media_id)?;
                 let group_ids = state
@@ -444,6 +441,13 @@ impl Library {
     }
 }
 
+fn inclusive_slice<T>(items: &[T], start: usize, end: usize) -> Option<&[T]> {
+    if start > end || start >= items.len() {
+        return None;
+    }
+    items.get(start..=end.min(items.len() - 1))
+}
+
 fn write_dest(path: &Path, data: &[u8]) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -454,8 +458,8 @@ fn write_dest(path: &Path, data: &[u8]) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use crate::identifiers::LibraryId;
-    use crate::library::local_dirs::LocalDirs;
     use crate::library::Credentials;
+    use crate::library::local_dirs::LocalDirs;
     use crate::operations::MediaFilename;
     use tempfile::TempDir;
     use uuid::Uuid;
@@ -617,16 +621,18 @@ mod tests {
         assert!(!visible.iter().any(|entry| entry.media_id == companion_id));
 
         lib.album_add_media(album_id, orphan_id).await.unwrap();
-        assert!(!lib
-            .media_list(MediaListScope::Orphaned)
-            .iter()
-            .any(|entry| entry.media_id == orphan_id));
+        assert!(
+            !lib.media_list(MediaListScope::Orphaned)
+                .iter()
+                .any(|entry| entry.media_id == orphan_id)
+        );
 
         lib.album_remove_media(album_id, orphan_id).await.unwrap();
-        assert!(lib
-            .media_list(MediaListScope::Orphaned)
-            .iter()
-            .any(|entry| entry.media_id == orphan_id));
+        assert!(
+            lib.media_list(MediaListScope::Orphaned)
+                .iter()
+                .any(|entry| entry.media_id == orphan_id)
+        );
     }
 
     #[tokio::test]
@@ -662,10 +668,11 @@ mod tests {
 
         lib.album_remove_media(album_id, media_id).await.unwrap();
 
-        assert!(!lib
-            .media_list(MediaListScope::Reachable)
-            .iter()
-            .any(|e| e.media_id == media_id));
+        assert!(
+            !lib.media_list(MediaListScope::Reachable)
+                .iter()
+                .any(|e| e.media_id == media_id)
+        );
         let entry = lib.media_show(media_id).unwrap();
         assert_eq!(entry.media_id, media_id);
         assert_eq!(entry.filename_original, MediaFilename("img.jpg".into()));
