@@ -21,6 +21,18 @@ fn album_summary_to_ffi(a: AlbumSummary) -> FfiAlbum {
     }
 }
 
+fn disconnected_album_to_ffi(library: &FfiLibrary, id: AlbumUuid) -> Option<FfiAlbum> {
+    library.inner.album_node_by_id(id).map(|(name, parent_id, media_count, thumbnail_media_id)| FfiAlbum {
+        album_id: id.to_string(),
+        name: name.0,
+        parent_album_id: parent_id.map(|p| p.to_string()),
+        media_count: media_count as u32,
+        deleted: false,
+        is_disconnected: true,
+        thumbnail_media_id: thumbnail_media_id.map(|m| m.to_string()),
+    })
+}
+
 fn dated_album_item_to_ffi(item: DatedAlbumItem) -> FfiAlbumItem {
     let effective_date = item.effective_date.to_rfc3339();
     match item.item {
@@ -56,19 +68,7 @@ impl FfiLibrary {
                 thumbnail_media_id: a.thumbnail_media_id.map(|m| m.to_string()),
             })
             .collect();
-        for id in self.inner.album_disconnected_ids() {
-            if let Some((name, parent_id, media_count, thumbnail_media_id)) = self.inner.album_node_by_id(id) {
-                albums.push(FfiAlbum {
-                    album_id: id.to_string(),
-                    name: name.0,
-                    parent_album_id: parent_id.map(|p| p.to_string()),
-                    media_count: media_count as u32,
-                    deleted: false,
-                    is_disconnected: true,
-                    thumbnail_media_id: thumbnail_media_id.map(|m| m.to_string()),
-                });
-            }
-        }
+        albums.extend(self.inner.album_disconnected_ids().into_iter().filter_map(|id| disconnected_album_to_ffi(self, id)));
         Ok(albums)
     }
 
@@ -98,6 +98,28 @@ impl FfiLibrary {
             .album_albums_range(parent, start, end)
             .into_iter()
             .map(album_summary_to_ffi)
+            .collect())
+    }
+
+    pub fn disconnected_albums_count(&self) -> u32 {
+        self.inner.album_disconnected_ids().len() as u32
+    }
+
+    /// Returns disconnected albums in the same order as `list_albums`.
+    /// Positions are zero-based and both ends of the range are inclusive.
+    pub fn disconnected_albums_range(
+        &self,
+        pos_start_inclusive: u32,
+        pos_end_inclusive: u32,
+    ) -> Result<Vec<FfiAlbum>, LascoError> {
+        let (start, end) = inclusive_range(pos_start_inclusive, pos_end_inclusive)?;
+        Ok(self
+            .inner
+            .album_disconnected_ids()
+            .into_iter()
+            .skip(start)
+            .take(end.saturating_sub(start).saturating_add(1))
+            .filter_map(|id| disconnected_album_to_ffi(self, id))
             .collect())
     }
 

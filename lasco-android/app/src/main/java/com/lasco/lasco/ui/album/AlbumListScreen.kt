@@ -8,19 +8,19 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -38,14 +38,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.paging.LoadState
+import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.itemKey
 import com.lasco.lasco.data.LibraryRepository
 import com.lasco.lasco.media.MediaImporter
 import com.lasco.lasco.ui.components.AlbumCell
-import com.lasco.lasco.ui.components.AlbumPickerDialog
 import com.lasco.lasco.ui.components.LascoConfirmDialog
 import com.lasco.lasco.ui.components.LascoTextInputDialog
 import com.lasco.lasco.ui.components.MediaThumbnail
@@ -75,7 +76,8 @@ data class AlbumPickerState(
  */
 @Composable
 fun AlbumListScreen(
-    album: FfiAlbum?,
+    albumId: String?,
+    albumName: String? = null,
     modifier: Modifier = Modifier,
     title: String = "ALBUMS",
     backLabel: String? = null,
@@ -85,36 +87,30 @@ fun AlbumListScreen(
     pickerState: AlbumPickerState? = null,
     onPickerVisibleChange: (Boolean) -> Unit = {},
     viewModel: AlbumViewModel = viewModel(
-        key = album?.albumId ?: "root",
-        factory = AlbumViewModel.factory(album?.albumId),
+        key = albumId ?: "root",
+        factory = AlbumViewModel.factory(albumId),
     ),
 ) {
     val colors = LascoTheme.colors
     val repo = LibraryRepository.from(LocalContext.current)
     val scope = rememberCoroutineScope()
 
-    val allAlbums by viewModel.allAlbums.collectAsStateWithLifecycle()
-    val items by viewModel.items.collectAsStateWithLifecycle()
+    val entries = viewModel.entries.collectAsLazyPagingItems()
     val sortAscending by viewModel.sortAscending.collectAsStateWithLifecycle()
-
-    val childAlbums = remember(allAlbums, album) {
-        allAlbums.filter { it.parentAlbumId == album?.albumId && !it.deleted && !it.isDisconnected }
-    }
-    val disconnectedAlbums = remember(allAlbums, album) {
-        if (album == null) allAlbums.filter { it.isDisconnected && !it.deleted } else emptyList()
-    }
 
     var isGridLayout by remember { mutableStateOf(true) }
 
     var selectedMediaIds by remember { mutableStateOf(setOf<String>()) }
     var selectedGroupIds by remember { mutableStateOf(setOf<String>()) }
     var selectedAlbumIds by remember { mutableStateOf(setOf<String>()) }
+    var selectedAlbumNames by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     val isSelecting = selectedMediaIds.isNotEmpty() || selectedGroupIds.isNotEmpty() || selectedAlbumIds.isNotEmpty()
 
     fun clearSelection() {
         selectedMediaIds = emptySet()
         selectedGroupIds = emptySet()
         selectedAlbumIds = emptySet()
+        selectedAlbumNames = emptyMap()
     }
     fun toggleMedia(id: String) {
         if (selectedAlbumIds.isNotEmpty()) return
@@ -144,7 +140,6 @@ fun AlbumListScreen(
 
     val context = LocalContext.current
     fun importUris(uris: List<Uri>) {
-        val albumId = album?.albumId
         if (uris.isNotEmpty() && albumId != null) {
             isImporting = true
             scope.launch {
@@ -167,8 +162,8 @@ fun AlbumListScreen(
             onConfirm = { name ->
                 showNewAlbumDialog = false
                 scope.launch {
-                    val id = repo.createAlbum(name, album?.albumId)
-                    repo.allAlbums().firstOrNull { it.albumId == id }?.let(onOpenChild)
+                    val id = repo.createAlbum(name, albumId)
+                    onOpenChild(FfiAlbum(id, name, albumId, 0u, false, false, null))
                 }
             },
             onCancel = { showNewAlbumDialog = false },
@@ -176,15 +171,16 @@ fun AlbumListScreen(
     }
 
     if (showRenameDialog && selectedAlbumIds.size == 1) {
-        val target = allAlbums.firstOrNull { it.albumId == selectedAlbumIds.first() }
-        if (target != null) {
+        val targetId = selectedAlbumIds.first()
+        val targetName = selectedAlbumNames[targetId]
+        if (targetName != null) {
             LascoTextInputDialog(
                 title = "Rename album",
                 fieldLabel = "Album name",
-                initialValue = target.name,
+                initialValue = targetName,
                 onConfirm = { name ->
                     showRenameDialog = false
-                    scope.launch { repo.renameAlbum(target.albumId, name) }
+                    scope.launch { repo.renameAlbum(targetId, name) }
                     clearSelection()
                 },
                 onCancel = { showRenameDialog = false },
@@ -192,23 +188,20 @@ fun AlbumListScreen(
         }
     }
 
-    if (showMovePicker) {
-        AlbumPickerDialog(
-            title = "Move to",
-            albums = allAlbums.filter { it.albumId !in selectedAlbumIds && !it.deleted },
-            onSelect = { target ->
-                showMovePicker = false
-                scope.launch {
-                    if (album != null) {
-                        for (id in selectedMediaIds) repo.moveMediaToAlbum(id, album.albumId, target.albumId)
-                    }
-                    for (id in selectedAlbumIds) repo.reparentAlbum(id, target.albumId)
-                    clearSelection()
-                }
-            },
-            onCancel = { showMovePicker = false },
-        )
-    }
+    // The move destination is a navigable paged picker; it never needs a full album tree.
+    if (showMovePicker) MoveDestinationPicker(
+        excludedIds = selectedAlbumIds,
+        onSelect = { target ->
+            showMovePicker = false
+            scope.launch {
+                if (albumId != null) for (id in selectedMediaIds) repo.moveMediaToAlbum(id, albumId, target.albumId)
+                for (id in selectedAlbumIds) repo.reparentAlbum(id, target.albumId)
+                clearSelection()
+            }
+        },
+        onCancel = { showMovePicker = false },
+        modifier = Modifier.fillMaxSize(),
+    )
 
     if (showDeleteConfirm) {
         LascoConfirmDialog(
@@ -218,8 +211,8 @@ fun AlbumListScreen(
                 showDeleteConfirm = false
                 scope.launch {
                     for (id in selectedAlbumIds) repo.deleteAlbum(id)
-                    if (album != null) {
-                        for (id in selectedGroupIds) repo.deleteGroup(id, album.albumId)
+                    if (albumId != null) {
+                        for (id in selectedGroupIds) repo.deleteGroup(id, albumId)
                     }
                     clearSelection()
                 }
@@ -228,16 +221,16 @@ fun AlbumListScreen(
         )
     }
 
-    if (showThumbnailPicker && album != null) {
+    if (showThumbnailPicker && albumId != null) {
         LaunchedEffect(showThumbnailPicker) {
-            thumbnailPickerMedia = repo.mediaInAlbum(album.albumId)
+            thumbnailPickerMedia = repo.mediaInAlbum(albumId)
         }
         ThumbnailPickerDialog(
             media = thumbnailPickerMedia,
             repo = repo,
             onPick = { mediaId ->
                 showThumbnailPicker = false
-                scope.launch { repo.setAlbumThumbnail(album.albumId, mediaId) }
+                scope.launch { repo.setAlbumThumbnail(albumId, mediaId) }
             },
             onCancel = { showThumbnailPicker = false },
         )
@@ -254,24 +247,24 @@ fun AlbumListScreen(
             AlbumSelectionBar(
                 count = selectedMediaIds.size + selectedGroupIds.size + selectedAlbumIds.size,
                 canRename = selectedAlbumIds.size == 1,
-                canGroup = album != null && selectedMediaIds.size >= 2 && selectedGroupIds.isEmpty() && selectedAlbumIds.isEmpty(),
+                canGroup = albumId != null && selectedMediaIds.size >= 2 && selectedGroupIds.isEmpty() && selectedAlbumIds.isEmpty(),
                 canMove = selectedGroupIds.isEmpty() && (selectedMediaIds.isNotEmpty() || selectedAlbumIds.isNotEmpty()),
-                canRemove = album != null && selectedMediaIds.isNotEmpty() && selectedGroupIds.isEmpty() && selectedAlbumIds.isEmpty(),
+                canRemove = albumId != null && selectedMediaIds.isNotEmpty() && selectedGroupIds.isEmpty() && selectedAlbumIds.isEmpty(),
                 canDelete = selectedAlbumIds.isNotEmpty() || selectedGroupIds.isNotEmpty(),
                 onClose = { clearSelection() },
                 onRename = { showRenameDialog = true },
                 onGroup = {
-                    if (album != null) {
+                    if (albumId != null) {
                         val mediaIds = selectedMediaIds.toList()
-                        scope.launch { repo.createGroupFromSelectedMedia(mediaIds, album.albumId) }
+                        scope.launch { repo.createGroupFromSelectedMedia(mediaIds, albumId) }
                         clearSelection()
                     }
                 },
                 onMove = { showMovePicker = true },
                 onRemove = {
-                    if (album != null) {
+                    if (albumId != null) {
                         val mediaIds = selectedMediaIds.toList()
-                        scope.launch { for (id in mediaIds) repo.removeMediaFromAlbum(album.albumId, id) }
+                        scope.launch { for (id in mediaIds) repo.removeMediaFromAlbum(albumId, id) }
                         clearSelection()
                     }
                 },
@@ -282,28 +275,28 @@ fun AlbumListScreen(
                 title = title,
                 backLabel = backLabel,
                 onBack = onBack,
-                isAlbumView = album != null,
+                isAlbumView = albumId != null,
                 isGridLayout = isGridLayout,
                 onToggleLayout = { isGridLayout = !isGridLayout },
                 sortAscending = sortAscending,
                 onToggleSort = { viewModel.setSortAscending(!sortAscending) },
                 onNewAlbum = { showNewAlbumDialog = true },
-                onImportPhotos = if (album != null) {
+                onImportPhotos = if (albumId != null) {
                     { photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
                 } else {
                     null
                 },
-                onImportFiles = if (album != null) {
+                onImportFiles = if (albumId != null) {
                     { filePickerLauncher.launch(arrayOf("image/*", "video/*")) }
                 } else {
                     null
                 },
-                onAddFromLibrary = if (album != null) {
+                onAddFromLibrary = if (albumId != null) {
                     { showMediaPicker = true }
                 } else {
                     null
                 },
-                onSetThumbnail = if (album != null) {
+                onSetThumbnail = if (albumId != null) {
                     { showThumbnailPicker = true }
                 } else {
                     null
@@ -312,11 +305,18 @@ fun AlbumListScreen(
             )
         }
 
-        val isEmpty = childAlbums.isEmpty() && items.isEmpty() && disconnectedAlbums.isEmpty()
-        if (isEmpty) {
+        if (entries.loadState.refresh is LoadState.Loading && entries.itemCount == 0) {
+            Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = colors.ink)
+            }
+        } else if (entries.loadState.refresh is LoadState.Error && entries.itemCount == 0) {
+            Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                Text("Could not load albums. Tap to retry.", color = colors.inkMuted, modifier = Modifier.clickable { entries.retry() })
+            }
+        } else if (entries.itemCount == 0) {
             Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                 Text(
-                    text = if (album == null) "No albums yet." else "Empty album.",
+                    text = if (albumId == null) "No albums yet." else "Empty album.",
                     style = LascoTheme.type.body(),
                     color = colors.inkMuted,
                 )
@@ -324,20 +324,11 @@ fun AlbumListScreen(
         } else {
             BoxWithConstraints(modifier = Modifier.fillMaxWidth().weight(1f)) {
                 val columns = if (maxWidth > 500.dp) 3 else 2
-                val albumCellSpacing = 12.dp
-                val photoCellSpacing = 3.dp
-                val albumCellWidth = (maxWidth - albumCellSpacing * (columns - 1)) / columns
-                val photoCellWidth = (maxWidth - photoCellSpacing * (columns - 1)) / columns
-
-                AlbumSectionsContent(
-                    modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+                AlbumEntriesGrid(
+                    modifier = Modifier.fillMaxSize(),
                     repo = repo,
-                    albumCellWidth = albumCellWidth,
-                    photoCellWidth = photoCellWidth,
-                    childAlbums = childAlbums,
-                    disconnectedAlbums = disconnectedAlbums,
-                    allAlbums = allAlbums,
-                    items = items,
+                    columns = columns,
+                    entries = entries,
                     isGridLayout = isGridLayout,
                     selectedAlbumIds = selectedAlbumIds,
                     selectedMediaIds = pickerState?.selectedIds ?: selectedMediaIds,
@@ -347,12 +338,15 @@ fun AlbumListScreen(
                     onAlbumTap = { child ->
                         when {
                             pickerState != null -> onOpenChild(child)
-                            isSelecting -> toggleAlbum(child.albumId)
+                            isSelecting -> {
+                                selectedAlbumNames += child.albumId to child.name
+                                toggleAlbum(child.albumId)
+                            }
                             else -> onOpenChild(child)
                         }
                     },
-                    onAlbumLongPress = { if (pickerState == null) toggleAlbum(it.albumId) },
-                    onItemTap = { item, _ ->
+                    onAlbumLongPress = { child -> if (pickerState == null) { selectedAlbumNames += child.albumId to child.name; toggleAlbum(child.albumId) } },
+                    onItemTap = { item ->
                         val mediaId = item.media?.mediaId
                         val groupId = item.group?.groupId
                         when {
@@ -387,13 +381,13 @@ fun AlbumListScreen(
         }
     }
 
-    if (showMediaPicker && album != null) {
+    if (showMediaPicker && albumId != null) {
         AlbumMediaPickerScreen(
-            destAlbumName = album.name,
-            disabledIds = remember(items) { items.mapNotNull { it.media?.mediaId }.toSet() },
+            destAlbumName = albumName ?: "Album",
+            disabledIds = remember(entries.itemSnapshotList) { entries.itemSnapshotList.items.mapNotNull { (it as? AlbumEntry.Item)?.item?.media?.mediaId }.toSet() },
             onConfirm = { ids ->
                 showMediaPicker = false
-                scope.launch { for (id in ids) repo.addMediaToAlbum(album.albumId, id) }
+                scope.launch { for (id in ids) repo.addMediaToAlbum(albumId, id) }
             },
             onCancel = { showMediaPicker = false },
             modifier = Modifier.fillMaxSize(),
@@ -633,15 +627,11 @@ private fun AlbumSelectionBar(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun AlbumSectionsContent(
+private fun AlbumEntriesGrid(
     modifier: Modifier = Modifier,
     repo: LibraryRepository,
-    albumCellWidth: Dp,
-    photoCellWidth: Dp,
-    childAlbums: List<FfiAlbum>,
-    disconnectedAlbums: List<FfiAlbum>,
-    allAlbums: List<FfiAlbum>,
-    items: List<FfiAlbumItem>,
+    columns: Int,
+    entries: androidx.paging.compose.LazyPagingItems<AlbumEntry>,
     isGridLayout: Boolean,
     selectedAlbumIds: Set<String>,
     selectedMediaIds: Set<String>,
@@ -650,85 +640,94 @@ private fun AlbumSectionsContent(
     pickerState: AlbumPickerState? = null,
     onAlbumTap: (FfiAlbum) -> Unit,
     onAlbumLongPress: (FfiAlbum) -> Unit,
-    onItemTap: (FfiAlbumItem, Int) -> Unit,
-    onItemLongPress: (FfiAlbumItem) -> Unit,
+    onItemTap: (uniffi.lasco_ffi.FfiAlbumItem) -> Unit,
+    onItemLongPress: (uniffi.lasco_ffi.FfiAlbumItem) -> Unit,
 ) {
     val colors = LascoTheme.colors
-
-    fun parentInfoFor(disc: FfiAlbum): String {
-        val parentId = disc.parentAlbumId ?: return "No parent"
-        return allAlbums.firstOrNull { it.albumId == parentId }?.name ?: "Parent deleted"
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(columns),
+        state = rememberLazyGridState(),
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(if (isGridLayout) 3.dp else 12.dp),
+        verticalArrangement = Arrangement.spacedBy(if (isGridLayout) 3.dp else 12.dp),
+    ) {
+        items(
+            count = entries.itemCount,
+            key = entries.itemKey { it.key },
+            span = { index -> if (entries.peek(index) is AlbumEntry.DisconnectedHeader || !isGridLayout && entries.peek(index) is AlbumEntry.Item) GridItemSpan(maxLineSpan) else GridItemSpan(1) },
+        ) { index ->
+            when (val entry = entries[index]) {
+                is AlbumEntry.ChildAlbum -> AlbumCell(
+                    album = entry.album,
+                    repo = repo,
+                    isSelected = entry.album.albumId in selectedAlbumIds,
+                    onClick = { onAlbumTap(entry.album) },
+                    onLongClick = { onAlbumLongPress(entry.album) },
+                )
+                is AlbumEntry.Item -> {
+                    val item = entry.item
+                    val dimmed = pickerState != null && (item.group != null || item.media?.mediaId in pickerState.disabledIds)
+                    if (isGridLayout) AlbumItemCell(
+                        item, repo, isSelected = item.media?.mediaId in selectedMediaIds || item.group?.groupId in selectedGroupIds,
+                        dimmed = dimmed, onTap = { onItemTap(item) }, onLongPress = { onItemLongPress(item) },
+                    ) else AlbumItemRow(
+                        item, repo, isSelected = item.media?.mediaId in selectedMediaIds || item.group?.groupId in selectedGroupIds,
+                        dimmed = dimmed, onTap = { onItemTap(item) }, onLongPress = { onItemLongPress(item) },
+                    )
+                }
+                AlbumEntry.DisconnectedHeader -> Text(
+                    "DISCONNECTED", style = LascoTheme.type.categoryLarge(22), color = colors.ink,
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+                null -> Box(modifier = Modifier.fillMaxWidth().background(colors.surfaceAlt))
+            }
+        }
+        when (entries.loadState.append) {
+            is LoadState.Loading -> item(span = { GridItemSpan(maxLineSpan) }) { CircularProgressIndicator(color = colors.ink) }
+            is LoadState.Error -> item(span = { GridItemSpan(maxLineSpan) }) {
+                Text("Could not load more. Tap to retry.", color = colors.inkMuted, modifier = Modifier.clickable { entries.retry() })
+            }
+            else -> Unit
+        }
     }
+}
 
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(20.dp)) {
-        if (childAlbums.isNotEmpty()) {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                childAlbums.forEach { child ->
-                    AlbumCell(
-                        album = child,
-                        repo = repo,
-                        modifier = Modifier.width(albumCellWidth),
-                        isSelected = child.albumId in selectedAlbumIds,
-                        onClick = { onAlbumTap(child) },
-                        onLongClick = { onAlbumLongPress(child) },
-                    )
+/** A paged, navigable destination picker used for moving albums and media. */
+@Composable
+private fun MoveDestinationPicker(
+    excludedIds: Set<String>,
+    onSelect: (FfiAlbum) -> Unit,
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var current by remember { mutableStateOf<FfiAlbum?>(null) }
+    val viewModel: AlbumViewModel = viewModel(
+        key = "move:${current?.albumId ?: "root"}",
+        factory = AlbumViewModel.factory(current?.albumId),
+    )
+    val entries = viewModel.entries.collectAsLazyPagingItems()
+    val colors = LascoTheme.colors
+    Column(modifier = modifier.background(colors.bg).padding(20.dp)) {
+        Text("Move to", style = LascoTheme.type.categoryLarge(), color = colors.ink)
+        if (current != null) {
+            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+                Text("← ${current!!.name}", color = colors.inkMuted, modifier = Modifier.clickable { current = null })
+                Text("Move here", color = colors.ink, modifier = Modifier.padding(start = 20.dp).clickable { onSelect(current!!) })
+            }
+        } else Text("Open a destination album, then choose Move here.", color = colors.inkMuted, modifier = Modifier.padding(vertical = 12.dp))
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(2),
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            items(count = entries.itemCount, key = entries.itemKey { it.key }) { index ->
+                (entries[index] as? AlbumEntry.ChildAlbum)?.album?.let { child ->
+                    if (child.albumId !in excludedIds) AlbumCell(child, LibraryRepository.from(LocalContext.current), onClick = { current = child })
                 }
             }
         }
-
-        if (items.isNotEmpty()) {
-            if (isGridLayout) {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    items.forEachIndexed { index, item ->
-                        val dimmed = pickerState != null &&
-                            (item.group != null || item.media?.mediaId in pickerState.disabledIds)
-                        AlbumItemCell(
-                            item = item,
-                            repo = repo,
-                            modifier = Modifier.width(photoCellWidth),
-                            isSelected = (item.media?.mediaId != null && item.media?.mediaId in selectedMediaIds) ||
-                                (item.group?.groupId != null && item.group?.groupId in selectedGroupIds),
-                            dimmed = dimmed,
-                            onTap = { onItemTap(item, index) },
-                            onLongPress = { onItemLongPress(item) },
-                        )
-                    }
-                }
-            } else {
-                Column {
-                    items.forEachIndexed { index, item ->
-                        val dimmed = pickerState != null &&
-                            (item.group != null || item.media?.mediaId in pickerState.disabledIds)
-                        AlbumItemRow(
-                            item = item,
-                            repo = repo,
-                            isSelected = (item.media?.mediaId != null && item.media?.mediaId in selectedMediaIds) ||
-                                (item.group?.groupId != null && item.group?.groupId in selectedGroupIds),
-                            dimmed = dimmed,
-                            onTap = { onItemTap(item, index) },
-                            onLongPress = { onItemLongPress(item) },
-                        )
-                    }
-                }
-            }
-        }
-
-        if (disconnectedAlbums.isNotEmpty()) {
-            Text(text = "DISCONNECTED", style = LascoTheme.type.categoryLarge(22), color = colors.ink)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                disconnectedAlbums.forEach { disc ->
-                    AlbumCell(
-                        album = disc,
-                        repo = repo,
-                        modifier = Modifier.width(albumCellWidth),
-                        parentInfo = parentInfoFor(disc),
-                        isSelected = disc.albumId in selectedAlbumIds,
-                        onClick = { onAlbumTap(disc) },
-                        onLongClick = { onAlbumLongPress(disc) },
-                    )
-                }
-            }
-        }
+        Text("Cancel", color = colors.inkMuted, modifier = Modifier.padding(top = 12.dp).clickable { onCancel() })
     }
 }
 

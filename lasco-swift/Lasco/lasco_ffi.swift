@@ -594,6 +594,14 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     
     func deleteMedia(mediaId: String) throws 
     
+    func disconnectedAlbumsCount()  -> UInt32
+    
+    /**
+     * Returns disconnected albums in the same order as `list_albums`.
+     * Positions are zero-based and both ends of the range are inclusive.
+     */
+    func disconnectedAlbumsRange(posStartInclusive: UInt32, posEndInclusive: UInt32) throws  -> [FfiAlbum]
+    
     func evictLocalData(mediaIds: [String]) throws 
     
     func evictLocalThumbnails(mediaIds: [String]) throws 
@@ -937,6 +945,26 @@ nonisolated open func deleteMedia(mediaId: String)throws   {try rustCallWithErro
         FfiConverterString.lower(mediaId),$0
     )
 }
+}
+    
+nonisolated open func disconnectedAlbumsCount() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+    uniffi_lasco_ffi_fn_method_ffilibrary_disconnected_albums_count(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Returns disconnected albums in the same order as `list_albums`.
+     * Positions are zero-based and both ends of the range are inclusive.
+     */
+nonisolated open func disconnectedAlbumsRange(posStartInclusive: UInt32, posEndInclusive: UInt32)throws  -> [FfiAlbum]  {
+    return try  FfiConverterSequenceTypeFfiAlbum.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_disconnected_albums_range(self.uniffiClonePointer(),
+        FfiConverterUInt32.lower(posStartInclusive),
+        FfiConverterUInt32.lower(posEndInclusive),$0
+    )
+})
 }
     
 nonisolated open func evictLocalData(mediaIds: [String])throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
@@ -3265,6 +3293,12 @@ nonisolated private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_delete_media() != 33875) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_disconnected_albums_count() != 34428) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_disconnected_albums_range() != 48974) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_evict_local_data() != 54185) {

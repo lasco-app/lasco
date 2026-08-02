@@ -5,27 +5,20 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
-import com.lasco.lasco.data.Change
-import com.lasco.lasco.data.LibraryRepository
 import com.lasco.lasco.ui.media.MediaDetailKey
 import com.lasco.lasco.ui.media.MediaDetailScreen
 import kotlinx.serialization.Serializable
-import uniffi.lasco_ffi.FfiAlbum
 
 /** Nav 3 key for one Albums level, root (albumId null) or a specific album. */
 @Serializable
-data class AlbumKey(val albumId: String?) : NavKey
+data class AlbumKey(val albumId: String?, val albumName: String? = null) : NavKey
 
 /**
  * Nav-stack host for Albums, the Android equivalent of Swift's AlbumsView
@@ -43,12 +36,6 @@ fun AlbumsScreen(
     onOpenAlbum: (String) -> Unit = {},
     onPickerVisibleChange: (Boolean) -> Unit = {},
 ) {
-    val repo = LibraryRepository.from(LocalContext.current)
-    val allAlbums by remember { repo.watch(Change.AlbumList) { repo.allAlbums() } }
-        .collectAsState(initial = emptyList<FfiAlbum>())
-
-    fun nameOf(albumId: String): String = allAlbums.firstOrNull { it.albumId == albumId }?.name ?: ""
-
     NavDisplay(
         backStack = backStack,
         onBack = { backStack.removeLastOrNull() },
@@ -71,17 +58,17 @@ fun AlbumsScreen(
         },
         entryProvider = entryProvider {
             entry<AlbumKey> { key ->
-                val ids = backStack.filterIsInstance<AlbumKey>().mapNotNull { it.albumId }
-                val current = key.albumId?.let { id -> allAlbums.firstOrNull { it.albumId == id } }
-                val title = if (ids.isEmpty()) "ALBUMS" else ids.joinToString(" / ") { nameOf(it).uppercase() }
-                val backLabel = if (ids.size >= 2) nameOf(ids[ids.size - 2]) else "Albums"
+                val path = backStack.filterIsInstance<AlbumKey>().filter { it.albumId != null }
+                val title = if (path.isEmpty()) "ALBUMS" else path.joinToString(" / ") { it.albumName.orEmpty().uppercase() }
+                val backLabel = path.dropLast(1).lastOrNull()?.albumName ?: "Albums"
 
                 AlbumListScreen(
-                    album = current,
+                    albumId = key.albumId,
+                    albumName = key.albumName,
                     title = title,
                     backLabel = backLabel,
                     onBack = if (key.albumId != null) { { backStack.removeLastOrNull() } } else null,
-                    onOpenChild = { child -> backStack.add(AlbumKey(child.albumId)) },
+                    onOpenChild = { child -> backStack.add(AlbumKey(child.albumId, child.name)) },
                     onOpenMedia = { itemId ->
                         backStack.add(MediaDetailKey(sourceAlbumId = key.albumId, startMediaId = itemId))
                     },

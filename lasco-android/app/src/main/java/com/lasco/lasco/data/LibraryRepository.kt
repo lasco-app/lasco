@@ -176,6 +176,12 @@ class LibraryRepository(
         page(offset, limit) { start, end -> lib.albumAlbumsRange(parentAlbumId, start, end) }
     }
 
+    suspend fun disconnectedAlbumsCount(): Int = withContext(io) { lib.disconnectedAlbumsCount().toInt() }
+
+    suspend fun disconnectedAlbums(offset: Int, limit: Int): List<FfiAlbum> = withContext(io) {
+        page(offset, limit, lib::disconnectedAlbumsRange)
+    }
+
     /** Loads the navigation tree a page at a time, breadth first. */
     suspend fun allAlbums(): List<FfiAlbum> {
         val albums = mutableListOf<FfiAlbum>()

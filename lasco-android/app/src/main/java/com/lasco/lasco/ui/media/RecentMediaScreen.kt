@@ -18,7 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Switch
@@ -37,6 +37,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.paging.LoadState
+import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.itemKey
 import com.lasco.lasco.data.LibraryRepository
 import com.lasco.lasco.media.MediaImporter
 import com.lasco.lasco.ui.components.AlbumPickerDialog
@@ -57,8 +60,7 @@ fun RecentMediaScreen(
     viewModel: RecentMediaViewModel = viewModel(factory = RecentMediaViewModel.Factory),
 ) {
     val colors = LascoTheme.colors
-    val media by viewModel.media.collectAsStateWithLifecycle()
-    val hasMore by viewModel.hasMore.collectAsStateWithLifecycle()
+    val media = viewModel.media.collectAsLazyPagingItems()
     val showingOrphans by viewModel.showingOrphans.collectAsStateWithLifecycle()
     val repo = LibraryRepository.from(LocalContext.current)
     val scope = rememberCoroutineScope()
@@ -184,7 +186,19 @@ fun RecentMediaScreen(
 
         }
 
-        if (media.isEmpty()) {
+        if (media.loadState.refresh is LoadState.Loading && media.itemCount == 0) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                androidx.compose.material3.CircularProgressIndicator(color = colors.ink)
+            }
+        } else if (media.loadState.refresh is LoadState.Error && media.itemCount == 0) {
+            val error = media.loadState.refresh as LoadState.Error
+            Text(
+                text = "Could not load media: ${error.error.message ?: "Unknown error"}. Tap to retry.",
+                style = LascoTheme.type.body(),
+                color = colors.inkMuted,
+                modifier = Modifier.clickable { media.retry() },
+            )
+        } else if (media.itemCount == 0) {
             Text(
                 text = if (showingOrphans) "No orphan media." else "No media yet.",
                 style = LascoTheme.type.body(),
@@ -195,36 +209,41 @@ fun RecentMediaScreen(
                 val columns = if (maxWidth > 500.dp) 3 else 2
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(columns),
+                    state = rememberLazyGridState(),
                     horizontalArrangement = Arrangement.spacedBy(3.dp),
                     verticalArrangement = Arrangement.spacedBy(3.dp),
                 ) {
-                    items(media, key = { it.mediaId }) { item ->
-                        if (hasMore && item.mediaId == media.lastOrNull()?.mediaId) {
-                            LaunchedEffect(item.mediaId) { viewModel.loadMore() }
-                        }
-                        MediaGridCell(
-                            item = item,
-                            repo = repo,
-                            isSelected = selection.contains(item.mediaId),
-                            onTap = {
-                                if (isSelecting) {
-                                    selection = if (selection.contains(item.mediaId)) {
-                                        selection - item.mediaId
-                                    } else {
-                                        selection + item.mediaId
+                    items(count = media.itemCount, key = media.itemKey { it.mediaId }) { index ->
+                        media[index]?.let { item ->
+                            MediaGridCell(
+                                item = item,
+                                repo = repo,
+                                isSelected = selection.contains(item.mediaId),
+                                onTap = {
+                                    if (isSelecting) {
+                                        selection = if (selection.contains(item.mediaId)) selection - item.mediaId else selection + item.mediaId
+                                        if (selection.isEmpty()) isSelecting = false
+                                    } else onOpenMedia(item.mediaId)
+                                },
+                                onLongPress = {
+                                    if (!isSelecting) {
+                                        isSelecting = true
+                                        selection = setOf(item.mediaId)
                                     }
-                                    if (selection.isEmpty()) isSelecting = false
-                                } else {
-                                    onOpenMedia(item.mediaId)
-                                }
-                            },
-                            onLongPress = {
-                                if (!isSelecting) {
-                                    isSelecting = true
-                                    selection = setOf(item.mediaId)
-                                }
-                            },
-                        )
+                                },
+                            )
+                        } ?: Box(modifier = Modifier.fillMaxWidth().background(colors.surfaceAlt))
+                    }
+                    when (val append = media.loadState.append) {
+                        is LoadState.Loading -> item { androidx.compose.material3.CircularProgressIndicator(color = colors.ink) }
+                        is LoadState.Error -> item {
+                            Text(
+                                text = "Could not load more. Tap to retry.",
+                                color = colors.inkMuted,
+                                modifier = Modifier.clickable { media.retry() },
+                            )
+                        }
+                        else -> Unit
                     }
                 }
             }

@@ -12,14 +12,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
@@ -27,14 +25,11 @@ import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
-import com.lasco.lasco.data.Change
-import com.lasco.lasco.data.LibraryRepository
 import com.lasco.lasco.ui.theme.LascoTheme
 import kotlinx.serialization.Serializable
-import uniffi.lasco_ffi.FfiAlbum
 
 @Serializable
-private data class PickerAlbumKey(val albumId: String?) : NavKey
+private data class PickerAlbumKey(val albumId: String?, val albumName: String? = null) : NavKey
 
 /**
  * Full-screen, modal media picker for "Add file from library". Reuses
@@ -49,12 +44,6 @@ fun AlbumMediaPickerScreen(
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val repo = LibraryRepository.from(LocalContext.current)
-    val allAlbums by remember { repo.watch(Change.AlbumList) { repo.allAlbums() } }
-        .collectAsState(initial = emptyList<FfiAlbum>())
-
-    fun nameOf(albumId: String): String = allAlbums.firstOrNull { it.albumId == albumId }?.name ?: ""
-
     val backStack = rememberNavBackStack(PickerAlbumKey(null))
     var selectedIds by remember { mutableStateOf(setOf<String>()) }
 
@@ -74,17 +63,17 @@ fun AlbumMediaPickerScreen(
                 ),
                 entryProvider = entryProvider {
                     entry<PickerAlbumKey> { key ->
-                        val ids = backStack.filterIsInstance<PickerAlbumKey>().mapNotNull { it.albumId }
-                        val current = key.albumId?.let { id -> allAlbums.firstOrNull { it.albumId == id } }
-                        val title = if (ids.isEmpty()) "ALBUMS" else ids.joinToString(" / ") { nameOf(it).uppercase() }
-                        val backLabel = if (ids.size >= 2) nameOf(ids[ids.size - 2]) else "Albums"
+                        val path = backStack.filterIsInstance<PickerAlbumKey>().filter { it.albumId != null }
+                        val title = if (path.isEmpty()) "ALBUMS" else path.joinToString(" / ") { it.albumName.orEmpty().uppercase() }
+                        val backLabel = path.dropLast(1).lastOrNull()?.albumName ?: "Albums"
 
                         AlbumListScreen(
-                            album = current,
+                            albumId = key.albumId,
+                            albumName = key.albumName,
                             title = title,
                             backLabel = backLabel,
                             onBack = if (key.albumId != null) { { backStack.removeLastOrNull() } } else null,
-                            onOpenChild = { child -> backStack.add(PickerAlbumKey(child.albumId)) },
+                            onOpenChild = { child -> backStack.add(PickerAlbumKey(child.albumId, child.name)) },
                             pickerState = AlbumPickerState(
                                 disabledIds = disabledIds,
                                 selectedIds = selectedIds,

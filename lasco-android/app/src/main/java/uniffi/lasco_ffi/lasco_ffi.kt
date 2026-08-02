@@ -877,6 +877,10 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -943,6 +947,10 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_delete_album(
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_delete_group(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_delete_media(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_disconnected_albums_count(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_disconnected_albums_range(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_evict_local_data(
 ): Short
@@ -1141,6 +1149,10 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_delete_group(`ptr`: Pointer,`groupId`:
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_delete_media(`ptr`: Pointer,`mediaId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_lasco_ffi_fn_method_ffilibrary_disconnected_albums_count(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Int
+fun uniffi_lasco_ffi_fn_method_ffilibrary_disconnected_albums_range(`ptr`: Pointer,`posStartInclusive`: Int,`posEndInclusive`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_evict_local_data(`ptr`: Pointer,`mediaIds`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_evict_local_thumbnails(`ptr`: Pointer,`mediaIds`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1459,6 +1471,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_delete_media() != 33875.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_disconnected_albums_count() != 34428.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_disconnected_albums_range() != 48974.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_evict_local_data() != 54185.toShort()) {
@@ -2137,6 +2155,14 @@ public interface FfiLibraryInterface {
     
     fun `deleteMedia`(`mediaId`: kotlin.String)
     
+    fun `disconnectedAlbumsCount`(): kotlin.UInt
+    
+    /**
+     * Returns disconnected albums in the same order as `list_albums`.
+     * Positions are zero-based and both ends of the range are inclusive.
+     */
+    fun `disconnectedAlbumsRange`(`posStartInclusive`: kotlin.UInt, `posEndInclusive`: kotlin.UInt): List<FfiAlbum>
+    
     fun `evictLocalData`(`mediaIds`: List<kotlin.String>)
     
     fun `evictLocalThumbnails`(`mediaIds`: List<kotlin.String>)
@@ -2575,6 +2601,35 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
 }
     }
     
+    
+
+    override fun `disconnectedAlbumsCount`(): kotlin.UInt {
+            return FfiConverterUInt.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_disconnected_albums_count(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Returns disconnected albums in the same order as `list_albums`.
+     * Positions are zero-based and both ends of the range are inclusive.
+     */
+    @Throws(LascoException::class)override fun `disconnectedAlbumsRange`(`posStartInclusive`: kotlin.UInt, `posEndInclusive`: kotlin.UInt): List<FfiAlbum> {
+            return FfiConverterSequenceTypeFfiAlbum.lift(
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_disconnected_albums_range(
+        it, FfiConverterUInt.lower(`posStartInclusive`),FfiConverterUInt.lower(`posEndInclusive`),_status)
+}
+    }
+    )
+    }
     
 
     

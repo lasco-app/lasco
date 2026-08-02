@@ -6,93 +6,60 @@ import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.AP
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
+import androidx.paging.cachedIn
 import com.lasco.lasco.data.Change
 import com.lasco.lasco.data.LibraryRepository
+import com.lasco.lasco.data.OffsetPagingSource
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
 import uniffi.lasco_ffi.FfiMediaItem
 
-/**
- * Recent media grid, the Android equivalent of the Swift media list screen.
- * Subscribes to MediaList (and, for free, to the All wildcard on sync).
- */
-@OptIn(ExperimentalCoroutinesApi::class)
 class RecentMediaViewModel(
     private val repo: LibraryRepository,
 ) : ViewModel() {
-    private data class MediaPage(val items: List<FfiMediaItem>, val total: Int)
-
     private val _showingOrphans = MutableStateFlow(false)
     val showingOrphans: StateFlow<Boolean> = _showingOrphans.asStateFlow()
 
-    private val _media = MutableStateFlow<List<FfiMediaItem>>(emptyList())
-    val media: StateFlow<List<FfiMediaItem>> = _media.asStateFlow()
+    private var allSource: OffsetPagingSource<FfiMediaItem>? = null
+    private var orphanSource: OffsetPagingSource<FfiMediaItem>? = null
 
-    private val _hasMore = MutableStateFlow(false)
-    val hasMore: StateFlow<Boolean> = _hasMore.asStateFlow()
+    private val config = PagingConfig(pageSize = PAGE_SIZE, prefetchDistance = PREFETCH_DISTANCE, enablePlaceholders = true)
+    private val allPager = Pager(config) {
+        OffsetPagingSource(repo::mediaByDateCount, repo::mediaByDate).also { allSource = it }
+    }
+    private val orphanPager = Pager(config) {
+        OffsetPagingSource(repo::orphanMediaByDateCount, repo::orphanMediaByDate).also { orphanSource = it }
+    }
 
-    private var total = 0
-    private var loadingMore = false
-    private var generation = 0
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val media: Flow<PagingData<FfiMediaItem>> = showingOrphans
+        .flatMapLatest { if (it) orphanPager.flow else allPager.flow }
+        .cachedIn(viewModelScope)
 
     init {
         viewModelScope.launch {
-            showingOrphans.flatMapLatest { orphaned ->
-                repo.watch(Change.MediaList) {
-                    val count = if (orphaned) repo.orphanMediaByDateCount() else repo.mediaByDateCount()
-                    val firstPage = if (orphaned) {
-                        repo.orphanMediaByDate(offset = 0, limit = PAGE_SIZE)
-                    } else {
-                        repo.mediaByDate(offset = 0, limit = PAGE_SIZE)
-                    }
-                    MediaPage(firstPage, count)
-                }
-            }.collect { page ->
-                generation += 1
-                total = page.total
-                _media.value = page.items
-                _hasMore.value = page.items.size < page.total
+            repo.watch(Change.MediaList) { Unit }.collect {
+                allSource?.invalidate()
+                orphanSource?.invalidate()
             }
         }
     }
 
     fun setShowingOrphans(value: Boolean) {
-        if (_showingOrphans.value == value) return
-        generation += 1
-        total = 0
-        _media.value = emptyList()
-        _hasMore.value = false
         _showingOrphans.value = value
-    }
-
-    fun loadMore() {
-        if (!_hasMore.value || loadingMore) return
-        loadingMore = true
-        viewModelScope.launch {
-            try {
-                val requestGeneration = generation
-                val orphaned = _showingOrphans.value
-                val offset = _media.value.size
-                val next = if (orphaned) {
-                    repo.orphanMediaByDate(offset, PAGE_SIZE)
-                } else {
-                    repo.mediaByDate(offset, PAGE_SIZE)
-                }
-                if (requestGeneration != generation || orphaned != _showingOrphans.value) return@launch
-                _media.value += next
-                _hasMore.value = _media.value.size < total && next.isNotEmpty()
-            } finally {
-                loadingMore = false
-            }
-        }
     }
 
     companion object {
         private const val PAGE_SIZE = 100
+        private const val PREFETCH_DISTANCE = 30
 
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
