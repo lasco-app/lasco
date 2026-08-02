@@ -34,13 +34,16 @@ protocol LibraryRepositoryProtocol: Sendable {
 
     func mediaByDateCount() async throws -> Int
     func mediaByDate(offset: Int, limit: Int) async throws -> [FfiMediaItem]
+    func mediaByDateNeighbors(position: Int) async throws -> FfiMediaNeighbors
     func orphanMediaByDateCount() async throws -> Int
     func orphanMediaByDate(offset: Int, limit: Int) async throws -> [FfiMediaItem]
+    func orphanMediaByDateNeighbors(position: Int) async throws -> FfiMediaNeighbors
     func albumsCount(parentID: String?) async throws -> Int
     func albums(parentID: String?, offset: Int, limit: Int) async throws -> [FfiAlbum]
     func albums(withIDs ids: Set<String>) async throws -> [FfiAlbum]
     func albumItemsCount(albumID: String) async throws -> Int
     func albumItems(albumID: String, ascending: Bool, offset: Int, limit: Int) async throws -> [FfiAlbumItem]
+    func albumItemsByDateNeighbors(albumID: String, ascending: Bool, position: Int) async throws -> FfiMediaOrGroupNeighbors
     func showMedia(id: String) async throws -> FfiMediaItem
     func localStateStats() async throws -> FfiLocalStateStats
     func sessionSnapshot() async throws -> LibrarySessionSnapshot
@@ -175,6 +178,12 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         }
     }
 
+    func mediaByDateNeighbors(position: Int) async throws -> FfiMediaNeighbors {
+        try ensureOpen()
+        guard position >= 0, position <= Int(UInt32.max) else { throw LascoError.NotFound }
+        return try library.mediaByDateNeighbors(position: UInt32(position))
+    }
+
     func orphanMediaByDateCount() async throws -> Int {
         try ensureOpen()
         return Int(library.orphanMediaByDateCount())
@@ -185,6 +194,12 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         return try page(offset: offset, limit: limit) { start, end in
             try library.orphanMediaByDateRange(posStartInclusive: start, posEndInclusive: end)
         }
+    }
+
+    func orphanMediaByDateNeighbors(position: Int) async throws -> FfiMediaNeighbors {
+        try ensureOpen()
+        guard position >= 0, position <= Int(UInt32.max) else { throw LascoError.NotFound }
+        return try library.orphanMediaByDateNeighbors(position: UInt32(position))
     }
 
     func albumsCount(parentID: String?) async throws -> Int {
@@ -250,6 +265,20 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
                 posEndInclusive: end
             )
         }
+    }
+
+    func albumItemsByDateNeighbors(
+        albumID: String,
+        ascending: Bool,
+        position: Int
+    ) async throws -> FfiMediaOrGroupNeighbors {
+        try ensureOpen()
+        guard position >= 0, position <= Int(UInt32.max) else { throw LascoError.NotFound }
+        return try library.albumItemsByDateNeighbors(
+            albumId: albumID,
+            ascending: ascending,
+            position: UInt32(position)
+        )
     }
 
     func showMedia(id: String) async throws -> FfiMediaItem {
@@ -657,13 +686,16 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     func notifyPhotoImportChanged(initialImport: Bool) async { await storage.notifyPhotoImportChanged(initialImport: initialImport) }
     func mediaByDateCount() async throws -> Int { try await storage.mediaByDateCount() }
     func mediaByDate(offset: Int, limit: Int) async throws -> [FfiMediaItem] { try await storage.mediaByDate(offset: offset, limit: limit) }
+    func mediaByDateNeighbors(position: Int) async throws -> FfiMediaNeighbors { try await storage.mediaByDateNeighbors(position: position) }
     func orphanMediaByDateCount() async throws -> Int { try await storage.orphanMediaByDateCount() }
     func orphanMediaByDate(offset: Int, limit: Int) async throws -> [FfiMediaItem] { try await storage.orphanMediaByDate(offset: offset, limit: limit) }
+    func orphanMediaByDateNeighbors(position: Int) async throws -> FfiMediaNeighbors { try await storage.orphanMediaByDateNeighbors(position: position) }
     func albumsCount(parentID: String?) async throws -> Int { try await storage.albumsCount(parentID: parentID) }
     func albums(parentID: String?, offset: Int, limit: Int) async throws -> [FfiAlbum] { try await storage.albums(parentID: parentID, offset: offset, limit: limit) }
     func albums(withIDs ids: Set<String>) async throws -> [FfiAlbum] { try await storage.albums(withIDs: ids) }
     func albumItemsCount(albumID: String) async throws -> Int { try await storage.albumItemsCount(albumID: albumID) }
     func albumItems(albumID: String, ascending: Bool, offset: Int, limit: Int) async throws -> [FfiAlbumItem] { try await storage.albumItems(albumID: albumID, ascending: ascending, offset: offset, limit: limit) }
+    func albumItemsByDateNeighbors(albumID: String, ascending: Bool, position: Int) async throws -> FfiMediaOrGroupNeighbors { try await storage.albumItemsByDateNeighbors(albumID: albumID, ascending: ascending, position: position) }
     func showMedia(id: String) async throws -> FfiMediaItem { try await storage.showMedia(id: id) }
     func localStateStats() async throws -> FfiLocalStateStats { try await storage.localStateStats() }
     func sessionSnapshot() async throws -> LibrarySessionSnapshot { try await storage.sessionSnapshot() }

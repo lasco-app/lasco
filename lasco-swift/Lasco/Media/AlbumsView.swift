@@ -148,7 +148,7 @@ struct AlbumsView: View {
                             .navigationTitle("")
                             .hideSystemNavigationBar()
                     case .mediaDetail(let detail):
-                        MediaDetailView(media: detail.items, startIndex: detail.startIndex, startThumbnail: detail.startThumbnail, currentAlbumId: detail.albumId, onAlbumTap: { album in path.append(.album(album)) })
+                        MediaDetailView(source: detail.source, startPosition: detail.startPosition, repository: repository, onAlbumTap: { album in path.append(.album(album)) })
                     }
                 }
         }
@@ -456,6 +456,14 @@ struct AlbumContentView: View {
             default: return nil
             }
         } ?? []
+    }
+
+    private func openDetail(at position: Int) {
+        guard let albumID = album?.albumId else { return }
+        path.append(.mediaDetail(MediaDetailState(
+            source: .albumByDate(albumID: albumID, ascending: sortAscending),
+            startPosition: position
+        )))
     }
 
     // MARK: Shared content body
@@ -886,7 +894,7 @@ struct AlbumContentView: View {
                 if selection.isSelecting {
                     selection.toggleGroup(group.groupId)
                 } else if let idx = albumItems.firstIndex(of: .group(group)) {
-                    path.append(.mediaDetail(MediaDetailState(items: albumItems, startIndex: idx, albumId: album?.albumId, startThumbnail: nil)))
+                    openDetail(at: idx)
                 }
             }
             .onLongPressGesture { selection.toggleGroup(group.groupId) }
@@ -900,7 +908,7 @@ struct AlbumContentView: View {
                 if selection.isSelecting {
                     selection.toggleGroup(group.groupId)
                 } else if let idx = albumItems.firstIndex(of: .group(group)) {
-                    path.append(.mediaDetail(MediaDetailState(items: albumItems, startIndex: idx, albumId: album?.albumId, startThumbnail: nil)))
+                    openDetail(at: idx)
                 }
             }
             .onLongPressGesture { selection.toggleGroup(group.groupId) }
@@ -916,7 +924,7 @@ struct AlbumContentView: View {
                 if selection.isSelecting {
                     selection.toggleMedia(item.mediaId)
                 } else if let idx = albumItems.firstIndex(of: .media(item)) {
-                    path.append(.mediaDetail(MediaDetailState(items: albumItems, startIndex: idx, albumId: album?.albumId, startThumbnail: nil)))
+                    openDetail(at: idx)
                 }
             }
             .onLongPressGesture { selection.toggleMedia(item.mediaId) }
@@ -933,7 +941,7 @@ struct AlbumContentView: View {
                 if selection.isSelecting {
                     selection.toggleMedia(item.mediaId)
                 } else if let idx = albumItems.firstIndex(of: .media(item)) {
-                    path.append(.mediaDetail(MediaDetailState(items: albumItems, startIndex: idx, albumId: album?.albumId, startThumbnail: nil)))
+                    openDetail(at: idx)
                 }
             }
             .onLongPressGesture { selection.toggleMedia(item.mediaId) }

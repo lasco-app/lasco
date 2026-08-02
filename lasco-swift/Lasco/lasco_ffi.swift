@@ -678,6 +678,11 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     func orphanMediaByDateCount()  -> UInt32
     
     /**
+     * Returns the entries immediately surrounding a zero-based orphan position.
+     */
+    func orphanMediaByDateNeighbors(position: UInt32) throws  -> FfiMediaNeighbors
+    
+    /**
      * Positions are zero-based and both ends of the range are inclusive.
      */
     func orphanMediaByDateRange(posStartInclusive: UInt32, posEndInclusive: UInt32) throws  -> [FfiMediaItem]
@@ -1268,6 +1273,17 @@ nonisolated open func orphanMediaByDate()throws  -> [FfiMediaItem]  {
 nonisolated open func orphanMediaByDateCount() -> UInt32  {
     return try!  FfiConverterUInt32.lift(try! rustCall() {
     uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date_count(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Returns the entries immediately surrounding a zero-based orphan position.
+     */
+nonisolated open func orphanMediaByDateNeighbors(position: UInt32)throws  -> FfiMediaNeighbors  {
+    return try  FfiConverterTypeFfiMediaNeighbors_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date_neighbors(self.uniffiClonePointer(),
+        FfiConverterUInt32.lower(position),$0
     )
 })
 }
@@ -3612,6 +3628,9 @@ nonisolated private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_count() != 51224) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_neighbors() != 28984) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_range() != 37391) {

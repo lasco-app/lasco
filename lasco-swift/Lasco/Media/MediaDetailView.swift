@@ -28,19 +28,15 @@ struct AAEViewerPayload: Identifiable {
     let text: String
 }
 
-struct MediaDetailState: Identifiable, Hashable {
-    let id = UUID()
-    let items: [AlbumItem]
-    let startIndex: Int
-    var albumId: String? = nil
-    var startThumbnail: Data? = nil
+struct MediaDetailState: Hashable {
+    let source: MediaDetailSource
+    let startPosition: Int
 }
 
 struct MediaDetailView: View {
-    @Environment(LibraryRepository.self) private var repository
-    @State private var items: [AlbumItem]
-    @State private var currentIndex: Int
-    @State private var groupMediaCache: [String: [FfiMediaItem]] = [:]
+    let repository: LibraryRepository
+    @State private var detailModel: MediaDetailModel
+    @State private var pagerIndex = 0
     @State private var groupMediaIndex: Int = 0
     @State private var fullImages: [String: Image] = [:]
     @State private var thumbnails: [String: Image] = [:]
@@ -63,8 +59,6 @@ struct MediaDetailView: View {
     // Rename sheet
     @State private var showingRename = false
     @State private var renameText = ""
-    @State private var detailModel: MediaDetailModel?
-
     // Title truncation detection
     @State private var titleAvailableWidth: CGFloat = 0
     @State private var titleIntrinsicWidth: CGFloat = 0
@@ -77,31 +71,36 @@ struct MediaDetailView: View {
     @State private var aaePayload: AAEViewerPayload? = nil
     @State private var exportData: Data?
 
-    var currentAlbumId: String? = nil
+    var currentAlbumId: String? { detailModel.source.currentAlbumID }
     var onAlbumTap: ((FfiAlbum) -> Void)? = nil
 
-    init(media: [AlbumItem], startIndex: Int, startThumbnail: Data? = nil, currentAlbumId: String? = nil, onAlbumTap: ((FfiAlbum) -> Void)? = nil) {
-        self._items = State(initialValue: media)
-        self._currentIndex = State(initialValue: startIndex)
-        self.currentAlbumId = currentAlbumId
+    init(
+        source: MediaDetailSource,
+        startPosition: Int,
+        repository: LibraryRepository,
+        onAlbumTap: ((FfiAlbum) -> Void)? = nil
+    ) {
+        self.repository = repository
+        self._detailModel = State(initialValue: MediaDetailModel(
+            source: source, startPosition: startPosition, repository: repository
+        ))
         self.onAlbumTap = onAlbumTap
-        if let data = startThumbnail, let img = Image(data: data) {
-            if case .media(let m) = media[startIndex] {
-                self._thumbnails = State(initialValue: [m.mediaId: img])
-            }
-        }
     }
+
+    private var items: [AlbumItem] { detailModel.neighbors?.items ?? [] }
+    private var currentIndex: Int { detailModel.neighbors?.currentIndex ?? 0 }
+    private var currentPosition: Int? { detailModel.neighbors?.currentPosition }
 
     private var currentGroupMedia: [FfiMediaItem] {
         guard case .group(let g) = items[safe: currentIndex] else { return [] }
-        return groupMediaCache[g.groupId] ?? []
+        return detailModel.groupMedia[g.groupId] ?? []
     }
 
     private var currentDisplayItem: FfiMediaItem? {
         guard items.indices.contains(currentIndex) else { return nil }
         switch items[currentIndex] {
         case .media(let m):
-            return detailModel?.mediaID == m.mediaId ? (detailModel?.media ?? m) : m
+            return detailModel.currentMedia?.mediaId == m.mediaId ? detailModel.currentMedia : m
         case .group:
             let media = currentGroupMedia
             return media.indices.contains(groupMediaIndex) ? media[groupMediaIndex] : nil
@@ -112,8 +111,8 @@ struct MediaDetailView: View {
 
     private var otherContainingAlbums: [FfiAlbum] {
         guard let mediaID = currentItem?.mediaId,
-              detailModel?.mediaID == mediaID else { return [] }
-        return detailModel?.containingAlbums.filter { $0.albumId != currentAlbumId } ?? []
+              detailModel.currentMedia?.mediaId == mediaID else { return [] }
+        return detailModel.containingAlbums.filter { $0.albumId != currentAlbumId }
     }
 
     private var currentLivePhotoVideoItem: FfiMediaItem? {
@@ -143,16 +142,15 @@ struct MediaDetailView: View {
         for item in items {
             if case .media(let m) = item, m.mediaId == mediaId { return m }
         }
-        for media in groupMediaCache.values {
+        for media in detailModel.groupMedia.values {
             if let m = media.first(where: { $0.mediaId == mediaId }) { return m }
         }
         return nil
     }
 
     private func loadGroupMediaIfNeeded(for groupId: String) {
-        guard groupMediaCache[groupId] == nil else { return }
         Task {
-            groupMediaCache[groupId] = (try? await repository.groupMedia(groupID: groupId)) ?? []
+            await detailModel.loadGroupMediaIfNeeded(groupID: groupId)
         }
     }
 
@@ -176,14 +174,12 @@ struct MediaDetailView: View {
         .sheet(item: $aaePayload) { payload in
             AAEAdjustmentDebugView(jsonText: payload.text)
         }
+        .task {
+            await detailModel.start()
+        }
         .task(id: currentItem?.mediaId) {
-            guard let mediaID = currentItem?.mediaId else {
-                detailModel = nil
-                return
-            }
-            let model = MediaDetailModel(mediaID: mediaID, repository: repository)
-            detailModel = model
-            await model.start()
+            guard let mediaID = currentItem?.mediaId else { return }
+            await detailModel.refreshMedia(id: mediaID)
         }
     }
 
@@ -215,7 +211,7 @@ struct MediaDetailView: View {
                 Color.black.ignoresSafeArea()
 
                 // Full-screen pager — upper area is free for L/R swipe
-                TabView(selection: $currentIndex) {
+                TabView(selection: $pagerIndex) {
                     ForEach(Array(items.enumerated()), id: \.element.id) { idx, item in
                         resolvedMediaCell(for: item, atIndex: idx, size: geo.size)
                             .tag(idx)
@@ -228,10 +224,10 @@ struct MediaDetailView: View {
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 .frame(width: geo.size.width, height: geo.size.height)
-                .onChange(of: currentIndex) {
-                    preloadAdjacent()
-                    groupMediaIndex = 0
-                    showingLivePhotoVideo = false
+                .onChange(of: pagerIndex) {
+                    let delta = pagerIndex - currentIndex
+                    guard delta != 0 else { return }
+                    detailModel.move(by: delta)
                 }
                 .onChange(of: groupMediaIndex) {
                     showingLivePhotoVideo = false
@@ -260,15 +256,13 @@ struct MediaDetailView: View {
         .hideSystemNavigationBar()
         .toolbarBackButton(action: { dismiss() })
         .preference(key: HideTabBarKey.self, value: true)
-        .onAppear {
-            AppLogger.log(.info, "media shown — '\(currentItem.flatMap { $0.name ?? $0.filenameOriginal })' (\(currentItem?.mediaId ?? "group"))")
+        .onChange(of: currentPosition) {
+            pagerIndex = currentIndex
+            AppLogger.log(.info, "media navigated — '\(currentItem.map { $0.name ?? $0.filenameOriginal } ?? "")' (\(currentItem?.mediaId ?? "group"))")
             if case .group(let g) = items[safe: currentIndex] { loadGroupMediaIfNeeded(for: g.groupId) }
-            scheduleCounterHide()
             preloadAdjacent()
-        }
-        .onChange(of: currentIndex) {
-            AppLogger.log(.info, "media navigated — '\(currentItem.flatMap { $0.name ?? $0.filenameOriginal })' (\(currentItem?.mediaId ?? "group"))")
-            if case .group(let g) = items[safe: currentIndex] { loadGroupMediaIfNeeded(for: g.groupId) }
+            groupMediaIndex = 0
+            showingLivePhotoVideo = false
             withAnimation { showCounter = true }
             scheduleCounterHide()
         }
@@ -426,8 +420,8 @@ struct MediaDetailView: View {
                     livePhotoToggleButton
                 }
 
-                if showCounter {
-                    Text("\(currentIndex + 1) / \(items.count)")
+                if showCounter, !positionLabel.isEmpty {
+                    Text(positionLabel)
                         .font(LascoFont.pixel())
                         .foregroundStyle(Color.white)
                         .padding(.horizontal, 10)
@@ -494,7 +488,7 @@ struct MediaDetailView: View {
         case .media(let m):
             mediaCell(for: m, size: size)
         case .group(let g):
-            let media = groupMediaCache[g.groupId] ?? []
+            let media = detailModel.groupMedia[g.groupId] ?? []
             let displayIdx = (cellIdx == currentIndex) ? groupMediaIndex : 0
             if let m = media[safe: displayIdx] {
                 mediaCell(for: m, size: size)
@@ -560,12 +554,10 @@ struct MediaDetailView: View {
         .hideSystemNavigationBar()
         .toolbarBackButton(action: { dismiss() })
         .preference(key: HideTabBarKey.self, value: true)
-        .onAppear {
-            if case .group(let g) = items[safe: currentIndex] { loadGroupMediaIfNeeded(for: g.groupId) }
-        }
-        .onChange(of: currentIndex) {
+        .onChange(of: currentPosition) {
             if case .group(let g) = items[safe: currentIndex] { loadGroupMediaIfNeeded(for: g.groupId) }
             showingLivePhotoVideo = false
+            preloadAdjacent()
         }
     }
 
@@ -575,7 +567,6 @@ struct MediaDetailView: View {
         return HStack(spacing: 0) {
             VStack(spacing: 0) {
                 macOSMediaCell(for: currentItem, size: CGSize(width: mediaWidth, height: geo.size.height - Self.narrowBarHeight))
-                    .onChange(of: currentIndex) { preloadAdjacent() }
                 macOSNavBar
             }
             .frame(width: mediaWidth)
@@ -583,7 +574,7 @@ struct MediaDetailView: View {
             infoSection
                 .frame(width: Self.infoPanelWidth)
                 .frame(maxHeight: .infinity, alignment: .top)
-                .animation(.easeInOut(duration: 0.15), value: currentIndex)
+                .animation(.easeInOut(duration: 0.15), value: currentPosition)
         }
     }
 
@@ -600,7 +591,6 @@ struct MediaDetailView: View {
             macOSMediaCell(for: currentItem, size: CGSize(
                 width: geo.size.width, height: geo.size.height
             ))
-            .onChange(of: currentIndex) { preloadAdjacent() }
 
             // Panel: bar on top, info content below — slides as one unit
             VStack(spacing: 0) {
@@ -653,7 +643,7 @@ struct MediaDetailView: View {
     private var macOSNavBar: some View {
         HStack(spacing: 12) {
             navPrevButton
-            Text("\(currentIndex + 1) / \(items.count)")
+            Text(positionLabel)
                 .font(LascoFont.pixel())
                 .foregroundStyle(Color.white.opacity(0.6))
             navNextButton
@@ -674,7 +664,7 @@ struct MediaDetailView: View {
     private var macOSNarrowBar: some View {
         HStack(spacing: 12) {
             navPrevButton
-            Text("\(currentIndex + 1) / \(items.count)")
+            Text(positionLabel)
                 .font(LascoFont.pixel())
                 .foregroundStyle(Color.white.opacity(0.6))
             navNextButton
@@ -706,17 +696,17 @@ struct MediaDetailView: View {
 
     private var navPrevButton: some View {
         Button {
-            if currentIndex > 0 { currentIndex -= 1 }
+            detailModel.move(by: -1)
         } label: {
             Image("angle-left").renderingMode(.template).resizable().frame(width: 18, height: 18)
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(currentIndex > 0 ? Color.white : Color.white.opacity(0.3))
+                .foregroundStyle(detailModel.neighbors?.previous != nil ? Color.white : Color.white.opacity(0.3))
                 .frame(width: 36, height: 36)
                 .contentShape(Rectangle())
                 .overlay(Rectangle().stroke(Color.white, lineWidth: 2))
         }
         .buttonStyle(.plain)
-        .disabled(currentIndex == 0)
+        .disabled(detailModel.neighbors?.previous == nil)
     }
 
     private var livePhotoToggleButton: some View {
@@ -732,17 +722,17 @@ struct MediaDetailView: View {
 
     private var navNextButton: some View {
         Button {
-            if currentIndex < items.count - 1 { currentIndex += 1 }
+            detailModel.move(by: 1)
         } label: {
             Image("angle-right").renderingMode(.template).resizable().frame(width: 18, height: 18)
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(currentIndex < items.count - 1 ? Color.white : Color.white.opacity(0.3))
+                .foregroundStyle(detailModel.neighbors?.next != nil ? Color.white : Color.white.opacity(0.3))
                 .frame(width: 36, height: 36)
                 .contentShape(Rectangle())
                 .overlay(Rectangle().stroke(Color.white, lineWidth: 2))
         }
         .buttonStyle(.plain)
-        .disabled(currentIndex == items.count - 1)
+        .disabled(detailModel.neighbors?.next == nil)
     }
     #endif
 
@@ -820,7 +810,7 @@ struct MediaDetailView: View {
             Task { await loadImagesAsync(for: m.mediaId) }
         case .group(let g):
             loadGroupMediaIfNeeded(for: g.groupId)
-            if let first = groupMediaCache[g.groupId]?.first {
+            if let first = detailModel.groupMedia[g.groupId]?.first {
                 Task { await loadImagesAsync(for: first.mediaId) }
             }
         }
@@ -828,13 +818,21 @@ struct MediaDetailView: View {
 
     private func evictDistantFullImages(around idx: Int, window: Int = 2) {
         let keepRange = (idx - window)...(idx + window)
-        let keepIds = Set(items.indices.compactMap { i -> String? in
-            guard keepRange.contains(i), case .media(let m) = items[i] else { return nil }
-            return m.mediaId
+        let keepIds = Set(items.indices.flatMap { i -> [String] in
+            guard keepRange.contains(i) else { return [] }
+            switch items[i] {
+            case .media(let media): return [media.mediaId]
+            case .group(let group): return detailModel.groupMedia[group.groupId]?.map(\.mediaId) ?? []
+            }
         })
         for mediaId in fullImages.keys where !keepIds.contains(mediaId) {
             fullImages.removeValue(forKey: mediaId)
         }
+    }
+
+    private var positionLabel: String {
+        guard let currentPosition, let totalCount = detailModel.totalCount else { return "" }
+        return "\(currentPosition + 1) / \(totalCount)"
     }
 
     // MARK: - Info section

@@ -104,7 +104,7 @@ struct ContentView: View {
             .navigationDestination(for: LibraryDestination.self) { dest in
                 switch dest {
                 case .mediaDetail(let state):
-                    MediaDetailView(media: state.items, startIndex: state.startIndex, startThumbnail: state.startThumbnail, onAlbumTap: openAlbum)
+                    MediaDetailView(source: state.source, startPosition: state.startPosition, repository: repository, onAlbumTap: openAlbum)
                 }
             }
             .sheet(item: $albumsForMedia) { list in
@@ -267,7 +267,7 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else {
             LazyVGrid(columns: gridColumns, spacing: 3) {
-                ForEach(media, id: \.mediaId) { item in
+                ForEach(Array(media.enumerated()), id: \.element.mediaId) { position, item in
                     let isSelected = selection.contains(item.mediaId)
                     MediaGridCell(item: item, isSelected: isSelected)
                         .onTapGesture {
@@ -278,8 +278,11 @@ struct ContentView: View {
                                 } else {
                                     selection.insert(item.mediaId)
                                 }
-                            } else if let idx = media.firstIndex(where: { $0.mediaId == item.mediaId }) {
-                                path.append(.mediaDetail(MediaDetailState(items: media.map { .media($0) }, startIndex: idx, startThumbnail: nil)))
+                            } else {
+                                path.append(.mediaDetail(MediaDetailState(
+                                    source: model.showingOrphans ? .orphansByDate : .homeByDate,
+                                    startPosition: position
+                                )))
                             }
                         }
                         .onLongPressGesture {

@@ -388,6 +388,33 @@ impl FfiLibrary {
         self.inner.media_by_date_count(true) as u32
     }
 
+    /// Returns the entries immediately surrounding a zero-based orphan position.
+    pub fn orphan_media_by_date_neighbors(
+        &self,
+        position: u32,
+    ) -> Result<FfiMediaNeighbors, LascoError> {
+        let count = self.inner.media_by_date_count(true);
+        let position = position as usize;
+        if count == 0 || position >= count {
+            return Err(LascoError::NotFound);
+        }
+
+        let start = position.saturating_sub(1);
+        let end = (position + 1).min(count - 1);
+        let mut entries = self
+            .inner
+            .media_by_date_range(true, start, end)
+            .into_iter()
+            .map(media_entry_to_ffi);
+        let previous = (position > 0).then(|| entries.next()).flatten();
+        let current = entries.next().ok_or(LascoError::NotFound)?;
+        Ok(FfiMediaNeighbors {
+            previous,
+            current,
+            next: entries.next(),
+        })
+    }
+
     /// Positions are zero-based and both ends of the range are inclusive.
     pub fn orphan_media_by_date_range(
         &self,
