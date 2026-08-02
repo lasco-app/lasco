@@ -168,7 +168,7 @@ fun AlbumListScreen(
                 showNewAlbumDialog = false
                 scope.launch {
                     val id = repo.createAlbum(name, album?.albumId)
-                    repo.listAlbums().firstOrNull { it.albumId == id }?.let(onOpenChild)
+                    repo.allAlbums().firstOrNull { it.albumId == id }?.let(onOpenChild)
                 }
             },
             onCancel = { showNewAlbumDialog = false },

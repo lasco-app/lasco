@@ -50,7 +50,7 @@ fun AlbumMediaPickerScreen(
     modifier: Modifier = Modifier,
 ) {
     val repo = LibraryRepository.from(LocalContext.current)
-    val allAlbums by remember { repo.watch(Change.AlbumList) { repo.listAlbums() } }
+    val allAlbums by remember { repo.watch(Change.AlbumList) { repo.allAlbums() } }
         .collectAsState(initial = emptyList<FfiAlbum>())
 
     fun nameOf(albumId: String): String = allAlbums.firstOrNull { it.albumId == albumId }?.name ?: ""

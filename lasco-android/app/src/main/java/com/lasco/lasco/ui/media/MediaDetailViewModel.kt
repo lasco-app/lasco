@@ -56,7 +56,7 @@ class MediaDetailViewModel(
 ) : ViewModel() {
     val items: StateFlow<List<DetailItem>> = (
         if (sourceAlbumId == null) {
-            repo.watch(Change.MediaList) { repo.mediaByDate().map { DetailItem.Media(it) } }
+            repo.watch(Change.MediaList) { repo.mediaByDateAll().map { DetailItem.Media(it) } }
         } else {
             repo.watch(Change.Album(sourceAlbumId), Change.AlbumList) {
                 repo.albumItemsSorted(sourceAlbumId, false).mapNotNull(::toDetailItem)

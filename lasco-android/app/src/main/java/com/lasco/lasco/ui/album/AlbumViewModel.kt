@@ -28,7 +28,7 @@ class AlbumViewModel(
     repo: LibraryRepository,
 ) : ViewModel() {
     val allAlbums: StateFlow<List<FfiAlbum>> =
-        repo.watch(Change.AlbumList) { repo.listAlbums() }
+        repo.watch(Change.AlbumList) { repo.allAlbums() }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val _sortAscending = MutableStateFlow(false)

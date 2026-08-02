@@ -41,7 +41,7 @@ class StatusViewModel(
     private val prefs: Prefs,
 ) : ViewModel() {
     val media: StateFlow<List<FfiMediaItem>> =
-        repo.watch(Change.MediaList) { repo.mediaByDate() }
+        repo.watch(Change.MediaList) { repo.mediaByDateAll() }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val sessionState: StateFlow<SessionState> = repo.sessionState

@@ -861,6 +861,22 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -901,6 +917,14 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_debug_local_apple(
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_fixed_path(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_s3(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_album_albums_count(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_album_albums_range(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_album_items_by_date_range(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_album_items_count(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_album_list_groups(
 ): Short
@@ -966,6 +990,10 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_media_album_ids(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date(
 ): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date_count(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date_range(
+): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_media_containing_album_ids(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_media_ids_without_remote_backup(
@@ -975,6 +1003,10 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_media_in_album(
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_move_media_to_album(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_count(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_range(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_pending_media_count(
 ): Short
@@ -1083,6 +1115,14 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_fixed_path(`ptr`: Pointer,`
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_s3(`ptr`: Pointer,`name`: RustBuffer.ByValue,`endpoint`: RustBuffer.ByValue,`bucket`: RustBuffer.ByValue,`region`: RustBuffer.ByValue,`pathPrefix`: RustBuffer.ByValue,`accessKey`: RustBuffer.ByValue,`secretKey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_lasco_ffi_fn_method_ffilibrary_album_albums_count(`ptr`: Pointer,`parentAlbumId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Int
+fun uniffi_lasco_ffi_fn_method_ffilibrary_album_albums_range(`ptr`: Pointer,`parentAlbumId`: RustBuffer.ByValue,`posStartInclusive`: Int,`posEndInclusive`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_lasco_ffi_fn_method_ffilibrary_album_items_by_date_range(`ptr`: Pointer,`albumId`: RustBuffer.ByValue,`ascending`: Byte,`posStartInclusive`: Int,`posEndInclusive`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_lasco_ffi_fn_method_ffilibrary_album_items_count(`ptr`: Pointer,`albumId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Int
 fun uniffi_lasco_ffi_fn_method_ffilibrary_album_list_groups(`ptr`: Pointer,`albumId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_album_list_items_sorted(`ptr`: Pointer,`albumId`: RustBuffer.ByValue,`ascending`: Byte,uniffi_out_err: UniffiRustCallStatus, 
@@ -1147,6 +1187,10 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_media_album_ids(`ptr`: Pointer,`mediaI
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_media_by_date(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_lasco_ffi_fn_method_ffilibrary_media_by_date_count(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Int
+fun uniffi_lasco_ffi_fn_method_ffilibrary_media_by_date_range(`ptr`: Pointer,`posStartInclusive`: Int,`posEndInclusive`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_media_containing_album_ids(`ptr`: Pointer,`mediaId`: RustBuffer.ByValue,`includeViaGroups`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_media_ids_without_remote_backup(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -1156,6 +1200,10 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_media_in_album(`ptr`: Pointer,`albumId
 fun uniffi_lasco_ffi_fn_method_ffilibrary_move_media_to_album(`ptr`: Pointer,`mediaId`: RustBuffer.ByValue,`fromAlbumId`: RustBuffer.ByValue,`toAlbumId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date_count(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Int
+fun uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date_range(`ptr`: Pointer,`posStartInclusive`: Int,`posEndInclusive`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_pending_media_count(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Int
@@ -1374,6 +1422,18 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_s3() != 47455.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_album_albums_count() != 32729.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_album_albums_range() != 9776.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_album_items_by_date_range() != 54229.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_album_items_count() != 24951.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_album_list_groups() != 38788.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1470,6 +1530,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date() != 16831.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date_count() != 56581.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date_range() != 705.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_media_containing_album_ids() != 38989.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1483,6 +1549,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date() != 1863.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_count() != 51224.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_range() != 37391.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_pending_media_count() != 40879.toShort()) {
@@ -2032,6 +2104,21 @@ public interface FfiLibraryInterface {
     
     fun `addRemoteS3`(`name`: kotlin.String, `endpoint`: kotlin.String, `bucket`: kotlin.String, `region`: kotlin.String, `pathPrefix`: kotlin.String, `accessKey`: kotlin.String, `secretKey`: kotlin.String): kotlin.String
     
+    fun `albumAlbumsCount`(`parentAlbumId`: kotlin.String?): kotlin.UInt
+    
+    /**
+     * Returns direct albums under `parent_album_id`; `None` means root albums.
+     * Positions are zero-based and both ends of the range are inclusive.
+     */
+    fun `albumAlbumsRange`(`parentAlbumId`: kotlin.String?, `posStartInclusive`: kotlin.UInt, `posEndInclusive`: kotlin.UInt): List<FfiAlbum>
+    
+    /**
+     * Positions are zero-based and both ends of the range are inclusive.
+     */
+    fun `albumItemsByDateRange`(`albumId`: kotlin.String, `ascending`: kotlin.Boolean, `posStartInclusive`: kotlin.UInt, `posEndInclusive`: kotlin.UInt): List<FfiAlbumItem>
+    
+    fun `albumItemsCount`(`albumId`: kotlin.String): kotlin.UInt
+    
     fun `albumListGroups`(`albumId`: kotlin.String): List<FfiGroup>
     
     fun `albumListItemsSorted`(`albumId`: kotlin.String, `ascending`: kotlin.Boolean): List<FfiAlbumItem>
@@ -2096,6 +2183,13 @@ public interface FfiLibraryInterface {
     
     fun `mediaByDate`(): List<FfiMediaItem>
     
+    fun `mediaByDateCount`(): kotlin.UInt
+    
+    /**
+     * Positions are zero-based and both ends of the range are inclusive.
+     */
+    fun `mediaByDateRange`(`posStartInclusive`: kotlin.UInt, `posEndInclusive`: kotlin.UInt): List<FfiMediaItem>
+    
     fun `mediaContainingAlbumIds`(`mediaId`: kotlin.String, `includeViaGroups`: kotlin.Boolean): List<kotlin.String>
     
     fun `mediaIdsWithoutRemoteBackup`(): List<kotlin.String>
@@ -2105,6 +2199,13 @@ public interface FfiLibraryInterface {
     fun `moveMediaToAlbum`(`mediaId`: kotlin.String, `fromAlbumId`: kotlin.String, `toAlbumId`: kotlin.String)
     
     fun `orphanMediaByDate`(): List<FfiMediaItem>
+    
+    fun `orphanMediaByDateCount`(): kotlin.UInt
+    
+    /**
+     * Positions are zero-based and both ends of the range are inclusive.
+     */
+    fun `orphanMediaByDateRange`(`posStartInclusive`: kotlin.UInt, `posEndInclusive`: kotlin.UInt): List<FfiMediaItem>
     
     fun `pendingMediaCount`(): kotlin.UInt
     
@@ -2299,6 +2400,65 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     uniffiRustCallWithError(LascoException) { _status ->
     UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_s3(
         it, FfiConverterString.lower(`name`),FfiConverterString.lower(`endpoint`),FfiConverterString.lower(`bucket`),FfiConverterString.lower(`region`),FfiConverterString.lower(`pathPrefix`),FfiConverterString.lower(`accessKey`),FfiConverterString.lower(`secretKey`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(LascoException::class)override fun `albumAlbumsCount`(`parentAlbumId`: kotlin.String?): kotlin.UInt {
+            return FfiConverterUInt.lift(
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_album_albums_count(
+        it, FfiConverterOptionalString.lower(`parentAlbumId`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Returns direct albums under `parent_album_id`; `None` means root albums.
+     * Positions are zero-based and both ends of the range are inclusive.
+     */
+    @Throws(LascoException::class)override fun `albumAlbumsRange`(`parentAlbumId`: kotlin.String?, `posStartInclusive`: kotlin.UInt, `posEndInclusive`: kotlin.UInt): List<FfiAlbum> {
+            return FfiConverterSequenceTypeFfiAlbum.lift(
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_album_albums_range(
+        it, FfiConverterOptionalString.lower(`parentAlbumId`),FfiConverterUInt.lower(`posStartInclusive`),FfiConverterUInt.lower(`posEndInclusive`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Positions are zero-based and both ends of the range are inclusive.
+     */
+    @Throws(LascoException::class)override fun `albumItemsByDateRange`(`albumId`: kotlin.String, `ascending`: kotlin.Boolean, `posStartInclusive`: kotlin.UInt, `posEndInclusive`: kotlin.UInt): List<FfiAlbumItem> {
+            return FfiConverterSequenceTypeFfiAlbumItem.lift(
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_album_items_by_date_range(
+        it, FfiConverterString.lower(`albumId`),FfiConverterBoolean.lower(`ascending`),FfiConverterUInt.lower(`posStartInclusive`),FfiConverterUInt.lower(`posEndInclusive`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(LascoException::class)override fun `albumItemsCount`(`albumId`: kotlin.String): kotlin.UInt {
+            return FfiConverterUInt.lift(
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_album_items_count(
+        it, FfiConverterString.lower(`albumId`),_status)
 }
     }
     )
@@ -2730,6 +2890,34 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     }
     
 
+    override fun `mediaByDateCount`(): kotlin.UInt {
+            return FfiConverterUInt.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_media_by_date_count(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Positions are zero-based and both ends of the range are inclusive.
+     */
+    @Throws(LascoException::class)override fun `mediaByDateRange`(`posStartInclusive`: kotlin.UInt, `posEndInclusive`: kotlin.UInt): List<FfiMediaItem> {
+            return FfiConverterSequenceTypeFfiMediaItem.lift(
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_media_by_date_range(
+        it, FfiConverterUInt.lower(`posStartInclusive`),FfiConverterUInt.lower(`posEndInclusive`),_status)
+}
+    }
+    )
+    }
+    
+
     
     @Throws(LascoException::class)override fun `mediaContainingAlbumIds`(`mediaId`: kotlin.String, `includeViaGroups`: kotlin.Boolean): List<kotlin.String> {
             return FfiConverterSequenceString.lift(
@@ -2788,6 +2976,34 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     uniffiRustCallWithError(LascoException) { _status ->
     UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date(
         it, _status)
+}
+    }
+    )
+    }
+    
+
+    override fun `orphanMediaByDateCount`(): kotlin.UInt {
+            return FfiConverterUInt.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date_count(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Positions are zero-based and both ends of the range are inclusive.
+     */
+    @Throws(LascoException::class)override fun `orphanMediaByDateRange`(`posStartInclusive`: kotlin.UInt, `posEndInclusive`: kotlin.UInt): List<FfiMediaItem> {
+            return FfiConverterSequenceTypeFfiMediaItem.lift(
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date_range(
+        it, FfiConverterUInt.lower(`posStartInclusive`),FfiConverterUInt.lower(`posEndInclusive`),_status)
 }
     }
     )

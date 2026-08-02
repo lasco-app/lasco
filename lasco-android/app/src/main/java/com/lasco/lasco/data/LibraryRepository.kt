@@ -133,16 +133,83 @@ class LibraryRepository(
             }
         }
 
-    // Blocking and proportional to file size. Drop the wrap once the Rust side is async.
-    suspend fun mediaByDate(): List<FfiMediaItem> = withContext(io) { lib.mediaByDate() }
+    /** Converts offset/limit requests to UniFFI's inclusive UInt range. */
+    private fun <T> page(offset: Int, limit: Int, fetch: (UInt, UInt) -> List<T>): List<T> {
+        if (offset < 0 || limit <= 0) return emptyList()
+        val start = offset.toULong()
+        val end = start + limit.toULong() - 1u
+        if (end > UInt.MAX_VALUE.toULong()) return emptyList()
+        return fetch(start.toUInt(), end.toUInt())
+    }
+
+    private suspend fun <T> allPages(count: Int, fetch: suspend (Int, Int) -> List<T>): List<T> {
+        val result = mutableListOf<T>()
+        for (offset in 0 until count step PAGE_SIZE) result += fetch(offset, PAGE_SIZE)
+        return result
+    }
+
+    // The FFI positions are inclusive; callers use the usual offset/limit convention.
+    suspend fun mediaByDateCount(): Int = withContext(io) { lib.mediaByDateCount().toInt() }
+
+    suspend fun mediaByDate(offset: Int, limit: Int): List<FfiMediaItem> = withContext(io) {
+        page(offset, limit, lib::mediaByDateRange)
+    }
+
+    suspend fun mediaByDateAll(): List<FfiMediaItem> {
+        val count = mediaByDateCount()
+        return allPages(count, ::mediaByDate)
+    }
 
     // Primary media that is not reachable from any live album or group. The
     // FFI query excludes AAE and Live Photo companion resources for us.
-    suspend fun orphanMediaByDate(): List<FfiMediaItem> = withContext(io) { lib.orphanMediaByDate() }
+    suspend fun orphanMediaByDateCount(): Int = withContext(io) { lib.orphanMediaByDateCount().toInt() }
 
-    suspend fun listAlbums(): List<FfiAlbum> = lib.listAlbums()
+    suspend fun orphanMediaByDate(offset: Int, limit: Int): List<FfiMediaItem> = withContext(io) {
+        page(offset, limit, lib::orphanMediaByDateRange)
+    }
 
-    suspend fun mediaInAlbum(albumId: String): List<FfiMediaItem> = lib.mediaInAlbum(albumId)
+    suspend fun albumChildrenCount(parentAlbumId: String?): Int = withContext(io) {
+        lib.albumAlbumsCount(parentAlbumId).toInt()
+    }
+
+    suspend fun albumChildren(parentAlbumId: String?, offset: Int, limit: Int): List<FfiAlbum> = withContext(io) {
+        page(offset, limit) { start, end -> lib.albumAlbumsRange(parentAlbumId, start, end) }
+    }
+
+    /** Loads the navigation tree a page at a time, breadth first. */
+    suspend fun allAlbums(): List<FfiAlbum> {
+        val albums = mutableListOf<FfiAlbum>()
+        val parents = ArrayDeque<String?>().apply { add(null) }
+        val visitedParents = mutableSetOf<String?>()
+        while (parents.isNotEmpty()) {
+            val parentId = parents.removeFirst()
+            if (!visitedParents.add(parentId)) continue
+            val count = albumChildrenCount(parentId)
+            val children = allPages(count) { offset, limit -> albumChildren(parentId, offset, limit) }
+            albums += children
+            children.forEach { parents.add(it.albumId) }
+        }
+        return albums
+    }
+
+    suspend fun albumItemsCount(albumId: String): Int = withContext(io) { lib.albumItemsCount(albumId).toInt() }
+
+    suspend fun albumItemsByDate(
+        albumId: String,
+        ascending: Boolean,
+        offset: Int,
+        limit: Int,
+    ): List<FfiAlbumItem> = withContext(io) {
+        page(offset, limit) { start, end -> lib.albumItemsByDateRange(albumId, ascending, start, end) }
+    }
+
+    suspend fun albumItemsSorted(albumId: String, ascending: Boolean): List<FfiAlbumItem> {
+        val count = albumItemsCount(albumId)
+        return allPages(count) { offset, limit -> albumItemsByDate(albumId, ascending, offset, limit) }
+    }
+
+    suspend fun mediaInAlbum(albumId: String): List<FfiMediaItem> =
+        albumItemsSorted(albumId, ascending = false).mapNotNull { it.media }
 
     suspend fun showMedia(mediaId: String): FfiMediaItem = lib.showMedia(mediaId)
 
@@ -155,9 +222,6 @@ class LibraryRepository(
         changes.emit(Change.AlbumList)
         localMutations.emit(Unit)
     }
-
-    suspend fun albumItemsSorted(albumId: String, ascending: Boolean): List<FfiAlbumItem> =
-        lib.albumListItemsSorted(albumId, ascending)
 
     suspend fun createAlbum(name: String, parentAlbumId: String?): String {
         val id = lib.createAlbum(name, parentAlbumId)
@@ -220,7 +284,7 @@ class LibraryRepository(
 
     suspend fun albumsContainingMedia(mediaId: String): List<FfiAlbum> {
         val ids = lib.mediaContainingAlbumIds(mediaId, true).toSet()
-        return lib.listAlbums().filter { it.albumId in ids }
+        return allAlbums().filter { it.albumId in ids }
     }
 
     suspend fun containingAlbums(mediaId: String, excludingAlbumId: String?): List<FfiAlbum> =
@@ -380,6 +444,8 @@ class LibraryRepository(
     )
 
     companion object {
+        private const val PAGE_SIZE = 100
+
         fun from(context: Context): LibraryRepository =
             (context.applicationContext as LascoApp).librarySession
                 ?: error("No library is open")

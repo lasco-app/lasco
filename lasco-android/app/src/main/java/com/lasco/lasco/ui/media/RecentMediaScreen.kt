@@ -24,6 +24,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -57,6 +58,7 @@ fun RecentMediaScreen(
 ) {
     val colors = LascoTheme.colors
     val media by viewModel.media.collectAsStateWithLifecycle()
+    val hasMore by viewModel.hasMore.collectAsStateWithLifecycle()
     val showingOrphans by viewModel.showingOrphans.collectAsStateWithLifecycle()
     val repo = LibraryRepository.from(LocalContext.current)
     val scope = rememberCoroutineScope()
@@ -197,6 +199,9 @@ fun RecentMediaScreen(
                     verticalArrangement = Arrangement.spacedBy(3.dp),
                 ) {
                     items(media, key = { it.mediaId }) { item ->
+                        if (hasMore && item.mediaId == media.lastOrNull()?.mediaId) {
+                            LaunchedEffect(item.mediaId) { viewModel.loadMore() }
+                        }
                         MediaGridCell(
                             item = item,
                             repo = repo,
