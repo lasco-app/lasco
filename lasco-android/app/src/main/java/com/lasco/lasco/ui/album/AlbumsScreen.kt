@@ -13,6 +13,7 @@ import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import com.lasco.lasco.ui.media.MediaDetailKey
+import com.lasco.lasco.ui.media.MediaDetailSource
 import com.lasco.lasco.ui.media.MediaDetailScreen
 import kotlinx.serialization.Serializable
 
@@ -69,16 +70,18 @@ fun AlbumsScreen(
                     backLabel = backLabel,
                     onBack = if (key.albumId != null) { { backStack.removeLastOrNull() } } else null,
                     onOpenChild = { child -> backStack.add(AlbumKey(child.albumId, child.name)) },
-                    onOpenMedia = { itemId ->
-                        backStack.add(MediaDetailKey(sourceAlbumId = key.albumId, startMediaId = itemId))
+                    onOpenMedia = { position, ascending ->
+                        key.albumId?.let { albumId ->
+                            backStack.add(MediaDetailKey(MediaDetailSource.AlbumByDate(albumId, ascending), position))
+                        }
                     },
                     onPickerVisibleChange = onPickerVisibleChange,
                 )
             }
             entry<MediaDetailKey> { key ->
                 MediaDetailScreen(
-                    sourceAlbumId = key.sourceAlbumId,
-                    startMediaId = key.startMediaId,
+                    source = key.source,
+                    startPosition = key.startPosition,
                     onBack = { backStack.removeLastOrNull() },
                     onOpenAlbum = onOpenAlbum,
                 )

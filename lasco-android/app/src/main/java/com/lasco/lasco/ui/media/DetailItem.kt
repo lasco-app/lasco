@@ -20,11 +20,11 @@ val DetailItem.id: String
         is DetailItem.Group -> group.groupId
     }
 
-/**
- * Nav 3 key for Media Detail: pure ids, resolved to a live item list by
- * MediaDetailViewModel through the same repo.watch subscription the
- * calling screen already uses. sourceAlbumId null means Home's list
- * (mediaByDate), otherwise the given album's sorted items.
- */
 @Serializable
-data class MediaDetailKey(val sourceAlbumId: String?, val startMediaId: String) : NavKey
+sealed interface MediaDetailSource {
+    @Serializable data object HomeByDate : MediaDetailSource
+    @Serializable data class AlbumByDate(val albumId: String, val ascending: Boolean) : MediaDetailSource
+}
+
+@Serializable
+data class MediaDetailKey(val source: MediaDetailSource, val startPosition: Int) : NavKey

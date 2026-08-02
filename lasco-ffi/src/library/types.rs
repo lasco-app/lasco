@@ -30,6 +30,13 @@ pub struct FfiMediaItem {
 }
 
 #[derive(uniffi::Record, Debug)]
+pub struct FfiMediaNeighbors {
+    pub previous: Option<FfiMediaItem>,
+    pub current: FfiMediaItem,
+    pub next: Option<FfiMediaItem>,
+}
+
+#[derive(uniffi::Record, Debug)]
 pub struct FfiAlbum {
     pub album_id: String,
     pub name: String,
@@ -53,6 +60,13 @@ pub struct FfiAlbumItem {
     pub media: Option<FfiMediaItem>,
     pub group: Option<FfiGroup>,
     pub effective_date: String,
+}
+
+#[derive(uniffi::Record, Debug)]
+pub struct FfiMediaOrGroupNeighbors {
+    pub previous: Option<FfiAlbumItem>,
+    pub current: FfiAlbumItem,
+    pub next: Option<FfiAlbumItem>,
 }
 
 #[derive(uniffi::Record, Debug)]

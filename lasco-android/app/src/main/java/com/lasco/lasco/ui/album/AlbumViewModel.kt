@@ -27,7 +27,7 @@ import uniffi.lasco_ffi.FfiAlbumItem
 sealed interface AlbumEntry {
     val key: String
     data class ChildAlbum(val album: FfiAlbum) : AlbumEntry { override val key = "album:${album.albumId}" }
-    data class Item(val item: FfiAlbumItem) : AlbumEntry {
+    data class Item(val item: FfiAlbumItem, val position: Int) : AlbumEntry {
         override val key = item.media?.mediaId?.let { "media:$it" } ?: "group:${item.group!!.groupId}"
     }
     data object DisconnectedHeader : AlbumEntry { override val key = "header:disconnected" }
@@ -67,7 +67,9 @@ private class AlbumEntriesPagingSource(
                 else -> {
                     val itemOffset = position - children - disconnected - if (disconnected > 0) 1 else 0
                     val size = minOf(end - position, albumItems - itemOffset)
-                    result += repo.albumItemsByDate(albumId!!, ascending, itemOffset, size).map(AlbumEntry::Item)
+                    result += repo.albumItemsByDate(albumId!!, ascending, itemOffset, size).mapIndexed { index, item ->
+                        AlbumEntry.Item(item, itemOffset + index)
+                    }
                     position += size
                 }
             }
@@ -98,7 +100,6 @@ class AlbumViewModel(
     private val _sortAscending = MutableStateFlow(false)
     val sortAscending: StateFlow<Boolean> = _sortAscending.asStateFlow()
     private var currentSource: AlbumEntriesPagingSource? = null
-
     @OptIn(ExperimentalCoroutinesApi::class)
     val entries: Flow<PagingData<AlbumEntry>> = sortAscending.flatMapLatest { ascending ->
         Pager(PagingConfig(pageSize = PAGE_SIZE, prefetchDistance = PREFETCH_DISTANCE, enablePlaceholders = true)) {

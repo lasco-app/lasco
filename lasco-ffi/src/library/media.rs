@@ -4,7 +4,7 @@ use lasco_core::library_json::LibraryJson;
 use lasco_core::library::media::upload::MediaAddResult;
 
 use super::remotes::media_entry_to_ffi;
-use super::types::{FfiLocalStateStats, FfiMediaAddResult};
+use super::types::{FfiLocalStateStats, FfiMediaAddResult, FfiMediaNeighbors};
 use super::{FfiLibrary, FfiMediaItem};
 use crate::error::LascoError;
 
@@ -333,6 +333,30 @@ impl FfiLibrary {
 
     pub fn media_by_date_count(&self) -> u32 {
         self.inner.media_by_date_count(false) as u32
+    }
+
+    /// Returns the entries immediately surrounding a zero-based home position.
+    pub fn media_by_date_neighbors(&self, position: u32) -> Result<FfiMediaNeighbors, LascoError> {
+        let count = self.inner.media_by_date_count(false);
+        let position = position as usize;
+        if count == 0 || position >= count {
+            return Err(LascoError::NotFound);
+        }
+
+        let start = position.saturating_sub(1);
+        let end = (position + 1).min(count - 1);
+        let mut entries = self
+            .inner
+            .media_by_date_range(false, start, end)
+            .into_iter()
+            .map(media_entry_to_ffi);
+        let previous = (position > 0).then(|| entries.next()).flatten();
+        let current = entries.next().ok_or(LascoError::NotFound)?;
+        Ok(FfiMediaNeighbors {
+            previous,
+            current,
+            next: entries.next(),
+        })
     }
 
     /// Positions are zero-based and both ends of the range are inclusive.

@@ -26,6 +26,8 @@ import uniffi.lasco_ffi.FfiAlbumItem
 import uniffi.lasco_ffi.FfiLibrary
 import uniffi.lasco_ffi.FfiLocalStateStats
 import uniffi.lasco_ffi.FfiMediaItem
+import uniffi.lasco_ffi.FfiMediaNeighbors
+import uniffi.lasco_ffi.FfiMediaOrGroupNeighbors
 import uniffi.lasco_ffi.FfiOperationGroup
 import uniffi.lasco_ffi.FfiSyncResult
 
@@ -160,6 +162,11 @@ class LibraryRepository(
         return allPages(count, ::mediaByDate)
     }
 
+    suspend fun mediaByDateNeighbors(position: Int): FfiMediaNeighbors = withContext(io) {
+        require(position >= 0) { "position must be non-negative" }
+        lib.mediaByDateNeighbors(position.toUInt())
+    }
+
     // Primary media that is not reachable from any live album or group. The
     // FFI query excludes AAE and Live Photo companion resources for us.
     suspend fun orphanMediaByDateCount(): Int = withContext(io) { lib.orphanMediaByDateCount().toInt() }
@@ -212,6 +219,15 @@ class LibraryRepository(
     suspend fun albumItemsSorted(albumId: String, ascending: Boolean): List<FfiAlbumItem> {
         val count = albumItemsCount(albumId)
         return allPages(count) { offset, limit -> albumItemsByDate(albumId, ascending, offset, limit) }
+    }
+
+    suspend fun albumItemsByDateNeighbors(
+        albumId: String,
+        ascending: Boolean,
+        position: Int,
+    ): FfiMediaOrGroupNeighbors = withContext(io) {
+        require(position >= 0) { "position must be non-negative" }
+        lib.albumItemsByDateNeighbors(albumId, ascending, position.toUInt())
     }
 
     suspend fun mediaInAlbum(albumId: String): List<FfiMediaItem> =

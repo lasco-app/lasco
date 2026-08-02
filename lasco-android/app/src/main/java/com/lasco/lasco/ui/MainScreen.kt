@@ -25,6 +25,7 @@ import com.lasco.lasco.ui.components.FloatingTabBar
 import com.lasco.lasco.ui.manage.ManageScreen
 import com.lasco.lasco.ui.media.MediaDetailKey
 import com.lasco.lasco.ui.media.MediaDetailScreen
+import com.lasco.lasco.ui.media.MediaDetailSource
 import com.lasco.lasco.ui.media.RecentMediaScreen
 import com.lasco.lasco.ui.status.StatusScreen
 import com.lasco.lasco.ui.theme.LascoTheme
@@ -77,16 +78,16 @@ fun MainScreen(
                     entry<HomeKey> {
                         RecentMediaScreen(
                             modifier = Modifier.fillMaxSize(),
-                            onOpenMedia = { mediaId ->
-                                homeBackStack.add(MediaDetailKey(sourceAlbumId = null, startMediaId = mediaId))
+                            onOpenMedia = { position ->
+                                homeBackStack.add(MediaDetailKey(MediaDetailSource.HomeByDate, position))
                             },
                             onOpenAlbum = { openAlbum(it) },
                         )
                     }
                     entry<MediaDetailKey> { key ->
                         MediaDetailScreen(
-                            sourceAlbumId = key.sourceAlbumId,
-                            startMediaId = key.startMediaId,
+                            source = key.source,
+                            startPosition = key.startPosition,
                             onBack = { homeBackStack.removeLastOrNull() },
                             onOpenAlbum = { openAlbum(it) },
                             modifier = Modifier.fillMaxSize(),

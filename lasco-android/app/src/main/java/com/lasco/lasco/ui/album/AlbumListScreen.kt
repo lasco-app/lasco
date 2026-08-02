@@ -83,7 +83,7 @@ fun AlbumListScreen(
     backLabel: String? = null,
     onBack: (() -> Unit)? = null,
     onOpenChild: (FfiAlbum) -> Unit = {},
-    onOpenMedia: (itemId: String) -> Unit = {},
+    onOpenMedia: (position: Int, ascending: Boolean) -> Unit = { _, _ -> },
     pickerState: AlbumPickerState? = null,
     onPickerVisibleChange: (Boolean) -> Unit = {},
     viewModel: AlbumViewModel = viewModel(
@@ -346,7 +346,8 @@ fun AlbumListScreen(
                         }
                     },
                     onAlbumLongPress = { child -> if (pickerState == null) { selectedAlbumNames += child.albumId to child.name; toggleAlbum(child.albumId) } },
-                    onItemTap = { item ->
+                    onItemTap = { indexed ->
+                        val item = indexed.item
                         val mediaId = item.media?.mediaId
                         val groupId = item.group?.groupId
                         when {
@@ -355,7 +356,7 @@ fun AlbumListScreen(
                             pickerState != null -> Unit
                             isSelecting && mediaId != null -> toggleMedia(mediaId)
                             isSelecting && groupId != null -> toggleGroup(groupId)
-                            else -> (mediaId ?: groupId)?.let(onOpenMedia)
+                            else -> onOpenMedia(indexed.position, sortAscending)
                         }
                     },
                     onItemLongPress = { item ->
@@ -640,7 +641,7 @@ private fun AlbumEntriesGrid(
     pickerState: AlbumPickerState? = null,
     onAlbumTap: (FfiAlbum) -> Unit,
     onAlbumLongPress: (FfiAlbum) -> Unit,
-    onItemTap: (uniffi.lasco_ffi.FfiAlbumItem) -> Unit,
+    onItemTap: (AlbumEntry.Item) -> Unit,
     onItemLongPress: (uniffi.lasco_ffi.FfiAlbumItem) -> Unit,
 ) {
     val colors = LascoTheme.colors
@@ -669,10 +670,10 @@ private fun AlbumEntriesGrid(
                     val dimmed = pickerState != null && (item.group != null || item.media?.mediaId in pickerState.disabledIds)
                     if (isGridLayout) AlbumItemCell(
                         item, repo, isSelected = item.media?.mediaId in selectedMediaIds || item.group?.groupId in selectedGroupIds,
-                        dimmed = dimmed, onTap = { onItemTap(item) }, onLongPress = { onItemLongPress(item) },
+                        dimmed = dimmed, onTap = { onItemTap(entry) }, onLongPress = { onItemLongPress(item) },
                     ) else AlbumItemRow(
                         item, repo, isSelected = item.media?.mediaId in selectedMediaIds || item.group?.groupId in selectedGroupIds,
-                        dimmed = dimmed, onTap = { onItemTap(item) }, onLongPress = { onItemLongPress(item) },
+                        dimmed = dimmed, onTap = { onItemTap(entry) }, onLongPress = { onItemLongPress(item) },
                     )
                 }
                 AlbumEntry.DisconnectedHeader -> Text(

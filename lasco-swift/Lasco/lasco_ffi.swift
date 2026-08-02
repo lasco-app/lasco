@@ -570,6 +570,11 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     func albumAlbumsRange(parentAlbumId: String?, posStartInclusive: UInt32, posEndInclusive: UInt32) throws  -> [FfiAlbum]
     
     /**
+     * Returns the entries immediately surrounding a zero-based album position.
+     */
+    func albumItemsByDateNeighbors(albumId: String, ascending: Bool, position: UInt32) throws  -> FfiMediaOrGroupNeighbors
+    
+    /**
      * Positions are zero-based and both ends of the range are inclusive.
      */
     func albumItemsByDateRange(albumId: String, ascending: Bool, posStartInclusive: UInt32, posEndInclusive: UInt32) throws  -> [FfiAlbumItem]
@@ -649,6 +654,11 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     func mediaByDate() throws  -> [FfiMediaItem]
     
     func mediaByDateCount()  -> UInt32
+    
+    /**
+     * Returns the entries immediately surrounding a zero-based home position.
+     */
+    func mediaByDateNeighbors(position: UInt32) throws  -> FfiMediaNeighbors
     
     /**
      * Positions are zero-based and both ends of the range are inclusive.
@@ -851,6 +861,19 @@ nonisolated open func albumAlbumsRange(parentAlbumId: String?, posStartInclusive
         FfiConverterOptionString.lower(parentAlbumId),
         FfiConverterUInt32.lower(posStartInclusive),
         FfiConverterUInt32.lower(posEndInclusive),$0
+    )
+})
+}
+    
+    /**
+     * Returns the entries immediately surrounding a zero-based album position.
+     */
+nonisolated open func albumItemsByDateNeighbors(albumId: String, ascending: Bool, position: UInt32)throws  -> FfiMediaOrGroupNeighbors  {
+    return try  FfiConverterTypeFfiMediaOrGroupNeighbors_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_album_items_by_date_neighbors(self.uniffiClonePointer(),
+        FfiConverterString.lower(albumId),
+        FfiConverterBool.lower(ascending),
+        FfiConverterUInt32.lower(position),$0
     )
 })
 }
@@ -1175,6 +1198,17 @@ nonisolated open func mediaByDate()throws  -> [FfiMediaItem]  {
 nonisolated open func mediaByDateCount() -> UInt32  {
     return try!  FfiConverterUInt32.lift(try! rustCall() {
     uniffi_lasco_ffi_fn_method_ffilibrary_media_by_date_count(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Returns the entries immediately surrounding a zero-based home position.
+     */
+nonisolated open func mediaByDateNeighbors(position: UInt32)throws  -> FfiMediaNeighbors  {
+    return try  FfiConverterTypeFfiMediaNeighbors_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_media_by_date_neighbors(self.uniffiClonePointer(),
+        FfiConverterUInt32.lower(position),$0
     )
 })
 }
@@ -2270,6 +2304,162 @@ nonisolated public func FfiConverterTypeFfiMediaItem_lower(_ value: FfiMediaItem
 }
 
 
+nonisolated public struct FfiMediaNeighbors {
+    public var previous: FfiMediaItem?
+    public var current: FfiMediaItem
+    public var next: FfiMediaItem?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(previous: FfiMediaItem?, current: FfiMediaItem, next: FfiMediaItem?) {
+        self.previous = previous
+        self.current = current
+        self.next = next
+    }
+}
+
+#if compiler(>=6)
+nonisolated extension FfiMediaNeighbors: Sendable {}
+#endif
+
+
+nonisolated extension FfiMediaNeighbors: Equatable, Hashable {
+    public static func ==(lhs: FfiMediaNeighbors, rhs: FfiMediaNeighbors) -> Bool {
+        if lhs.previous != rhs.previous {
+            return false
+        }
+        if lhs.current != rhs.current {
+            return false
+        }
+        if lhs.next != rhs.next {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(previous)
+        hasher.combine(current)
+        hasher.combine(next)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public struct FfiConverterTypeFfiMediaNeighbors: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiMediaNeighbors {
+        return
+            try FfiMediaNeighbors(
+                previous: FfiConverterOptionTypeFfiMediaItem.read(from: &buf), 
+                current: FfiConverterTypeFfiMediaItem.read(from: &buf), 
+                next: FfiConverterOptionTypeFfiMediaItem.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiMediaNeighbors, into buf: inout [UInt8]) {
+        FfiConverterOptionTypeFfiMediaItem.write(value.previous, into: &buf)
+        FfiConverterTypeFfiMediaItem.write(value.current, into: &buf)
+        FfiConverterOptionTypeFfiMediaItem.write(value.next, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public func FfiConverterTypeFfiMediaNeighbors_lift(_ buf: RustBuffer) throws -> FfiMediaNeighbors {
+    return try FfiConverterTypeFfiMediaNeighbors.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public func FfiConverterTypeFfiMediaNeighbors_lower(_ value: FfiMediaNeighbors) -> RustBuffer {
+    return FfiConverterTypeFfiMediaNeighbors.lower(value)
+}
+
+
+nonisolated public struct FfiMediaOrGroupNeighbors {
+    public var previous: FfiAlbumItem?
+    public var current: FfiAlbumItem
+    public var next: FfiAlbumItem?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(previous: FfiAlbumItem?, current: FfiAlbumItem, next: FfiAlbumItem?) {
+        self.previous = previous
+        self.current = current
+        self.next = next
+    }
+}
+
+#if compiler(>=6)
+nonisolated extension FfiMediaOrGroupNeighbors: Sendable {}
+#endif
+
+
+nonisolated extension FfiMediaOrGroupNeighbors: Equatable, Hashable {
+    public static func ==(lhs: FfiMediaOrGroupNeighbors, rhs: FfiMediaOrGroupNeighbors) -> Bool {
+        if lhs.previous != rhs.previous {
+            return false
+        }
+        if lhs.current != rhs.current {
+            return false
+        }
+        if lhs.next != rhs.next {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(previous)
+        hasher.combine(current)
+        hasher.combine(next)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public struct FfiConverterTypeFfiMediaOrGroupNeighbors: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiMediaOrGroupNeighbors {
+        return
+            try FfiMediaOrGroupNeighbors(
+                previous: FfiConverterOptionTypeFfiAlbumItem.read(from: &buf), 
+                current: FfiConverterTypeFfiAlbumItem.read(from: &buf), 
+                next: FfiConverterOptionTypeFfiAlbumItem.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiMediaOrGroupNeighbors, into buf: inout [UInt8]) {
+        FfiConverterOptionTypeFfiAlbumItem.write(value.previous, into: &buf)
+        FfiConverterTypeFfiAlbumItem.write(value.current, into: &buf)
+        FfiConverterOptionTypeFfiAlbumItem.write(value.next, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public func FfiConverterTypeFfiMediaOrGroupNeighbors_lift(_ buf: RustBuffer) throws -> FfiMediaOrGroupNeighbors {
+    return try FfiConverterTypeFfiMediaOrGroupNeighbors.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public func FfiConverterTypeFfiMediaOrGroupNeighbors_lower(_ value: FfiMediaOrGroupNeighbors) -> RustBuffer {
+    return FfiConverterTypeFfiMediaOrGroupNeighbors.lower(value)
+}
+
+
 nonisolated public struct FfiOperation {
     public var kind: String
     public var timestamp: String
@@ -2776,6 +2966,30 @@ nonisolated fileprivate struct FfiConverterOptionTypeFfiLibrary: FfiConverterRus
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+nonisolated fileprivate struct FfiConverterOptionTypeFfiAlbumItem: FfiConverterRustBuffer {
+    typealias SwiftType = FfiAlbumItem?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeFfiAlbumItem.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeFfiAlbumItem.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 nonisolated fileprivate struct FfiConverterOptionTypeFfiGroup: FfiConverterRustBuffer {
     typealias SwiftType = FfiGroup?
 
@@ -3262,6 +3476,9 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_album_albums_range() != 9776) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_album_items_by_date_neighbors() != 43272) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_album_items_by_date_range() != 54229) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -3371,6 +3588,9 @@ nonisolated private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date_count() != 56581) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date_neighbors() != 17050) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date_range() != 705) {

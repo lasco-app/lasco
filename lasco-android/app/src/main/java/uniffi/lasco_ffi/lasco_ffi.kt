@@ -881,6 +881,10 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -925,6 +929,8 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_s3(
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_album_albums_count(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_album_albums_range(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_album_items_by_date_neighbors(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_album_items_by_date_range(
 ): Short
@@ -999,6 +1005,8 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_media_album_ids(
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date_count(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date_neighbors(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date_range(
 ): Short
@@ -1127,6 +1135,8 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_album_albums_count(`ptr`: Pointer,`par
 ): Int
 fun uniffi_lasco_ffi_fn_method_ffilibrary_album_albums_range(`ptr`: Pointer,`parentAlbumId`: RustBuffer.ByValue,`posStartInclusive`: Int,`posEndInclusive`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_lasco_ffi_fn_method_ffilibrary_album_items_by_date_neighbors(`ptr`: Pointer,`albumId`: RustBuffer.ByValue,`ascending`: Byte,`position`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_album_items_by_date_range(`ptr`: Pointer,`albumId`: RustBuffer.ByValue,`ascending`: Byte,`posStartInclusive`: Int,`posEndInclusive`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_album_items_count(`ptr`: Pointer,`albumId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1201,6 +1211,8 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_media_by_date(`ptr`: Pointer,uniffi_ou
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_media_by_date_count(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Int
+fun uniffi_lasco_ffi_fn_method_ffilibrary_media_by_date_neighbors(`ptr`: Pointer,`position`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_media_by_date_range(`ptr`: Pointer,`posStartInclusive`: Int,`posEndInclusive`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_media_containing_album_ids(`ptr`: Pointer,`mediaId`: RustBuffer.ByValue,`includeViaGroups`: Byte,uniffi_out_err: UniffiRustCallStatus, 
@@ -1440,6 +1452,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_album_albums_range() != 9776.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_album_items_by_date_neighbors() != 43272.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_album_items_by_date_range() != 54229.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1549,6 +1564,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date_count() != 56581.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date_neighbors() != 17050.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date_range() != 705.toShort()) {
@@ -2131,6 +2149,11 @@ public interface FfiLibraryInterface {
     fun `albumAlbumsRange`(`parentAlbumId`: kotlin.String?, `posStartInclusive`: kotlin.UInt, `posEndInclusive`: kotlin.UInt): List<FfiAlbum>
     
     /**
+     * Returns the entries immediately surrounding a zero-based album position.
+     */
+    fun `albumItemsByDateNeighbors`(`albumId`: kotlin.String, `ascending`: kotlin.Boolean, `position`: kotlin.UInt): FfiMediaOrGroupNeighbors
+    
+    /**
      * Positions are zero-based and both ends of the range are inclusive.
      */
     fun `albumItemsByDateRange`(`albumId`: kotlin.String, `ascending`: kotlin.Boolean, `posStartInclusive`: kotlin.UInt, `posEndInclusive`: kotlin.UInt): List<FfiAlbumItem>
@@ -2210,6 +2233,11 @@ public interface FfiLibraryInterface {
     fun `mediaByDate`(): List<FfiMediaItem>
     
     fun `mediaByDateCount`(): kotlin.UInt
+    
+    /**
+     * Returns the entries immediately surrounding a zero-based home position.
+     */
+    fun `mediaByDateNeighbors`(`position`: kotlin.UInt): FfiMediaNeighbors
     
     /**
      * Positions are zero-based and both ends of the range are inclusive.
@@ -2456,6 +2484,22 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     uniffiRustCallWithError(LascoException) { _status ->
     UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_album_albums_range(
         it, FfiConverterOptionalString.lower(`parentAlbumId`),FfiConverterUInt.lower(`posStartInclusive`),FfiConverterUInt.lower(`posEndInclusive`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Returns the entries immediately surrounding a zero-based album position.
+     */
+    @Throws(LascoException::class)override fun `albumItemsByDateNeighbors`(`albumId`: kotlin.String, `ascending`: kotlin.Boolean, `position`: kotlin.UInt): FfiMediaOrGroupNeighbors {
+            return FfiConverterTypeFfiMediaOrGroupNeighbors.lift(
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_album_items_by_date_neighbors(
+        it, FfiConverterString.lower(`albumId`),FfiConverterBoolean.lower(`ascending`),FfiConverterUInt.lower(`position`),_status)
 }
     }
     )
@@ -2951,6 +2995,22 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_media_by_date_count(
         it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Returns the entries immediately surrounding a zero-based home position.
+     */
+    @Throws(LascoException::class)override fun `mediaByDateNeighbors`(`position`: kotlin.UInt): FfiMediaNeighbors {
+            return FfiConverterTypeFfiMediaNeighbors.lift(
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_media_by_date_neighbors(
+        it, FfiConverterUInt.lower(`position`),_status)
 }
     }
     )
@@ -3741,6 +3801,78 @@ public object FfiConverterTypeFfiMediaItem: FfiConverterRustBuffer<FfiMediaItem>
 
 
 
+data class FfiMediaNeighbors (
+    var `previous`: FfiMediaItem?, 
+    var `current`: FfiMediaItem, 
+    var `next`: FfiMediaItem?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFfiMediaNeighbors: FfiConverterRustBuffer<FfiMediaNeighbors> {
+    override fun read(buf: ByteBuffer): FfiMediaNeighbors {
+        return FfiMediaNeighbors(
+            FfiConverterOptionalTypeFfiMediaItem.read(buf),
+            FfiConverterTypeFfiMediaItem.read(buf),
+            FfiConverterOptionalTypeFfiMediaItem.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FfiMediaNeighbors) = (
+            FfiConverterOptionalTypeFfiMediaItem.allocationSize(value.`previous`) +
+            FfiConverterTypeFfiMediaItem.allocationSize(value.`current`) +
+            FfiConverterOptionalTypeFfiMediaItem.allocationSize(value.`next`)
+    )
+
+    override fun write(value: FfiMediaNeighbors, buf: ByteBuffer) {
+            FfiConverterOptionalTypeFfiMediaItem.write(value.`previous`, buf)
+            FfiConverterTypeFfiMediaItem.write(value.`current`, buf)
+            FfiConverterOptionalTypeFfiMediaItem.write(value.`next`, buf)
+    }
+}
+
+
+
+data class FfiMediaOrGroupNeighbors (
+    var `previous`: FfiAlbumItem?, 
+    var `current`: FfiAlbumItem, 
+    var `next`: FfiAlbumItem?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFfiMediaOrGroupNeighbors: FfiConverterRustBuffer<FfiMediaOrGroupNeighbors> {
+    override fun read(buf: ByteBuffer): FfiMediaOrGroupNeighbors {
+        return FfiMediaOrGroupNeighbors(
+            FfiConverterOptionalTypeFfiAlbumItem.read(buf),
+            FfiConverterTypeFfiAlbumItem.read(buf),
+            FfiConverterOptionalTypeFfiAlbumItem.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FfiMediaOrGroupNeighbors) = (
+            FfiConverterOptionalTypeFfiAlbumItem.allocationSize(value.`previous`) +
+            FfiConverterTypeFfiAlbumItem.allocationSize(value.`current`) +
+            FfiConverterOptionalTypeFfiAlbumItem.allocationSize(value.`next`)
+    )
+
+    override fun write(value: FfiMediaOrGroupNeighbors, buf: ByteBuffer) {
+            FfiConverterOptionalTypeFfiAlbumItem.write(value.`previous`, buf)
+            FfiConverterTypeFfiAlbumItem.write(value.`current`, buf)
+            FfiConverterOptionalTypeFfiAlbumItem.write(value.`next`, buf)
+    }
+}
+
+
+
 data class FfiOperation (
     var `kind`: kotlin.String, 
     var `timestamp`: kotlin.String, 
@@ -4088,6 +4220,38 @@ public object FfiConverterOptionalTypeFfiLibrary: FfiConverterRustBuffer<FfiLibr
         } else {
             buf.put(1)
             FfiConverterTypeFfiLibrary.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeFfiAlbumItem: FfiConverterRustBuffer<FfiAlbumItem?> {
+    override fun read(buf: ByteBuffer): FfiAlbumItem? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeFfiAlbumItem.read(buf)
+    }
+
+    override fun allocationSize(value: FfiAlbumItem?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeFfiAlbumItem.allocationSize(value)
+        }
+    }
+
+    override fun write(value: FfiAlbumItem?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeFfiAlbumItem.write(value, buf)
         }
     }
 }

@@ -5,9 +5,6 @@ import android.content.Intent
 import android.net.Uri
 import android.webkit.MimeTypeMap
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -50,6 +47,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -93,8 +91,8 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
 import kotlin.math.roundToInt
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collectLatest
 import uniffi.lasco_ffi.FfiMediaItem
 
 private val videoExtensions = setOf("mp4", "mov", "m4v", "avi", "3gp", "webm", "mkv")
@@ -130,14 +128,14 @@ private fun displayItemForPage(
  */
 @Composable
 fun MediaDetailScreen(
-    sourceAlbumId: String?,
-    startMediaId: String,
+    source: MediaDetailSource,
+    startPosition: Int,
     onBack: () -> Unit,
     onOpenAlbum: (String) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: MediaDetailViewModel = viewModel(
-        key = "$sourceAlbumId:$startMediaId",
-        factory = MediaDetailViewModel.factory(sourceAlbumId, startMediaId),
+        key = "$source:$startPosition",
+        factory = MediaDetailViewModel.factory(source, startPosition),
     ),
 ) {
     val context = LocalContext.current
@@ -149,19 +147,28 @@ fun MediaDetailScreen(
 
     BackHandler(onBack = onBack)
 
-    val items by viewModel.items.collectAsStateWithLifecycle()
-    val startIndex by viewModel.currentIndex.collectAsStateWithLifecycle()
-
-    if (startIndex == null || items.isEmpty()) {
-        Box(modifier = modifier.fillMaxSize().background(Color.Black))
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val content = state as? MediaDetailState.Content
+    if (content == null) {
+        Box(modifier = modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+            when (state) {
+                MediaDetailState.Loading -> Text("Loading…", color = Color.White)
+                MediaDetailState.Empty -> Text("This item is no longer available.", color = Color.White)
+                is MediaDetailState.Error -> Text("Could not load this item.", color = Color.White)
+                is MediaDetailState.Content -> Unit
+            }
+        }
         return
     }
+    val neighbors = content.neighbors
+    val items = listOfNotNull(neighbors.previous, neighbors.current, neighbors.next)
+    val currentPagerPage = if (neighbors.previous == null) 0 else 1
+    val pagerState = rememberPagerState(initialPage = currentPagerPage) { items.size }
 
-    val pagerState = rememberPagerState(initialPage = startIndex!!) { items.size }
-
-    LaunchedEffect(pagerState.currentPage) { viewModel.setCurrentIndex(pagerState.currentPage) }
-
-    val currentIndex by viewModel.currentIndex.collectAsStateWithLifecycle()
+    LaunchedEffect(neighbors) { pagerState.scrollToPage(currentPagerPage) }
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.settledPage }.collectLatest(viewModel::onPagerSettled)
+    }
     val groupMediaIndex by viewModel.groupMediaIndex.collectAsStateWithLifecycle()
     val groupMediaCache by viewModel.groupMediaCache.collectAsStateWithLifecycle()
     val currentGroupMedia by viewModel.currentGroupMedia.collectAsStateWithLifecycle()
@@ -172,13 +179,7 @@ fun MediaDetailScreen(
 
     val panelState = remember { AnchoredDraggableState(initialValue = PanelAnchor.Collapsed) }
     var showRenameDialog by remember { mutableStateOf(false) }
-    var showCounter by remember { mutableStateOf(true) }
-
-    LaunchedEffect(currentIndex) {
-        showCounter = true
-        delay(1000)
-        showCounter = false
-    }
+    val sourceAlbumId = (source as? MediaDetailSource.AlbumByDate)?.albumId
 
     if (showRenameDialog && currentDisplayItem != null) {
         val media = currentDisplayItem!!
@@ -195,13 +196,22 @@ fun MediaDetailScreen(
     }
 
     Box(modifier = modifier.fillMaxSize().background(Color.Black)) {
-        HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+        HorizontalPager(
+            state = pagerState,
+            key = { page ->
+                when (val entry = items[page]) {
+                    is DetailItem.Media -> "media:${entry.item.mediaId}"
+                    is DetailItem.Group -> "group:${entry.group.groupId}"
+                }
+            },
+            modifier = Modifier.fillMaxSize(),
+        ) { page ->
             val entry = items[page]
             LaunchedEffect(entry) {
                 if (entry is DetailItem.Group) viewModel.loadGroupMediaIfNeeded(entry.group.groupId)
             }
-            val displayItem = displayItemForPage(page, items, groupMediaCache, groupMediaIndex, currentIndex)
-            val isActive = page == currentIndex
+            val displayItem = displayItemForPage(page, items, groupMediaCache, groupMediaIndex, currentPagerPage)
+            val isActive = page == currentPagerPage
             if (displayItem != null) {
                 LaunchedEffect(displayItem.mediaId, isActive) {
                     if (isActive) viewModel.loadLivePhotoVideoIfNeeded(displayItem)
@@ -219,7 +229,7 @@ fun MediaDetailScreen(
             }
         }
 
-        val currentEntry = items.getOrNull(currentIndex ?: -1)
+        val currentEntry = neighbors.current
         if (currentEntry is DetailItem.Group && currentGroupMedia.isNotEmpty()) {
             GroupThumbnailStrip(
                 media = currentGroupMedia,
@@ -261,17 +271,6 @@ fun MediaDetailScreen(
                             .background(Color.Black)
                             .border(2.dp, Color.White)
                             .clickable { viewModel.toggleLivePhotoVideo() }
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                    )
-                }
-                AnimatedVisibility(visible = showCounter, enter = fadeIn(), exit = fadeOut()) {
-                    Text(
-                        text = "${(currentIndex ?: 0) + 1} / ${items.size}",
-                        style = LascoTheme.type.pixel(14),
-                        color = Color.White,
-                        modifier = Modifier
-                            .background(Color.Black.copy(alpha = 0.5f))
-                            .border(1.dp, Color.White.copy(alpha = 0.5f))
                             .padding(horizontal = 10.dp, vertical = 6.dp),
                     )
                 }
