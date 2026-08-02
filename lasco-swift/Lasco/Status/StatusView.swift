@@ -111,17 +111,7 @@ struct StatusView: View {
         }
     }
 
-    private var mediaTypeCounts: (photos: Int, videos: Int) {
-        let videoExtensions: Set<String> = ["mp4", "mov", "avi", "mkv", "m4v", "wmv", "flv", "webm", "mpg", "mpeg", "3gp", "ts", "mts", "m2ts"]
-        let videos = model.media.filter {
-            let ext = ($0.filenameOriginal as NSString).pathExtension.lowercased()
-            return videoExtensions.contains(ext)
-        }.count
-        return (photos: model.media.count - videos, videos: videos)
-    }
-
     private var mediaSection: some View {
-        let counts = mediaTypeCounts
         return VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text("Library")
@@ -129,12 +119,9 @@ struct StatusView: View {
                     .foregroundStyle(theme.inkSub)
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text("\(model.media.count) items")
+                    Text("\(model.mediaCount) items")
                         .font(LascoFont.mono())
                         .foregroundStyle(theme.ink)
-                    Text("\(counts.photos) photos  \(counts.videos) videos")
-                        .font(LascoFont.mono())
-                        .foregroundStyle(theme.inkMuted)
                 }
             }
             .padding(.horizontal, 16)

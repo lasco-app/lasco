@@ -299,6 +299,10 @@ struct ContentView: View {
                             }
                         }
                         #endif
+                        .onAppear {
+                            guard item.mediaId == media.last?.mediaId else { return }
+                            Task { await model.loadMore() }
+                        }
                 }
             }
         }

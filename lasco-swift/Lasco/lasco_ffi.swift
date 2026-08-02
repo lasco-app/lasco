@@ -561,6 +561,21 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     
     func addRemoteS3(name: String, endpoint: String, bucket: String, region: String, pathPrefix: String, accessKey: String, secretKey: String) throws  -> String
     
+    func albumAlbumsCount(parentAlbumId: String?) throws  -> UInt32
+    
+    /**
+     * Returns direct albums under `parent_album_id`; `None` means root albums.
+     * Positions are zero-based and both ends of the range are inclusive.
+     */
+    func albumAlbumsRange(parentAlbumId: String?, posStartInclusive: UInt32, posEndInclusive: UInt32) throws  -> [FfiAlbum]
+    
+    /**
+     * Positions are zero-based and both ends of the range are inclusive.
+     */
+    func albumItemsByDateRange(albumId: String, ascending: Bool, posStartInclusive: UInt32, posEndInclusive: UInt32) throws  -> [FfiAlbumItem]
+    
+    func albumItemsCount(albumId: String) throws  -> UInt32
+    
     func albumListGroups(albumId: String) throws  -> [FfiGroup]
     
     func albumListItemsSorted(albumId: String, ascending: Bool) throws  -> [FfiAlbumItem]
@@ -625,6 +640,13 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     
     func mediaByDate() throws  -> [FfiMediaItem]
     
+    func mediaByDateCount()  -> UInt32
+    
+    /**
+     * Positions are zero-based and both ends of the range are inclusive.
+     */
+    func mediaByDateRange(posStartInclusive: UInt32, posEndInclusive: UInt32) throws  -> [FfiMediaItem]
+    
     func mediaContainingAlbumIds(mediaId: String, includeViaGroups: Bool) throws  -> [String]
     
     func mediaIdsWithoutRemoteBackup() throws  -> [String]
@@ -634,6 +656,13 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     func moveMediaToAlbum(mediaId: String, fromAlbumId: String, toAlbumId: String) throws 
     
     func orphanMediaByDate() throws  -> [FfiMediaItem]
+    
+    func orphanMediaByDateCount()  -> UInt32
+    
+    /**
+     * Positions are zero-based and both ends of the range are inclusive.
+     */
+    func orphanMediaByDateRange(posStartInclusive: UInt32, posEndInclusive: UInt32) throws  -> [FfiMediaItem]
     
     func pendingMediaCount()  -> UInt32
     
@@ -792,6 +821,50 @@ nonisolated open func addRemoteS3(name: String, endpoint: String, bucket: String
         FfiConverterString.lower(pathPrefix),
         FfiConverterString.lower(accessKey),
         FfiConverterString.lower(secretKey),$0
+    )
+})
+}
+    
+nonisolated open func albumAlbumsCount(parentAlbumId: String?)throws  -> UInt32  {
+    return try  FfiConverterUInt32.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_album_albums_count(self.uniffiClonePointer(),
+        FfiConverterOptionString.lower(parentAlbumId),$0
+    )
+})
+}
+    
+    /**
+     * Returns direct albums under `parent_album_id`; `None` means root albums.
+     * Positions are zero-based and both ends of the range are inclusive.
+     */
+nonisolated open func albumAlbumsRange(parentAlbumId: String?, posStartInclusive: UInt32, posEndInclusive: UInt32)throws  -> [FfiAlbum]  {
+    return try  FfiConverterSequenceTypeFfiAlbum.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_album_albums_range(self.uniffiClonePointer(),
+        FfiConverterOptionString.lower(parentAlbumId),
+        FfiConverterUInt32.lower(posStartInclusive),
+        FfiConverterUInt32.lower(posEndInclusive),$0
+    )
+})
+}
+    
+    /**
+     * Positions are zero-based and both ends of the range are inclusive.
+     */
+nonisolated open func albumItemsByDateRange(albumId: String, ascending: Bool, posStartInclusive: UInt32, posEndInclusive: UInt32)throws  -> [FfiAlbumItem]  {
+    return try  FfiConverterSequenceTypeFfiAlbumItem.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_album_items_by_date_range(self.uniffiClonePointer(),
+        FfiConverterString.lower(albumId),
+        FfiConverterBool.lower(ascending),
+        FfiConverterUInt32.lower(posStartInclusive),
+        FfiConverterUInt32.lower(posEndInclusive),$0
+    )
+})
+}
+    
+nonisolated open func albumItemsCount(albumId: String)throws  -> UInt32  {
+    return try  FfiConverterUInt32.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_album_items_count(self.uniffiClonePointer(),
+        FfiConverterString.lower(albumId),$0
     )
 })
 }
@@ -1071,6 +1144,25 @@ nonisolated open func mediaByDate()throws  -> [FfiMediaItem]  {
 })
 }
     
+nonisolated open func mediaByDateCount() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+    uniffi_lasco_ffi_fn_method_ffilibrary_media_by_date_count(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Positions are zero-based and both ends of the range are inclusive.
+     */
+nonisolated open func mediaByDateRange(posStartInclusive: UInt32, posEndInclusive: UInt32)throws  -> [FfiMediaItem]  {
+    return try  FfiConverterSequenceTypeFfiMediaItem.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_media_by_date_range(self.uniffiClonePointer(),
+        FfiConverterUInt32.lower(posStartInclusive),
+        FfiConverterUInt32.lower(posEndInclusive),$0
+    )
+})
+}
+    
 nonisolated open func mediaContainingAlbumIds(mediaId: String, includeViaGroups: Bool)throws  -> [String]  {
     return try  FfiConverterSequenceString.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_media_containing_album_ids(self.uniffiClonePointer(),
@@ -1107,6 +1199,25 @@ nonisolated open func moveMediaToAlbum(mediaId: String, fromAlbumId: String, toA
 nonisolated open func orphanMediaByDate()throws  -> [FfiMediaItem]  {
     return try  FfiConverterSequenceTypeFfiMediaItem.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+nonisolated open func orphanMediaByDateCount() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+    uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date_count(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Positions are zero-based and both ends of the range are inclusive.
+     */
+nonisolated open func orphanMediaByDateRange(posStartInclusive: UInt32, posEndInclusive: UInt32)throws  -> [FfiMediaItem]  {
+    return try  FfiConverterSequenceTypeFfiMediaItem.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date_range(self.uniffiClonePointer(),
+        FfiConverterUInt32.lower(posStartInclusive),
+        FfiConverterUInt32.lower(posEndInclusive),$0
     )
 })
 }
@@ -3117,6 +3228,18 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_s3() != 47455) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_album_albums_count() != 32729) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_album_albums_range() != 9776) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_album_items_by_date_range() != 54229) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_album_items_count() != 24951) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_album_list_groups() != 38788) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -3213,6 +3336,12 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date() != 16831) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date_count() != 56581) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date_range() != 705) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_media_containing_album_ids() != 38989) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -3226,6 +3355,12 @@ nonisolated private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date() != 1863) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_count() != 51224) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_range() != 37391) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_pending_media_count() != 40879) {

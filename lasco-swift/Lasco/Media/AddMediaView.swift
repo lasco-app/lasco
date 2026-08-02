@@ -76,9 +76,7 @@ struct AddMediaAlbumBrowser: View {
     private var title: String { album?.name.uppercased() ?? "ALL ALBUMS" }
 
     private var childAlbums: [FfiAlbum] {
-        model.albums.filter {
-            $0.parentAlbumId == album?.albumId && !$0.deleted && !$0.isDisconnected
-        }
+        model.albums(parentID: album?.albumId).filter { !$0.deleted }
     }
 
     var body: some View {
@@ -173,6 +171,9 @@ struct AddMediaAlbumBrowser: View {
                 }
                 .padding(.horizontal, 20)
             }
+        }
+        .task(id: album?.albumId) {
+            await model.load(parentID: album?.albumId)
         }
         .background(theme.bg)
         .onAppear {

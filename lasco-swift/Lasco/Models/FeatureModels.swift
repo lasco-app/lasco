@@ -5,8 +5,13 @@ import Observation
 @Observable
 final class RecentMediaModel {
     private(set) var media: [FfiMediaItem] = []
+    private(set) var hasMore = false
     var showingOrphans = false
     private let repository: any LibraryRepositoryProtocol
+    private var total = 0
+    private var isLoading = false
+
+    private static let pageSize = 100
 
     init(repository: any LibraryRepositoryProtocol) {
         self.repository = repository
@@ -22,11 +27,40 @@ final class RecentMediaModel {
     }
 
     func load() async {
+        guard !isLoading else { return }
+        isLoading = true
+        defer { isLoading = false }
         do {
-            media = try await (showingOrphans ? repository.orphanMediaByDate() : repository.mediaByDate())
+            if showingOrphans {
+                total = try await repository.orphanMediaByDateCount()
+                media = try await repository.orphanMediaByDate(offset: 0, limit: Self.pageSize)
+            } else {
+                total = try await repository.mediaByDateCount()
+                media = try await repository.mediaByDate(offset: 0, limit: Self.pageSize)
+            }
+            hasMore = media.count < total
         } catch is CancellationError {
         } catch {
             AppLogger.log(.error, "recent media query failed: \(error)")
+        }
+    }
+
+    func loadMore() async {
+        guard hasMore, !isLoading else { return }
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            let next: [FfiMediaItem]
+            if showingOrphans {
+                next = try await repository.orphanMediaByDate(offset: media.count, limit: Self.pageSize)
+            } else {
+                next = try await repository.mediaByDate(offset: media.count, limit: Self.pageSize)
+            }
+            media.append(contentsOf: next)
+            hasMore = media.count < total && !next.isEmpty
+        } catch is CancellationError {
+        } catch {
+            AppLogger.log(.error, "recent media page query failed: \(error)")
         }
     }
 
@@ -35,8 +69,8 @@ final class RecentMediaModel {
     }
 
     func albumsContainingMedia(id: String) async -> [FfiAlbum] {
-        guard let ids = try? await repository.mediaAlbumIDs(mediaID: id), let albums = try? await repository.listAlbums() else { return [] }
-        return albums.filter { ids.contains($0.albumId) }
+        guard let ids = try? await repository.mediaAlbumIDs(mediaID: id) else { return [] }
+        return (try? await repository.albums(withIDs: Set(ids))) ?? []
     }
 
     func thumbnail(id: String) async -> Data? {
@@ -48,8 +82,12 @@ final class RecentMediaModel {
 @MainActor
 @Observable
 final class AlbumListModel {
-    private(set) var albums: [FfiAlbum] = []
     private let repository: any LibraryRepositoryProtocol
+    private var albumsByParent: [String: [FfiAlbum]] = [:]
+    private var totalsByParent: [String: Int] = [:]
+    private var loadingParents = Set<String>()
+
+    private static let pageSize = 100
 
     init(repository: any LibraryRepositoryProtocol) {
         self.repository = repository
@@ -57,21 +95,56 @@ final class AlbumListModel {
 
     func start() async {
         let stream = await repository.changes()
-        await load()
+        await reloadLoadedParents()
         for await change in stream {
             guard change == .all || change == .albumList || change == .mediaList else { continue }
-            await load()
+            await reloadLoadedParents()
         }
     }
 
-    func load() async {
+    func albums(parentID: String?) -> [FfiAlbum] {
+        albumsByParent[key(for: parentID)] ?? []
+    }
+
+    func load(parentID: String?) async {
+        let key = key(for: parentID)
+        guard !loadingParents.contains(key) else { return }
+        loadingParents.insert(key)
+        defer { loadingParents.remove(key) }
         do {
-            albums = try await repository.listAlbums()
+            totalsByParent[key] = try await repository.albumsCount(parentID: parentID)
+            albumsByParent[key] = try await repository.albums(parentID: parentID, offset: 0, limit: Self.pageSize)
         } catch is CancellationError {
         } catch {
-            AppLogger.log(.error, "album list query failed: \(error)")
+            AppLogger.log(.error, "album page query failed: \(error)")
         }
     }
+
+    func loadMore(parentID: String?) async {
+        let key = key(for: parentID)
+        guard !loadingParents.contains(key), let current = albumsByParent[key], current.count < (totalsByParent[key] ?? 0) else { return }
+        loadingParents.insert(key)
+        defer { loadingParents.remove(key) }
+        do {
+            let next = try await repository.albums(parentID: parentID, offset: current.count, limit: Self.pageSize)
+            albumsByParent[key, default: []].append(contentsOf: next)
+        } catch is CancellationError {
+        } catch {
+            AppLogger.log(.error, "album next-page query failed: \(error)")
+        }
+    }
+
+    private func reloadLoadedParents() async {
+        let keys = albumsByParent.isEmpty ? [Self.rootKey] : Array(albumsByParent.keys)
+        albumsByParent = [:]
+        totalsByParent = [:]
+        for key in keys {
+            await load(parentID: key == Self.rootKey ? nil : key)
+        }
+    }
+
+    private func key(for parentID: String?) -> String { parentID ?? Self.rootKey }
+    private static let rootKey = "<root>"
 
     func createAlbum(name: String, parentID: String?) {
         Task { try? await repository.createAlbum(name: name, parentID: parentID) }
@@ -152,14 +225,9 @@ final class AlbumListModel {
         try? await repository.thumbnailAsync(mediaID: mediaID)
     }
 
-    func albumThumbnailMediaId(albumID: String) async -> String? {
-        guard let album = albums.first(where: { $0.albumId == albumID }) else { return nil }
-        return await thumbnailMediaID(for: album)
-    }
-
     func thumbnailMediaID(for album: FfiAlbum) async -> String? {
         if let mediaID = album.thumbnailMediaId { return mediaID }
-        let items = try? await repository.albumItems(albumID: album.albumId, ascending: false)
+        let items = try? await repository.albumItems(albumID: album.albumId, ascending: false, offset: 0, limit: 1)
         return items?.compactMap { $0.media?.mediaId }.first
     }
 }
@@ -170,8 +238,13 @@ final class AlbumDetailModel {
     let albumID: String
     private(set) var items: [FfiAlbumItem] = []
     private(set) var groups: [FfiGroup] = []
+    private(set) var hasMore = false
     var ascending = false
     private let repository: any LibraryRepositoryProtocol
+    private var total = 0
+    private var isLoading = false
+
+    private static let pageSize = 100
 
     init(albumID: String, repository: any LibraryRepositoryProtocol) {
         self.albumID = albumID
@@ -188,14 +261,39 @@ final class AlbumDetailModel {
     }
 
     func load() async {
+        guard !isLoading else { return }
+        isLoading = true
+        defer { isLoading = false }
         do {
-            async let loadedItems = repository.albumItems(albumID: albumID, ascending: ascending)
+            async let loadedCount = repository.albumItemsCount(albumID: albumID)
+            async let loadedItems = repository.albumItems(albumID: albumID, ascending: ascending, offset: 0, limit: Self.pageSize)
             async let loadedGroups = repository.albumGroups(albumID: albumID)
+            total = try await loadedCount
             items = try await loadedItems
             groups = try await loadedGroups
+            hasMore = items.count < total
         } catch is CancellationError {
         } catch {
             AppLogger.log(.error, "album \(albumID) query failed: \(error)")
+        }
+    }
+
+    func loadMore() async {
+        guard hasMore, !isLoading else { return }
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            let next = try await repository.albumItems(
+                albumID: albumID,
+                ascending: ascending,
+                offset: items.count,
+                limit: Self.pageSize
+            )
+            items.append(contentsOf: next)
+            hasMore = items.count < total && !next.isEmpty
+        } catch is CancellationError {
+        } catch {
+            AppLogger.log(.error, "album \(albumID) next-page query failed: \(error)")
         }
     }
 
@@ -256,8 +354,7 @@ final class MediaDetailModel {
         do {
             media = try await repository.showMedia(id: mediaID)
             let albumIDs = try await repository.mediaContainingAlbumIDs(mediaID: mediaID, includeViaGroups: true)
-            let albums = try await repository.listAlbums()
-            containingAlbums = albums.filter { albumIDs.contains($0.albumId) }
+            containingAlbums = try await repository.albums(withIDs: Set(albumIDs))
         } catch is CancellationError {
         } catch {
             AppLogger.log(.error, "media \(mediaID) query failed: \(error)")
@@ -288,7 +385,7 @@ final class MediaDetailModel {
 @MainActor
 @Observable
 final class StatusModel {
-    private(set) var media: [FfiMediaItem] = []
+    private(set) var mediaCount = 0
     private(set) var localStateStats: FfiLocalStateStats?
     private(set) var mediaCountWithoutRemoteBackup: Int?
     private(set) var syncedByRemoteID: [String: Bool] = [:]
@@ -309,11 +406,11 @@ final class StatusModel {
 
     func load() async {
         do {
-            async let mediaQuery = repository.mediaByDate()
+            async let mediaCountQuery = repository.mediaByDateCount()
             async let statsQuery = repository.localStateStats()
             async let backupQuery = repository.mediaIDsWithoutRemoteBackup()
             async let sessionQuery = repository.sessionSnapshot()
-            media = try await mediaQuery
+            mediaCount = try await mediaCountQuery
             localStateStats = try await statsQuery
             let unbacked = try await backupQuery
             mediaCountWithoutRemoteBackup = unbacked.isEmpty ? nil : unbacked.count

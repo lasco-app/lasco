@@ -32,10 +32,15 @@ protocol LibraryRepositoryProtocol: Sendable {
     func notifyChanged(_ change: LibraryChange) async
     func notifyPhotoImportChanged(initialImport: Bool) async
 
-    func mediaByDate() async throws -> [FfiMediaItem]
-    func orphanMediaByDate() async throws -> [FfiMediaItem]
-    func listAlbums() async throws -> [FfiAlbum]
-    func albumItems(albumID: String, ascending: Bool) async throws -> [FfiAlbumItem]
+    func mediaByDateCount() async throws -> Int
+    func mediaByDate(offset: Int, limit: Int) async throws -> [FfiMediaItem]
+    func orphanMediaByDateCount() async throws -> Int
+    func orphanMediaByDate(offset: Int, limit: Int) async throws -> [FfiMediaItem]
+    func albumsCount(parentID: String?) async throws -> Int
+    func albums(parentID: String?, offset: Int, limit: Int) async throws -> [FfiAlbum]
+    func albums(withIDs ids: Set<String>) async throws -> [FfiAlbum]
+    func albumItemsCount(albumID: String) async throws -> Int
+    func albumItems(albumID: String, ascending: Bool, offset: Int, limit: Int) async throws -> [FfiAlbumItem]
     func showMedia(id: String) async throws -> FfiMediaItem
     func localStateStats() async throws -> FfiLocalStateStats
     func sessionSnapshot() async throws -> LibrarySessionSnapshot
@@ -123,6 +128,23 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?.path
     }
 
+    /// Converts Swift's offset/limit convention to the FFI's inclusive positions.
+    /// Keeping this conversion here prevents off-by-one and empty-range calls from
+    /// leaking into views and feature models.
+    private func page<Element>(
+        offset: Int,
+        limit: Int,
+        _ fetch: (UInt32, UInt32) throws -> [Element]
+    ) throws -> [Element] {
+        guard offset >= 0, limit > 0 else { return [] }
+        let start = UInt64(offset)
+        let end = start + UInt64(limit) - 1
+        guard end <= UInt64(UInt32.max) else { return [] }
+        return try fetch(UInt32(start), UInt32(end))
+    }
+
+    nonisolated private static let pageSize = 100
+
     func changes() async -> AsyncStream<LibraryChange> {
         await changeHub.changes()
     }
@@ -141,24 +163,93 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         }
     }
 
-    func mediaByDate() async throws -> [FfiMediaItem] {
+    func mediaByDateCount() async throws -> Int {
         try ensureOpen()
-        return try library.mediaByDate()
+        return Int(library.mediaByDateCount())
     }
 
-    func orphanMediaByDate() async throws -> [FfiMediaItem] {
+    func mediaByDate(offset: Int, limit: Int) async throws -> [FfiMediaItem] {
         try ensureOpen()
-        return try library.orphanMediaByDate()
+        return try page(offset: offset, limit: limit) { start, end in
+            try library.mediaByDateRange(posStartInclusive: start, posEndInclusive: end)
+        }
     }
 
-    func listAlbums() async throws -> [FfiAlbum] {
+    func orphanMediaByDateCount() async throws -> Int {
         try ensureOpen()
-        return try library.listAlbums()
+        return Int(library.orphanMediaByDateCount())
     }
 
-    func albumItems(albumID: String, ascending: Bool) async throws -> [FfiAlbumItem] {
+    func orphanMediaByDate(offset: Int, limit: Int) async throws -> [FfiMediaItem] {
         try ensureOpen()
-        return try library.albumListItemsSorted(albumId: albumID, ascending: ascending)
+        return try page(offset: offset, limit: limit) { start, end in
+            try library.orphanMediaByDateRange(posStartInclusive: start, posEndInclusive: end)
+        }
+    }
+
+    func albumsCount(parentID: String?) async throws -> Int {
+        try ensureOpen()
+        return Int(try library.albumAlbumsCount(parentAlbumId: parentID))
+    }
+
+    func albums(parentID: String?, offset: Int, limit: Int) async throws -> [FfiAlbum] {
+        try ensureOpen()
+        return try page(offset: offset, limit: limit) { start, end in
+            try library.albumAlbumsRange(
+                parentAlbumId: parentID,
+                posStartInclusive: start,
+                posEndInclusive: end
+            )
+        }
+    }
+
+    func albums(withIDs ids: Set<String>) async throws -> [FfiAlbum] {
+        try ensureOpen()
+        guard !ids.isEmpty else { return [] }
+
+        var results: [FfiAlbum] = []
+        var parents: [String?] = [nil]
+        var visitedParents = Set<String>()
+        while !parents.isEmpty {
+            try Task.checkCancellation()
+            let parentID = parents.removeLast()
+            let key = parentID ?? "<root>"
+            guard visitedParents.insert(key).inserted else { continue }
+            let count = Int(try library.albumAlbumsCount(parentAlbumId: parentID))
+            for offset in stride(from: 0, to: count, by: Self.pageSize) {
+                try Task.checkCancellation()
+                let children = try page(offset: offset, limit: Self.pageSize) { start, end in
+                    try library.albumAlbumsRange(
+                        parentAlbumId: parentID,
+                        posStartInclusive: start,
+                        posEndInclusive: end
+                    )
+                }
+                for album in children {
+                    if ids.contains(album.albumId) { results.append(album) }
+                    parents.append(album.albumId)
+                }
+            }
+            if results.count == ids.count { break }
+        }
+        return results
+    }
+
+    func albumItemsCount(albumID: String) async throws -> Int {
+        try ensureOpen()
+        return Int(try library.albumItemsCount(albumId: albumID))
+    }
+
+    func albumItems(albumID: String, ascending: Bool, offset: Int, limit: Int) async throws -> [FfiAlbumItem] {
+        try ensureOpen()
+        return try page(offset: offset, limit: limit) { start, end in
+            try library.albumItemsByDateRange(
+                albumId: albumID,
+                ascending: ascending,
+                posStartInclusive: start,
+                posEndInclusive: end
+            )
+        }
     }
 
     func showMedia(id: String) async throws -> FfiMediaItem {
@@ -332,23 +423,20 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
 
     func deleteGroup(groupID: String) async throws {
         try ensureOpen()
-        let albumID = try groupAlbumID(groupID: groupID)
         try library.deleteGroup(groupId: groupID)
-        await notifyGroupChange(albumID: albumID)
+        await notify(.all)
     }
 
     func addMediaToGroup(groupID: String, mediaID: String) async throws {
         try ensureOpen()
-        let albumID = try groupAlbumID(groupID: groupID)
         try library.addMediaToGroup(groupId: groupID, mediaId: mediaID)
-        await notifyGroupChange(albumID: albumID)
+        await notify(.all)
     }
 
     func removeMediaFromGroup(groupID: String, mediaID: String) async throws {
         try ensureOpen()
-        let albumID = try groupAlbumID(groupID: groupID)
         try library.removeMediaFromGroup(groupId: groupID, mediaId: mediaID)
-        await notifyGroupChange(albumID: albumID)
+        await notify(.all)
     }
 
     func createGroupFromSelectedMedia(mediaIDs: [String], albumID: String) async throws {
@@ -550,15 +638,6 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         }
     }
 
-    private func groupAlbumID(groupID: String) throws -> String? {
-        for album in try library.listAlbums() {
-            if try library.albumListGroups(albumId: album.albumId).contains(where: { $0.groupId == groupID }) {
-                return album.albumId
-            }
-        }
-        return nil
-    }
-
     private func notify(_ change: LibraryChange) async {
         await changeHub.notify(change)
     }
@@ -576,10 +655,15 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     func changes() async -> AsyncStream<LibraryChange> { await storage.changes() }
     func notifyChanged(_ change: LibraryChange) async { await storage.notifyChanged(change) }
     func notifyPhotoImportChanged(initialImport: Bool) async { await storage.notifyPhotoImportChanged(initialImport: initialImport) }
-    func mediaByDate() async throws -> [FfiMediaItem] { try await storage.mediaByDate() }
-    func orphanMediaByDate() async throws -> [FfiMediaItem] { try await storage.orphanMediaByDate() }
-    func listAlbums() async throws -> [FfiAlbum] { try await storage.listAlbums() }
-    func albumItems(albumID: String, ascending: Bool) async throws -> [FfiAlbumItem] { try await storage.albumItems(albumID: albumID, ascending: ascending) }
+    func mediaByDateCount() async throws -> Int { try await storage.mediaByDateCount() }
+    func mediaByDate(offset: Int, limit: Int) async throws -> [FfiMediaItem] { try await storage.mediaByDate(offset: offset, limit: limit) }
+    func orphanMediaByDateCount() async throws -> Int { try await storage.orphanMediaByDateCount() }
+    func orphanMediaByDate(offset: Int, limit: Int) async throws -> [FfiMediaItem] { try await storage.orphanMediaByDate(offset: offset, limit: limit) }
+    func albumsCount(parentID: String?) async throws -> Int { try await storage.albumsCount(parentID: parentID) }
+    func albums(parentID: String?, offset: Int, limit: Int) async throws -> [FfiAlbum] { try await storage.albums(parentID: parentID, offset: offset, limit: limit) }
+    func albums(withIDs ids: Set<String>) async throws -> [FfiAlbum] { try await storage.albums(withIDs: ids) }
+    func albumItemsCount(albumID: String) async throws -> Int { try await storage.albumItemsCount(albumID: albumID) }
+    func albumItems(albumID: String, ascending: Bool, offset: Int, limit: Int) async throws -> [FfiAlbumItem] { try await storage.albumItems(albumID: albumID, ascending: ascending, offset: offset, limit: limit) }
     func showMedia(id: String) async throws -> FfiMediaItem { try await storage.showMedia(id: id) }
     func localStateStats() async throws -> FfiLocalStateStats { try await storage.localStateStats() }
     func sessionSnapshot() async throws -> LibrarySessionSnapshot { try await storage.sessionSnapshot() }

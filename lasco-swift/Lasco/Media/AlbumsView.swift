@@ -213,13 +213,7 @@ struct AlbumContentView: View {
     }
 
     private var childAlbums: [FfiAlbum] {
-        albumModel.albums.filter {
-            $0.parentAlbumId == album?.albumId && !$0.deleted && !$0.isDisconnected
-        }
-    }
-
-    private var disconnectedAlbums: [FfiAlbum] {
-        albumModel.albums.filter { $0.isDisconnected && !$0.deleted }
+        albumModel.albums(parentID: album?.albumId).filter { !$0.deleted }
     }
 
     // MARK: Body
@@ -323,6 +317,7 @@ struct AlbumContentView: View {
             AppLogger.log(.info, "album shown — '\(album?.name ?? "root")' (\(album?.albumId ?? "root"))")
         }
         .task(id: album?.albumId) {
+            await albumModel.load(parentID: album?.albumId)
             guard let albumID = album?.albumId else {
                 detailModel = nil
                 return
@@ -467,13 +462,17 @@ struct AlbumContentView: View {
 
     @ViewBuilder
     private func albumContent(gridColumns: [GridItem], mediaGridColumns: [GridItem]) -> some View {
-        if childAlbums.isEmpty && albumItems.isEmpty && !(isRoot && !disconnectedAlbums.isEmpty) {
+        if childAlbums.isEmpty && albumItems.isEmpty {
             emptyState
         } else {
             if !childAlbums.isEmpty {
                 LazyVGrid(columns: gridColumns, spacing: 12) {
                     ForEach(childAlbums, id: \.albumId) { child in
                         albumCell(child)
+                            .onAppear {
+                                guard child.albumId == childAlbums.last?.albumId else { return }
+                                Task { await albumModel.loadMore(parentID: album?.albumId) }
+                            }
                     }
                 }
             }
@@ -492,27 +491,29 @@ struct AlbumContentView: View {
                             if idx < albumItems.count - 1 {
                                 Divider().background(theme.bgDeep)
                             }
+                            if idx == albumItems.count - 1 {
+                                Color.clear.frame(height: 1).onAppear {
+                                    Task { await detailModel?.loadMore() }
+                                }
+                            }
                         }
                     }
                     .background(theme.bg)
                 case .grid:
                     LazyVGrid(columns: mediaGridColumns, spacing: 3) {
                         ForEach(albumItems) { item in
-                            switch item {
-                            case .media(let m): mediaGridCell(m)
-                            case .group(let g): groupGridCell(g)
+                            Group {
+                                switch item {
+                                case .media(let m): mediaGridCell(m)
+                                case .group(let g): groupGridCell(g)
+                                }
+                            }
+                            .onAppear {
+                                guard item.id == albumItems.last?.id else { return }
+                                Task { await detailModel?.loadMore() }
                             }
                         }
                     }
-                }
-            }
-        }
-
-        if isRoot && !disconnectedAlbums.isEmpty {
-            sectionLabel("DISCONNECTED")
-            LazyVGrid(columns: gridColumns, spacing: 12) {
-                ForEach(disconnectedAlbums, id: \.albumId) { disc in
-                    disconnectedAlbumCell(disc)
                 }
             }
         }
@@ -691,7 +692,7 @@ struct AlbumContentView: View {
             Menu {
                 if canRename,
                    let albumId = selectedAlbumIds.first,
-                   let target = (childAlbums + disconnectedAlbums).first(where: { $0.albumId == albumId }) {
+                   let target = childAlbums.first(where: { $0.albumId == albumId }) {
                     Button("Rename album") {
                         albumToRename = target
                         renameText = target.name
@@ -825,19 +826,6 @@ struct AlbumContentView: View {
     }
 
     // MARK: Album cells
-
-    @ViewBuilder
-    private func disconnectedAlbumCell(_ disc: FfiAlbum) -> some View {
-        let parentAlbum = disc.parentAlbumId.flatMap { pid in
-            albumModel.albums.first(where: { $0.albumId == pid })
-        }
-        let parentInfo: String = {
-            if let name = parentAlbum?.name { return "In: \(name)" }
-            if disc.parentAlbumId != nil { return "Parent deleted" }
-            return "No parent"
-        }()
-        albumCellContent(disc, parentInfo: parentInfo)
-    }
 
     @ViewBuilder
     private func albumCell(_ child: FfiAlbum) -> some View {
@@ -1104,7 +1092,7 @@ struct AlbumCell: View {
         }
         .task(id: album.albumId) {
             thumbnail = nil
-            let items = (try? await repository.albumItems(albumID: album.albumId, ascending: false)) ?? []
+            let items = (try? await repository.albumItems(albumID: album.albumId, ascending: false, offset: 0, limit: 1)) ?? []
             if let mediaId = album.thumbnailMediaId ?? items.compactMap({ $0.media?.mediaId }).first,
                let data = try? await repository.thumbnailAsync(mediaID: mediaId) {
                 thumbnail = Image(data: data)
