@@ -11,6 +11,7 @@ use crate::error::{LibraryError, OperationError, SyncError};
 use crate::identifiers::RemoteUuid;
 use crate::library::Library;
 use crate::storage::StorageError;
+use fetch::fetch_impl;
 use remote_access::{StorageRead, StorageReadWrite};
 
 #[derive(Debug)]
@@ -92,13 +93,20 @@ impl Library {
                 .try_acquire_fetch_slot()
                 .ok_or(SyncError::AlreadyRunning)?;
             let remote = StorageRead::new(storage);
-            self.fetch_impl(
+            let report = fetch_impl(
                 &remote,
                 remote_id,
+                self.inner.library_id,
                 &local_state_library_dir,
                 &remote_last_known_state_dir,
+                &self.inner.local_ops_read_write_lock,
+                &self.inner.master_key,
             )
-            .await?
+            .await?;
+            if report.ops_downloaded > 0 {
+                self.load_local_state().await?;
+            }
+            report
         };
         let remote = StorageReadWrite::new(storage);
         let push_report = self

@@ -20,6 +20,7 @@ use crate::encryption::master_key::{
 use crate::error::LibraryError;
 use crate::identifiers::OpUuid;
 use crate::library::local_dirs::LocalDirs;
+use crate::library::local_ops_read_write::LocalOpsReadWriteLock;
 use crate::library::sync_policy::{FetchSlotGuard, RemoteSyncGuard, SyncPolicy};
 use crate::operations::{LibraryPassword, LibraryUsername, Operation, OperationGroup};
 use crate::state::OperationState;
@@ -51,9 +52,8 @@ pub(crate) struct LibraryInner {
     pub(crate) operation_state: parking_lot::RwLock<OperationState>,
     pub(crate) sync_policy: SyncPolicy,
     pub(crate) username: LibraryUsername,
-    /// Serializes access to `pending.op` and `operations.log`. Its guard is held by
-    /// `LocalOpsReadWrite`, only across synchronous filesystem calls.
-    pub(crate) op_files_lock: parking_lot::Mutex<()>,
+    /// The sole lock that grants access to `pending.op` and `operations.log`.
+    pub(crate) local_ops_read_write_lock: LocalOpsReadWriteLock,
 }
 
 #[derive(Clone)]
@@ -114,6 +114,8 @@ impl Library {
             salt,
             &credentials.password.0,
         )?;
+        let local_ops_read_write_lock =
+            LocalOpsReadWriteLock::new(local_dirs.local_state_operations());
 
         let library = Library {
             inner: Arc::new(LibraryInner {
@@ -123,7 +125,7 @@ impl Library {
                 username: credentials.username,
                 operation_state: parking_lot::RwLock::new(OperationState::build(&[])),
                 sync_policy: SyncPolicy::new(),
-                op_files_lock: parking_lot::Mutex::new(()),
+                local_ops_read_write_lock,
             }),
         };
         Ok((library, password_uuid))
@@ -144,6 +146,8 @@ impl Library {
             &credentials.username.0,
             &credentials.password.0,
         )?;
+        let local_ops_read_write_lock =
+            LocalOpsReadWriteLock::new(local_dirs.local_state_operations());
 
         Ok(Library {
             inner: Arc::new(LibraryInner {
@@ -153,7 +157,7 @@ impl Library {
                 username: credentials.username,
                 operation_state: parking_lot::RwLock::new(OperationState::build(&[])),
                 sync_policy: SyncPolicy::new(),
-                op_files_lock: parking_lot::Mutex::new(()),
+                local_ops_read_write_lock,
             }),
         })
     }
@@ -165,6 +169,8 @@ impl Library {
         library_id: LibraryId,
         username: LibraryUsername,
     ) -> Result<Library> {
+        let local_ops_read_write_lock =
+            LocalOpsReadWriteLock::new(local_dirs.local_state_operations());
         Ok(Library {
             inner: Arc::new(LibraryInner {
                 master_key,
@@ -173,7 +179,7 @@ impl Library {
                 username,
                 operation_state: parking_lot::RwLock::new(OperationState::build(&[])),
                 sync_policy: SyncPolicy::new(),
-                op_files_lock: parking_lot::Mutex::new(()),
+                local_ops_read_write_lock,
             }),
         })
     }

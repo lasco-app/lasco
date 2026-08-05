@@ -1,10 +1,11 @@
 use std::collections::HashSet;
 
-use crate::encryption::master_key::parse_mk_filename;
+use crate::encryption::master_key::{MasterKey, parse_mk_filename};
 use crate::error::{LibraryError, SyncError};
 use crate::identifiers::{LibraryId, RemoteUuid};
 use crate::library::Library;
 use crate::library::local_dirs::{LocalStateLibraryDir, RemoteLastKnownStateDir};
+use crate::library::local_ops_read_write::LocalOpsReadWriteLock;
 use crate::operations::remote_ops::RemoteOpFile;
 use crate::operations::{Operation, OperationGroup};
 use crate::remote::{LastKnownState, MediaList, ProcessedFiles};
@@ -28,106 +29,111 @@ impl Library {
         let local_state_library_dir = self.inner.local_dirs.local_state_library_dir();
         let remote_last_known_state_dir =
             self.inner.local_dirs.remote_last_known_state_dir(remote_id);
-        self.fetch_impl(
+        let report = fetch_impl(
             &remote,
             remote_id,
+            self.inner.library_id,
             &local_state_library_dir,
             &remote_last_known_state_dir,
+            &self.inner.local_ops_read_write_lock,
+            &self.inner.master_key,
         )
-        .await
-    }
-
-    pub(super) async fn fetch_impl(
-        &self,
-        storage: &StorageRead<'_>,
-        remote_id: &str,
-        local_state_library_dir: &LocalStateLibraryDir,
-        remote_last_known_state_dir: &RemoteLastKnownStateDir,
-    ) -> Result<SyncReportFetch, LibraryError> {
-        let master_key = &self.inner.master_key;
-
-        let remote_uuid = remote_id
-            .parse::<uuid::Uuid>()
-            .map(RemoteUuid::from_uuid)
-            .map_err(|e| {
-                SyncError::RemoteIdMismatch(format!("invalid remote id '{remote_id}': {e}"))
-            })?;
-        verify_remote_identity(storage, remote_uuid).await?;
-
-        // Step 1: pull any mk_*.enc files present on the remote but missing locally,
-        // so users added from another device become available on this one.
-        fetch_library_dir(storage, local_state_library_dir, self.inner.library_id).await?;
-
-        // Load processed-file tracking for this remote.
-        remote_last_known_state_dir.migrate_legacy_processed_files()?;
-        let processed_path = remote_last_known_state_dir.processed_files_path();
-        let mut processed = ProcessedFiles::load_or_default(&processed_path)?;
-
-        // Load the media list for lazy update during merge.
-        let media_list_path = remote_last_known_state_dir.media_list_path();
-        let mut media_list = MediaList::load_or_default(&media_list_path)?;
-        let mut media_list_changed = false;
-
-        let last_known_state =
-            LastKnownState::download(storage, remote_last_known_state_dir, &processed, master_key)
-                .await?;
-
-        let local_valid_ids = self.local_ops_read_write().read_log_ids()?;
-
-        let mut ops_downloaded = 0usize;
-        let mut processed_changed = false;
-        // Track op_ids appended this run to avoid double-appending within one merge pass
-        let mut appended_this_run: HashSet<_> = HashSet::new();
-
-        for file in last_known_state.files() {
-            let file_uuid = LastKnownState::file_uuid(file);
-            if processed.contains(&file_uuid) {
-                continue;
-            }
-            match file {
-                RemoteOpFile::Compaction {
-                    uuid,
-                    tier,
-                    op_count,
-                } => {
-                    let compaction = last_known_state
-                        .read_compaction_file(master_key, uuid, *tier, *op_count)?;
-                    for entry in &compaction.contents {
-                        if !local_valid_ids.contains(&entry.op_id)
-                            && !appended_this_run.contains(&entry.op_id)
-                        {
-                            self.local_ops_read_write().append_log(&entry.group)?;
-                            appended_this_run.insert(entry.op_id);
-                            update_media_list_from_group(
-                                storage,
-                                &entry.group,
-                                &mut media_list,
-                                &mut media_list_changed,
-                            )
-                            .await?;
-                            ops_downloaded += 1;
-                        }
-                    }
-                    processed.insert(file_uuid);
-                    processed_changed = true;
-                }
-            }
-        }
-
-        if processed_changed {
-            processed.save(&processed_path)?;
-        }
-
-        if media_list_changed {
-            media_list.save(&media_list_path)?;
-        }
-
-        if ops_downloaded > 0 {
+        .await?;
+        if report.ops_downloaded > 0 {
             self.load_local_state().await?;
         }
-
-        Ok(SyncReportFetch { ops_downloaded })
+        Ok(report)
     }
+}
+
+pub(super) async fn fetch_impl(
+    storage: &StorageRead<'_>,
+    remote_id: &str,
+    library_id: LibraryId,
+    local_state_library_dir: &LocalStateLibraryDir,
+    remote_last_known_state_dir: &RemoteLastKnownStateDir,
+    local_ops_read_write_lock: &LocalOpsReadWriteLock,
+    master_key: &MasterKey,
+) -> Result<SyncReportFetch, LibraryError> {
+    let remote_uuid = remote_id
+        .parse::<uuid::Uuid>()
+        .map(RemoteUuid::from_uuid)
+        .map_err(|e| {
+            SyncError::RemoteIdMismatch(format!("invalid remote id '{remote_id}': {e}"))
+        })?;
+    verify_remote_identity(storage, remote_uuid).await?;
+
+    // Step 1: pull any mk_*.enc files present on the remote but missing locally,
+    // so users added from another device become available on this one.
+    fetch_library_dir(storage, local_state_library_dir, library_id).await?;
+
+    // Load processed-file tracking for this remote.
+    remote_last_known_state_dir.migrate_legacy_processed_files()?;
+    let processed_path = remote_last_known_state_dir.processed_files_path();
+    let mut processed = ProcessedFiles::load_or_default(&processed_path)?;
+
+    // Load the media list for lazy update during merge.
+    let media_list_path = remote_last_known_state_dir.media_list_path();
+    let mut media_list = MediaList::load_or_default(&media_list_path)?;
+    let mut media_list_changed = false;
+
+    let last_known_state =
+        LastKnownState::download(storage, remote_last_known_state_dir, &processed, master_key)
+            .await?;
+
+    let local_valid_ids = local_ops_read_write_lock.lock(master_key).read_log_ids()?;
+
+    let mut ops_downloaded = 0usize;
+    let mut processed_changed = false;
+    // Track op_ids appended this run to avoid double-appending within one merge pass
+    let mut appended_this_run: HashSet<_> = HashSet::new();
+
+    for file in last_known_state.files() {
+        let file_uuid = LastKnownState::file_uuid(file);
+        if processed.contains(&file_uuid) {
+            continue;
+        }
+        match file {
+            RemoteOpFile::Compaction {
+                uuid,
+                tier,
+                op_count,
+            } => {
+                let compaction =
+                    last_known_state.read_compaction_file(master_key, uuid, *tier, *op_count)?;
+                for entry in &compaction.contents {
+                    if !local_valid_ids.contains(&entry.op_id)
+                        && !appended_this_run.contains(&entry.op_id)
+                    {
+                        local_ops_read_write_lock
+                            .lock(master_key)
+                            .append_log(&entry.group)?;
+                        appended_this_run.insert(entry.op_id);
+                        update_media_list_from_group(
+                            storage,
+                            &entry.group,
+                            &mut media_list,
+                            &mut media_list_changed,
+                        )
+                        .await?;
+                        ops_downloaded += 1;
+                    }
+                }
+                processed.insert(file_uuid);
+                processed_changed = true;
+            }
+        }
+    }
+
+    if processed_changed {
+        processed.save(&processed_path)?;
+    }
+
+    if media_list_changed {
+        media_list.save(&media_list_path)?;
+    }
+
+    Ok(SyncReportFetch { ops_downloaded })
 }
 
 /// Step 1 of fetch. Verifies the remote's `library/library_id_{uuid}` matches this

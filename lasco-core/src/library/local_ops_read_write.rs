@@ -7,6 +7,31 @@ use crate::library::{Library, Result};
 use crate::operations::OperationGroup;
 use crate::operations::local_ops as op_log;
 
+/// Owns the exclusive lock that grants access to both local operation files:
+/// `operations.log` and `pending.op`.
+pub(crate) struct LocalOpsReadWriteLock {
+    local_state_operations: LocalStateOperations,
+    mutex: parking_lot::Mutex<()>,
+}
+
+impl LocalOpsReadWriteLock {
+    pub(crate) fn new(local_state_operations: LocalStateOperations) -> Self {
+        Self {
+            local_state_operations,
+            mutex: parking_lot::Mutex::new(()),
+        }
+    }
+
+    /// The returned guard must not be held across an `.await`.
+    pub(crate) fn lock<'a>(&'a self, master_key: &'a MasterKey) -> LocalOpsReadWrite<'a> {
+        LocalOpsReadWrite {
+            local_state_operations: self.local_state_operations.clone(),
+            master_key,
+            _guard: self.mutex.lock(),
+        }
+    }
+}
+
 /// Exclusive capability to read and write both local operation files:
 /// `operations.log` and `pending.op`.
 ///
@@ -67,10 +92,8 @@ impl Library {
     /// Acquires exclusive read/write access to `pending.op` and `operations.log`.
     /// The returned guard must not be held across an `.await`.
     pub(crate) fn local_ops_read_write(&self) -> LocalOpsReadWrite<'_> {
-        LocalOpsReadWrite {
-            local_state_operations: self.inner.local_dirs.local_state_operations(),
-            master_key: &self.inner.master_key,
-            _guard: self.inner.op_files_lock.lock(),
-        }
+        self.inner
+            .local_ops_read_write_lock
+            .lock(&self.inner.master_key)
     }
 }

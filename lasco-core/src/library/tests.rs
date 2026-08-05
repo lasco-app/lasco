@@ -122,7 +122,7 @@ async fn init_writes_expected_files_on_disk() {
 
 #[tokio::test]
 // Concurrent append_to_pending calls must not lose updates to pending.op (regression test
-// for the op_files_lock added to guard read-modify-write access to it).
+// for the LocalOpsReadWriteLock that guards read-modify-write access to it).
 async fn concurrent_append_to_pending_does_not_lose_operations() {
     let tmp = TempDir::new().unwrap();
     let (lib, _library_id) = make_library(&tmp).await;
