@@ -5,29 +5,38 @@ use crate::encryption::blob::decrypt_blob;
 use crate::encryption::blob_key::derive_blob_key;
 use crate::encryption::master_key::MasterKey;
 use crate::identifiers::CompactedOpId;
+use crate::library::sync::remote_access::{StorageRead, StorageReadWrite};
 use crate::operations::error::OperationError;
 use crate::storage::Storage;
 
 #[allow(unused_imports, reason = "MediaFilename is used in tests")]
-use super::{
-    CompactionFile, MediaFilename, OperationGroup,
-    compaction_file_from_cbor,
-};
+use super::{CompactionFile, MediaFilename, OperationGroup, compaction_file_from_cbor};
 
 pub type Result<T> = std::result::Result<T, OperationError>;
-
 
 /// A classified entry under `operations/` on the remote.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RemoteOpFile {
     /// A compaction file `{uuid}.opN_{op_count}` grouping multiple op groups at `tier` N ≥ 1.
     /// `op_count` is the total number of operations summed across every group in the file.
-    Compaction { uuid: CompactedOpId, tier: u8, op_count: u32 },
+    Compaction {
+        uuid: CompactedOpId,
+        tier: u8,
+        op_count: u32,
+    },
 }
 
 /// Lists and classifies all operation files under `operations/` on the remote.
 /// Skips any key whose filename starts with `LOCK`.
 pub async fn list_remote_op_files(storage: &dyn Storage) -> Result<Vec<RemoteOpFile>> {
+    let remote = StorageRead::new(storage);
+    list_remote_op_files_read(&remote).await
+}
+
+/// Read-only variant used by fetch, which must not receive raw storage access.
+pub(crate) async fn list_remote_op_files_read(
+    storage: &StorageRead<'_>,
+) -> Result<Vec<RemoteOpFile>> {
     let keys = match storage.list("operations/").await {
         Ok(keys) => keys,
         Err(crate::storage::StorageError::NotFound) => Vec::new(),
@@ -71,6 +80,17 @@ pub async fn read_compaction_file(
     key: &str,
     file_uuid: &CompactedOpId,
 ) -> Result<CompactionFile> {
+    let remote = StorageRead::new(storage);
+    read_compaction_file_read(&remote, master_key, key, file_uuid).await
+}
+
+/// Read-only variant used by procedures with restricted remote access.
+pub(crate) async fn read_compaction_file_read(
+    storage: &StorageRead<'_>,
+    master_key: &MasterKey,
+    key: &str,
+    file_uuid: &CompactedOpId,
+) -> Result<CompactionFile> {
     let bytes = storage.get(key).await?;
     let blob = BlobEncrypted::from_bytes(&bytes)?;
     let file_key = derive_blob_key(master_key, &file_uuid.0);
@@ -86,6 +106,18 @@ pub async fn write_compaction_file(
     file_uuid: &CompactedOpId,
     file: &CompactionFile,
 ) -> Result<()> {
+    let remote = StorageReadWrite::new(storage);
+    write_compaction_file_write(&remote, master_key, key, file_uuid, file).await
+}
+
+/// Read/write variant used by procedures with restricted remote access.
+pub(crate) async fn write_compaction_file_write(
+    storage: &StorageReadWrite<'_>,
+    master_key: &MasterKey,
+    key: &str,
+    file_uuid: &CompactedOpId,
+    file: &CompactionFile,
+) -> Result<()> {
     let blob = super::encrypt_compaction_file(master_key, file_uuid, file)?;
     write_compaction_bytes(storage, key, &blob.to_bytes()).await
 }
@@ -93,11 +125,14 @@ pub async fn write_compaction_file(
 /// Writes already-encrypted compaction file bytes to `key`, without encoding or encrypting
 /// again. Used when the same bytes must also be written to the local cache, so both copies
 /// share one ciphertext instead of being encrypted twice with two different nonces.
-pub async fn write_compaction_bytes(storage: &dyn Storage, key: &str, bytes: &[u8]) -> Result<()> {
+pub(crate) async fn write_compaction_bytes(
+    storage: &StorageReadWrite<'_>,
+    key: &str,
+    bytes: &[u8],
+) -> Result<()> {
     storage.put(key, bytes).await?;
     Ok(())
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -124,7 +159,10 @@ mod tests {
                 media_id: MediaUuid::from_uuid(uuid::Uuid::new_v4()),
                 filename_original: MediaFilename("photo.jpg".into()),
                 date: timestamp,
-                storage_date: StorageDate { year: 2024, month: 3 },
+                storage_date: StorageDate {
+                    year: 2024,
+                    month: 3,
+                },
                 size_bytes: 1_048_576,
                 content_hash: crate::library::media::MediaHash::zeroed(),
                 modified_at: None,

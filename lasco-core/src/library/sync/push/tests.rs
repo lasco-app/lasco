@@ -6,7 +6,7 @@ use crate::identifiers::{AlbumUuid, MediaUuid, OpUuid};
 use crate::operations::{LibraryUsername, Operation, OperationGroup};
 use crate::storage::{Storage, StorageMockMemory};
 
-use super::super::test_utils::{make_library, stamp_remote_id, write_file, REMOTE_ID};
+use super::super::test_utils::{REMOTE_ID, make_library, stamp_remote_id, write_file};
 
 /// Inject `count` synthetic op groups directly into the main operations log, bypassing pending.
 /// Used by compaction/tier tests that need N distinct groups to exercise push logic.
@@ -25,7 +25,10 @@ fn inject_op_groups(lib: &crate::library::Library, count: usize) {
                 media_id,
                 filename_original: crate::operations::MediaFilename("x.jpg".into()),
                 date: Utc::now(),
-                storage_date: crate::operations::StorageDate { year: 2024, month: 1 },
+                storage_date: crate::operations::StorageDate {
+                    year: 2024,
+                    month: 1,
+                },
                 size_bytes: 100,
                 content_hash: crate::library::media::MediaHash::zeroed(),
                 modified_at: None,
@@ -46,7 +49,11 @@ fn inject_op_groups(lib: &crate::library::Library, count: usize) {
 /// Writes `count` fresh `.op1` compaction files (20 fake op groups each) directly to the
 /// remote and records them in `lib`'s last known state, as if a prior push had put them
 /// there. Used by tests that need tier-1 already close to its file limit.
-async fn seed_tier1_files(lib: &crate::library::Library, storage: &StorageMockMemory, count: usize) {
+async fn seed_tier1_files(
+    lib: &crate::library::Library,
+    storage: &StorageMockMemory,
+    count: usize,
+) {
     use crate::operations::remote_ops::write_compaction_file;
     use crate::operations::{CompactionEntry, CompactionFile};
     use crate::remote::LastKnownState;
@@ -69,7 +76,10 @@ async fn seed_tier1_files(lib: &crate::library::Library, storage: &StorageMockMe
                     media_id,
                     filename_original: crate::operations::MediaFilename("x.jpg".into()),
                     date: t,
-                    storage_date: crate::operations::StorageDate { year: 2024, month: 1 },
+                    storage_date: crate::operations::StorageDate {
+                        year: 2024,
+                        month: 1,
+                    },
                     size_bytes: 100,
                     content_hash: crate::library::media::MediaHash::zeroed(),
                     modified_at: None,
@@ -121,7 +131,10 @@ async fn push_calls_list_on_every_invocation() {
     lib.push(&storage, REMOTE_ID).await.unwrap();
     let after_second = storage.list_call_count();
 
-    assert_eq!(after_first, 1, "first push: 1 list call (remote identity only)");
+    assert_eq!(
+        after_first, 1,
+        "first push: 1 list call (remote identity only)"
+    );
     assert_eq!(
         after_second, 2,
         "second push: 1 more list call regardless of prior state"
@@ -142,7 +155,11 @@ async fn push_with_unreachable_remote_returns_error() {
     let src = write_file(tmp.path(), "offline.jpg", b"data");
     lib.media_add(
         crate::library::media::upload::MediaAddSource::CopyFrom(src),
-        Some(album_id), None, None, None)
+        Some(album_id),
+        None,
+        None,
+        None,
+    )
     .await
     .unwrap();
 
@@ -169,7 +186,11 @@ async fn media_add_succeeds_offline() {
     let src = write_file(tmp.path(), "offline.jpg", b"data");
     lib.media_add(
         crate::library::media::upload::MediaAddSource::CopyFrom(src),
-        Some(album_id), None, None, None)
+        Some(album_id),
+        None,
+        None,
+        None,
+    )
     .await
     .expect("media_add must succeed even when remote is unreachable");
 }
@@ -207,14 +228,26 @@ async fn incremental_push_resilience_uploads_remaining_after_failure() {
         let partial: Vec<CompactionEntry> = local_groups
             .iter()
             .take(2)
-            .map(|g| CompactionEntry { op_id: g.op_id, group: g.clone() })
+            .map(|g| CompactionEntry {
+                op_id: g.op_id,
+                group: g.clone(),
+            })
             .collect();
         let partial_uuid = crate::identifiers::CompactedOpId::new();
         let partial_key = format!("operations/{partial_uuid}.op1_2");
-        let partial_file = CompactionFile { tier: 1, contents: partial };
-        write_compaction_file(&storage, master_key, &partial_key, &partial_uuid, &partial_file)
-            .await
-            .unwrap();
+        let partial_file = CompactionFile {
+            tier: 1,
+            contents: partial,
+        };
+        write_compaction_file(
+            &storage,
+            master_key,
+            &partial_key,
+            &partial_uuid,
+            &partial_file,
+        )
+        .await
+        .unwrap();
         LastKnownState::open(local_dirs, REMOTE_ID)
             .unwrap()
             .write_compaction_file(master_key, &partial_uuid, 1, 2, &partial_file)
@@ -297,7 +330,10 @@ fn inject_single_large_group(lib: &crate::library::Library, op_count: usize) {
             media_id: MediaUuid::from_uuid(Uuid::new_v4()),
             filename_original: crate::operations::MediaFilename("x.jpg".into()),
             date: Utc::now(),
-            storage_date: crate::operations::StorageDate { year: 2024, month: 1 },
+            storage_date: crate::operations::StorageDate {
+                year: 2024,
+                month: 1,
+            },
             size_bytes: 100,
             content_hash: crate::library::media::MediaHash::zeroed(),
             modified_at: None,
@@ -312,8 +348,12 @@ fn inject_single_large_group(lib: &crate::library::Library, op_count: usize) {
         author: LibraryUsername("test".into()),
         operations,
     };
-    crate::operations::local_ops::append_op_group(&local_dirs.operations_log_path(), master_key, &group)
-        .unwrap();
+    crate::operations::local_ops::append_op_group(
+        &local_dirs.operations_log_path(),
+        master_key,
+        &group,
+    )
+    .unwrap();
 }
 
 #[tokio::test]
@@ -329,7 +369,10 @@ async fn push_single_large_group_lands_at_tier_sized_for_its_op_count() {
     inject_single_large_group(&lib, 200);
 
     let report = lib.push(&storage, REMOTE_ID).await.unwrap();
-    assert_eq!(report.ops_uploaded, 1, "a single group counts as one op group uploaded");
+    assert_eq!(
+        report.ops_uploaded, 1,
+        "a single group counts as one op group uploaded"
+    );
 
     let remote_files = crate::operations::remote_ops::list_remote_op_files(&storage)
         .await
@@ -352,8 +395,14 @@ async fn push_single_large_group_lands_at_tier_sized_for_its_op_count() {
             )
         })
         .count();
-    assert_eq!(comp1_count, 0, "a group with 200 operations must not land at tier 1");
-    assert_eq!(comp2_count, 1, "a group with 200 operations must land at tier 2, sized for its op count");
+    assert_eq!(
+        comp1_count, 0,
+        "a group with 200 operations must not land at tier 1"
+    );
+    assert_eq!(
+        comp2_count, 1,
+        "a group with 200 operations must land at tier 2, sized for its op count"
+    );
 }
 
 #[tokio::test]
@@ -448,8 +497,14 @@ async fn push_large_batch_writes_op2_file() {
             )
         })
         .count();
-    assert_eq!(comp1_count, 0, "batch of 200 exceeds tier 1's ops limit of 20");
-    assert_eq!(comp2_count, 1, "batch of 200 fits tier 2's ops limit of 200");
+    assert_eq!(
+        comp1_count, 0,
+        "batch of 200 exceeds tier 1's ops limit of 20"
+    );
+    assert_eq!(
+        comp2_count, 1,
+        "batch of 200 fits tier 2's ops limit of 200"
+    );
 }
 
 #[tokio::test]
@@ -484,7 +539,10 @@ async fn compaction_cascades_across_two_tiers() {
                     media_id,
                     filename_original: crate::operations::MediaFilename("x.jpg".into()),
                     date: t,
-                    storage_date: crate::operations::StorageDate { year: 2024, month: 1 },
+                    storage_date: crate::operations::StorageDate {
+                        year: 2024,
+                        month: 1,
+                    },
                     size_bytes: 100,
                     content_hash: crate::library::media::MediaHash::zeroed(),
                     modified_at: None,
@@ -492,7 +550,7 @@ async fn compaction_cascades_across_two_tiers() {
                     apple_aae_media_id: None,
                     apple_live_photo_media_id: None,
                 }],
-                };
+            };
             contents.push(CompactionEntry { op_id, group });
         }
         let n = contents.len();
@@ -546,14 +604,30 @@ async fn compaction_cascades_across_two_tiers() {
     let cached_files = LastKnownState::list_cached_files(&lib.inner.local_dirs, REMOTE_ID).unwrap();
     let cached_op1_count = cached_files
         .iter()
-        .filter(|f| matches!(f, crate::operations::remote_ops::RemoteOpFile::Compaction { tier: 1, .. }))
+        .filter(|f| {
+            matches!(
+                f,
+                crate::operations::remote_ops::RemoteOpFile::Compaction { tier: 1, .. }
+            )
+        })
         .count();
     let cached_op2_count = cached_files
         .iter()
-        .filter(|f| matches!(f, crate::operations::remote_ops::RemoteOpFile::Compaction { tier: 2, .. }))
+        .filter(|f| {
+            matches!(
+                f,
+                crate::operations::remote_ops::RemoteOpFile::Compaction { tier: 2, .. }
+            )
+        })
         .count();
-    assert_eq!(cached_op1_count, 0, "cache must not keep stale tier-1 entries after compaction");
-    assert_eq!(cached_op2_count, 1, "cache must record the merged tier-2 file");
+    assert_eq!(
+        cached_op1_count, 0,
+        "cache must not keep stale tier-1 entries after compaction"
+    );
+    assert_eq!(
+        cached_op2_count, 1,
+        "cache must record the merged tier-2 file"
+    );
 }
 
 #[tokio::test]
@@ -630,7 +704,6 @@ async fn push_skips_cascade_when_lock_held() {
     );
 }
 
-
 #[tokio::test]
 // After push uploads a media file, media_list.json contains that media_id.
 async fn push_writes_media_list_after_upload() {
@@ -644,7 +717,11 @@ async fn push_writes_media_list_after_upload() {
     let media_id = lib
         .media_add(
             crate::library::media::upload::MediaAddSource::CopyFrom(src),
-            Some(album_id), None, None, None)
+            Some(album_id),
+            None,
+            None,
+            None,
+        )
         .await
         .unwrap()
         .id();
@@ -672,7 +749,11 @@ async fn push_skips_media_already_in_media_list() {
     let src = write_file(tmp.path(), "img.jpg", b"data");
     lib.media_add(
         crate::library::media::upload::MediaAddSource::CopyFrom(src),
-        Some(album_id), None, None, None)
+        Some(album_id),
+        None,
+        None,
+        None,
+    )
     .await
     .unwrap();
 

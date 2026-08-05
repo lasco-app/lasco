@@ -4,8 +4,8 @@ use tempfile::TempDir;
 use uuid::Uuid;
 
 use crate::identifiers::{LibraryId, RemoteUuid};
-use crate::library::{Credentials, Library};
 use crate::library::local_dirs::LocalDirs;
+use crate::library::{Credentials, Library};
 
 pub const REMOTE_ID: &str = "11111111-1111-1111-1111-111111111111";
 
@@ -26,10 +26,14 @@ pub async fn make_library(tmp: &TempDir) -> Library {
     let library_id = LibraryId(Uuid::new_v4());
     let local_dirs = LocalDirs::new(tmp.path().to_path_buf(), &library_id);
     local_dirs.ensure_state_dirs().unwrap();
-    Library::init(local_dirs, library_id, Credentials {
-        username: "alice".into(),
-        password: "secret".into(),
-    })
+    Library::init(
+        local_dirs,
+        library_id,
+        Credentials {
+            username: "alice".into(),
+            password: "secret".into(),
+        },
+    )
     .await
     .unwrap()
     .0
@@ -46,7 +50,12 @@ pub async fn make_library_with_same_keys(tmp: &TempDir, source: &Library) -> Lib
     let library_id = source.library_id();
     let local_dirs = LocalDirs::new(tmp.path().to_path_buf(), &library_id);
     local_dirs.ensure_state_dirs().unwrap();
-    Library::open_with_master_key(local_dirs, source.master_key().clone(), library_id, source.username().clone())
-        .await
-        .unwrap()
+    Library::open_with_master_key(
+        local_dirs,
+        source.master_key().clone(),
+        library_id,
+        source.username().clone(),
+    )
+    .await
+    .unwrap()
 }

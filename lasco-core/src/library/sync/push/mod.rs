@@ -2,12 +2,15 @@ use crate::error::{LibraryError, SyncError};
 use crate::identifiers::{CompactedOpId, MediaUuid, RemoteUuid};
 use crate::library::Library;
 use crate::operations::remote_ops::{self as op_io, RemoteOpFile};
-use crate::operations::{local_ops as op_log, CompactionEntry, CompactionFile, StorageDate};
+use crate::operations::{CompactionEntry, CompactionFile, StorageDate, local_ops as op_log};
 use crate::remote::last_known_state::collect_group_ids_from_dir;
 use crate::remote::{LastKnownState, MediaList};
 
-use super::compaction::{self, appropriate_tier, count_tier_files, release_lock, tier_needs_compaction, try_acquire_lock};
-use super::{map_op_err, verify_remote_identity, SyncReportPush};
+use super::compaction::{
+    self, appropriate_tier, count_tier_files, release_lock, tier_needs_compaction, try_acquire_lock,
+};
+use super::remote_access::StorageReadWrite;
+use super::{SyncReportPush, map_op_err, verify_remote_identity};
 
 struct FileToPush {
     media_id: MediaUuid,
@@ -23,12 +26,13 @@ impl Library {
         let _guard = self
             .try_acquire_remote_sync(remote_id)
             .ok_or(SyncError::AlreadyRunning)?;
-        self.push_impl(storage, remote_id).await
+        let remote = StorageReadWrite::new(storage);
+        self.push_impl(&remote, remote_id).await
     }
 
     pub(super) async fn push_impl(
         &self,
-        storage: &dyn crate::storage::Storage,
+        storage: &StorageReadWrite<'_>,
         remote_id: &str,
     ) -> Result<SyncReportPush, LibraryError> {
         let local_dirs = &self.inner.local_dirs;
@@ -40,7 +44,7 @@ impl Library {
             .map_err(|e| {
                 SyncError::RemoteIdMismatch(format!("invalid remote id '{remote_id}': {e}"))
             })?;
-        verify_remote_identity(storage, remote_uuid).await?;
+        verify_remote_identity(&storage.as_read(), remote_uuid).await?;
 
         // Push only ever acts on op files recorded in its own last known state for this
         // remote, plus whatever it uploads or merges in this call. It never lists or reads
@@ -70,8 +74,12 @@ impl Library {
         }
 
         // Read all local op groups from the log.
-        let local_groups = self
-            .with_op_lock(|| Ok(op_log::read_op_groups(&local_dirs.operations_log_path(), master_key)?))?;
+        let local_groups = self.with_op_lock(|| {
+            Ok(op_log::read_op_groups(
+                &local_dirs.operations_log_path(),
+                master_key,
+            )?)
+        })?;
         let ops_to_upload: Vec<_> = local_groups
             .into_iter()
             .filter(|g| !remote_covered.contains(&g.op_id))
@@ -81,7 +89,10 @@ impl Library {
         let mut compactions_run = 0usize;
 
         if !ops_to_upload.is_empty() {
-            let op_count: u32 = ops_to_upload.iter().map(|g| g.operations.len() as u32).sum();
+            let op_count: u32 = ops_to_upload
+                .iter()
+                .map(|g| g.operations.len() as u32)
+                .sum();
             let tier = appropriate_tier(op_count as usize);
             {
                 // Upload as a single compaction file at the tier that fits this batch.
@@ -95,8 +106,9 @@ impl Library {
                     .collect();
                 let key = format!("operations/{file_uuid}.op{tier}_{op_count}");
                 let comp_file = CompactionFile { tier, contents };
-                let blob = crate::operations::encrypt_compaction_file(master_key, &file_uuid, &comp_file)
-                    .map_err(map_op_err)?;
+                let blob =
+                    crate::operations::encrypt_compaction_file(master_key, &file_uuid, &comp_file)
+                        .map_err(map_op_err)?;
                 let bytes = blob.to_bytes();
                 op_io::write_compaction_bytes(storage, &key, &bytes)
                     .await
@@ -129,13 +141,23 @@ impl Library {
                             cascade_done = true;
                             break;
                         }
-                        match compaction::compact_tier(storage, master_key, current_tier, &last_known_state, &lock_token).await {
+                        match compaction::compact_tier(
+                            storage,
+                            master_key,
+                            current_tier,
+                            &last_known_state,
+                            &lock_token,
+                        )
+                        .await
+                        {
                             Ok(result) => {
                                 // compact_tier already updated the on-disk last known state
                                 // for the new file and every deleted source as it went, so
                                 // this only needs to bring the in-memory view in line.
                                 compactions_run += 1;
-                                last_known_state.files_mut().retain(|f| !result.sources.contains(f));
+                                last_known_state
+                                    .files_mut()
+                                    .retain(|f| !result.sources.contains(f));
                                 last_known_state.files_mut().push(result.new_file);
                             }
                             Err(error) => {

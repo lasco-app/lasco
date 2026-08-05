@@ -4,12 +4,12 @@ use anyhow::Result;
 
 use anyhow::Context;
 
-use crate::config_json::{library_data_dir, ConfigJson, LibraryNickname};
-use crate::encryption::master_key::{find_master_key, MasterKey};
+use crate::config_json::{ConfigJson, LibraryNickname, library_data_dir};
+use crate::encryption::master_key::{MasterKey, find_master_key};
 use crate::identifiers::LibraryId;
 use crate::library::Library;
 use crate::library::local_dirs::LocalDirs;
-use crate::library_json::{save_library, LibraryJson, RemoteConfig, RemoteKind, S3Config};
+use crate::library_json::{LibraryJson, RemoteConfig, RemoteKind, S3Config, save_library};
 use crate::operations::{LibraryPassword, LibraryUsername};
 use crate::s3_secret::{encrypt_s3_secret_key, resolve_s3_credentials};
 use crate::session::{session_load_master_key, session_store_master_key};
@@ -50,9 +50,8 @@ pub fn build_storage(
             Ok(Box::new(StorageLocalFs::new(&path)?))
         }
         RemoteKind::S3(s3_cfg) => {
-            let master_key = master_key.ok_or_else(|| {
-                anyhow::anyhow!("master key required to decrypt S3 credentials")
-            })?;
+            let master_key = master_key
+                .ok_or_else(|| anyhow::anyhow!("master key required to decrypt S3 credentials"))?;
             let (access_key, secret_key) = resolve_s3_credentials(s3_cfg, master_key)
                 .map_err(|e| anyhow::anyhow!("failed to resolve S3 credentials: {e}"))?;
             Ok(Box::new(StorageS3::new(
@@ -95,12 +94,15 @@ pub async fn open_library(
         return Ok(library);
     }
 
-    let password = password
-        .ok_or_else(|| anyhow::anyhow!("password required: no cached session found"))?;
+    let password =
+        password.ok_or_else(|| anyhow::anyhow!("password required: no cached session found"))?;
 
     let library = Library::open(
         local_dirs,
-        crate::library::Credentials { username: username.clone(), password },
+        crate::library::Credentials {
+            username: username.clone(),
+            password,
+        },
     )
     .await
     .map_err(|e| anyhow::anyhow!("failed to open library: {}", e))?;
@@ -207,9 +209,7 @@ pub async fn add_existing_library_s3(
             name.strip_prefix("library_id_")
                 .and_then(|s| s.parse::<uuid::Uuid>().ok())
         })
-        .ok_or_else(|| anyhow::anyhow!(
-            "remote is missing library_id_{{uuid}} file"
-        ))?;
+        .ok_or_else(|| anyhow::anyhow!("remote is missing library_id_{{uuid}} file"))?;
     let library_id = LibraryId(remote_library_uuid);
 
     let local_dirs = LocalDirs::new(app_dir.to_path_buf(), &library_id);
@@ -236,9 +236,8 @@ pub async fn add_existing_library_s3(
     }
 
     // Discover the active password UUID by trying all mk files for this user.
-    let (master_key, active_password_uuid) =
-        find_master_key(&lib_dir, &username.0, &password.0)
-            .map_err(|_| anyhow::anyhow!("failed to open library — wrong username or password"))?;
+    let (master_key, active_password_uuid) = find_master_key(&lib_dir, &username.0, &password.0)
+        .map_err(|_| anyhow::anyhow!("failed to open library — wrong username or password"))?;
 
     let library = Library::open_with_master_key(
         local_dirs.clone(),
@@ -285,7 +284,8 @@ pub async fn add_existing_library_s3(
         encrypt_s3_secret_key(&master_key, &secret_key)
             .map_err(|e| anyhow::anyhow!("failed to encrypt S3 secret key: {e}"))?;
 
-    let remote_uuid = crate::library::sync::discover_remote_uuid(&storage)
+    let remote = crate::library::sync::remote_access::StorageRead::new(&storage);
+    let remote_uuid = crate::library::sync::discover_remote_uuid(&remote)
         .await
         .map_err(|e| anyhow::anyhow!("failed to read remote id: {e}"))?;
     let remote_config = RemoteConfig {

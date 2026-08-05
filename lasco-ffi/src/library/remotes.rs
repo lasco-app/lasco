@@ -1,32 +1,43 @@
 use std::path::PathBuf;
 
 use lasco_core::identifiers::RemoteUuid;
-use lasco_core::library_json::{save_library, DebugLocalAndroidConfig, DebugLocalAppleConfig, FixedPathConfig, LibraryJson, RemoteConfig, RemoteKind};
+use lasco_core::library_json::{
+    DebugLocalAndroidConfig, DebugLocalAppleConfig, FixedPathConfig, LibraryJson, RemoteConfig,
+    RemoteKind, save_library,
+};
 use lasco_core::operations::{LibraryPassword, LibraryUsername, Operation};
 
-use super::{FfiKv, FfiLibrary, FfiMediaItem, FfiOperation, FfiOperationGroup, FfiRemote, FfiSyncResult};
+use super::{
+    FfiKv, FfiLibrary, FfiMediaItem, FfiOperation, FfiOperationGroup, FfiRemote, FfiSyncResult,
+};
 use crate::error::LascoError;
 
 fn parse_remote_uuid(remote_id: &str) -> Result<RemoteUuid, LascoError> {
     remote_id
         .parse::<uuid::Uuid>()
         .map(RemoteUuid::from_uuid)
-        .map_err(|e| LascoError::Other { msg: format!("invalid remote id '{remote_id}': {e}") })
+        .map_err(|e| LascoError::Other {
+            msg: format!("invalid remote id '{remote_id}': {e}"),
+        })
 }
 
 #[uniffi::export]
 impl FfiLibrary {
     pub fn list_operation_groups(&self) -> Result<Vec<FfiOperationGroup>, LascoError> {
         let groups = self.inner.list_operation_groups()?;
-        Ok(groups.into_iter().map(|g| {
-            let ops: Vec<FfiOperation> = g.operations.into_iter().map(operation_to_ffi).collect();
-            FfiOperationGroup {
-                op_id: g.op_id.0.to_string(),
-                parent_op_id: g.parent_op_id.map(|p| p.0.to_string()),
-                operations: ops,
-                author: g.author.0,
-            }
-        }).collect())
+        Ok(groups
+            .into_iter()
+            .map(|g| {
+                let ops: Vec<FfiOperation> =
+                    g.operations.into_iter().map(operation_to_ffi).collect();
+                FfiOperationGroup {
+                    op_id: g.op_id.0.to_string(),
+                    parent_op_id: g.parent_op_id.map(|p| p.0.to_string()),
+                    operations: ops,
+                    author: g.author.0,
+                }
+            })
+            .collect())
     }
 
     pub fn user_list(&self) -> Result<Vec<String>, LascoError> {
@@ -39,7 +50,10 @@ impl FfiLibrary {
 
     pub fn user_add(&self, username: String, password: String) -> Result<(), LascoError> {
         self.rt
-            .block_on(self.inner.user_add(LibraryUsername(username), LibraryPassword(password)))
+            .block_on(
+                self.inner
+                    .user_add(LibraryUsername(username), LibraryPassword(password)),
+            )
             .map(|_uuid| ())
             .map_err(|e| LascoError::Other { msg: e.to_string() })
     }
@@ -171,7 +185,11 @@ impl FfiLibrary {
             lasco_core::s3_secret::encrypt_s3_secret_key(self.inner.master_key(), &secret_key)
                 .map_err(|e| LascoError::Other { msg: e.to_string() })?;
 
-        let path_prefix = if path_prefix.is_empty() { None } else { Some(path_prefix) };
+        let path_prefix = if path_prefix.is_empty() {
+            None
+        } else {
+            Some(path_prefix)
+        };
 
         let remote_uuid = RemoteUuid::new();
         let remote_config = RemoteConfig {
@@ -237,7 +255,12 @@ impl FfiLibrary {
         save_library(&self.app_dir, &library_id, &lib_config)
             .map_err(|e| LascoError::Other { msg: e.to_string() })?;
 
-        self.remotes.lock().unwrap().iter_mut().find(|r| r.id == remote_id).map(|r| r.auto_push = enabled);
+        self.remotes
+            .lock()
+            .unwrap()
+            .iter_mut()
+            .find(|r| r.id == remote_id)
+            .map(|r| r.auto_push = enabled);
         Ok(())
     }
 
@@ -245,7 +268,9 @@ impl FfiLibrary {
         let remote_id = self
             .sync_remote_id
             .clone()
-            .ok_or_else(|| LascoError::Other { msg: "no remotes configured".to_string() })?;
+            .ok_or_else(|| LascoError::Other {
+                msg: "no remotes configured".to_string(),
+            })?;
 
         let storage = self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
         let report = self
@@ -258,7 +283,11 @@ impl FfiLibrary {
         })
     }
 
-    pub fn push_remote(&self, remote_id: String, app_support_dir: Option<String>) -> Result<u32, LascoError> {
+    pub fn push_remote(
+        &self,
+        remote_id: String,
+        app_support_dir: Option<String>,
+    ) -> Result<u32, LascoError> {
         let storage = self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
         let report = self
             .rt
@@ -267,7 +296,11 @@ impl FfiLibrary {
         Ok(report.ops_uploaded as u32)
     }
 
-    pub fn fetch_remote(&self, remote_id: String, app_support_dir: Option<String>) -> Result<u32, LascoError> {
+    pub fn fetch_remote(
+        &self,
+        remote_id: String,
+        app_support_dir: Option<String>,
+    ) -> Result<u32, LascoError> {
         let storage = self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
         let report = self
             .rt
@@ -276,11 +309,16 @@ impl FfiLibrary {
         Ok(report.ops_downloaded as u32)
     }
 
-    pub async fn sync_async(&self, app_support_dir: Option<String>) -> Result<FfiSyncResult, LascoError> {
+    pub async fn sync_async(
+        &self,
+        app_support_dir: Option<String>,
+    ) -> Result<FfiSyncResult, LascoError> {
         let remote_id = self
             .sync_remote_id
             .clone()
-            .ok_or_else(|| LascoError::Other { msg: "no remotes configured".to_string() })?;
+            .ok_or_else(|| LascoError::Other {
+                msg: "no remotes configured".to_string(),
+            })?;
 
         let storage = self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
         let inner = self.inner.clone();
@@ -296,7 +334,11 @@ impl FfiLibrary {
         })
     }
 
-    pub async fn push_remote_async(&self, remote_id: String, app_support_dir: Option<String>) -> Result<u32, LascoError> {
+    pub async fn push_remote_async(
+        &self,
+        remote_id: String,
+        app_support_dir: Option<String>,
+    ) -> Result<u32, LascoError> {
         let storage = self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
         let inner = self.inner.clone();
         let report = self
@@ -308,7 +350,11 @@ impl FfiLibrary {
         Ok(report.ops_uploaded as u32)
     }
 
-    pub async fn fetch_remote_async(&self, remote_id: String, app_support_dir: Option<String>) -> Result<u32, LascoError> {
+    pub async fn fetch_remote_async(
+        &self,
+        remote_id: String,
+        app_support_dir: Option<String>,
+    ) -> Result<u32, LascoError> {
         let storage = self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
         let inner = self.inner.clone();
         let report = self
@@ -320,20 +366,37 @@ impl FfiLibrary {
         Ok(report.ops_downloaded as u32)
     }
 
-    pub fn connect_remote(&self, remote_id: String, app_support_dir: Option<String>) -> Result<(), LascoError> {
+    pub fn connect_remote(
+        &self,
+        remote_id: String,
+        app_support_dir: Option<String>,
+    ) -> Result<(), LascoError> {
         let storage = self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
         let remote_uuid = parse_remote_uuid(&remote_id)?;
+        let remote = lasco_core::library::sync::remote_access::StorageRead::new(storage.as_ref());
         self.rt
-            .block_on(lasco_core::library::sync::verify_remote_identity(storage.as_ref(), remote_uuid))
-            .map_err(|e| LascoError::Other { msg: format!("remote unreachable: {e}") })?;
+            .block_on(lasco_core::library::sync::verify_remote_identity(
+                &remote,
+                remote_uuid,
+            ))
+            .map_err(|e| LascoError::Other {
+                msg: format!("remote unreachable: {e}"),
+            })?;
         Ok(())
     }
 
-    pub fn initialize_remote(&self, remote_id: String, app_support_dir: Option<String>) -> Result<(), LascoError> {
+    pub fn initialize_remote(
+        &self,
+        remote_id: String,
+        app_support_dir: Option<String>,
+    ) -> Result<(), LascoError> {
         let lib_config = self.load_library_json()?;
         let remote_uuid = parse_remote_uuid(&remote_id)?;
-        lasco_core::library_json::find_remote_by_uuid(&lib_config, &remote_uuid)
-            .ok_or_else(|| LascoError::Other { msg: format!("remote '{}' not found", remote_id) })?;
+        lasco_core::library_json::find_remote_by_uuid(&lib_config, &remote_uuid).ok_or_else(
+            || LascoError::Other {
+                msg: format!("remote '{}' not found", remote_id),
+            },
+        )?;
         let storage = self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
         self.rt
             .block_on(self.inner.initialize_remote(storage.as_ref(), remote_uuid))
@@ -438,43 +501,69 @@ pub(super) fn media_entry_to_ffi(e: lasco_core::library::media::MediaEntry) -> F
 }
 
 fn kv(key: &str, value: impl ToString) -> FfiKv {
-    FfiKv { key: key.to_string(), value: value.to_string() }
+    FfiKv {
+        key: key.to_string(),
+        value: value.to_string(),
+    }
 }
 
 fn opt_kv(key: &str, value: Option<impl ToString>) -> FfiKv {
-    FfiKv { key: key.to_string(), value: value.map(|v| v.to_string()).unwrap_or_default() }
+    FfiKv {
+        key: key.to_string(),
+        value: value.map(|v| v.to_string()).unwrap_or_default(),
+    }
 }
 
 pub(super) fn operation_to_ffi(op: Operation) -> FfiOperation {
     match op {
-        Operation::MediaCreation { timestamp, media_id, filename_original, date, storage_date, size_bytes, .. } => {
-            FfiOperation {
-                kind: "MediaCreation".to_string(),
-                timestamp: timestamp.to_rfc3339(),
-                args: vec![
-                    kv("media_id", media_id),
-                    kv("filename_original", filename_original),
-                    kv("date", date.to_rfc3339()),
-                    kv("year", storage_date.year),
-                    kv("month", storage_date.month),
-                    kv("size_bytes", size_bytes),
-                ],
-            }
-        }
-        Operation::MediaRename { timestamp, media_id, name, .. } => FfiOperation {
-            kind: "MediaRename".to_string(),
+        Operation::MediaCreation {
+            timestamp,
+            media_id,
+            filename_original,
+            date,
+            storage_date,
+            size_bytes,
+            ..
+        } => FfiOperation {
+            kind: "MediaCreation".to_string(),
             timestamp: timestamp.to_rfc3339(),
             args: vec![
                 kv("media_id", media_id),
-                opt_kv("name", name),
+                kv("filename_original", filename_original),
+                kv("date", date.to_rfc3339()),
+                kv("year", storage_date.year),
+                kv("month", storage_date.month),
+                kv("size_bytes", size_bytes),
             ],
         },
-        Operation::MediaPropsUpdate { timestamp, media_id, key, value, .. } => FfiOperation {
+        Operation::MediaRename {
+            timestamp,
+            media_id,
+            name,
+            ..
+        } => FfiOperation {
+            kind: "MediaRename".to_string(),
+            timestamp: timestamp.to_rfc3339(),
+            args: vec![kv("media_id", media_id), opt_kv("name", name)],
+        },
+        Operation::MediaPropsUpdate {
+            timestamp,
+            media_id,
+            key,
+            value,
+            ..
+        } => FfiOperation {
             kind: "MediaPropsUpdate".to_string(),
             timestamp: timestamp.to_rfc3339(),
             args: vec![kv("media_id", media_id), kv("key", key), kv("value", value)],
         },
-        Operation::AlbumCreation { timestamp, album_id, name, album_id_parent, .. } => FfiOperation {
+        Operation::AlbumCreation {
+            timestamp,
+            album_id,
+            name,
+            album_id_parent,
+            ..
+        } => FfiOperation {
             kind: "AlbumCreation".to_string(),
             timestamp: timestamp.to_rfc3339(),
             args: vec![
@@ -483,37 +572,74 @@ pub(super) fn operation_to_ffi(op: Operation) -> FfiOperation {
                 opt_kv("parent_id", album_id_parent),
             ],
         },
-        Operation::AlbumMediaAdd { timestamp, album_id, media_id, .. } => FfiOperation {
+        Operation::AlbumMediaAdd {
+            timestamp,
+            album_id,
+            media_id,
+            ..
+        } => FfiOperation {
             kind: "AlbumMediaAdd".to_string(),
             timestamp: timestamp.to_rfc3339(),
             args: vec![kv("album_id", album_id), kv("media_id", media_id)],
         },
-        Operation::AlbumMediaRemove { timestamp, album_id, media_id, .. } => FfiOperation {
+        Operation::AlbumMediaRemove {
+            timestamp,
+            album_id,
+            media_id,
+            ..
+        } => FfiOperation {
             kind: "AlbumMediaRemove".to_string(),
             timestamp: timestamp.to_rfc3339(),
             args: vec![kv("album_id", album_id), kv("media_id", media_id)],
         },
-        Operation::AlbumDeletion { timestamp, album_id, .. } => FfiOperation {
+        Operation::AlbumDeletion {
+            timestamp,
+            album_id,
+            ..
+        } => FfiOperation {
             kind: "AlbumDeletion".to_string(),
             timestamp: timestamp.to_rfc3339(),
             args: vec![kv("album_id", album_id)],
         },
-        Operation::AlbumRename { timestamp, album_id, name, .. } => FfiOperation {
+        Operation::AlbumRename {
+            timestamp,
+            album_id,
+            name,
+            ..
+        } => FfiOperation {
             kind: "AlbumRename".to_string(),
             timestamp: timestamp.to_rfc3339(),
             args: vec![kv("album_id", album_id), kv("name", name)],
         },
-        Operation::AlbumReparent { timestamp, album_id, new_parent_id, .. } => FfiOperation {
+        Operation::AlbumReparent {
+            timestamp,
+            album_id,
+            new_parent_id,
+            ..
+        } => FfiOperation {
             kind: "AlbumReparent".to_string(),
             timestamp: timestamp.to_rfc3339(),
-            args: vec![kv("album_id", album_id), opt_kv("new_parent_id", new_parent_id)],
+            args: vec![
+                kv("album_id", album_id),
+                opt_kv("new_parent_id", new_parent_id),
+            ],
         },
-        Operation::AlbumThumbnailSet { timestamp, album_id, media_id, .. } => FfiOperation {
+        Operation::AlbumThumbnailSet {
+            timestamp,
+            album_id,
+            media_id,
+            ..
+        } => FfiOperation {
             kind: "AlbumThumbnailSet".to_string(),
             timestamp: timestamp.to_rfc3339(),
             args: vec![kv("album_id", album_id), opt_kv("media_id", media_id)],
         },
-        Operation::GroupCreation { timestamp, group_id, album_id_parent, .. } => FfiOperation {
+        Operation::GroupCreation {
+            timestamp,
+            group_id,
+            album_id_parent,
+            ..
+        } => FfiOperation {
             kind: "GroupCreation".to_string(),
             timestamp: timestamp.to_rfc3339(),
             args: vec![
@@ -521,17 +647,31 @@ pub(super) fn operation_to_ffi(op: Operation) -> FfiOperation {
                 kv("album_id_parent", album_id_parent),
             ],
         },
-        Operation::GroupMediaAdd { timestamp, group_id, media_id, .. } => FfiOperation {
+        Operation::GroupMediaAdd {
+            timestamp,
+            group_id,
+            media_id,
+            ..
+        } => FfiOperation {
             kind: "GroupMediaAdd".to_string(),
             timestamp: timestamp.to_rfc3339(),
             args: vec![kv("group_id", group_id), kv("media_id", media_id)],
         },
-        Operation::GroupMediaRemove { timestamp, group_id, media_id, .. } => FfiOperation {
+        Operation::GroupMediaRemove {
+            timestamp,
+            group_id,
+            media_id,
+            ..
+        } => FfiOperation {
             kind: "GroupMediaRemove".to_string(),
             timestamp: timestamp.to_rfc3339(),
             args: vec![kv("group_id", group_id), kv("media_id", media_id)],
         },
-        Operation::GroupDeletion { timestamp, group_id, .. } => FfiOperation {
+        Operation::GroupDeletion {
+            timestamp,
+            group_id,
+            ..
+        } => FfiOperation {
             kind: "GroupDeletion".to_string(),
             timestamp: timestamp.to_rfc3339(),
             args: vec![kv("group_id", group_id)],

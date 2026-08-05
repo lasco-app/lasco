@@ -3,14 +3,15 @@ use std::collections::HashSet;
 use crate::encryption::master_key::parse_mk_filename;
 use crate::error::{LibraryError, SyncError};
 use crate::identifiers::{LibraryId, RemoteUuid};
-use crate::library::local_dirs::LocalDirs;
 use crate::library::Library;
+use crate::library::local_dirs::LocalDirs;
 use crate::operations::local_ops as op_log;
 use crate::operations::remote_ops::RemoteOpFile;
 use crate::operations::{Operation, OperationGroup};
 use crate::remote::{LastKnownState, MediaList, ProcessedFiles};
 
-use super::{verify_remote_identity, SyncReportFetch};
+use super::remote_access::StorageRead;
+use super::{SyncReportFetch, verify_remote_identity};
 
 impl Library {
     pub async fn fetch(
@@ -24,12 +25,13 @@ impl Library {
         let _fetch_guard = self
             .try_acquire_fetch_slot()
             .ok_or(SyncError::AlreadyRunning)?;
-        self.fetch_impl(storage, remote_id).await
+        let remote = StorageRead::new(storage);
+        self.fetch_impl(&remote, remote_id).await
     }
 
     pub(super) async fn fetch_impl(
         &self,
-        storage: &dyn crate::storage::Storage,
+        storage: &StorageRead<'_>,
         remote_id: &str,
     ) -> Result<SyncReportFetch, LibraryError> {
         let local_dirs = &self.inner.local_dirs;
@@ -38,7 +40,9 @@ impl Library {
         let remote_uuid = remote_id
             .parse::<uuid::Uuid>()
             .map(RemoteUuid::from_uuid)
-            .map_err(|e| SyncError::RemoteIdMismatch(format!("invalid remote id '{remote_id}': {e}")))?;
+            .map_err(|e| {
+                SyncError::RemoteIdMismatch(format!("invalid remote id '{remote_id}': {e}"))
+            })?;
         verify_remote_identity(storage, remote_uuid).await?;
 
         // Step 1: pull any mk_*.enc files present on the remote but missing locally,
@@ -54,7 +58,9 @@ impl Library {
         let mut media_list = MediaList::load_or_default(&media_list_path)?;
         let mut media_list_changed = false;
 
-        let last_known_state = LastKnownState::download(storage, local_dirs, remote_id, &processed, master_key).await?;
+        let last_known_state =
+            LastKnownState::download(storage, local_dirs, remote_id, &processed, master_key)
+                .await?;
 
         let local_valid_ids =
             self.with_op_lock(|| Ok(op_log::read_op_ids(&local_dirs.operations_log_path())?))?;
@@ -70,8 +76,13 @@ impl Library {
                 continue;
             }
             match file {
-                RemoteOpFile::Compaction { uuid, tier, op_count } => {
-                    let compaction = last_known_state.read_compaction_file(master_key, uuid, *tier, *op_count)?;
+                RemoteOpFile::Compaction {
+                    uuid,
+                    tier,
+                    op_count,
+                } => {
+                    let compaction = last_known_state
+                        .read_compaction_file(master_key, uuid, *tier, *op_count)?;
                     for entry in &compaction.contents {
                         if !local_valid_ids.contains(&entry.op_id)
                             && !appended_this_run.contains(&entry.op_id)
@@ -120,7 +131,7 @@ impl Library {
 /// library, then downloads any `mk_*.enc` file present on the remote but missing
 /// locally, so users added from another device become available on this one.
 async fn fetch_library_dir(
-    storage: &dyn crate::storage::Storage,
+    storage: &StorageRead<'_>,
     local_dirs: &LocalDirs,
     library_id: LibraryId,
 ) -> Result<(), LibraryError> {
@@ -186,7 +197,7 @@ async fn fetch_library_dir(
 /// For each MediaCreation op in `group`, checks if the file exists on the remote and
 /// inserts it into `media_list` if so.
 async fn update_media_list_from_group(
-    storage: &(dyn crate::storage::Storage + Send + Sync),
+    storage: &StorageRead<'_>,
     group: &OperationGroup,
     media_list: &mut MediaList,
     changed: &mut bool,
@@ -198,7 +209,10 @@ async fn update_media_list_from_group(
             ..
         } = op
         {
-            let key = format!("media/{}/{:02}/{}.data", storage_date.year, storage_date.month, media_id.0);
+            let key = format!(
+                "media/{}/{:02}/{}.data",
+                storage_date.year, storage_date.month, media_id.0
+            );
             if storage
                 .exists(&key)
                 .await

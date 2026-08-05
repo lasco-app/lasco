@@ -1,6 +1,8 @@
-pub mod conflict;
 pub mod compaction;
+pub mod conflict;
 pub mod error;
+
+pub mod remote_access;
 
 pub(super) mod fetch;
 pub(super) mod push;
@@ -9,6 +11,7 @@ use crate::error::{LibraryError, OperationError, SyncError};
 use crate::identifiers::RemoteUuid;
 use crate::library::Library;
 use crate::storage::StorageError;
+use remote_access::{StorageRead, StorageReadWrite};
 
 #[derive(Debug)]
 pub struct SyncReportFetch {
@@ -36,13 +39,14 @@ impl Library {
         storage: &dyn crate::storage::Storage,
         remote_uuid: RemoteUuid,
     ) -> Result<(), LibraryError> {
+        let remote = StorageReadWrite::new(storage);
         let marker_key = format!("remote_id_{remote_uuid}");
-        storage
+        remote
             .put_if_absent(&marker_key, b"")
             .await
             .map_err(|e| LibraryError::Io(std::io::Error::other(e.to_string())))?;
 
-        let existing = match storage.list("library/").await {
+        let existing = match remote.list("library/").await {
             Ok(keys) => keys,
             Err(crate::storage::StorageError::NotFound) => Vec::new(),
             Err(e) => return Err(LibraryError::Io(std::io::Error::other(e.to_string()))),
@@ -57,18 +61,25 @@ impl Library {
             if !path.is_file() {
                 continue;
             }
-            let filename = path.file_name()
+            let filename = path
+                .file_name()
                 .and_then(|n| n.to_str())
                 .ok_or_else(|| std::io::Error::other("non-UTF8 filename in library dir"))?;
             let data = std::fs::read(&path)?;
             let key = format!("library/{filename}");
-            storage.put(&key, &data).await
+            remote
+                .put(&key, &data)
+                .await
                 .map_err(|e| LibraryError::Io(std::io::Error::other(e.to_string())))?;
         }
         Ok(())
     }
 
-    pub async fn sync(&self, storage: &dyn crate::storage::Storage, remote_id: &str) -> Result<SyncReport, LibraryError> {
+    pub async fn sync(
+        &self,
+        storage: &dyn crate::storage::Storage,
+        remote_id: &str,
+    ) -> Result<SyncReport, LibraryError> {
         let _remote_guard = self
             .try_acquire_remote_sync(remote_id)
             .ok_or(SyncError::AlreadyRunning)?;
@@ -76,17 +87,20 @@ impl Library {
             let _fetch_guard = self
                 .try_acquire_fetch_slot()
                 .ok_or(SyncError::AlreadyRunning)?;
-            self.fetch_impl(storage, remote_id).await?
+            let remote = StorageRead::new(storage);
+            self.fetch_impl(&remote, remote_id).await?
         };
-        let push_report = self.push_impl(storage, remote_id).await?;
-        Ok(SyncReport { fetch: fetch_report, push: push_report })
+        let remote = StorageReadWrite::new(storage);
+        let push_report = self.push_impl(&remote, remote_id).await?;
+        Ok(SyncReport {
+            fetch: fetch_report,
+            push: push_report,
+        })
     }
 }
 
 /// Reads the remote's `remote_id_{uuid}` marker file and returns the UUID it holds.
-pub async fn discover_remote_uuid(
-    storage: &dyn crate::storage::Storage,
-) -> Result<RemoteUuid, SyncError> {
+pub async fn discover_remote_uuid(storage: &StorageRead<'_>) -> Result<RemoteUuid, SyncError> {
     let remote_files = storage
         .list("")
         .await
@@ -107,7 +121,7 @@ pub async fn discover_remote_uuid(
 
 /// Verifies that the remote's `remote_id_{uuid}` marker file matches `expected`.
 pub async fn verify_remote_identity(
-    storage: &dyn crate::storage::Storage,
+    storage: &StorageRead<'_>,
     expected: RemoteUuid,
 ) -> Result<(), SyncError> {
     let remote_uuid = discover_remote_uuid(storage).await?.0;

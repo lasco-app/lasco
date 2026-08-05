@@ -9,11 +9,11 @@ use crate::encryption::blob_key::derive_blob_key;
 use crate::encryption::master_key::MasterKey;
 use crate::error::SyncError;
 use crate::identifiers::{CompactedOpId, OpUuid};
-use crate::operations::{CompactionFile, compaction_file_from_cbor, encrypt_compaction_file};
-use crate::operations::remote_ops::{RemoteOpFile, list_remote_op_files};
 use crate::library::local_dirs::LocalDirs;
+use crate::library::sync::remote_access::StorageRead;
+use crate::operations::remote_ops::{RemoteOpFile, list_remote_op_files_read};
+use crate::operations::{CompactionFile, compaction_file_from_cbor, encrypt_compaction_file};
 use crate::remote::local_state::processed_files::ProcessedFiles;
-use crate::storage::Storage;
 
 /// On-disk cache of all remote operation files for a single remote.
 ///
@@ -31,7 +31,7 @@ impl LastKnownState {
     /// last known state dir. Files already present on disk or whose UUID appears in `processed` are
     /// skipped, making this idempotent.
     pub(crate) async fn download(
-        storage: &(dyn Storage + Send + Sync),
+        storage: &StorageRead<'_>,
         local_dirs: &LocalDirs,
         remote_id: &str,
         processed: &ProcessedFiles,
@@ -40,7 +40,7 @@ impl LastKnownState {
         let ops_dir = local_dirs.remote_ops_dir(remote_id);
         std::fs::create_dir_all(&ops_dir)?;
 
-        let remote_files = list_remote_op_files(storage).await?;
+        let remote_files = list_remote_op_files_read(storage).await?;
 
         for file in &remote_files {
             if processed.contains(&Self::file_uuid(file)) {
@@ -66,13 +66,19 @@ impl LastKnownState {
             let mut remote_group_ids: HashSet<OpUuid> = HashSet::new();
             for f in &remote_files {
                 let (_, local_name) = Self::file_paths(f);
-                let ids = read_op_ids_from_file(&ops_dir.join(local_name), master_key, &Self::file_uuid(f))
-                    .map_err(SyncError::LocalCacheCorrupt)?;
+                let ids = read_op_ids_from_file(
+                    &ops_dir.join(local_name),
+                    master_key,
+                    &Self::file_uuid(f),
+                )
+                .map_err(SyncError::LocalCacheCorrupt)?;
                 remote_group_ids.extend(ids);
             }
             if !remote_group_ids.is_superset(&cached_group_ids) {
-                let mut missing: Vec<OpUuid> =
-                    cached_group_ids.difference(&remote_group_ids).copied().collect();
+                let mut missing: Vec<OpUuid> = cached_group_ids
+                    .difference(&remote_group_ids)
+                    .copied()
+                    .collect();
                 missing.sort();
                 return Err(SyncError::RemoteHistoryRewritten(format!(
                     "cached_groups={} remote_groups={} missing={missing:?}",
@@ -82,7 +88,10 @@ impl LastKnownState {
             }
         }
 
-        Ok(Self { ops_dir, files: remote_files })
+        Ok(Self {
+            ops_dir,
+            files: remote_files,
+        })
     }
 
     /// Disk-only counterpart to `download`. Builds the same instance from whatever is already
@@ -123,13 +132,18 @@ impl LastKnownState {
     ) -> Result<CompactionFile, SyncError> {
         let path = self.ops_dir.join(format!("{uuid}.op{tier}_{op_count}"));
         let bytes = std::fs::read(&path)?;
-        let blob = BlobEncrypted::from_bytes(&bytes)
-            .map_err(|e| SyncError::LocalCacheCorrupt(format!("failed to parse blob {}: {e}", path.display())))?;
+        let blob = BlobEncrypted::from_bytes(&bytes).map_err(|e| {
+            SyncError::LocalCacheCorrupt(format!("failed to parse blob {}: {e}", path.display()))
+        })?;
         let file_key = derive_blob_key(master_key, &uuid.0);
-        let plaintext = decrypt_blob(&file_key, &blob)
-            .map_err(|e| SyncError::LocalCacheCorrupt(format!("failed to decrypt {}: {e}", path.display())))?;
+        let plaintext = decrypt_blob(&file_key, &blob).map_err(|e| {
+            SyncError::LocalCacheCorrupt(format!("failed to decrypt {}: {e}", path.display()))
+        })?;
         compaction_file_from_cbor(&plaintext).map_err(|e| {
-            SyncError::LocalCacheCorrupt(format!("failed to parse compaction file {}: {e}", path.display()))
+            SyncError::LocalCacheCorrupt(format!(
+                "failed to parse compaction file {}: {e}",
+                path.display()
+            ))
         })
     }
 
@@ -161,13 +175,19 @@ impl LastKnownState {
         bytes: &[u8],
     ) -> Result<(), SyncError> {
         std::fs::create_dir_all(&self.ops_dir)?;
-        std::fs::write(self.ops_dir.join(format!("{uuid}.op{tier}_{op_count}")), bytes)?;
+        std::fs::write(
+            self.ops_dir.join(format!("{uuid}.op{tier}_{op_count}")),
+            bytes,
+        )?;
         Ok(())
     }
 
     /// Lists op files recorded in the on-disk last known state for `remote_id`, without
     /// contacting the remote. A missing cache directory is treated as empty.
-    pub(crate) fn list_cached_files(local_dirs: &LocalDirs, remote_id: &str) -> Result<Vec<RemoteOpFile>, SyncError> {
+    pub(crate) fn list_cached_files(
+        local_dirs: &LocalDirs,
+        remote_id: &str,
+    ) -> Result<Vec<RemoteOpFile>, SyncError> {
         let ops_dir = local_dirs.remote_ops_dir(remote_id);
         let entries = match std::fs::read_dir(&ops_dir) {
             Ok(entries) => entries,
@@ -200,7 +220,11 @@ impl LastKnownState {
 
     fn file_paths(file: &RemoteOpFile) -> (String, String) {
         match file {
-            RemoteOpFile::Compaction { uuid, tier, op_count } => (
+            RemoteOpFile::Compaction {
+                uuid,
+                tier,
+                op_count,
+            } => (
                 format!("operations/{uuid}.op{tier}_{op_count}"),
                 format!("{uuid}.op{tier}_{op_count}"),
             ),
@@ -213,7 +237,11 @@ impl LastKnownState {
 /// A missing file is treated as legitimately empty (nothing cached yet).
 /// A file that exists but fails to read, decrypt, or parse is a real error
 /// and must not be treated the same as "no ops here".
-fn read_op_ids_from_file(path: &Path, master_key: &MasterKey, file_uuid: &CompactedOpId) -> Result<Vec<OpUuid>, String> {
+fn read_op_ids_from_file(
+    path: &Path,
+    master_key: &MasterKey,
+    file_uuid: &CompactedOpId,
+) -> Result<Vec<OpUuid>, String> {
     let bytes = match std::fs::read(path) {
         Ok(bytes) => bytes,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
@@ -236,10 +264,17 @@ fn parse_cached_filename(name: &str) -> Option<RemoteOpFile> {
     let (tier_str, count_str) = ext.strip_prefix("op")?.split_once('_')?;
     let tier = tier_str.parse::<u8>().ok()?;
     let op_count = count_str.parse::<u32>().ok()?;
-    Some(RemoteOpFile::Compaction { uuid, tier, op_count })
+    Some(RemoteOpFile::Compaction {
+        uuid,
+        tier,
+        op_count,
+    })
 }
 
-pub(crate) fn collect_group_ids_from_dir(dir: &Path, master_key: &MasterKey) -> Result<HashSet<OpUuid>, String> {
+pub(crate) fn collect_group_ids_from_dir(
+    dir: &Path,
+    master_key: &MasterKey,
+) -> Result<HashSet<OpUuid>, String> {
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(HashSet::new()),
