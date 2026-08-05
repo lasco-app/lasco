@@ -491,6 +491,17 @@ html[class] .theme-doc-markdown th:last-child {
   width: 100% !important;
 }
 
+/* Fetch behavior keeps authorization compact so the explanations can use the page width. */
+html[class] .theme-doc-markdown table.behavior-table td:nth-child(3),
+html[class] .theme-doc-markdown table.behavior-table th:nth-child(3) {
+  width: 12rem !important;
+}
+
+html[class] .theme-doc-markdown table.behavior-table td:last-child,
+html[class] .theme-doc-markdown table.behavior-table th:last-child {
+  width: 16rem !important;
+}
+
 /* Block quotes */
 html[class] .theme-doc-markdown blockquote {
   border-left: 4px solid var(--lasco-accent) !important;

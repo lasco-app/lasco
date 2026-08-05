@@ -36,62 +36,96 @@ export const Algo = ({ lines }) => (
   </div>
 );
 
-Fetch downloads operation files from the remote and merges them into the local log. Encrypted media and thumbnail blobs are not downloaded. It also pulls any `mk_*.enc` files that are present on the remote but missing locally, so that new users added from another device become available on this one.
+export const AccessCard = ({ children }) => (
+  <div style={{
+    border: '2px solid var(--lasco-line)',
+    padding: '16px 20px',
+    margin: '0 0 1.25rem',
+    background: 'var(--lasco-surface-alt)',
+  }}>
+    {children}
+  </div>
+);
 
 ## Fetch
 
-### Algorithm
+### Summary
 
-**1. Sync library directory (mk files)**
+Fetch lists and downloads remote operation files missing from the remote's last-known state, verifies that the remote has not lost any previously known operation groups, then merges unseen operations into the local log and rebuilds in-memory state. It only adds missing `mk_*.enc` files and does not download media or thumbnails. Fetch never modifies or removes a remote file.
 
-<Algo lines={[
-  [0, "remote_library_files = list all files in library/ on the remote"],
-  [0, "remote_uuid = parse UUID from the library_id_{uuid} filename in remote_library_files"],
-  [0, "assert remote_uuid == local library_id   // error if mismatch"],
-  [0, "remote_mk_files = files matching library/mk_*.enc on the remote"],
-  [0, "local_mk_files  = files matching mk_*.enc in local_state/library/"],
-  [0, ""],
-  [0, "for each file in remote_mk_files not in local_mk_files:"],
-  [1, "download into local_state/library/   // append-only set of immutable files"],
-]} />
+### Required access
 
-**2. Update last known state**
+<AccessCard>
 
-<Algo lines={[
-  [0, "temp_ops = {}"],
-  [0, "for each op file listed on the remote:"],
-  [1, "if not cached in remotes/{remote_id}/state/operations/: download into temp_ops"],
-  [0, ""],
-  [0, "new_group_ids    = group ids from temp_ops"],
-  [0, "cached_group_ids = group ids from remotes/{remote_id}/state/operations/"],
-  [0, "if new_group_ids is not a superset of cached_group_ids: return error"],
-  [0, ""],
-  [0, "write temp_ops to remotes/{remote_id}/state/operations/"],
-]} />
+- **Sync policy:** Acquire the per-remote sync slot and the global fetch slot.
+- **Remote:** List and read access. <span className="tag tag-ok">Safe because of per-remote sync slot</span>
+- **Local:**
+  - Read and append to the local operation log. <span className="tag tag-warn">Safety to be determined</span>
+  - Read and atomically write the remote's last-known state. <span className="tag tag-ok">Safe because of per-remote sync slot</span>
+  - Atomically write missing `mk_*.enc` files in the library directory. <span className="tag tag-ok">Safe because of global fetch slot</span>
+- **In-memory local state:** Rebuild from the local operation log. <span className="tag tag-ok">Safe under mutex</span>
 
-**3. Merge into local log**
+</AccessCard>
 
-<Algo lines={[
-  [0, "local_ids = op_ids in operations.log"],
-  [0, ""],
-  [0, "for each op file in remotes/{remote_id}/state/operations/:"],
-  [1, "if compaction file:"],
-  [2, "for each entry in the compaction:"],
-  [3, "if op_id not in local_ids: decrypt and append to operations.log"],
-  [3, "for each MediaCreation op appended:"],
-  [4, "if the media blob exists on the remote:"],
-  [5, "record media_id as present in .../state/media/media_list.json"],
-]} />
+### Behavior
 
-The append to `operations.log` is the sharpest step in either algorithm: it mutates the
-one domain shared by every activity in the library.
+<table className="behavior-table" style={{ width: '100%', tableLayout: 'fixed' }}>
+  <thead>
+    <tr>
+      <th style={{ width: '1%', whiteSpace: 'nowrap' }}>#</th>
+      <th>Behavior</th>
+      <th>Required authorization</th>
+      <th>Interruption safety</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style={{ whiteSpace: 'nowrap' }}>1</td>
+      <td>Download each `mk_*.enc` file present on the remote but missing from the local library. Never remove or replace an existing local master-key file.</td>
+      <td><span className="tag tag-ok">List remote</span> <span className="tag tag-ok">Read remote</span> <span className="tag tag-warn">Write local key file</span></td>
+      <td>Atomic `mk_*.enc` writes.</td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: 'nowrap' }}>2</td>
+      <td>Identify the remote operation files that are not already recorded in the last-known state for the remote.</td>
+      <td><span className="tag tag-ok">List remote</span></td>
+      <td></td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: 'nowrap' }}>3</td>
+      <td>Download and validate those files without changing the last-known state for the remote.</td>
+      <td><span className="tag tag-ok">Read remote</span></td>
+      <td></td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: 'nowrap' }}>4</td>
+      <td>Verify that the resulting set of remote operation-group IDs is a superset of the group IDs previously known from this remote. If it is not, fail without writing anything.</td>
+      <td><span className="tag tag-ok">Read local state</span></td>
+      <td></td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: 'nowrap' }}>5</td>
+      <td>Atomically write the validated files to the last-known state for the remote.</td>
+      <td><span className="tag tag-warn">Write local state</span></td>
+      <td>Atomic write. If terminated, the last-known state contains a subset of the current remote state.</td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: 'nowrap' }}>6</td>
+      <td>Append operation groups not already in the local log, then rebuild in-memory local state.</td>
+      <td><span className="tag tag-warn">Append local log</span> <span className="tag tag-warn">Rebuild in-memory state</span></td>
+      <td>TODO: Think about the implications of an up-to-date last-known state that is not appended to the local log.</td>
+    </tr>
+  </tbody>
+</table>
 
-**4. Rebuild local state**
+### Interruption safety
 
-<Algo lines={[
-  [0, "if any ops were appended:"],
-  [1, "reload in-memory library state from operations.log"],
-]} />
+- Before a temporary file is renamed, an interruption leaves the previous last-known state for the remote unchanged. That state records only fully downloaded and validated operation files.
+- During a temporary-file write, an incomplete temporary file may remain and can be discarded.
+- After a file is renamed into place but before last-known-state metadata is updated, an extra local file may remain. The last-known state may therefore be stale, but it never records an incomplete or unvalidated download as known.
+- During a log append, previously written frames remain valid. The operation log contains only complete frames, so a partial final frame is ignored on the next read.
+- Master-key files are additive: an interruption may leave a temporary file, but fetch never removes or replaces an existing local `mk_*.enc` file.
+- In-memory local state is not durable. If fetch terminates during its rebuild, the next rebuild starts from the persisted operation log.
 
 ## Push
 
