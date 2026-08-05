@@ -7,7 +7,8 @@ use crate::library::{Library, Result};
 use crate::operations::local_ops as op_log;
 use crate::operations::OperationGroup;
 
-/// Exclusive capability to read and write the local operation files.
+/// Exclusive capability to read and write both local operation files:
+/// `operations.log` and `pending.op`.
 ///
 /// This is deliberately held only across synchronous filesystem calls, never across
 /// an `.await`. It does not make multiple calls atomic as a group.
