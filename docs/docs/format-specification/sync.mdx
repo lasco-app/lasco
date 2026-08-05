@@ -6,36 +6,6 @@ import React from 'react';
 
 # Sync
 
-export const Algo = ({ lines }) => (
-  <div style={{
-    background: 'var(--lasco-surface-alt)',
-    fontFamily: 'var(--ifm-font-family-monospace)',
-    fontSize: 'var(--ifm-code-font-size)',
-    lineHeight: 1.6,
-    overflowX: 'auto',
-    padding: '1rem 0',
-    margin: '0 0 1.25rem',
-    borderRadius: 'var(--ifm-pre-border-radius)',
-    boxShadow: 'var(--ifm-global-shadow-lw)',
-  }}>
-    <div style={{ minWidth: 'max-content' }}>
-      {lines.map(([indent, text], i) => (
-        <div key={i} style={{
-          display: 'flex',
-          alignItems: 'center',
-          paddingLeft: `calc(1rem + ${indent * 20}px)`,
-          paddingRight: '1rem',
-        }}>
-          <span style={{
-            whiteSpace: 'pre',
-            color: text.trimStart().startsWith('//') ? 'var(--lasco-ink-muted)' : 'var(--lasco-ink)',
-          }}>{text || ' '}</span>
-        </div>
-      ))}
-    </div>
-  </div>
-);
-
 export const AccessCard = ({ children }) => (
   <div style={{
     border: '2px solid var(--lasco-line)',
@@ -129,56 +99,72 @@ Fetch lists and downloads remote operation files missing from the remote's last-
 
 ## Push
 
+### Summary
+
+Push brings a target remote up to date with the local library by uploading missing master-key and operation files, then uploading any media and thumbnails referenced by the reconstructed local state that are not already known to be on that remote. When a required media file is absent locally, push can relay it from another remote without first performing a full fetch.
+
 Push uploads all files that are considered missing on the target remote, based on its last known state.
 
 For operation files, the client simply copies what it has locally. For media and thumbnail files, since they are downloaded lazily, the client may not have them on disk. Because the last known state of all remotes is stored locally, the push procedure can download the needed files directly from another remote and immediately upload them to the target, without performing a full fetch.
 
-### Algorithm
+### Required access
 
-**1. Sync library directory (mk files)**
+<AccessCard>
 
-<Algo lines={[
-  [0, "remote_library_files = list all files in library/ on the remote"],
-  [0, "remote_uuid = parse UUID from the library_id_{uuid} filename in remote_library_files"],
-  [0, "assert remote_uuid == local library_id   // error if mismatch"],
-  [0, "local_mk_files  = files matching mk_*.enc in local_state/library/"],
-  [0, "remote_mk_files = files matching library/mk_*.enc on the remote"],
-  [0, ""],
-  [0, "for each file in local_mk_files not in remote_mk_files:"],
-  [1, "upload from local_state/library/ to library/ on the remote"],
-]} />
+- **Sync policy:** Acquire the per-remote sync slot.
+- **Remote:** List, read, write, and delete access. <span className="tag tag-ok">Safe because of per-remote sync slot</span>
+- **Local:**
+  - Read local master-key files, the operation log, reconstructed state, media files, and the remote's last-known state. <span className="tag tag-ok">Safe because of per-remote sync slot</span>
+  - Append to the operation log and delete a pending operation file. <span className="tag tag-warn">Safety to be determined</span>
+  - Atomically write the remote's last-known operation state and media list. <span className="tag tag-ok">Safe because of per-remote sync slot</span>
+- **In-memory local state:** Rebuild after flushing a pending operation group. <span className="tag tag-ok">Safe under mutex</span>
 
-**2. Push operations**
+</AccessCard>
 
-<Algo lines={[
-  [0, "if pending.op exists:"],
-  [1, "append it to operations.log"],
-  [1, "delete pending.op"],
-  [0, ""],
-  [0, "// determine which op groups need to be uploaded"],
-  [0, "// by comparing the local log against the last known remote state"],
-  [0, "ops_to_upload = op groups in operations.log not in last known remote state"],
-  [0, ""],
-  [0, "compacted_files = compact(ops_to_upload)"],
-  [0, "upload each file in compacted_files to the remote"],
-  [0, "apply operation compaction if needed   // see Compaction in Operations"],
-  [0, ""],
-  [0, "update last known state: record every file uploaded or produced by"],
-  [0, "compaction in remotes/{remote_id}/state/operations/, and remove entries"],
-  [0, "for any files that compaction deleted on the remote"],
-]} />
+### Behavior
 
-**3. Push media and thumbnails**
-
-<Algo lines={[
-  [0, "remote_media_list = remotes/{remote_id}/state/media/media_list.json"],
-  [0, ""],
-  [0, "for each media_id in reconstructed state not in remote_media_list:"],
-  [1, "if local_state/media/YYYY/MM/{media_id}.data exists on disk:"],
-  [2, "upload the data blob"],
-  [2, "same for thumbnail"],
-  [2, "add media_id to remotes/{remote_id}/state/media/media_list.json"],
-]} />
+<table className="behavior-table" style={{ width: '100%', tableLayout: 'fixed' }}>
+  <thead>
+    <tr>
+      <th style={{ width: '1%', whiteSpace: 'nowrap' }}>#</th>
+      <th>Behavior</th>
+      <th>Required authorization</th>
+      <th>Interruption safety</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style={{ whiteSpace: 'nowrap' }}>1</td>
+      <td>Verify that the target remote belongs to this library, then upload local `mk_*.enc` files that are absent from the remote. Never remove a remote master-key file.</td>
+      <td><span className="tag tag-ok">List remote</span> <span className="tag tag-warn">Write remote key file</span></td>
+      <td>Additive upload.</td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: 'nowrap' }}>2</td>
+      <td>Append any pending operation group to the local log, remove the pending file, and rebuild local state.</td>
+      <td><span className="tag tag-warn">Append local log</span> <span className="tag tag-warn">Delete local pending file</span> <span className="tag tag-warn">Rebuild in-memory state</span></td>
+      <td>If interrupted before the pending file is removed, operations can be duplicated (allowed). Appending to the local log is not atomic, but incomplete frames can be detected; for now, they are not repaired automatically.</td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: 'nowrap' }}>3</td>
+      <td>Compare local operation groups with the target remote's last-known state, compact groups the target is missing, upload the resulting operation file, and record it in the last-known state.</td>
+      <td><span className="tag tag-ok">Read local log</span> <span className="tag tag-ok">Read local state</span> <span className="tag tag-warn">Write remote operation file</span> <span className="tag tag-warn">Write local state</span></td>
+      <td>May leave an unrecorded remote file; a later push can upload it again.</td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: 'nowrap' }}>4</td>
+      <td>When compaction is needed and its remote lock can be acquired, merge the applicable remote operation files, upload the replacement, delete its source files, and update the last-known state.</td>
+      <td><span className="tag tag-ok">Read remote operation files</span> <span className="tag tag-warn">Write and delete remote operation files</span> <span className="tag tag-warn">Write local state</span></td>
+      <td>An incomplete compaction can be retried.</td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: 'nowrap' }}>5</td>
+      <td>For each reconstructed media item absent from the target's media list and available locally, upload its data blob and thumbnail when present, then record the media ID in the target's media list.</td>
+      <td><span className="tag tag-ok">Read local media</span> <span className="tag tag-warn">Write remote media and thumbnail</span> <span className="tag tag-warn">Write local media list</span></td>
+      <td>May leave an unrecorded remote file; a later push can upload it again.</td>
+    </tr>
+  </tbody>
+</table>
 
 ### Duplicate operations on the remote
 
