@@ -6,6 +6,16 @@ import React from 'react';
 
 # Sync
 
+## Known issues (WIP)
+
+- Define the read and write tokens granted by the sync policy.
+- Appending to the local operation log is not atomic.
+- What are the implications when fetch completes without performing step 6 (appending to the local operation log)?
+- What happens during push if operations are uploaded but their media is not?
+- Master-key downloads and last-known operation-cache writes are currently in-place writes, rather than atomic writes.
+- `pending.op` is overwritten in place; an interruption can make a pending operation unreadable and it is currently treated as absent.
+- Extend the remote storage interface with an atomic publish/write operation. S3 object writes are atomic, but future backends such as USB drives cannot provide that guarantee with the current interface.
+
 export const AccessCard = ({ children }) => (
   <div style={{
     border: '2px solid var(--lasco-line)',
@@ -169,3 +179,60 @@ For operation files, the client simply copies what it has locally. For media and
 ### Duplicate operations on the remote
 
 With concurrent clients pushing to the same remote, or a single client pushing to several remotes, the same operation group can end up uploaded more than once. This is rare in practice. An op group that appears more than once is applied only once to the local log. We do not attempt to detect or remove duplicates on the remote.
+
+## Compaction Procedure
+
+### Summary
+
+Compaction bounds the number of remote operation files by merging every known file in an overfull tier into one file in the next tier. It runs as part of push and operates only on the target remote's last-known state; it never lists or reads arbitrary remote operation files and therefore cannot become an implicit fetch.
+
+Compaction preserves logical operation data. It uploads the replacement file, containing every source operation group, before deleting any source file. An interruption can therefore leave duplicate operation groups or an unrecorded replacement file, but it cannot remove an operation group from the remote.
+
+### Required access
+
+<AccessCard>
+
+- **Sync policy:** Uses push's per-remote sync slot.
+- **Remote:** Write and delete access. <span className="tag tag-ok">Safe because of the per-remote sync slot and the global operations lock</span>
+- **Local:** Read, write, and delete access to the target remote's last-known operation state. <span className="tag tag-ok">Safe because of per-remote sync slot</span>
+
+</AccessCard>
+
+### Behavior
+
+<table className="behavior-table" style={{ width: '100%', tableLayout: 'fixed' }}>
+  <thead>
+    <tr>
+      <th style={{ width: '1%', whiteSpace: 'nowrap' }}>#</th>
+      <th>Behavior</th>
+      <th>Required authorization</th>
+      <th>Interruption safety</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style={{ whiteSpace: 'nowrap' }}>1</td>
+      <td>When a known tier reaches its file limit, acquire the global remote operations lock. If the lock is already held, skip compaction for this push.</td>
+      <td><span className="tag tag-warn">Create remote lock</span></td>
+      <td>A lock left by an interrupted client must be removed manually.</td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: 'nowrap' }}>2</td>
+      <td>Read every source file from the target's last-known state, merge their operation groups, upload one replacement file at the next tier, and record that file in the last-known state.</td>
+      <td><span className="tag tag-ok">Read local state</span> <span className="tag tag-warn">Write remote operation file</span> <span className="tag tag-warn">Write local state</span></td>
+      <td>May leave an unrecorded remote file; a later push can upload it again.</td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: 'nowrap' }}>3</td>
+      <td>Delete each source file from the remote and remove it from the last-known state after its deletion succeeds.</td>
+      <td><span className="tag tag-warn">Delete remote operation file</span> <span className="tag tag-warn">Delete local state</span></td>
+      <td>The last-known state records each completed deletion.</td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: 'nowrap' }}>4</td>
+      <td>Repeat for the next tier while it exceeds its file limit, then release the lock.</td>
+      <td><span className="tag tag-warn">Delete remote lock</span></td>
+      <td>An interrupted cascade leaves the lock in place and must be resumed after manual cleanup.</td>
+    </tr>
+  </tbody>
+</table>
