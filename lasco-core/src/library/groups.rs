@@ -3,8 +3,8 @@ use uuid::Uuid;
 
 use crate::error::LibraryError;
 use crate::identifiers::{AlbumUuid, GroupUuid, MediaUuid};
-use crate::library::media::MediaEntry;
 use crate::library::Library;
+use crate::library::media::MediaEntry;
 use crate::operations::Operation;
 use crate::state::GroupEntry;
 

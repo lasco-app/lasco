@@ -8,7 +8,7 @@ use crate::encryption::master_key::MasterKey;
 use crate::identifiers::OpUuid;
 use crate::operations::error::OperationError;
 
-use super::{op_group_from_cbor, op_group_to_cbor, OperationGroup};
+use super::{OperationGroup, op_group_from_cbor, op_group_to_cbor};
 
 pub type Result<T> = std::result::Result<T, OperationError>;
 
@@ -202,7 +202,9 @@ mod tests {
 
     fn make_log_path(tmp: &tempfile::TempDir) -> std::path::PathBuf {
         let library_id = LibraryId(Uuid::new_v4());
-        LocalDirs::new(tmp.path().to_path_buf(), &library_id).operations_log_path()
+        LocalDirs::new(tmp.path().to_path_buf(), &library_id)
+            .local_state_operations()
+            .operations_log_path()
     }
 
     fn sample_group(timestamp: chrono::DateTime<Utc>) -> OperationGroup {
@@ -215,7 +217,10 @@ mod tests {
                 media_id: MediaUuid::from_uuid(Uuid::new_v4()),
                 filename_original: MediaFilename("img.jpg".into()),
                 date: timestamp,
-                storage_date: StorageDate { year: 2024, month: 6 },
+                storage_date: StorageDate {
+                    year: 2024,
+                    month: 6,
+                },
                 size_bytes: 2_097_152,
                 content_hash: crate::library::media::MediaHash::zeroed(),
                 modified_at: None,

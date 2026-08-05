@@ -4,7 +4,7 @@ use crate::encryption::master_key::parse_mk_filename;
 use crate::error::{LibraryError, SyncError};
 use crate::identifiers::{LibraryId, RemoteUuid};
 use crate::library::Library;
-use crate::library::local_dirs::LocalDirs;
+use crate::library::local_dirs::LocalStateLibraryDir;
 use crate::operations::remote_ops::RemoteOpFile;
 use crate::operations::{Operation, OperationGroup};
 use crate::remote::{LastKnownState, MediaList, ProcessedFiles};
@@ -33,7 +33,9 @@ impl Library {
         storage: &StorageRead<'_>,
         remote_id: &str,
     ) -> Result<SyncReportFetch, LibraryError> {
-        let local_dirs = &self.inner.local_dirs;
+        let local_state_library_dir = self.inner.local_dirs.local_state_library_dir();
+        let remote_last_known_state_dir =
+            self.inner.local_dirs.remote_last_known_state_dir(remote_id);
         let master_key = &self.inner.master_key;
 
         let remote_uuid = remote_id
@@ -46,20 +48,25 @@ impl Library {
 
         // Step 1: pull any mk_*.enc files present on the remote but missing locally,
         // so users added from another device become available on this one.
-        fetch_library_dir(storage, local_dirs, self.inner.library_id).await?;
+        fetch_library_dir(storage, &local_state_library_dir, self.inner.library_id).await?;
 
         // Load processed-file tracking for this remote.
-        let processed_path = local_dirs.processed_files_path(remote_id);
+        remote_last_known_state_dir.migrate_legacy_processed_files()?;
+        let processed_path = remote_last_known_state_dir.processed_files_path();
         let mut processed = ProcessedFiles::load_or_default(&processed_path)?;
 
         // Load the media list for lazy update during merge.
-        let media_list_path = local_dirs.remote_media_list_path(remote_id);
+        let media_list_path = remote_last_known_state_dir.media_list_path();
         let mut media_list = MediaList::load_or_default(&media_list_path)?;
         let mut media_list_changed = false;
 
-        let last_known_state =
-            LastKnownState::download(storage, local_dirs, remote_id, &processed, master_key)
-                .await?;
+        let last_known_state = LastKnownState::download(
+            storage,
+            &remote_last_known_state_dir,
+            &processed,
+            master_key,
+        )
+        .await?;
 
         let local_valid_ids = self.local_ops_read_write().read_log_ids()?;
 
@@ -124,7 +131,7 @@ impl Library {
 /// locally, so users added from another device become available on this one.
 async fn fetch_library_dir(
     storage: &StorageRead<'_>,
-    local_dirs: &LocalDirs,
+    local_state_library_dir: &LocalStateLibraryDir,
     library_id: LibraryId,
 ) -> Result<(), LibraryError> {
     let remote_files = storage
@@ -158,7 +165,7 @@ async fn fetch_library_dir(
         })
         .collect();
 
-    let local_dir = local_dirs.local_library_dir();
+    let local_dir = local_state_library_dir.path();
     let local_mk_names: HashSet<String> = match std::fs::read_dir(&local_dir) {
         Ok(entries) => entries
             .flatten()

@@ -35,7 +35,9 @@ impl Library {
         storage: &StorageReadWrite<'_>,
         remote_id: &str,
     ) -> Result<SyncReportPush, LibraryError> {
-        let local_dirs = &self.inner.local_dirs;
+        let local_state_media_dir = self.inner.local_dirs.local_state_media_dir();
+        let remote_last_known_state_dir =
+            self.inner.local_dirs.remote_last_known_state_dir(remote_id);
         let master_key = &self.inner.master_key;
 
         let remote_uuid = remote_id
@@ -50,12 +52,12 @@ impl Library {
         // remote, plus whatever it uploads or merges in this call. It never lists or reads
         // arbitrary remote files to decide what to upload or compact, so it can't turn into
         // an implicit fetch.
-        let ops_dir = local_dirs.remote_ops_dir(remote_id);
-        let mut last_known_state = LastKnownState::open(local_dirs, remote_id)?;
+        let ops_dir = remote_last_known_state_dir.operations_dir();
+        let mut last_known_state = LastKnownState::open(&remote_last_known_state_dir)?;
         let remote_covered = collect_group_ids_from_dir(&ops_dir, master_key)
             .map_err(SyncError::LocalCacheCorrupt)?;
 
-        let media_list_path = local_dirs.remote_media_list_path(remote_id);
+        let media_list_path = remote_last_known_state_dir.media_list_path();
         let mut media_list = MediaList::load_or_default(&media_list_path)?;
 
         // Flush any pending (unpushed) op group into the main log before uploading.
@@ -178,8 +180,8 @@ impl Library {
                 .iter()
                 .filter(|(media_id, _)| !media_list.contains(media_id))
                 .filter(|(media_id, file_meta)| {
-                    local_dirs
-                        .media_data_path(
+                    local_state_media_dir
+                        .data_path(
                             file_meta.storage_date.year,
                             file_meta.storage_date.month,
                             media_id,
@@ -205,7 +207,7 @@ impl Library {
                 item.storage_date.year, item.storage_date.month, item.media_id
             );
 
-            let data_path = local_dirs.media_data_path(
+            let data_path = local_state_media_dir.data_path(
                 item.storage_date.year,
                 item.storage_date.month,
                 &item.media_id,
@@ -216,7 +218,7 @@ impl Library {
                 .await
                 .map_err(SyncError::RemoteUnreachable)?;
 
-            let thumb_path = local_dirs.media_thumb_path(
+            let thumb_path = local_state_media_dir.thumb_path(
                 item.storage_date.year,
                 item.storage_date.month,
                 &item.media_id,

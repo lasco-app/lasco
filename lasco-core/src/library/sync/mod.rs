@@ -54,8 +54,8 @@ impl Library {
         if !existing.is_empty() {
             return Ok(());
         }
-        let lib_dir = self.inner.local_dirs.local_library_dir();
-        for entry in std::fs::read_dir(&lib_dir)? {
+        let lib_dir = self.inner.local_dirs.local_state_library_dir();
+        for entry in std::fs::read_dir(lib_dir.path())? {
             let entry = entry?;
             let path = entry.path();
             if !path.is_file() {

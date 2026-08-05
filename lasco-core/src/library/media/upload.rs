@@ -8,8 +8,8 @@ use crate::encryption::blob::encrypt_blob;
 use crate::encryption::blob_key::derive_blob_key;
 use crate::error::LibraryError;
 use crate::identifiers::{AlbumUuid, MediaUuid};
-use crate::library::media::MediaHash;
 use crate::library::Library;
+use crate::library::media::MediaHash;
 use crate::operations::{MediaFilename, Operation};
 
 pub type Result<T> = std::result::Result<T, LibraryError>;
@@ -77,12 +77,12 @@ impl Library {
         };
 
         let master_key = &self.inner.master_key;
-        let local_dirs = &self.inner.local_dirs;
+        let local_state_media_dir = self.inner.local_dirs.local_state_media_dir();
         let file_key = derive_blob_key(master_key, &media_id.0);
 
         let blob = encrypt_blob(&file_key, &bytes);
         let data_path =
-            local_dirs.media_data_path(storage_date.year, storage_date.month, &media_id);
+            local_state_media_dir.data_path(storage_date.year, storage_date.month, &media_id);
         if let Some(parent) = data_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -117,11 +117,11 @@ impl Library {
     /// Deletes the local `.data` file for each media ID, silently skipping IDs that have
     /// no local file (e.g. already evicted or never cached).
     pub fn evict_local_data(&self, media_ids: &[MediaUuid]) -> Result<()> {
-        let local_dirs = &self.inner.local_dirs;
+        let local_state_media_dir = self.inner.local_dirs.local_state_media_dir();
 
         for &media_id in media_ids {
             let (year, month) = self.media_year_month(media_id)?;
-            let data_path = local_dirs.media_data_path(year, month, &media_id);
+            let data_path = local_state_media_dir.data_path(year, month, &media_id);
             if data_path.exists() {
                 std::fs::remove_file(&data_path)?;
             }
@@ -133,11 +133,11 @@ impl Library {
     /// Deletes the local `.thumb` file for each media ID, silently skipping IDs that have
     /// no local thumbnail (e.g. already evicted or never cached).
     pub fn evict_local_thumbnails(&self, media_ids: &[MediaUuid]) -> Result<()> {
-        let local_dirs = &self.inner.local_dirs;
+        let local_state_media_dir = self.inner.local_dirs.local_state_media_dir();
 
         for &media_id in media_ids {
             let (year, month) = self.media_year_month(media_id)?;
-            let thumb_path = local_dirs.media_thumb_path(year, month, &media_id);
+            let thumb_path = local_state_media_dir.thumb_path(year, month, &media_id);
             if thumb_path.exists() {
                 std::fs::remove_file(&thumb_path)?;
             }
@@ -157,7 +157,8 @@ impl Library {
         let thumb_path = self
             .inner
             .local_dirs
-            .media_thumb_path(year, month, &media_id);
+            .local_state_media_dir()
+            .thumb_path(year, month, &media_id);
         if let Some(parent) = thumb_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -172,11 +173,11 @@ mod tests {
 
     use tempfile::TempDir;
 
-    use crate::encryption::blob::decrypt_blob;
     use crate::encryption::blob::BlobEncrypted;
+    use crate::encryption::blob::decrypt_blob;
     use crate::identifiers::LibraryId;
-    use crate::library::local_dirs::LocalDirs;
     use crate::library::Credentials;
+    use crate::library::local_dirs::LocalDirs;
     use crate::operations::local_ops::read_pending_op_group;
 
     use super::*;
@@ -227,10 +228,14 @@ mod tests {
         };
 
         let now = chrono::Utc::now();
-        let data_path = local_dirs.media_data_path(now.year() as u16, now.month() as u8, &media_id);
+        let data_path = local_dirs.local_state_media_dir().data_path(
+            now.year() as u16,
+            now.month() as u8,
+            &media_id,
+        );
         assert!(data_path.exists(), ".data file must exist");
         let pending = crate::operations::local_ops::read_pending_op_group(
-            &local_dirs.pending_op_path(),
+            &local_dirs.local_state_operations().pending_op_path(),
             &lib.inner.master_key,
         )
         .unwrap();
@@ -264,7 +269,11 @@ mod tests {
         };
 
         let now = chrono::Utc::now();
-        let data_path = local_dirs.media_data_path(now.year() as u16, now.month() as u8, &media_id);
+        let data_path = local_dirs.local_state_media_dir().data_path(
+            now.year() as u16,
+            now.month() as u8,
+            &media_id,
+        );
         let raw = std::fs::read(&data_path).unwrap();
         let blob = BlobEncrypted::from_bytes(&raw).unwrap();
         let file_key = derive_blob_key(&lib.inner.master_key, &media_id.0);
@@ -294,9 +303,12 @@ mod tests {
             MediaAddResult::AlreadyExists(_) => panic!("expected Added"),
         };
 
-        let group = read_pending_op_group(&local_dirs.pending_op_path(), &lib.inner.master_key)
-            .unwrap()
-            .unwrap();
+        let group = read_pending_op_group(
+            &local_dirs.local_state_operations().pending_op_path(),
+            &lib.inner.master_key,
+        )
+        .unwrap()
+        .unwrap();
         let ops = &group.operations;
         assert_eq!(ops.len(), 2);
         assert!(
@@ -372,9 +384,12 @@ mod tests {
             MediaAddResult::AlreadyExists(_) => panic!("expected Added"),
         };
 
-        let group = read_pending_op_group(&local_dirs.pending_op_path(), &lib.inner.master_key)
-            .unwrap()
-            .unwrap();
+        let group = read_pending_op_group(
+            &local_dirs.local_state_operations().pending_op_path(),
+            &lib.inner.master_key,
+        )
+        .unwrap()
+        .unwrap();
         let op = &group.operations[0];
         assert!(
             matches!(op, Operation::MediaCreation { content_hash, .. } if *content_hash == expected_hash),

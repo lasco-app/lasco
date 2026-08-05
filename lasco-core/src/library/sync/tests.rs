@@ -6,13 +6,13 @@ use uuid::Uuid;
 use chrono::{TimeZone, Utc};
 
 use crate::identifiers::{AlbumUuid, GroupUuid, MediaUuid, OpUuid};
-use crate::library::media::query::MediaListScope;
 use crate::library::Library;
+use crate::library::media::query::MediaListScope;
 use crate::operations::{LibraryUsername, Operation, OperationGroup};
 use crate::storage::StorageMockMemory;
 
 use super::test_utils::{
-    make_library, make_library_with_same_keys, remote_uuid, write_file, REMOTE_ID,
+    REMOTE_ID, make_library, make_library_with_same_keys, remote_uuid, write_file,
 };
 
 #[tokio::test]
@@ -113,8 +113,8 @@ async fn both_clients_sync_converge() {
 // Tasks interleave at .await points even on the single-threaded runtime.
 async fn concurrent_sync_one_returns_already_running() {
     use crate::error::SyncError;
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     let storage = StorageMockMemory::new();
     let tmp = TempDir::new().unwrap();
@@ -430,7 +430,10 @@ async fn reachability_convergence_file_removed_from_last_album_and_group() {
             operations: ops,
         };
         crate::operations::local_ops::append_op_group(
-            &lib.inner.local_dirs.operations_log_path(),
+            &lib.inner
+                .local_dirs
+                .local_state_operations()
+                .operations_log_path(),
             &lib.inner.master_key,
             &op_group,
         )
@@ -600,7 +603,7 @@ async fn offline_add_later_sync_push_succeeds() {
 // closes and reopens the library, then fetches, pushes again, and reads every media item back.
 async fn batched_push_survives_close_and_reopen() {
     use crate::library::media::upload::MediaAddSource;
-    use crate::library::{local_dirs::LocalDirs, Credentials};
+    use crate::library::{Credentials, local_dirs::LocalDirs};
     use crate::operations::LibraryPassword;
 
     const CHUNK_SIZE: usize = 32;

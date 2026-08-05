@@ -5,8 +5,8 @@ use uuid::Uuid;
 
 use crate::error::LibraryError;
 use crate::identifiers::{AlbumUuid, MediaUuid};
-use crate::library::media::MediaEntry;
 use crate::library::Library;
+use crate::library::media::MediaEntry;
 use crate::operations::{AlbumName, Operation};
 use crate::state::{AlbumBrowseItem, GroupEntry};
 
@@ -628,9 +628,11 @@ mod tests {
 
         let state = lib.inner.operation_state.read();
         let by_album = &state.views.by_album;
-        assert!(by_album
-            .get(&album_id)
-            .map_or(false, |ids| ids.contains(&media_id)));
+        assert!(
+            by_album
+                .get(&album_id)
+                .map_or(false, |ids| ids.contains(&media_id))
+        );
     }
 
     #[tokio::test]

@@ -6,7 +6,7 @@ use crate::identifiers::{AlbumUuid, MediaUuid, OpUuid};
 use crate::operations::{LibraryUsername, Operation, OperationGroup};
 use crate::storage::{Storage, StorageMockMemory};
 
-use super::super::test_utils::{make_library, stamp_remote_id, write_file, REMOTE_ID};
+use super::super::test_utils::{REMOTE_ID, make_library, stamp_remote_id, write_file};
 
 /// Inject `count` synthetic op groups directly into the main operations log, bypassing pending.
 /// Used by compaction/tier tests that need N distinct groups to exercise push logic.
@@ -38,7 +38,7 @@ fn inject_op_groups(lib: &crate::library::Library, count: usize) {
             }],
         };
         crate::operations::local_ops::append_op_group(
-            &local_dirs.operations_log_path(),
+            &local_dirs.local_state_operations().operations_log_path(),
             master_key,
             &group,
         )
@@ -96,7 +96,7 @@ async fn seed_tier1_files(
         write_compaction_file(storage, master_key, &key, &comp_uuid, &comp_file)
             .await
             .unwrap();
-        LastKnownState::open(&lib.inner.local_dirs, REMOTE_ID)
+        LastKnownState::open(&lib.inner.local_dirs.remote_last_known_state_dir(REMOTE_ID))
             .unwrap()
             .write_compaction_file(master_key, &comp_uuid, 1, n as u32, &comp_file)
             .unwrap();
@@ -214,9 +214,11 @@ async fn incremental_push_resilience_uploads_remaining_after_failure() {
     let local_dirs = &lib_a.inner.local_dirs;
     let master_key = &lib_a.inner.master_key;
 
-    let local_groups =
-        crate::operations::local_ops::read_op_groups(&local_dirs.operations_log_path(), master_key)
-            .unwrap();
+    let local_groups = crate::operations::local_ops::read_op_groups(
+        &local_dirs.local_state_operations().operations_log_path(),
+        master_key,
+    )
+    .unwrap();
     assert_eq!(local_groups.len(), 5, "should have 5 local ops");
 
     // Simulate a crash mid-push: upload the first 2 groups as a compaction file, and record
@@ -248,7 +250,7 @@ async fn incremental_push_resilience_uploads_remaining_after_failure() {
         )
         .await
         .unwrap();
-        LastKnownState::open(local_dirs, REMOTE_ID)
+        LastKnownState::open(&local_dirs.remote_last_known_state_dir(REMOTE_ID))
             .unwrap()
             .write_compaction_file(master_key, &partial_uuid, 1, 2, &partial_file)
             .unwrap();
@@ -278,7 +280,10 @@ async fn push_skips_ops_already_covered_by_compaction() {
 
     // Read the local op group.
     let local_groups = crate::operations::local_ops::read_op_groups(
-        &lib.inner.local_dirs.operations_log_path(),
+        &lib.inner
+            .local_dirs
+            .local_state_operations()
+            .operations_log_path(),
         &lib.inner.master_key,
     )
     .unwrap();
@@ -305,7 +310,7 @@ async fn push_skips_ops_already_covered_by_compaction() {
     )
     .await
     .unwrap();
-    LastKnownState::open(&lib.inner.local_dirs, REMOTE_ID)
+    LastKnownState::open(&lib.inner.local_dirs.remote_last_known_state_dir(REMOTE_ID))
         .unwrap()
         .write_compaction_file(&lib.inner.master_key, &comp_uuid, 1, 1, &comp_file)
         .unwrap();
@@ -349,7 +354,7 @@ fn inject_single_large_group(lib: &crate::library::Library, op_count: usize) {
         operations,
     };
     crate::operations::local_ops::append_op_group(
-        &local_dirs.operations_log_path(),
+        &local_dirs.local_state_operations().operations_log_path(),
         master_key,
         &group,
     )
@@ -559,7 +564,7 @@ async fn compaction_cascades_across_two_tiers() {
         write_compaction_file(&storage, master_key, &key, &comp_uuid, &comp_file)
             .await
             .unwrap();
-        LastKnownState::open(&lib.inner.local_dirs, REMOTE_ID)
+        LastKnownState::open(&lib.inner.local_dirs.remote_last_known_state_dir(REMOTE_ID))
             .unwrap()
             .write_compaction_file(master_key, &comp_uuid, 1, n as u32, &comp_file)
             .unwrap();
@@ -601,7 +606,10 @@ async fn compaction_cascades_across_two_tiers() {
 
     // The last known state cache must exactly mirror the remote after compaction: no
     // leftover tier-1 entries, and the merged tier-2 file recorded.
-    let cached_files = LastKnownState::list_cached_files(&lib.inner.local_dirs, REMOTE_ID).unwrap();
+    let cached_files = LastKnownState::list_cached_files(
+        &lib.inner.local_dirs.remote_last_known_state_dir(REMOTE_ID),
+    )
+    .unwrap();
     let cached_op1_count = cached_files
         .iter()
         .filter(|f| {
@@ -645,8 +653,10 @@ async fn push_records_uploaded_file_in_last_known_state() {
     let remote_files = crate::operations::remote_ops::list_remote_op_files(&storage)
         .await
         .unwrap();
-    let mut cached_files =
-        crate::remote::LastKnownState::list_cached_files(&lib.inner.local_dirs, REMOTE_ID).unwrap();
+    let mut cached_files = crate::remote::LastKnownState::list_cached_files(
+        &lib.inner.local_dirs.remote_last_known_state_dir(REMOTE_ID),
+    )
+    .unwrap();
     let mut remote_files = remote_files;
     let sort_key = |f: &crate::operations::remote_ops::RemoteOpFile| {
         let crate::operations::remote_ops::RemoteOpFile::Compaction { uuid, .. } = f;
@@ -727,7 +737,11 @@ async fn push_writes_media_list_after_upload() {
         .id();
     lib.push(&storage, REMOTE_ID).await.unwrap();
 
-    let media_list_path = lib.inner.local_dirs.remote_media_list_path(REMOTE_ID);
+    let media_list_path = lib
+        .inner
+        .local_dirs
+        .remote_last_known_state_dir(REMOTE_ID)
+        .media_list_path();
     let media_list =
         crate::remote::local_state::media_list_json::MediaList::load_or_default(&media_list_path)
             .unwrap();
@@ -779,7 +793,11 @@ async fn push_errors_on_corrupt_local_frame() {
     inject_op_groups(&lib, 1);
 
     // Corrupt the blob version byte of the single frame.
-    let log_path = lib.inner.local_dirs.operations_log_path();
+    let log_path = lib
+        .inner
+        .local_dirs
+        .local_state_operations()
+        .operations_log_path();
     let mut data = std::fs::read(&log_path).unwrap();
     assert!(data.len() > 20, "log must contain at least one frame");
     data[20] = 0;

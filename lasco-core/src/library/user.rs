@@ -14,11 +14,11 @@ impl Library {
         username_new: LibraryUsername,
         password_new: LibraryPassword,
     ) -> Result<Uuid> {
-        let lib_dir = self.inner.local_dirs.local_library_dir();
-        let salt = read_salt_file(&lib_dir)?;
+        let lib_dir = self.inner.local_dirs.local_state_library_dir();
+        let salt = read_salt_file(lib_dir.path())?;
         let password_uuid = Uuid::new_v4();
         write_mk_file(
-            &lib_dir,
+            lib_dir.path(),
             &username_new.0,
             password_uuid,
             &self.inner.master_key,
@@ -29,9 +29,9 @@ impl Library {
     }
 
     pub async fn user_list(&self) -> Result<Vec<LibraryUsername>> {
-        let lib_dir = self.inner.local_dirs.local_library_dir();
+        let lib_dir = self.inner.local_dirs.local_state_library_dir();
         let mut seen = std::collections::HashSet::new();
-        for entry in fs::read_dir(&lib_dir)? {
+        for entry in fs::read_dir(lib_dir.path())? {
             let entry = entry?;
             let name = entry.file_name();
             let name = name.to_string_lossy();
@@ -48,16 +48,16 @@ impl Library {
         password_old: LibraryPassword,
         password_new: LibraryPassword,
     ) -> Result<Uuid> {
-        let lib_dir = self.inner.local_dirs.local_library_dir();
+        let lib_dir = self.inner.local_dirs.local_state_library_dir();
 
         // Verify old password before writing a new mk file.
-        find_master_key(&lib_dir, &username.0, &password_old.0)
+        find_master_key(lib_dir.path(), &username.0, &password_old.0)
             .map_err(|_| LibraryError::Keychain(KeychainError::AuthenticationFailed))?;
 
-        let salt = read_salt_file(&lib_dir)?;
+        let salt = read_salt_file(lib_dir.path())?;
         let new_uuid = Uuid::new_v4();
         write_mk_file(
-            &lib_dir,
+            lib_dir.path(),
             &username.0,
             new_uuid,
             &self.inner.master_key,
@@ -165,8 +165,9 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let (lib, library_id) = init_fresh(&tmp, "alice", "old_pass").await;
 
-        let lib_dir = LocalDirs::new(tmp.path().to_path_buf(), &library_id).local_library_dir();
-        let mk_count_before = std::fs::read_dir(&lib_dir)
+        let lib_dir =
+            LocalDirs::new(tmp.path().to_path_buf(), &library_id).local_state_library_dir();
+        let mk_count_before = std::fs::read_dir(lib_dir.path())
             .unwrap()
             .flatten()
             .filter(|e| e.file_name().to_string_lossy().starts_with("mk_alice_"))
@@ -180,7 +181,7 @@ mod tests {
         .await
         .unwrap();
 
-        let mk_count_after = std::fs::read_dir(&lib_dir)
+        let mk_count_after = std::fs::read_dir(lib_dir.path())
             .unwrap()
             .flatten()
             .filter(|e| e.file_name().to_string_lossy().starts_with("mk_alice_"))

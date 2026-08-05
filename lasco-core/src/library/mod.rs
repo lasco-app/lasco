@@ -2,11 +2,11 @@ pub mod albums;
 pub mod error;
 pub mod groups;
 pub mod local_dirs;
+mod local_ops_read_write;
 pub mod media;
 pub mod sync;
 mod sync_policy;
 pub mod user;
-mod local_ops_read_write;
 
 use std::fmt;
 use std::sync::Arc;
@@ -14,12 +14,14 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::encryption::library_salt::{generate_salt, write_salt_file};
-use crate::encryption::master_key::{MasterKey, find_master_key, generate_master_key, write_mk_file};
+use crate::encryption::master_key::{
+    MasterKey, find_master_key, generate_master_key, write_mk_file,
+};
 use crate::error::LibraryError;
 use crate::identifiers::OpUuid;
-use crate::operations::{LibraryPassword, LibraryUsername, Operation, OperationGroup};
 use crate::library::local_dirs::LocalDirs;
 use crate::library::sync_policy::{FetchSlotGuard, RemoteSyncGuard, SyncPolicy};
+use crate::operations::{LibraryPassword, LibraryUsername, Operation, OperationGroup};
 use crate::state::OperationState;
 
 pub use crate::identifiers::LibraryId;
@@ -90,19 +92,22 @@ impl Library {
         library_id: LibraryId,
         credentials: Credentials,
     ) -> Result<(Library, Uuid)> {
-        let lib_dir = local_dirs.local_library_dir();
-        std::fs::create_dir_all(&lib_dir)?;
+        let lib_dir = local_dirs.local_state_library_dir();
+        std::fs::create_dir_all(lib_dir.path())?;
 
         let salt = generate_salt();
-        write_salt_file(&lib_dir, salt)?;
+        write_salt_file(lib_dir.path(), salt)?;
 
-        std::fs::write(lib_dir.join(LIBRARY_FORMAT_SENTINEL), b"")?;
-        std::fs::write(lib_dir.join(format!("library_id_{}", library_id.0)), b"")?;
+        std::fs::write(lib_dir.path().join(LIBRARY_FORMAT_SENTINEL), b"")?;
+        std::fs::write(
+            lib_dir.path().join(format!("library_id_{}", library_id.0)),
+            b"",
+        )?;
 
         let master_key = generate_master_key();
         let password_uuid = Uuid::new_v4();
         write_mk_file(
-            &lib_dir,
+            lib_dir.path(),
             &credentials.username.0,
             password_uuid,
             &master_key,
@@ -124,12 +129,9 @@ impl Library {
         Ok((library, password_uuid))
     }
 
-    pub async fn open(
-        local_dirs: LocalDirs,
-        credentials: Credentials,
-    ) -> Result<Library> {
-        let lib_dir = local_dirs.local_library_dir();
-        let sentinel_path = lib_dir.join(LIBRARY_FORMAT_SENTINEL);
+    pub async fn open(local_dirs: LocalDirs, credentials: Credentials) -> Result<Library> {
+        let lib_dir = local_dirs.local_state_library_dir();
+        let sentinel_path = lib_dir.path().join(LIBRARY_FORMAT_SENTINEL);
         if !sentinel_path.exists() {
             return Err(LibraryError::UnsupportedFormatVersion {
                 found: "(unknown)".to_string(),
@@ -137,8 +139,11 @@ impl Library {
             });
         }
 
-        let (master_key, _password_uuid) =
-            find_master_key(&lib_dir, &credentials.username.0, &credentials.password.0)?;
+        let (master_key, _password_uuid) = find_master_key(
+            lib_dir.path(),
+            &credentials.username.0,
+            &credentials.password.0,
+        )?;
 
         Ok(Library {
             inner: Arc::new(LibraryInner {
@@ -223,14 +228,17 @@ impl Library {
         let Some(group) = group else {
             return Ok(0);
         };
-        let count = group.operations.iter()
+        let count = group
+            .operations
+            .iter()
             .filter(|op| matches!(op, Operation::MediaCreation { .. }))
             .count();
         Ok(count as u32)
     }
 
     pub fn has_unpushed_changes(&self, remote_id: &str) -> Result<bool> {
-        let local_dirs = &self.inner.local_dirs;
+        let remote_last_known_state_dir =
+            self.inner.local_dirs.remote_last_known_state_dir(remote_id);
         let master_key = &self.inner.master_key;
         let local_ids = {
             let local_ops = self.local_ops_read_write();
@@ -246,7 +254,7 @@ impl Library {
         }
 
         let remote_ids = crate::remote::last_known_state::collect_group_ids_from_dir(
-            &local_dirs.remote_ops_dir(remote_id),
+            &remote_last_known_state_dir.operations_dir(),
             master_key,
         )
         .map_err(crate::library::sync::error::SyncError::LocalCacheCorrupt)?;

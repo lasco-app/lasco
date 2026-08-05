@@ -2,8 +2,8 @@ use std::path::Path;
 
 use chrono::Utc;
 
-use crate::encryption::blob::decrypt_blob;
 use crate::encryption::blob::BlobEncrypted;
+use crate::encryption::blob::decrypt_blob;
 use crate::encryption::blob_key::derive_blob_key;
 use crate::error::{LibraryError, OperationError};
 use crate::identifiers::{AlbumUuid, GroupUuid, MediaUuid};
@@ -206,8 +206,8 @@ impl Library {
     ) -> Result<Vec<u8>> {
         let (year, month) = self.media_year_month(media_id)?;
 
-        let local_dirs = &self.inner.local_dirs;
-        let data_path = local_dirs.media_data_path(year, month, &media_id);
+        let local_state_media_dir = self.inner.local_dirs.local_state_media_dir();
+        let data_path = local_state_media_dir.data_path(year, month, &media_id);
 
         if data_path.exists() {
             let blob_bytes = std::fs::read(&data_path)?;
@@ -273,7 +273,8 @@ impl Library {
         let thumb_path = self
             .inner
             .local_dirs
-            .media_thumb_path(year, month, &media_id);
+            .local_state_media_dir()
+            .thumb_path(year, month, &media_id);
         let blob_bytes = match std::fs::read(&thumb_path) {
             Ok(bytes) => bytes,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -298,8 +299,8 @@ impl Library {
     /// Returns `MediaNotFound` if the file is not locally cached.
     pub fn media_get_bytes_local(&self, media_id: MediaUuid) -> Result<Vec<u8>> {
         let (year, month) = self.media_year_month(media_id)?;
-        let local_dirs = &self.inner.local_dirs;
-        let data_path = local_dirs.media_data_path(year, month, &media_id);
+        let local_state_media_dir = self.inner.local_dirs.local_state_media_dir();
+        let data_path = local_state_media_dir.data_path(year, month, &media_id);
 
         if !data_path.exists() {
             return Err(LibraryError::MediaNotFound(media_id));
@@ -403,7 +404,11 @@ impl Library {
 
         let mut backed_up = std::collections::HashSet::new();
         for remote_id in remote_ids {
-            let path = self.inner.local_dirs.remote_media_list_path(remote_id);
+            let path = self
+                .inner
+                .local_dirs
+                .remote_last_known_state_dir(remote_id)
+                .media_list_path();
             if let Ok(list) = MediaList::load_or_default(&path) {
                 backed_up.extend(list.media.into_keys());
             }
@@ -458,8 +463,8 @@ fn write_dest(path: &Path, data: &[u8]) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use crate::identifiers::LibraryId;
-    use crate::library::local_dirs::LocalDirs;
     use crate::library::Credentials;
+    use crate::library::local_dirs::LocalDirs;
     use crate::operations::MediaFilename;
     use tempfile::TempDir;
     use uuid::Uuid;
@@ -621,16 +626,18 @@ mod tests {
         assert!(!visible.iter().any(|entry| entry.media_id == companion_id));
 
         lib.album_add_media(album_id, orphan_id).await.unwrap();
-        assert!(!lib
-            .media_list(MediaListScope::Orphaned)
-            .iter()
-            .any(|entry| entry.media_id == orphan_id));
+        assert!(
+            !lib.media_list(MediaListScope::Orphaned)
+                .iter()
+                .any(|entry| entry.media_id == orphan_id)
+        );
 
         lib.album_remove_media(album_id, orphan_id).await.unwrap();
-        assert!(lib
-            .media_list(MediaListScope::Orphaned)
-            .iter()
-            .any(|entry| entry.media_id == orphan_id));
+        assert!(
+            lib.media_list(MediaListScope::Orphaned)
+                .iter()
+                .any(|entry| entry.media_id == orphan_id)
+        );
     }
 
     #[tokio::test]
@@ -666,10 +673,11 @@ mod tests {
 
         lib.album_remove_media(album_id, media_id).await.unwrap();
 
-        assert!(!lib
-            .media_list(MediaListScope::Reachable)
-            .iter()
-            .any(|e| e.media_id == media_id));
+        assert!(
+            !lib.media_list(MediaListScope::Reachable)
+                .iter()
+                .any(|e| e.media_id == media_id)
+        );
         let entry = lib.media_show(media_id).unwrap();
         assert_eq!(entry.media_id, media_id);
         assert_eq!(entry.filename_original, MediaFilename("img.jpg".into()));

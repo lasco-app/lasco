@@ -9,7 +9,7 @@ use crate::encryption::blob_key::derive_blob_key;
 use crate::encryption::master_key::MasterKey;
 use crate::error::SyncError;
 use crate::identifiers::{CompactedOpId, OpUuid};
-use crate::library::local_dirs::LocalDirs;
+use crate::library::local_dirs::RemoteLastKnownStateDir;
 use crate::library::sync::remote_access::StorageRead;
 use crate::operations::remote_ops::{RemoteOpFile, list_remote_op_files_read};
 use crate::operations::{CompactionFile, compaction_file_from_cbor, encrypt_compaction_file};
@@ -32,12 +32,11 @@ impl LastKnownState {
     /// skipped, making this idempotent.
     pub(crate) async fn download(
         storage: &StorageRead<'_>,
-        local_dirs: &LocalDirs,
-        remote_id: &str,
+        remote_last_known_state_dir: &RemoteLastKnownStateDir,
         processed: &ProcessedFiles,
         master_key: &MasterKey,
     ) -> Result<Self, SyncError> {
-        let ops_dir = local_dirs.remote_ops_dir(remote_id);
+        let ops_dir = remote_last_known_state_dir.operations_dir();
         std::fs::create_dir_all(&ops_dir)?;
 
         let remote_files = list_remote_op_files_read(storage).await?;
@@ -99,9 +98,11 @@ impl LastKnownState {
     ///
     /// Used by push and compaction, which must never list or read arbitrary remote files: they
     /// only ever act on what this client itself already knows about.
-    pub(crate) fn open(local_dirs: &LocalDirs, remote_id: &str) -> Result<Self, SyncError> {
-        let ops_dir = local_dirs.remote_ops_dir(remote_id);
-        let files = Self::list_cached_files(local_dirs, remote_id)?;
+    pub(crate) fn open(
+        remote_last_known_state_dir: &RemoteLastKnownStateDir,
+    ) -> Result<Self, SyncError> {
+        let ops_dir = remote_last_known_state_dir.operations_dir();
+        let files = Self::list_cached_files(remote_last_known_state_dir)?;
         Ok(Self { ops_dir, files })
     }
 
@@ -185,10 +186,9 @@ impl LastKnownState {
     /// Lists op files recorded in the on-disk last known state for `remote_id`, without
     /// contacting the remote. A missing cache directory is treated as empty.
     pub(crate) fn list_cached_files(
-        local_dirs: &LocalDirs,
-        remote_id: &str,
+        remote_last_known_state_dir: &RemoteLastKnownStateDir,
     ) -> Result<Vec<RemoteOpFile>, SyncError> {
-        let ops_dir = local_dirs.remote_ops_dir(remote_id);
+        let ops_dir = remote_last_known_state_dir.operations_dir();
         let entries = match std::fs::read_dir(&ops_dir) {
             Ok(entries) => entries,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),

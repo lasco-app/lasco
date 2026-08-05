@@ -5,7 +5,7 @@ use crate::identifiers::AlbumUuid;
 use crate::storage::{Storage, StorageMockMemory};
 
 use super::super::test_utils::{
-    make_library, make_library_with_same_keys, remote_uuid, write_file, REMOTE_ID,
+    REMOTE_ID, make_library, make_library_with_same_keys, remote_uuid, write_file,
 };
 
 #[tokio::test]
@@ -161,7 +161,11 @@ async fn fetch_absorbs_op_from_compaction_file() {
         .id();
 
     let group = crate::operations::local_ops::read_pending_op_group(
-        &lib_a.inner.local_dirs.pending_op_path(),
+        &lib_a
+            .inner
+            .local_dirs
+            .local_state_operations()
+            .pending_op_path(),
         &lib_a.inner.master_key,
     )
     .unwrap()
@@ -229,7 +233,11 @@ async fn fetch_does_not_double_append_op_in_two_compaction_files() {
         .id();
 
     let group = crate::operations::local_ops::read_pending_op_group(
-        &lib_a.inner.local_dirs.pending_op_path(),
+        &lib_a
+            .inner
+            .local_dirs
+            .local_state_operations()
+            .pending_op_path(),
         &lib_a.inner.master_key,
     )
     .unwrap()
@@ -309,7 +317,11 @@ async fn fetch_converges_after_compaction_push() {
             }],
         };
         crate::operations::local_ops::append_op_group(
-            &lib_a.inner.local_dirs.operations_log_path(),
+            &lib_a
+                .inner
+                .local_dirs
+                .local_state_operations()
+                .operations_log_path(),
             &lib_a.inner.master_key,
             &group,
         )
@@ -359,7 +371,11 @@ async fn fetch_updates_media_list_from_ops() {
 
     lib_b.fetch(&storage, REMOTE_ID).await.unwrap();
 
-    let media_list_path = lib_b.inner.local_dirs.remote_media_list_path(REMOTE_ID);
+    let media_list_path = lib_b
+        .inner
+        .local_dirs
+        .remote_last_known_state_dir(REMOTE_ID)
+        .media_list_path();
     let media_list =
         crate::remote::local_state::media_list_json::MediaList::load_or_default(&media_list_path)
             .unwrap();
@@ -393,8 +409,15 @@ async fn fetch_downloads_new_user_mk_file() {
         .await
         .unwrap();
     let mk_name = format!("mk_bob_{bob_uuid}.enc");
-    let mk_bytes =
-        std::fs::read(lib_a.inner.local_dirs.local_library_dir().join(&mk_name)).unwrap();
+    let mk_bytes = std::fs::read(
+        lib_a
+            .inner
+            .local_dirs
+            .local_state_library_dir()
+            .path()
+            .join(&mk_name),
+    )
+    .unwrap();
     storage
         .put(&format!("library/{mk_name}"), &mk_bytes)
         .await
@@ -402,7 +425,12 @@ async fn fetch_downloads_new_user_mk_file() {
 
     lib_b.fetch(&storage, REMOTE_ID).await.unwrap();
 
-    let downloaded = lib_b.inner.local_dirs.local_library_dir().join(&mk_name);
+    let downloaded = lib_b
+        .inner
+        .local_dirs
+        .local_state_library_dir()
+        .path()
+        .join(&mk_name);
     assert!(
         downloaded.exists(),
         "B must have downloaded bob's mk file after fetch"
@@ -432,8 +460,15 @@ async fn fetch_does_not_redownload_existing_mk_file() {
         .await
         .unwrap();
     let mk_name = format!("mk_bob_{bob_uuid}.enc");
-    let mk_bytes =
-        std::fs::read(lib_a.inner.local_dirs.local_library_dir().join(&mk_name)).unwrap();
+    let mk_bytes = std::fs::read(
+        lib_a
+            .inner
+            .local_dirs
+            .local_state_library_dir()
+            .path()
+            .join(&mk_name),
+    )
+    .unwrap();
     storage
         .put(&format!("library/{mk_name}"), &mk_bytes)
         .await

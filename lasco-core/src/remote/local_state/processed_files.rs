@@ -7,7 +7,7 @@ use crate::identifiers::CompactedOpId;
 
 /// Persisted set of remote operation-file UUIDs that have been fully ingested into the local log.
 ///
-/// Stored at `remotes/{remote_id}/processed.json`. Consulted during fetch to skip files that
+/// Stored at `remotes/{remote_id}/state/processed.json`. Consulted during fetch to skip files that
 /// were already processed in a previous run (raw `.op` or compaction `.opN`). For raw files the
 /// UUID equals the op_id. For compaction files it is the fresh UUID embedded in the filename.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -29,8 +29,10 @@ impl ProcessedFiles {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let tmp_name =
-            format!("{}.tmp", path.file_name().unwrap_or_default().to_string_lossy());
+        let tmp_name = format!(
+            "{}.tmp",
+            path.file_name().unwrap_or_default().to_string_lossy()
+        );
         let tmp = path.with_file_name(tmp_name);
         let data = serde_json::to_vec_pretty(self)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;

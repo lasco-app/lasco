@@ -221,7 +221,7 @@ pub async fn add_existing_library_s3(
         .context("failed to create local sync directories")?;
 
     // Download all crypto files into the local library dir.
-    let lib_dir = local_dirs.local_library_dir();
+    let lib_dir = local_dirs.local_state_library_dir();
     for key in &remote_library_dir {
         let basename = key.rsplit('/').next().unwrap_or(key);
         if basename.is_empty() {
@@ -231,13 +231,14 @@ pub async fn add_existing_library_s3(
             .get(key)
             .await
             .map_err(|e| anyhow::anyhow!("failed to download {key}: {e}"))?;
-        std::fs::write(lib_dir.join(basename), &data)
+        std::fs::write(lib_dir.path().join(basename), &data)
             .with_context(|| format!("failed to write crypto file {basename}"))?;
     }
 
     // Discover the active password UUID by trying all mk files for this user.
-    let (master_key, active_password_uuid) = find_master_key(&lib_dir, &username.0, &password.0)
-        .map_err(|_| anyhow::anyhow!("failed to open library — wrong username or password"))?;
+    let (master_key, active_password_uuid) =
+        find_master_key(lib_dir.path(), &username.0, &password.0)
+            .map_err(|_| anyhow::anyhow!("failed to open library — wrong username or password"))?;
 
     let library = Library::open_with_master_key(
         local_dirs.clone(),
@@ -259,7 +260,7 @@ pub async fn add_existing_library_s3(
             // Propagate the new user's master-key file to the remote so other
             // devices can authenticate as them.
             let mk_name = format!("mk_{}_{}.enc", new_username.0, new_uuid);
-            let mk_bytes = std::fs::read(lib_dir.join(&mk_name))
+            let mk_bytes = std::fs::read(lib_dir.path().join(&mk_name))
                 .with_context(|| format!("failed to read {mk_name}"))?;
             storage
                 .put(&format!("library/{mk_name}"), &mk_bytes)
