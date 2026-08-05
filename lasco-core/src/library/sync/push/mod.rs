@@ -1,6 +1,7 @@
 use crate::error::{LibraryError, SyncError};
 use crate::identifiers::{CompactedOpId, MediaUuid, RemoteUuid};
 use crate::library::Library;
+use crate::library::local_dirs::{LocalStateMediaDir, RemoteLastKnownStateDir};
 use crate::operations::remote_ops::{self as op_io, RemoteOpFile};
 use crate::operations::{CompactionEntry, CompactionFile, StorageDate};
 use crate::remote::last_known_state::collect_group_ids_from_dir;
@@ -27,17 +28,25 @@ impl Library {
             .try_acquire_remote_sync(remote_id)
             .ok_or(SyncError::AlreadyRunning)?;
         let remote = StorageReadWrite::new(storage);
-        self.push_impl(&remote, remote_id).await
+        let local_state_media_dir = self.inner.local_dirs.local_state_media_dir();
+        let remote_last_known_state_dir =
+            self.inner.local_dirs.remote_last_known_state_dir(remote_id);
+        self.push_impl(
+            &remote,
+            remote_id,
+            &local_state_media_dir,
+            &remote_last_known_state_dir,
+        )
+        .await
     }
 
     pub(super) async fn push_impl(
         &self,
         storage: &StorageReadWrite<'_>,
         remote_id: &str,
+        local_state_media_dir: &LocalStateMediaDir,
+        remote_last_known_state_dir: &RemoteLastKnownStateDir,
     ) -> Result<SyncReportPush, LibraryError> {
-        let local_state_media_dir = self.inner.local_dirs.local_state_media_dir();
-        let remote_last_known_state_dir =
-            self.inner.local_dirs.remote_last_known_state_dir(remote_id);
         let master_key = &self.inner.master_key;
 
         let remote_uuid = remote_id
@@ -53,7 +62,7 @@ impl Library {
         // arbitrary remote files to decide what to upload or compact, so it can't turn into
         // an implicit fetch.
         let ops_dir = remote_last_known_state_dir.operations_dir();
-        let mut last_known_state = LastKnownState::open(&remote_last_known_state_dir)?;
+        let mut last_known_state = LastKnownState::open(remote_last_known_state_dir)?;
         let remote_covered = collect_group_ids_from_dir(&ops_dir, master_key)
             .map_err(SyncError::LocalCacheCorrupt)?;
 

@@ -83,15 +83,32 @@ impl Library {
         let _remote_guard = self
             .try_acquire_remote_sync(remote_id)
             .ok_or(SyncError::AlreadyRunning)?;
+        let local_state_library_dir = self.inner.local_dirs.local_state_library_dir();
+        let local_state_media_dir = self.inner.local_dirs.local_state_media_dir();
+        let remote_last_known_state_dir =
+            self.inner.local_dirs.remote_last_known_state_dir(remote_id);
         let fetch_report = {
             let _fetch_guard = self
                 .try_acquire_fetch_slot()
                 .ok_or(SyncError::AlreadyRunning)?;
             let remote = StorageRead::new(storage);
-            self.fetch_impl(&remote, remote_id).await?
+            self.fetch_impl(
+                &remote,
+                remote_id,
+                &local_state_library_dir,
+                &remote_last_known_state_dir,
+            )
+            .await?
         };
         let remote = StorageReadWrite::new(storage);
-        let push_report = self.push_impl(&remote, remote_id).await?;
+        let push_report = self
+            .push_impl(
+                &remote,
+                remote_id,
+                &local_state_media_dir,
+                &remote_last_known_state_dir,
+            )
+            .await?;
         Ok(SyncReport {
             fetch: fetch_report,
             push: push_report,

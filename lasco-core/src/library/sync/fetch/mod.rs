@@ -4,7 +4,7 @@ use crate::encryption::master_key::parse_mk_filename;
 use crate::error::{LibraryError, SyncError};
 use crate::identifiers::{LibraryId, RemoteUuid};
 use crate::library::Library;
-use crate::library::local_dirs::LocalStateLibraryDir;
+use crate::library::local_dirs::{LocalStateLibraryDir, RemoteLastKnownStateDir};
 use crate::operations::remote_ops::RemoteOpFile;
 use crate::operations::{Operation, OperationGroup};
 use crate::remote::{LastKnownState, MediaList, ProcessedFiles};
@@ -25,17 +25,25 @@ impl Library {
             .try_acquire_fetch_slot()
             .ok_or(SyncError::AlreadyRunning)?;
         let remote = StorageRead::new(storage);
-        self.fetch_impl(&remote, remote_id).await
+        let local_state_library_dir = self.inner.local_dirs.local_state_library_dir();
+        let remote_last_known_state_dir =
+            self.inner.local_dirs.remote_last_known_state_dir(remote_id);
+        self.fetch_impl(
+            &remote,
+            remote_id,
+            &local_state_library_dir,
+            &remote_last_known_state_dir,
+        )
+        .await
     }
 
     pub(super) async fn fetch_impl(
         &self,
         storage: &StorageRead<'_>,
         remote_id: &str,
+        local_state_library_dir: &LocalStateLibraryDir,
+        remote_last_known_state_dir: &RemoteLastKnownStateDir,
     ) -> Result<SyncReportFetch, LibraryError> {
-        let local_state_library_dir = self.inner.local_dirs.local_state_library_dir();
-        let remote_last_known_state_dir =
-            self.inner.local_dirs.remote_last_known_state_dir(remote_id);
         let master_key = &self.inner.master_key;
 
         let remote_uuid = remote_id
@@ -48,7 +56,7 @@ impl Library {
 
         // Step 1: pull any mk_*.enc files present on the remote but missing locally,
         // so users added from another device become available on this one.
-        fetch_library_dir(storage, &local_state_library_dir, self.inner.library_id).await?;
+        fetch_library_dir(storage, local_state_library_dir, self.inner.library_id).await?;
 
         // Load processed-file tracking for this remote.
         remote_last_known_state_dir.migrate_legacy_processed_files()?;
@@ -60,13 +68,9 @@ impl Library {
         let mut media_list = MediaList::load_or_default(&media_list_path)?;
         let mut media_list_changed = false;
 
-        let last_known_state = LastKnownState::download(
-            storage,
-            &remote_last_known_state_dir,
-            &processed,
-            master_key,
-        )
-        .await?;
+        let last_known_state =
+            LastKnownState::download(storage, remote_last_known_state_dir, &processed, master_key)
+                .await?;
 
         let local_valid_ids = self.local_ops_read_write().read_log_ids()?;
 
