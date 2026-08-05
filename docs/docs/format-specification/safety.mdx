@@ -1,0 +1,31 @@
+---
+sidebar_position: 1.5
+sidebar_label: Safety
+---
+
+# Safety
+
+## Goal
+
+Lasco prioritizes preventing data loss. Duplicate data is acceptable: it is detected and ignored during state reconstruction.
+
+## Prevention measures
+
+- **Successful procedures preserve data.** Fetch and push only add or merge data.
+- **Procedures are interruption-safe.** They may be killed at any point and safely resumed or repeated.
+- **Rust prevents data races.** Its type and ownership systems prevent data races in concurrent code.
+- **Corruption is detected.** Data is validated before use.
+- **Media files cannot currently be deleted.** Removing media from an album or group does not delete its file.
+- **Destructive file access is unrepresentable.** Code that deletes or overwrites a media file must not compile.
+
+## Successful procedures preserve data
+
+## Procedures are interruption-safe
+
+## Rust prevents data races
+
+## Corruption is detected
+
+## Media files cannot currently be deleted
+
+## Destructive file access is unrepresentable
