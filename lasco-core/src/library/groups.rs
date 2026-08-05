@@ -2,19 +2,16 @@ use chrono::Utc;
 use uuid::Uuid;
 
 use crate::error::LibraryError;
-use crate::identifiers::{AlbumUuid, MediaUuid, GroupUuid};
-use crate::library::Library;
+use crate::identifiers::{AlbumUuid, GroupUuid, MediaUuid};
 use crate::library::media::MediaEntry;
+use crate::library::Library;
 use crate::operations::Operation;
 use crate::state::GroupEntry;
 
 pub type Result<T> = std::result::Result<T, LibraryError>;
 
 impl Library {
-    pub async fn group_create(
-        &self,
-        album_id_parent: AlbumUuid,
-    ) -> Result<GroupUuid> {
+    pub async fn group_create(&self, album_id_parent: AlbumUuid) -> Result<GroupUuid> {
         let group_id = GroupUuid::from_uuid(Uuid::new_v4());
         self.append_to_pending(Operation::GroupCreation {
             timestamp: Utc::now(),
@@ -26,26 +23,43 @@ impl Library {
     }
 
     pub async fn group_add_media(&self, group_id: GroupUuid, media_id: MediaUuid) -> Result<()> {
-        self.append_to_pending(Operation::GroupMediaAdd { timestamp: Utc::now(), group_id, media_id })?;
+        self.append_to_pending(Operation::GroupMediaAdd {
+            timestamp: Utc::now(),
+            group_id,
+            media_id,
+        })?;
         self.load_local_state().await?;
         Ok(())
     }
 
     pub async fn group_remove_media(&self, group_id: GroupUuid, media_id: MediaUuid) -> Result<()> {
-        self.append_to_pending(Operation::GroupMediaRemove { timestamp: Utc::now(), group_id, media_id })?;
+        self.append_to_pending(Operation::GroupMediaRemove {
+            timestamp: Utc::now(),
+            group_id,
+            media_id,
+        })?;
         self.load_local_state().await?;
         Ok(())
     }
 
     pub async fn group_delete(&self, group_id: GroupUuid) -> Result<()> {
-        self.append_to_pending(Operation::GroupDeletion { timestamp: Utc::now(), group_id })?;
+        self.append_to_pending(Operation::GroupDeletion {
+            timestamp: Utc::now(),
+            group_id,
+        })?;
         self.load_local_state().await?;
         Ok(())
     }
 
     pub fn group_list(&self) -> Vec<GroupEntry> {
         let state = self.inner.operation_state.read();
-        state.reconstructed.groups.values().filter(|g| !g.deleted).cloned().collect()
+        state
+            .reconstructed
+            .groups
+            .values()
+            .filter(|g| !g.deleted)
+            .cloned()
+            .collect()
     }
 
     pub fn group_list_media(&self, group_id: GroupUuid) -> Result<Vec<MediaEntry>> {
@@ -93,7 +107,6 @@ impl Library {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -102,9 +115,9 @@ mod tests {
     use uuid::Uuid;
 
     use crate::identifiers::LibraryId;
-    use crate::library::{Credentials, Library};
-    use crate::library::media::upload::MediaAddSource;
     use crate::library::local_dirs::LocalDirs;
+    use crate::library::media::upload::MediaAddSource;
+    use crate::library::{Credentials, Library};
 
     async fn make_library(tmp: &TempDir) -> Library {
         use crate::operations::{LibraryPassword, LibraryUsername};
@@ -137,7 +150,10 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let lib = make_library(&tmp).await;
 
-        let album_id = lib.album_create(AlbumName("Album".into()), None).await.unwrap();
+        let album_id = lib
+            .album_create(AlbumName("Album".into()), None)
+            .await
+            .unwrap();
         let group_id = lib.group_create(album_id).await.unwrap();
 
         let groups = lib.group_list();
@@ -154,12 +170,25 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let lib = make_library(&tmp).await;
 
-        let album_id = lib.album_create(AlbumName("Album".into()), None).await.unwrap();
+        let album_id = lib
+            .album_create(AlbumName("Album".into()), None)
+            .await
+            .unwrap();
         let group_id = lib.group_create(album_id).await.unwrap();
         let src = write_file(tmp.path(), "photo.jpg", b"data");
         // file_add requires an album — use a separate album so the file is in album A but NOT in the group's parent
         let album_b = lib.album_create(AlbumName("B".into()), None).await.unwrap();
-        let media_id = lib.media_add(MediaAddSource::CopyFrom(src), Some(album_b), None, None, None).await.unwrap().id();
+        let media_id = lib
+            .media_add(
+                MediaAddSource::CopyFrom(src),
+                Some(album_b),
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap()
+            .id();
         // Remove from album_b so reachability comes only from the group
         lib.album_remove_media(album_b, media_id).await.unwrap();
 
@@ -184,7 +213,17 @@ mod tests {
         let album_id = lib.album_create(AlbumName("A".into()), None).await.unwrap();
         let group_id = lib.group_create(album_id).await.unwrap();
         let src = write_file(tmp.path(), "photo.jpg", b"data");
-        let media_id = lib.media_add(MediaAddSource::CopyFrom(src), Some(album_id), None, None, None).await.unwrap().id();
+        let media_id = lib
+            .media_add(
+                MediaAddSource::CopyFrom(src),
+                Some(album_id),
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap()
+            .id();
         lib.album_remove_media(album_id, media_id).await.unwrap();
         lib.group_add_media(group_id, media_id).await.unwrap();
         lib.group_remove_media(group_id, media_id).await.unwrap();
@@ -227,7 +266,17 @@ mod tests {
         let album_id = lib.album_create(AlbumName("A".into()), None).await.unwrap();
         let group_id = lib.group_create(album_id).await.unwrap();
         let src = write_file(tmp.path(), "photo.jpg", b"data");
-        let media_id = lib.media_add(MediaAddSource::CopyFrom(src), Some(album_id), None, None, None).await.unwrap().id();
+        let media_id = lib
+            .media_add(
+                MediaAddSource::CopyFrom(src),
+                Some(album_id),
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap()
+            .id();
         lib.album_remove_media(album_id, media_id).await.unwrap();
         lib.group_add_media(group_id, media_id).await.unwrap();
 
@@ -251,7 +300,17 @@ mod tests {
         let album_id = lib.album_create(AlbumName("A".into()), None).await.unwrap();
         let group_id = lib.group_create(album_id).await.unwrap();
         let src = write_file(tmp.path(), "photo.jpg", b"data");
-        let media_id = lib.media_add(MediaAddSource::CopyFrom(src), Some(album_id), None, None, None).await.unwrap().id();
+        let media_id = lib
+            .media_add(
+                MediaAddSource::CopyFrom(src),
+                Some(album_id),
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap()
+            .id();
 
         lib.group_add_media(group_id, media_id).await.unwrap();
         lib.group_add_media(group_id, media_id).await.unwrap();
@@ -267,7 +326,10 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let lib = make_library(&tmp).await;
 
-        let album_id = lib.album_create(AlbumName("Album".into()), None).await.unwrap();
+        let album_id = lib
+            .album_create(AlbumName("Album".into()), None)
+            .await
+            .unwrap();
         lib.group_create(album_id).await.unwrap();
 
         // album_list only ever contains AlbumSummary entries, so this is a type-level

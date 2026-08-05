@@ -6,21 +6,21 @@ pub mod media;
 pub mod sync;
 mod sync_policy;
 pub mod user;
+mod local_ops_read_write;
 
 use std::fmt;
 use std::sync::Arc;
 
 use uuid::Uuid;
 
-use crate::encryption::master_key::{MasterKey, find_master_key, generate_master_key, write_mk_file};
 use crate::encryption::library_salt::{generate_salt, write_salt_file};
+use crate::encryption::master_key::{MasterKey, find_master_key, generate_master_key, write_mk_file};
 use crate::error::LibraryError;
 use crate::identifiers::OpUuid;
-use crate::state::OperationState;
-use crate::operations::local_ops as op_log;
 use crate::operations::{LibraryPassword, LibraryUsername, Operation, OperationGroup};
 use crate::library::local_dirs::LocalDirs;
 use crate::library::sync_policy::{FetchSlotGuard, RemoteSyncGuard, SyncPolicy};
+use crate::state::OperationState;
 
 pub use crate::identifiers::LibraryId;
 
@@ -49,8 +49,8 @@ pub(crate) struct LibraryInner {
     pub(crate) operation_state: parking_lot::RwLock<OperationState>,
     pub(crate) sync_policy: SyncPolicy,
     pub(crate) username: LibraryUsername,
-    /// Guards all reads/writes of pending.op and operations.log, held only across sync
-    /// std::fs calls, never across an await.
+    /// Serializes access to `pending.op` and `operations.log`. Its guard is held by
+    /// `LocalOpsReadWrite`, only across synchronous filesystem calls.
     pub(crate) op_files_lock: parking_lot::Mutex<()>,
 }
 
@@ -189,55 +189,37 @@ impl Library {
         PROTOCOL_VERSION
     }
 
-    /// Serializes access to pending.op and operations.log. `f` must be sync (no `.await`
-    /// inside), so the lock is never held across an await point.
-    pub(crate) fn with_op_lock<T>(&self, f: impl FnOnce() -> Result<T>) -> Result<T> {
-        let _guard = self.inner.op_files_lock.lock();
-        f()
-    }
-
     /// Append a single operation to the pending group, creating it if needed.
     /// All local mutations go through this instead of writing directly to the main log.
     pub(crate) fn append_to_pending(&self, op: Operation) -> Result<()> {
-        let local_dirs = &self.inner.local_dirs;
-        let master_key = &self.inner.master_key;
-        let pending_path = local_dirs.pending_op_path();
+        let mut local_ops = self.local_ops_read_write();
+        let mut group = local_ops.read_pending()?.unwrap_or_else(|| OperationGroup {
+            op_id: OpUuid::new(),
+            parent_op_id: None,
+            author: self.inner.username.clone(),
+            operations: vec![],
+        });
 
-        self.with_op_lock(|| {
-            let mut group = op_log::read_pending_op_group(&pending_path, master_key)?
-                .unwrap_or_else(|| OperationGroup {
-                    op_id: OpUuid::new(),
-                    parent_op_id: None,
-                    author: self.inner.username.clone(),
-                    operations: vec![],
-                });
-
-            group.operations.push(op);
-            op_log::write_pending_op_group(&pending_path, master_key, &group)?;
-            Ok(())
-        })
+        group.operations.push(op);
+        local_ops.write_pending(&group)
     }
 
     pub async fn load_local_state(&self) -> Result<()> {
-        let local_dirs = &self.inner.local_dirs;
-        let master_key = &self.inner.master_key;
-
-        let groups = self.with_op_lock(|| {
-            let mut groups = op_log::read_op_groups(&local_dirs.operations_log_path(), master_key)?;
-            if let Some(pending) = op_log::read_pending_op_group(&local_dirs.pending_op_path(), master_key)? {
+        let groups = {
+            let local_ops = self.local_ops_read_write();
+            let mut groups = local_ops.read_log_groups()?;
+            if let Some(pending) = local_ops.read_pending()? {
                 groups.push(pending);
             }
-            Ok(groups)
-        })?;
+            groups
+        };
         let state = OperationState::build(&groups);
         *self.inner.operation_state.write() = state;
         Ok(())
     }
 
     pub fn pending_media_count(&self) -> Result<u32> {
-        let pending_path = self.inner.local_dirs.pending_op_path();
-        let master_key = &self.inner.master_key;
-        let group = self.with_op_lock(|| Ok(op_log::read_pending_op_group(&pending_path, master_key)?))?;
+        let group = self.local_ops_read_write().read_pending()?;
         let Some(group) = group else {
             return Ok(0);
         };
@@ -250,14 +232,14 @@ impl Library {
     pub fn has_unpushed_changes(&self, remote_id: &str) -> Result<bool> {
         let local_dirs = &self.inner.local_dirs;
         let master_key = &self.inner.master_key;
-
-        let local_ids = self.with_op_lock(|| {
-            let mut local_ids = op_log::read_op_ids(&local_dirs.operations_log_path())?;
-            if let Some(pending) = op_log::read_pending_op_group(&local_dirs.pending_op_path(), master_key)? {
+        let local_ids = {
+            let local_ops = self.local_ops_read_write();
+            let mut local_ids = local_ops.read_log_ids()?;
+            if let Some(pending) = local_ops.read_pending()? {
                 local_ids.insert(pending.op_id);
             }
-            Ok(local_ids)
-        })?;
+            local_ids
+        };
 
         if local_ids.is_empty() {
             return Ok(false);
@@ -273,21 +255,13 @@ impl Library {
     }
 
     pub fn list_operation_groups(&self) -> Result<Vec<OperationGroup>> {
-        self.with_op_lock(|| {
-            let mut groups = op_log::read_op_groups(
-                &self.inner.local_dirs.operations_log_path(),
-                &self.inner.master_key,
-            )?;
-            if let Some(pending) = op_log::read_pending_op_group(
-                &self.inner.local_dirs.pending_op_path(),
-                &self.inner.master_key,
-            )? {
-                groups.push(pending);
-            }
-            Ok(groups)
-        })
+        let local_ops = self.local_ops_read_write();
+        let mut groups = local_ops.read_log_groups()?;
+        if let Some(pending) = local_ops.read_pending()? {
+            groups.push(pending);
+        }
+        Ok(groups)
     }
-
 }
 
 #[cfg(test)]

@@ -81,7 +81,8 @@ impl Library {
         let file_key = derive_blob_key(master_key, &media_id.0);
 
         let blob = encrypt_blob(&file_key, &bytes);
-        let data_path = local_dirs.media_data_path(storage_date.year, storage_date.month, &media_id);
+        let data_path =
+            local_dirs.media_data_path(storage_date.year, storage_date.month, &media_id);
         if let Some(parent) = data_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -211,7 +212,13 @@ mod tests {
         let src = write_source(tmp.path(), "photo.jpg", b"fake image bytes");
 
         let result = lib
-            .media_add(MediaAddSource::CopyFrom(src), Some(album_id), None, None, None)
+            .media_add(
+                MediaAddSource::CopyFrom(src),
+                Some(album_id),
+                None,
+                None,
+                None,
+            )
             .await
             .unwrap();
         let media_id = match result {
@@ -242,7 +249,13 @@ mod tests {
         let src = write_source(tmp.path(), "img.jpg", content);
 
         let result = lib
-            .media_add(MediaAddSource::CopyFrom(src), Some(album_id), None, None, None)
+            .media_add(
+                MediaAddSource::CopyFrom(src),
+                Some(album_id),
+                None,
+                None,
+                None,
+            )
             .await
             .unwrap();
         let media_id = match result {
@@ -267,7 +280,13 @@ mod tests {
         let src = write_source(tmp.path(), "pic.jpg", b"data");
 
         let result = lib
-            .media_add(MediaAddSource::CopyFrom(src), Some(album_id), None, None, None)
+            .media_add(
+                MediaAddSource::CopyFrom(src),
+                Some(album_id),
+                None,
+                None,
+                None,
+            )
             .await
             .unwrap();
         let media_id = match result {
@@ -299,7 +318,13 @@ mod tests {
         let src = write_source(tmp.path(), "photo.jpg", b"same content");
 
         let first = lib
-            .media_add(MediaAddSource::CopyFrom(src.clone()), Some(album_id), None, None, None)
+            .media_add(
+                MediaAddSource::CopyFrom(src.clone()),
+                Some(album_id),
+                None,
+                None,
+                None,
+            )
             .await
             .unwrap();
         let first_id = match first {
@@ -308,7 +333,13 @@ mod tests {
         };
 
         let second = lib
-            .media_add(MediaAddSource::CopyFrom(src), Some(album_id), None, None, None)
+            .media_add(
+                MediaAddSource::CopyFrom(src),
+                Some(album_id),
+                None,
+                None,
+                None,
+            )
             .await
             .unwrap();
         match second {
@@ -327,7 +358,13 @@ mod tests {
         let expected_hash = MediaHash::from_bytes(content);
 
         let result = lib
-            .media_add(MediaAddSource::CopyFrom(src), Some(album_id), None, None, None)
+            .media_add(
+                MediaAddSource::CopyFrom(src),
+                Some(album_id),
+                None,
+                None,
+                None,
+            )
             .await
             .unwrap();
         let media_id = match result {

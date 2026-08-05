@@ -24,7 +24,10 @@ impl SyncPolicy {
     pub(crate) fn try_acquire_remote(&self, remote_id: &str) -> Option<RemoteSyncGuard<'_>> {
         let mut active = self.active_remotes.lock();
         if active.insert(remote_id.to_string()) {
-            Some(RemoteSyncGuard { policy: self, remote_id: remote_id.to_string() })
+            Some(RemoteSyncGuard {
+                policy: self,
+                remote_id: remote_id.to_string(),
+            })
         } else {
             None
         }

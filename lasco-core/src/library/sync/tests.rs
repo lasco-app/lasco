@@ -6,13 +6,13 @@ use uuid::Uuid;
 use chrono::{TimeZone, Utc};
 
 use crate::identifiers::{AlbumUuid, GroupUuid, MediaUuid, OpUuid};
-use crate::library::Library;
 use crate::library::media::query::MediaListScope;
+use crate::library::Library;
 use crate::operations::{LibraryUsername, Operation, OperationGroup};
 use crate::storage::StorageMockMemory;
 
 use super::test_utils::{
-    REMOTE_ID, make_library, make_library_with_same_keys, remote_uuid, write_file,
+    make_library, make_library_with_same_keys, remote_uuid, write_file, REMOTE_ID,
 };
 
 #[tokio::test]
@@ -113,8 +113,8 @@ async fn both_clients_sync_converge() {
 // Tasks interleave at .await points even on the single-threaded runtime.
 async fn concurrent_sync_one_returns_already_running() {
     use crate::error::SyncError;
-    use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
 
     let storage = StorageMockMemory::new();
     let tmp = TempDir::new().unwrap();
@@ -600,7 +600,7 @@ async fn offline_add_later_sync_push_succeeds() {
 // closes and reopens the library, then fetches, pushes again, and reads every media item back.
 async fn batched_push_survives_close_and_reopen() {
     use crate::library::media::upload::MediaAddSource;
-    use crate::library::{Credentials, local_dirs::LocalDirs};
+    use crate::library::{local_dirs::LocalDirs, Credentials};
     use crate::operations::LibraryPassword;
 
     const CHUNK_SIZE: usize = 32;

@@ -90,10 +90,18 @@ async fn init_writes_expected_files_on_disk() {
     .0;
 
     let lib_dir = local_dirs.local_library_dir();
-    assert!(lib_dir.join("library_salt").exists(), "library_salt must exist");
-    assert!(lib_dir.join("version_1").exists(), "version_1 sentinel must exist");
     assert!(
-        lib_dir.join(format!("library_id_{}", library_id.0)).exists(),
+        lib_dir.join("library_salt").exists(),
+        "library_salt must exist"
+    );
+    assert!(
+        lib_dir.join("version_1").exists(),
+        "version_1 sentinel must exist"
+    );
+    assert!(
+        lib_dir
+            .join(format!("library_id_{}", library_id.0))
+            .exists(),
         "library_id_{{uuid}} must exist"
     );
     let has_mk = std::fs::read_dir(&lib_dir).unwrap().flatten().any(|e| {
@@ -102,7 +110,10 @@ async fn init_writes_expected_files_on_disk() {
         s.starts_with(&format!("mk_{username}_")) && s.ends_with(".enc")
     });
     assert!(has_mk, "mk file for {username} must exist");
-    assert!(!lib_dir.join("mk_other.enc").exists(), "no mk file for other user");
+    assert!(
+        !lib_dir.join("mk_other.enc").exists(),
+        "no mk file for other user"
+    );
 }
 
 #[tokio::test]
@@ -133,7 +144,11 @@ async fn concurrent_append_to_pending_does_not_lose_operations() {
     }
 
     let groups = lib.list_operation_groups().unwrap();
-    assert_eq!(groups.len(), 1, "all appends should land in the single pending group");
+    assert_eq!(
+        groups.len(),
+        1,
+        "all appends should land in the single pending group"
+    );
     assert_eq!(
         groups[0].operations.len(),
         THREAD_COUNT,

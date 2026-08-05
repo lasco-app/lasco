@@ -6,7 +6,7 @@ use crate::identifiers::{AlbumUuid, MediaUuid, OpUuid};
 use crate::operations::{LibraryUsername, Operation, OperationGroup};
 use crate::storage::{Storage, StorageMockMemory};
 
-use super::super::test_utils::{REMOTE_ID, make_library, stamp_remote_id, write_file};
+use super::super::test_utils::{make_library, stamp_remote_id, write_file, REMOTE_ID};
 
 /// Inject `count` synthetic op groups directly into the main operations log, bypassing pending.
 /// Used by compaction/tier tests that need N distinct groups to exercise push logic.

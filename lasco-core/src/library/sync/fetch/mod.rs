@@ -5,7 +5,6 @@ use crate::error::{LibraryError, SyncError};
 use crate::identifiers::{LibraryId, RemoteUuid};
 use crate::library::Library;
 use crate::library::local_dirs::LocalDirs;
-use crate::operations::local_ops as op_log;
 use crate::operations::remote_ops::RemoteOpFile;
 use crate::operations::{Operation, OperationGroup};
 use crate::remote::{LastKnownState, MediaList, ProcessedFiles};
@@ -62,8 +61,7 @@ impl Library {
             LastKnownState::download(storage, local_dirs, remote_id, &processed, master_key)
                 .await?;
 
-        let local_valid_ids =
-            self.with_op_lock(|| Ok(op_log::read_op_ids(&local_dirs.operations_log_path())?))?;
+        let local_valid_ids = self.local_ops_read_write().read_log_ids()?;
 
         let mut ops_downloaded = 0usize;
         let mut processed_changed = false;
@@ -87,13 +85,7 @@ impl Library {
                         if !local_valid_ids.contains(&entry.op_id)
                             && !appended_this_run.contains(&entry.op_id)
                         {
-                            self.with_op_lock(|| {
-                                Ok(op_log::append_op_group(
-                                    &local_dirs.operations_log_path(),
-                                    master_key,
-                                    &entry.group,
-                                )?)
-                            })?;
+                            self.local_ops_read_write().append_log(&entry.group)?;
                             appended_this_run.insert(entry.op_id);
                             update_media_list_from_group(
                                 storage,

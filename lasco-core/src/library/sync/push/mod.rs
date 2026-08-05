@@ -2,7 +2,7 @@ use crate::error::{LibraryError, SyncError};
 use crate::identifiers::{CompactedOpId, MediaUuid, RemoteUuid};
 use crate::library::Library;
 use crate::operations::remote_ops::{self as op_io, RemoteOpFile};
-use crate::operations::{CompactionEntry, CompactionFile, StorageDate, local_ops as op_log};
+use crate::operations::{CompactionEntry, CompactionFile, StorageDate};
 use crate::remote::last_known_state::collect_group_ids_from_dir;
 use crate::remote::{LastKnownState, MediaList};
 
@@ -59,27 +59,21 @@ impl Library {
         let mut media_list = MediaList::load_or_default(&media_list_path)?;
 
         // Flush any pending (unpushed) op group into the main log before uploading.
-        let flushed_pending = self.with_op_lock(|| {
-            if let Some(pending) =
-                op_log::take_pending_op_group(&local_dirs.pending_op_path(), master_key)?
-            {
-                op_log::append_op_group(&local_dirs.operations_log_path(), master_key, &pending)?;
-                Ok(true)
+        let flushed_pending = {
+            let mut local_ops = self.local_ops_read_write();
+            if let Some(pending) = local_ops.take_pending()? {
+                local_ops.append_log(&pending)?;
+                true
             } else {
-                Ok(false)
+                false
             }
-        })?;
+        };
         if flushed_pending {
             self.load_local_state().await?;
         }
 
         // Read all local op groups from the log.
-        let local_groups = self.with_op_lock(|| {
-            Ok(op_log::read_op_groups(
-                &local_dirs.operations_log_path(),
-                master_key,
-            )?)
-        })?;
+        let local_groups = self.local_ops_read_write().read_log_groups()?;
         let ops_to_upload: Vec<_> = local_groups
             .into_iter()
             .filter(|g| !remote_covered.contains(&g.op_id))

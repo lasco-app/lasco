@@ -2,14 +2,18 @@ use std::fs;
 
 use uuid::Uuid;
 
+use super::{Library, Result};
 use crate::encryption::library_salt::read_salt_file;
 use crate::encryption::master_key::{find_master_key, parse_mk_filename, write_mk_file};
 use crate::error::{KeychainError, LibraryError};
 use crate::operations::{LibraryPassword, LibraryUsername};
-use super::{Library, Result};
 
 impl Library {
-    pub async fn user_add(&self, username_new: LibraryUsername, password_new: LibraryPassword) -> Result<Uuid> {
+    pub async fn user_add(
+        &self,
+        username_new: LibraryUsername,
+        password_new: LibraryPassword,
+    ) -> Result<Uuid> {
         let lib_dir = self.inner.local_dirs.local_library_dir();
         let salt = read_salt_file(&lib_dir)?;
         let password_uuid = Uuid::new_v4();
@@ -64,25 +68,20 @@ impl Library {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use tempfile::TempDir;
     use uuid::Uuid;
 
-    use crate::operations::{LibraryPassword, LibraryUsername};
     use crate::library::local_dirs::LocalDirs;
     use crate::library::{Credentials, Library, LibraryId};
+    use crate::operations::{LibraryPassword, LibraryUsername};
 
     fn make_local_dirs(tmp: &TempDir, library_id: &LibraryId) -> LocalDirs {
         LocalDirs::new(tmp.path().to_path_buf(), library_id)
     }
 
-    async fn init_fresh(
-        tmp: &TempDir,
-        username: &str,
-        password: &str,
-    ) -> (Library, LibraryId) {
+    async fn init_fresh(tmp: &TempDir, username: &str, password: &str) -> (Library, LibraryId) {
         let library_id = LibraryId(Uuid::new_v4());
         let local_dirs = make_local_dirs(tmp, &library_id);
         local_dirs.ensure_state_dirs().unwrap();
@@ -129,7 +128,9 @@ mod tests {
         .await
         .unwrap();
 
-        let lib_bob = open_with(&tmp, library_id_a, "bob", "pass_b").await.unwrap();
+        let lib_bob = open_with(&tmp, library_id_a, "bob", "pass_b")
+            .await
+            .unwrap();
         assert_eq!(lib_bob.library_id(), library_id);
     }
 
@@ -165,7 +166,8 @@ mod tests {
         let (lib, library_id) = init_fresh(&tmp, "alice", "old_pass").await;
 
         let lib_dir = LocalDirs::new(tmp.path().to_path_buf(), &library_id).local_library_dir();
-        let mk_count_before = std::fs::read_dir(&lib_dir).unwrap()
+        let mk_count_before = std::fs::read_dir(&lib_dir)
+            .unwrap()
             .flatten()
             .filter(|e| e.file_name().to_string_lossy().starts_with("mk_alice_"))
             .count();
@@ -178,15 +180,23 @@ mod tests {
         .await
         .unwrap();
 
-        let mk_count_after = std::fs::read_dir(&lib_dir).unwrap()
+        let mk_count_after = std::fs::read_dir(&lib_dir)
+            .unwrap()
             .flatten()
             .filter(|e| e.file_name().to_string_lossy().starts_with("mk_alice_"))
             .count();
 
-        assert_eq!(mk_count_after, mk_count_before + 1, "old mk file must be kept");
+        assert_eq!(
+            mk_count_after,
+            mk_count_before + 1,
+            "old mk file must be kept"
+        );
 
         let result_old = open_with(&tmp, library_id, "alice", "old_pass").await;
-        assert!(result_old.is_ok(), "old password still works, invalidation is not implemented yet");
+        assert!(
+            result_old.is_ok(),
+            "old password still works, invalidation is not implemented yet"
+        );
 
         let result_new = open_with(&tmp, library_id, "alice", "new_pass").await;
         assert!(result_new.is_ok(), "new password should work");

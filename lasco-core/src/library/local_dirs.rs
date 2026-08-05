@@ -1,7 +1,7 @@
 use std::fmt;
 use std::path::PathBuf;
 
-use crate::identifiers::{MediaUuid, LibraryId};
+use crate::identifiers::{LibraryId, MediaUuid};
 
 /// Builds all the local paths used by a library.
 #[derive(Clone)]
@@ -12,7 +12,9 @@ pub struct LocalDirs {
 
 impl fmt::Debug for LocalDirs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("LocalDirs").field("root", &self.root).finish()
+        f.debug_struct("LocalDirs")
+            .field("root", &self.root)
+            .finish()
     }
 }
 
@@ -70,7 +72,10 @@ impl LocalDirs {
     }
 
     pub fn processed_files_path(&self, remote_id: &str) -> PathBuf {
-        self.root.join("remotes").join(remote_id).join("processed.json")
+        self.root
+            .join("remotes")
+            .join(remote_id)
+            .join("processed.json")
     }
 
     pub fn remote_media_list_path(&self, remote_id: &str) -> PathBuf {

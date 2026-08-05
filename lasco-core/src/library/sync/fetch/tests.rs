@@ -5,7 +5,7 @@ use crate::identifiers::AlbumUuid;
 use crate::storage::{Storage, StorageMockMemory};
 
 use super::super::test_utils::{
-    REMOTE_ID, make_library, make_library_with_same_keys, remote_uuid, write_file,
+    make_library, make_library_with_same_keys, remote_uuid, write_file, REMOTE_ID,
 };
 
 #[tokio::test]
