@@ -248,7 +248,11 @@ impl Library {
         let master_key = &self.inner.master_key;
         let local_ids = {
             let local_ops = self.local_ops_read_write();
-            let mut local_ids = local_ops.read_log_ids()?;
+            let mut local_ids: std::collections::HashSet<_> = local_ops
+                .read_log_groups()?
+                .into_iter()
+                .map(|group| group.op_id)
+                .collect();
             if let Some(pending) = local_ops.read_pending()? {
                 local_ids.insert(pending.op_id);
             }

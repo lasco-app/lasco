@@ -1,7 +1,4 @@
-use std::collections::HashSet;
-
 use crate::encryption::master_key::MasterKey;
-use crate::identifiers::OpUuid;
 use crate::library::local_dirs::LocalStateOperations;
 use crate::library::{Library, Result};
 use crate::operations::OperationGroup;
@@ -44,12 +41,6 @@ pub(crate) struct LocalOpsReadWrite<'a> {
 }
 
 impl LocalOpsReadWrite<'_> {
-    pub(crate) fn read_log_ids(&self) -> Result<HashSet<OpUuid>> {
-        Ok(op_log::read_op_ids(
-            &self.local_state_operations.operations_log_path(),
-        )?)
-    }
-
     pub(crate) fn read_log_groups(&self) -> Result<Vec<OperationGroup>> {
         Ok(op_log::read_op_groups(
             &self.local_state_operations.operations_log_path(),

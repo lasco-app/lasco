@@ -153,7 +153,7 @@ For operation files, the client simply copies what it has locally. For media and
       <td style={{ whiteSpace: 'nowrap' }}>2</td>
       <td>Append any pending operation group to the local log, remove the pending file, and rebuild local state.</td>
       <td><span className="tag tag-warn">Append local log</span> <span className="tag tag-warn">Delete local pending file</span> <span className="tag tag-warn">Rebuild in-memory state</span></td>
-      <td>If interrupted before the pending file is removed, operations can be duplicated (allowed). Appending to the local log is not atomic, but incomplete frames can be detected; for now, they are not repaired automatically.</td>
+      <td>If interrupted before the pending file is removed, operations can be duplicated (allowed). Appending to the local log is not atomic; an incomplete frame is detected and makes the log unreadable. Repair is not automatic.</td>
     </tr>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>3</td>
