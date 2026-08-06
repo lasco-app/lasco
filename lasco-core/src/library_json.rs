@@ -26,9 +26,10 @@ pub struct RemoteConfig {
 pub enum RemoteKind {
     S3(S3Config),
     FixedPath(FixedPathConfig),
+    UsbAndroid(UsbAndroidConfig),
+    UsbApple(UsbAppleConfig),
     DebugLocalApple(DebugLocalAppleConfig),
     DebugLocalAndroid(DebugLocalAndroidConfig),
-    // future: UsbVolume(UsbVolumeConfig)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,6 +50,21 @@ pub struct S3Config {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FixedPathConfig {
     pub root_dir: PathBuf,
+}
+
+/// Persistent Storage Access Framework grant for a wired USB folder selected
+/// on Android. This is deliberately Android-specific: SAF providers have
+/// different read/write guarantees from Apple security-scoped URLs.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UsbAndroidConfig {
+    pub tree_uri: String,
+}
+
+/// Base64-encoded security-scoped bookmark for a wired USB folder selected on
+/// Apple platforms. The bookmark is an opaque access capability, not a path.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UsbAppleConfig {
+    pub bookmark_base64: String,
 }
 
 /// Persists only a name and re-resolves the path against the current app-support

@@ -4,6 +4,9 @@ pub mod error;
 pub mod library;
 pub mod session;
 
+#[cfg(target_os = "android")]
+mod android_jni;
+
 /// Resolve the main app-data directory. When the caller passes an explicit path
 /// (Android supplies its app-private dir) use it, otherwise fall back to the
 /// `directories` crate default used by iOS and macOS.
