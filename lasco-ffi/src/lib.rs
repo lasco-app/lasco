@@ -1,6 +1,7 @@
 uniffi::setup_scaffolding!();
 
 pub mod error;
+pub mod ids;
 pub mod library;
 pub mod session;
 
