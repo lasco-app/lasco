@@ -29,6 +29,19 @@ impl Storage for StorageLocalFs {
         fs::write(path, data).map_err(|e| StorageError::Other(Box::new(e)))
     }
 
+    async fn put_atomic(&self, key: &str, data: &[u8]) -> Result<()> {
+        let path = self.root.join(key);
+        let temp_path = path.with_file_name(format!(
+            "{}.temp",
+            path.file_name().unwrap_or_default().to_string_lossy()
+        ));
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|e| StorageError::Other(Box::new(e)))?;
+        }
+        fs::write(&temp_path, data).map_err(|e| StorageError::Other(Box::new(e)))?;
+        fs::rename(temp_path, path).map_err(|e| StorageError::Other(Box::new(e)))
+    }
+
     /// Not atomic across processes — acceptable for single-client testing.
     async fn put_if_absent(&self, key: &str, data: &[u8]) -> Result<bool> {
         let path = self.root.join(key);
@@ -101,6 +114,16 @@ mod tests {
         let (s, _dir) = store();
         s.put("k", b"hello").await.unwrap();
         assert_eq!(s.get("k").await.unwrap(), b"hello");
+    }
+
+    #[tokio::test]
+    async fn put_atomic_replaces_file_and_removes_temp_file() {
+        let (s, dir) = store();
+        s.put("nested/file", b"old").await.unwrap();
+        s.put_atomic("nested/file", b"new").await.unwrap();
+
+        assert_eq!(s.get("nested/file").await.unwrap(), b"new");
+        assert!(!dir.path().join("nested/file.temp").exists());
     }
 
     #[tokio::test]

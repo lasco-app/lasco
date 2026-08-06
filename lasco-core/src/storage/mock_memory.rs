@@ -55,6 +55,10 @@ impl Storage for StorageMockMemory {
         Ok(())
     }
 
+    async fn put_atomic(&self, key: &str, data: &[u8]) -> Result<()> {
+        self.put(key, data).await
+    }
+
     async fn put_if_absent(&self, key: &str, data: &[u8]) -> Result<bool> {
         self.check_online()?;
         use std::collections::hash_map::Entry;

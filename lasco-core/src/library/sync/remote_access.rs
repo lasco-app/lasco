@@ -74,6 +74,10 @@ impl<'a> StorageReadWrite<'a> {
         self.storage.put(key, data).await
     }
 
+    pub async fn put_atomic(&self, key: &str, data: &[u8]) -> Result<()> {
+        self.storage.put_atomic(key, data).await
+    }
+
     pub async fn put_if_absent(&self, key: &str, data: &[u8]) -> Result<bool> {
         self.storage.put_if_absent(key, data).await
     }

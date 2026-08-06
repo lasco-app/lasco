@@ -72,6 +72,12 @@ impl Storage for StorageS3 {
         Ok(())
     }
 
+    /// S3 object replacement is atomic: readers observe either the old object
+    /// or the complete replacement object.
+    async fn put_atomic(&self, key: &str, data: &[u8]) -> Result<()> {
+        self.put(key, data).await
+    }
+
     async fn put_if_absent(&self, key: &str, data: &[u8]) -> Result<bool> {
         if self.exists(key).await? {
             return Ok(false);
