@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 
 use anyhow::Context;
 
@@ -35,6 +35,8 @@ pub fn build_storage(
     let primary = &library.remotes[0];
     match &primary.kind {
         RemoteKind::FixedPath(cfg) => Ok(Box::new(StorageLocalFs::new(&cfg.root_dir)?)),
+        RemoteKind::UsbAndroid(cfg) => build_usb_android_storage(&cfg.tree_uri),
+        RemoteKind::UsbApple(cfg) => build_usb_apple_storage(&cfg.bookmark_base64),
         RemoteKind::DebugLocalApple(cfg) => {
             let app_support_dir = app_support_dir.ok_or_else(|| {
                 anyhow::anyhow!("app_support_dir required for debug_local_apple remote")
@@ -64,6 +66,26 @@ pub fn build_storage(
             )?))
         }
     }
+}
+
+#[cfg(target_os = "android")]
+fn build_usb_android_storage(tree_uri: &str) -> Result<Box<dyn Storage + Send + Sync>> {
+    Ok(Box::new(crate::storage::StorageUsbAndroid::new(tree_uri)?))
+}
+
+#[cfg(not(target_os = "android"))]
+fn build_usb_android_storage(_tree_uri: &str) -> Result<Box<dyn Storage + Send + Sync>> {
+    bail!("usb_android remotes are supported only on Android")
+}
+
+#[cfg(target_vendor = "apple")]
+fn build_usb_apple_storage(bookmark_base64: &str) -> Result<Box<dyn Storage + Send + Sync>> {
+    Ok(Box::new(crate::storage::StorageUsbApple::new(bookmark_base64)?))
+}
+
+#[cfg(not(target_vendor = "apple"))]
+fn build_usb_apple_storage(_bookmark_base64: &str) -> Result<Box<dyn Storage + Send + Sync>> {
+    bail!("usb_apple remotes are supported only on Apple platforms")
 }
 
 /// Open a library by nickname with optional session-key caching.

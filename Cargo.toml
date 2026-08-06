@@ -10,7 +10,9 @@ redundant_lifetimes = "warn"
 trivial_numeric_casts = "warn"
 unsafe_op_in_unsafe_fn = "warn"
 unused_lifetimes = "warn"
-unsafe_code = "forbid"
+# Apple security-scoped bookmarks and Android JNI require tiny, audited FFI
+# boundaries. Individual modules must opt in explicitly with a safety comment.
+unsafe_code = "deny"
 
 [workspace.lints.clippy]
 cargo       = { level = "warn", priority = -1 }

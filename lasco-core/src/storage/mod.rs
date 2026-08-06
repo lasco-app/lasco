@@ -5,6 +5,8 @@ use thiserror::Error;
 pub enum StorageError {
     #[error("key not found")]
     NotFound,
+    #[error("storage unavailable: {0}")]
+    Unavailable(String),
     #[error("storage error: {0}")]
     Other(#[from] Box<dyn std::error::Error + Send + Sync>),
 }
@@ -26,6 +28,16 @@ pub use mock_memory::StorageMockMemory;
 
 mod local_fs;
 pub use local_fs::StorageLocalFs;
+
+#[cfg(target_os = "android")]
+mod usb_android;
+#[cfg(target_os = "android")]
+pub use usb_android::{StorageUsbAndroid, initialize_android_runtime};
+
+#[cfg(target_vendor = "apple")]
+mod usb_apple;
+#[cfg(target_vendor = "apple")]
+pub use usb_apple::StorageUsbApple;
 
 mod s3;
 pub use s3::StorageS3;

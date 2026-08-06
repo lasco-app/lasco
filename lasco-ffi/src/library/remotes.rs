@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use lasco_core::identifiers::RemoteUuid;
 use lasco_core::library_json::{
     DebugLocalAndroidConfig, DebugLocalAppleConfig, FixedPathConfig, LibraryJson, RemoteConfig,
-    RemoteKind, save_library,
+    RemoteKind, UsbAndroidConfig, UsbAppleConfig, save_library,
 };
 use lasco_core::operations::{LibraryPassword, LibraryUsername, Operation};
 
@@ -93,6 +93,39 @@ impl FfiLibrary {
 
         self.remotes.lock().unwrap().push(ffi_remote);
         Ok(remote_uuid.to_string())
+    }
+
+    /// Add a wired USB drive selected through Android's Storage Access
+    /// Framework. `tree_uri` is an opaque, persistable access grant.
+    pub fn add_remote_usb_android(
+        &self,
+        name: String,
+        tree_uri: String,
+    ) -> Result<String, LascoError> {
+        if tree_uri.trim().is_empty() {
+            return Err(LascoError::Other {
+                msg: "USB drive tree URI must not be empty".to_string(),
+            });
+        }
+        self.add_remote_config(name, RemoteKind::UsbAndroid(UsbAndroidConfig { tree_uri }))
+    }
+
+    /// Add a wired USB drive selected through Apple's document picker.
+    /// `bookmark_base64` is an opaque security-scoped bookmark.
+    pub fn add_remote_usb_apple(
+        &self,
+        name: String,
+        bookmark_base64: String,
+    ) -> Result<String, LascoError> {
+        if bookmark_base64.trim().is_empty() {
+            return Err(LascoError::Other {
+                msg: "USB drive bookmark must not be empty".to_string(),
+            });
+        }
+        self.add_remote_config(
+            name,
+            RemoteKind::UsbApple(UsbAppleConfig { bookmark_base64 }),
+        )
     }
 
     pub fn add_remote_debug_local_apple(&self, name: String) -> Result<String, LascoError> {
@@ -405,6 +438,42 @@ impl FfiLibrary {
 }
 
 impl FfiLibrary {
+    fn add_remote_config(&self, name: String, kind: RemoteKind) -> Result<String, LascoError> {
+        if name.trim().is_empty() {
+            return Err(LascoError::Other {
+                msg: "remote name must not be empty".to_string(),
+            });
+        }
+
+        let library_id = self.inner.library_id();
+        let mut lib_config = self.load_library_json()?;
+
+        if lib_config.remotes.iter().any(|r| r.name == name) {
+            return Err(LascoError::Other {
+                msg: format!("remote '{}' already exists", name),
+            });
+        }
+
+        let remote_uuid = RemoteUuid::new();
+        let remote_config = RemoteConfig {
+            remote_uuid,
+            name,
+            auto_push: true,
+            kind,
+        };
+        let ffi_remote = remote_config_to_ffi(&remote_config);
+        let is_first_remote = lib_config.remotes.is_empty();
+        lib_config.remotes.push(remote_config);
+        if is_first_remote {
+            lib_config.default_fetch_remote = Some(remote_uuid);
+        }
+        save_library(&self.app_dir, &library_id, &lib_config)
+            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+
+        self.remotes.lock().unwrap().push(ffi_remote);
+        Ok(remote_uuid.to_string())
+    }
+
     pub(super) fn load_library_json(&self) -> Result<LibraryJson, LascoError> {
         let library_id = self.inner.library_id();
         LibraryJson::load(&self.app_dir, &library_id)?.ok_or(LascoError::NotFound)
@@ -456,6 +525,20 @@ pub(super) fn remote_config_to_ffi(r: &RemoteConfig) -> FfiRemote {
             None,
             None,
             Some(fs.root_dir.to_string_lossy().into_owned()),
+        ),
+        RemoteKind::UsbAndroid(_) => (
+            "usb_android".to_string(),
+            None,
+            None,
+            None,
+            None,
+        ),
+        RemoteKind::UsbApple(_) => (
+            "usb_apple".to_string(),
+            None,
+            None,
+            None,
+            None,
         ),
         RemoteKind::DebugLocalApple(cfg) => (
             "debug_local_apple".to_string(),

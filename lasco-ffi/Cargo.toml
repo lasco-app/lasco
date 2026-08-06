@@ -24,3 +24,6 @@ path = "src/bin/uniffi_bindgen.rs"
 
 [build-dependencies]
 uniffi = { version = "0.29", features = ["build"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.22"
