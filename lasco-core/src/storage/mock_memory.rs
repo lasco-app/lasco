@@ -56,7 +56,9 @@ impl Storage for StorageMockMemory {
     }
 
     async fn put_atomic(&self, key: &str, data: &[u8]) -> Result<()> {
-        self.put(key, data).await
+        self.check_online()?;
+        self.data.lock().insert(key.to_owned(), data.to_vec());
+        Ok(())
     }
 
     async fn put_if_absent(&self, key: &str, data: &[u8]) -> Result<bool> {
@@ -114,7 +116,7 @@ mod tests {
     #[tokio::test]
     async fn put_then_get_returns_identical_bytes() {
         let s = StorageMockMemory::new();
-        s.put("k", b"hello").await.unwrap();
+        s.put_atomic("k", b"hello").await.unwrap();
         assert_eq!(s.get("k").await.unwrap(), b"hello");
     }
 
@@ -127,7 +129,7 @@ mod tests {
     #[tokio::test]
     async fn delete_removes_key() {
         let s = StorageMockMemory::new();
-        s.put("k", b"v").await.unwrap();
+        s.put_atomic("k", b"v").await.unwrap();
         s.delete("k").await.unwrap();
         assert!(matches!(s.get("k").await, Err(StorageError::NotFound)));
     }
@@ -135,9 +137,9 @@ mod tests {
     #[tokio::test]
     async fn list_returns_only_matching_prefix() {
         let s = StorageMockMemory::new();
-        s.put("files/a", b"1").await.unwrap();
-        s.put("files/b", b"2").await.unwrap();
-        s.put("other/c", b"3").await.unwrap();
+        s.put_atomic("files/a", b"1").await.unwrap();
+        s.put_atomic("files/b", b"2").await.unwrap();
+        s.put_atomic("other/c", b"3").await.unwrap();
         let mut keys = s.list("files/").await.unwrap();
         keys.sort();
         assert_eq!(keys, vec!["files/a", "files/b"]);
@@ -147,7 +149,7 @@ mod tests {
     async fn exists_after_put_and_missing() {
         let s = StorageMockMemory::new();
         assert!(!s.exists("k").await.unwrap());
-        s.put("k", b"v").await.unwrap();
+        s.put_atomic("k", b"v").await.unwrap();
         assert!(s.exists("k").await.unwrap());
     }
 

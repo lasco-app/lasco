@@ -60,29 +60,33 @@ impl StorageS3 {
             None => key.to_string(),
         }
     }
-}
 
-#[async_trait]
-impl Storage for StorageS3 {
-    async fn put(&self, key: &str, data: &[u8]) -> Result<()> {
+    async fn put_object(&self, key: &str, data: &[u8]) -> Result<()> {
         self.bucket
             .put_object(self.prefixed_key(key), data)
             .await
             .map_err(|e| StorageError::Other(Box::new(e)))?;
         Ok(())
     }
+}
+
+#[async_trait]
+impl Storage for StorageS3 {
+    async fn put(&self, key: &str, data: &[u8]) -> Result<()> {
+        self.put_object(key, data).await
+    }
 
     /// S3 object replacement is atomic: readers observe either the old object
     /// or the complete replacement object.
     async fn put_atomic(&self, key: &str, data: &[u8]) -> Result<()> {
-        self.put(key, data).await
+        self.put_object(key, data).await
     }
 
     async fn put_if_absent(&self, key: &str, data: &[u8]) -> Result<bool> {
         if self.exists(key).await? {
             return Ok(false);
         }
-        self.put(key, data).await?;
+        self.put_object(key, data).await?;
         Ok(true)
     }
 
@@ -220,7 +224,7 @@ mod tests {
     #[ignore = "Requires S3 test environment"]
     async fn put_then_get_returns_identical_bytes() {
         let storage = make_storage().expect("S3 test config not set");
-        storage.put("test/put_get", b"hello").await.unwrap();
+        storage.put_atomic("test/put_get", b"hello").await.unwrap();
         assert_eq!(storage.get("test/put_get").await.unwrap(), b"hello");
         storage.delete("test/put_get").await.unwrap();
     }
@@ -239,7 +243,7 @@ mod tests {
     #[ignore = "Requires S3 test environment"]
     async fn delete_removes_key() {
         let storage = make_storage().expect("S3 test config not set");
-        storage.put("test/del", b"v").await.unwrap();
+        storage.put_atomic("test/del", b"v").await.unwrap();
         storage.delete("test/del").await.unwrap();
         assert!(matches!(
             storage.get("test/del").await,
@@ -258,9 +262,9 @@ mod tests {
     #[ignore = "Requires S3 test environment"]
     async fn list_with_prefix() {
         let storage = make_storage().expect("S3 test config not set");
-        storage.put("list/a", b"1").await.unwrap();
-        storage.put("list/b", b"2").await.unwrap();
-        storage.put("other/c", b"3").await.unwrap();
+        storage.put_atomic("list/a", b"1").await.unwrap();
+        storage.put_atomic("list/b", b"2").await.unwrap();
+        storage.put_atomic("other/c", b"3").await.unwrap();
         let keys = storage.list("list/").await.unwrap();
         assert!(keys.iter().any(|k| k == "list/a"));
         assert!(keys.iter().any(|k| k == "list/b"));
@@ -287,7 +291,7 @@ mod tests {
         )
         .unwrap();
 
-        storage.put("nested/a", b"1").await.unwrap();
+        storage.put_atomic("nested/a", b"1").await.unwrap();
         let keys = storage.list("nested/").await.unwrap();
         assert!(keys.iter().any(|k| k == "nested/a"));
         assert_eq!(storage.get("nested/a").await.unwrap(), b"1");
@@ -303,7 +307,7 @@ mod tests {
     async fn exists_behavior() {
         let storage = make_storage().expect("S3 test config not set");
         assert!(!storage.exists("test/ex").await.unwrap());
-        storage.put("test/ex", b"v").await.unwrap();
+        storage.put_atomic("test/ex", b"v").await.unwrap();
         assert!(storage.exists("test/ex").await.unwrap());
         storage.delete("test/ex").await.unwrap();
     }

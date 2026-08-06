@@ -223,7 +223,7 @@ impl Library {
             );
             let bytes = std::fs::read(&data_path)?;
             storage
-                .put(&data_key, &bytes)
+                .put_atomic(&data_key, &bytes)
                 .await
                 .map_err(SyncError::RemoteUnreachable)?;
 
@@ -235,7 +235,7 @@ impl Library {
             if thumb_path.exists() {
                 let bytes = std::fs::read(&thumb_path)?;
                 storage
-                    .put(&thumb_key, &bytes)
+                    .put_atomic(&thumb_key, &bytes)
                     .await
                     .map_err(SyncError::RemoteUnreachable)?;
             }

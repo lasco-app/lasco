@@ -130,7 +130,7 @@ pub(crate) async fn write_compaction_bytes(
     key: &str,
     bytes: &[u8],
 ) -> Result<()> {
-    storage.put(key, bytes).await?;
+    storage.put_atomic(key, bytes).await?;
     Ok(())
 }
 
@@ -193,7 +193,7 @@ mod tests {
             .unwrap();
 
         // Inject a LOCK key that should be skipped.
-        storage.put("operations/LOCK.op", b"locked").await.unwrap();
+        storage.put_atomic("operations/LOCK.op", b"locked").await.unwrap();
 
         let files = list_remote_op_files(&storage).await.unwrap();
         assert_eq!(files.len(), 1);

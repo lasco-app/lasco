@@ -112,14 +112,14 @@ mod tests {
     #[tokio::test]
     async fn put_then_get_returns_identical_bytes() {
         let (s, _dir) = store();
-        s.put("k", b"hello").await.unwrap();
+        s.put_atomic("k", b"hello").await.unwrap();
         assert_eq!(s.get("k").await.unwrap(), b"hello");
     }
 
     #[tokio::test]
     async fn put_atomic_replaces_file_and_removes_temp_file() {
         let (s, dir) = store();
-        s.put("nested/file", b"old").await.unwrap();
+        s.put_atomic("nested/file", b"old").await.unwrap();
         s.put_atomic("nested/file", b"new").await.unwrap();
 
         assert_eq!(s.get("nested/file").await.unwrap(), b"new");
@@ -135,7 +135,7 @@ mod tests {
     #[tokio::test]
     async fn delete_removes_key() {
         let (s, _dir) = store();
-        s.put("k", b"v").await.unwrap();
+        s.put_atomic("k", b"v").await.unwrap();
         s.delete("k").await.unwrap();
         assert!(matches!(s.get("k").await, Err(StorageError::NotFound)));
     }
@@ -149,9 +149,9 @@ mod tests {
     #[tokio::test]
     async fn list_returns_only_matching_prefix() {
         let (s, _dir) = store();
-        s.put("operations/a", b"1").await.unwrap();
-        s.put("operations/b", b"2").await.unwrap();
-        s.put("other/c", b"3").await.unwrap();
+        s.put_atomic("operations/a", b"1").await.unwrap();
+        s.put_atomic("operations/b", b"2").await.unwrap();
+        s.put_atomic("other/c", b"3").await.unwrap();
         let mut keys = s.list("operations/").await.unwrap();
         keys.sort();
         assert_eq!(keys, vec!["operations/a", "operations/b"]);
@@ -176,7 +176,7 @@ mod tests {
     async fn exists_after_put_and_missing() {
         let (s, _dir) = store();
         assert!(!s.exists("k").await.unwrap());
-        s.put("k", b"v").await.unwrap();
+        s.put_atomic("k", b"v").await.unwrap();
         assert!(s.exists("k").await.unwrap());
     }
 
@@ -191,7 +191,7 @@ mod tests {
     #[tokio::test]
     async fn nested_key_paths_created_and_retrieved() {
         let (s, _dir) = store();
-        s.put("a/b/c.bin", b"deep").await.unwrap();
+        s.put_atomic("a/b/c.bin", b"deep").await.unwrap();
         assert_eq!(s.get("a/b/c.bin").await.unwrap(), b"deep");
     }
 }
