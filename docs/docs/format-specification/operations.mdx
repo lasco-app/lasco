@@ -292,10 +292,17 @@ When pushing, the client writes new operation groups directly as a single compac
 `operations.log` is an append-only binary file that lists all the operation groups. It is a sequence of frames like this:
 
 ```
-op_id     16 bytes   op group UUID
 blob_len   4 bytes   unsigned 32-bit integer
 blob      blob_len   CBOR-serialized OperationGroup, encrypted
 ```
 
-Rolling out our own format is questionnable, but it's the simplest way I found to write all the operations in append mode without rewriting everything each time.
+Operation IDs are kept inside the encrypted CBOR payload, so every frame must be decrypted before it can be used. `blob_len` must be greater than zero and no larger than 64 MiB. Any malformed, incomplete, or unauthenticated frame—including the final frame—makes the log unreadable. Repair is intentionally not automatic.
 
+Safety properties:
+
+- A bit flip in the encrypted blob causes authenticated decryption to fail. A changed length either produces an invalid frame or changes the bytes passed to decryption, which also fails.
+- The log is written in append mode. A process killed during an append can leave only an incomplete final frame; loading detects that frame and refuses to load rather than silently using a partial log.
+- Repair is not automatic.
+- The writer does not request that the operating system flush appended bytes to durable storage. These guarantees therefore cover process interruption and malformed on-disk data, not durability across a power loss or operating-system crash.
+
+Rolling out our own format is questionable, but it is the simplest way I found to append operations without rewriting everything each time. We may revisit it when we decide how to persist computed state and computed properties. I am not sure that using SQLite, for example, would be the best solution.

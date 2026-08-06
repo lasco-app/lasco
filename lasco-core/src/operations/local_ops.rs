@@ -14,16 +14,15 @@ pub type Result<T> = std::result::Result<T, OperationError>;
 
 //
 // Each frame in the log has the following layout.
-//   op_id    16 bytes         (UUID bytes)
 //   blob_len  4 bytes         (u32 little-endian)
 //   blob      blob_len bytes  (encrypted OperationGroup CBOR)
 //
-// The plaintext op_id header allows cheap `read_op_ids` without decryption.
-// A trailing partial frame is silently treated as EOF (crash-safe append).
+// Operation IDs are available only after authenticated decryption. Every frame,
+// including the final one, must be complete and valid.
 
-const OP_ID_LEN: usize = 16;
 const BLOB_LEN_FIELD: usize = 4;
-const FRAME_HEADER: usize = OP_ID_LEN + BLOB_LEN_FIELD;
+const MAX_LOCAL_OP_BLOB_LEN: usize = 64 * 1024 * 1024;
+const LOCAL_OPS_KEY_ID: uuid::Uuid = uuid::Uuid::from_u128(0x6c6173636f5f6c6f63616c5f6f707301);
 
 /// Read the single op group from `pending.op`. Returns `None` if the file doesn't exist.
 pub fn read_pending_op_group(
@@ -34,20 +33,19 @@ pub fn read_pending_op_group(
         return Ok(None);
     }
     let data = std::fs::read(pending_path)?;
-    let Some((op_id, (blob_bytes, _))) = read_frame_header(&data) else {
-        return Ok(None);
+    if data.is_empty() {
+        return Err(OperationError::IncompleteFrame {
+            expected: BLOB_LEN_FIELD,
+            found: 0,
+        });
+    }
+    let Some((blob_bytes, remainder)) = read_frame(&data)? else {
+        unreachable!("an empty pending file is rejected above")
     };
-    let Ok(blob) = BlobEncrypted::from_bytes(blob_bytes) else {
-        return Ok(None);
-    };
-    let file_key = derive_blob_key(master_key, &op_id.0);
-    let Ok(plaintext) = decrypt_blob(&file_key, &blob) else {
-        return Ok(None);
-    };
-    let Ok(group) = op_group_from_cbor(&plaintext) else {
-        return Ok(None);
-    };
-    Ok(Some(group))
+    if !remainder.is_empty() {
+        return Err(OperationError::PendingTrailingData);
+    }
+    Ok(Some(decrypt_op_group(master_key, blob_bytes)?))
 }
 
 /// Overwrite `pending.op` with a single frame containing `op_group`.
@@ -56,10 +54,7 @@ pub fn write_pending_op_group(
     master_key: &MasterKey,
     op_group: &OperationGroup,
 ) -> Result<()> {
-    let cbor = op_group_to_cbor(op_group)?;
-    let file_key = derive_blob_key(master_key, &op_group.op_id.0);
-    let blob = encrypt_blob(&file_key, &cbor);
-    let blob_bytes = blob.to_bytes();
+    let frame = encode_frame(master_key, op_group)?;
 
     if let Some(parent) = pending_path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -71,9 +66,7 @@ pub fn write_pending_op_group(
         .truncate(true)
         .open(pending_path)?;
 
-    file.write_all(op_group.op_id.0.as_bytes())?;
-    file.write_all(&(blob_bytes.len() as u32).to_le_bytes())?;
-    file.write_all(&blob_bytes)?;
+    file.write_all(&frame)?;
     Ok(())
 }
 
@@ -94,10 +87,7 @@ pub fn append_op_group(
     master_key: &MasterKey,
     op_group: &OperationGroup,
 ) -> Result<()> {
-    let cbor = op_group_to_cbor(op_group)?;
-    let file_key = derive_blob_key(master_key, &op_group.op_id.0);
-    let blob = encrypt_blob(&file_key, &cbor);
-    let blob_bytes = blob.to_bytes();
+    let frame = encode_frame(master_key, op_group)?;
 
     if let Some(parent) = log_path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -108,9 +98,7 @@ pub fn append_op_group(
         .append(true)
         .open(log_path)?;
 
-    file.write_all(op_group.op_id.0.as_bytes())?;
-    file.write_all(&(blob_bytes.len() as u32).to_le_bytes())?;
-    file.write_all(&blob_bytes)?;
+    file.write_all(&frame)?;
     Ok(())
 }
 
@@ -127,65 +115,84 @@ pub fn read_op_groups(
     let mut groups = Vec::new();
     let mut seen_ids: HashSet<OpUuid> = HashSet::new();
 
-    loop {
-        let Some((op_id, rest)) = read_frame_header(cursor) else {
-            break;
-        };
-        let (blob_bytes, next) = rest;
+    while let Some((blob_bytes, next)) = read_frame(cursor)? {
         cursor = next;
+        let group = decrypt_op_group(master_key, blob_bytes)?;
 
         // Skip duplicates (e.g. same op appended again after re-download).
-        if seen_ids.contains(&op_id) {
-            continue;
+        if seen_ids.insert(group.op_id) {
+            groups.push(group);
         }
-
-        let blob = BlobEncrypted::from_bytes(blob_bytes)?;
-        let file_key = derive_blob_key(master_key, &op_id.0);
-        let plaintext = decrypt_blob(&file_key, &blob)?;
-        let group = op_group_from_cbor(&plaintext)?;
-
-        seen_ids.insert(op_id);
-        groups.push(group);
     }
 
     Ok(groups)
 }
 
-pub fn read_op_ids(log_path: &std::path::Path) -> Result<HashSet<OpUuid>> {
-    if !log_path.exists() {
-        return Ok(HashSet::new());
-    }
-
-    let data = std::fs::read(&log_path)?;
-    let mut cursor = data.as_slice();
-    let mut ids = HashSet::new();
-
-    loop {
-        let Some((op_id, (_, next))) = read_frame_header(cursor) else {
-            break;
-        };
-        cursor = next;
-        ids.insert(op_id);
-    }
-
-    Ok(ids)
+fn local_ops_key(master_key: &MasterKey) -> crate::encryption::blob_key::BlobKey {
+    derive_blob_key(master_key, &LOCAL_OPS_KEY_ID)
 }
 
-/// Parses one frame header from the front of `data`.
-/// Returns `Some((op_id, (blob_bytes, remainder)))` or `None` on partial/empty frame.
-fn read_frame_header(data: &[u8]) -> Option<(OpUuid, (&[u8], &[u8]))> {
-    if data.len() < FRAME_HEADER {
-        return None;
+fn encode_frame(master_key: &MasterKey, op_group: &OperationGroup) -> Result<Vec<u8>> {
+    let cbor = op_group_to_cbor(op_group)?;
+    let blob = encrypt_blob(&local_ops_key(master_key), &cbor);
+    let blob_bytes = blob.to_bytes();
+    let blob_len = blob_bytes.len();
+    if blob_len > MAX_LOCAL_OP_BLOB_LEN {
+        return Err(OperationError::BlobTooLarge {
+            declared: blob_len,
+            maximum: MAX_LOCAL_OP_BLOB_LEN,
+        });
     }
-    let op_id_bytes: [u8; OP_ID_LEN] = data[..OP_ID_LEN].try_into().unwrap();
-    let op_id = OpUuid::from_uuid(uuid::Uuid::from_bytes(op_id_bytes));
-    let blob_len = u32::from_le_bytes(data[OP_ID_LEN..FRAME_HEADER].try_into().unwrap()) as usize;
-    let rest = &data[FRAME_HEADER..];
+    let blob_len = u32::try_from(blob_len).map_err(|_| OperationError::BlobTooLarge {
+        declared: blob_len,
+        maximum: MAX_LOCAL_OP_BLOB_LEN,
+    })?;
+
+    let mut frame = Vec::with_capacity(BLOB_LEN_FIELD + blob_len as usize);
+    frame.extend_from_slice(&blob_len.to_le_bytes());
+    frame.extend_from_slice(&blob_bytes);
+    Ok(frame)
+}
+
+fn decrypt_op_group(master_key: &MasterKey, blob_bytes: &[u8]) -> Result<OperationGroup> {
+    let blob = BlobEncrypted::from_bytes(blob_bytes)?;
+    let plaintext = decrypt_blob(&local_ops_key(master_key), &blob)?;
+    op_group_from_cbor(&plaintext)
+}
+
+/// Parses one complete frame from the front of `data`.
+/// Returns `None` only for an empty input.
+fn read_frame(data: &[u8]) -> Result<Option<(&[u8], &[u8])>> {
+    if data.is_empty() {
+        return Ok(None);
+    }
+    if data.len() < BLOB_LEN_FIELD {
+        return Err(OperationError::IncompleteFrame {
+            expected: BLOB_LEN_FIELD,
+            found: data.len(),
+        });
+    }
+
+    let blob_len = u32::from_le_bytes(data[..BLOB_LEN_FIELD].try_into().unwrap()) as usize;
+    if blob_len == 0 {
+        return Err(OperationError::ZeroLengthBlob);
+    }
+    if blob_len > MAX_LOCAL_OP_BLOB_LEN {
+        return Err(OperationError::BlobTooLarge {
+            declared: blob_len,
+            maximum: MAX_LOCAL_OP_BLOB_LEN,
+        });
+    }
+
+    let rest = &data[BLOB_LEN_FIELD..];
     if rest.len() < blob_len {
-        return None; // partial frame at EOF
+        return Err(OperationError::IncompleteFrame {
+            expected: blob_len,
+            found: rest.len(),
+        });
     }
     let (blob_bytes, next) = rest.split_at(blob_len);
-    Some((op_id, (blob_bytes, next)))
+    Ok(Some((blob_bytes, next)))
 }
 
 #[cfg(test)]
@@ -205,6 +212,13 @@ mod tests {
         LocalDirs::new(tmp.path().to_path_buf(), &library_id)
             .local_state_operations()
             .operations_log_path()
+    }
+
+    fn make_pending_path(tmp: &tempfile::TempDir) -> std::path::PathBuf {
+        let library_id = LibraryId(Uuid::new_v4());
+        LocalDirs::new(tmp.path().to_path_buf(), &library_id)
+            .local_state_operations()
+            .pending_op_path()
     }
 
     fn sample_group(timestamp: chrono::DateTime<Utc>) -> OperationGroup {
@@ -261,7 +275,7 @@ mod tests {
     }
 
     #[test]
-    fn read_op_ids_matches_appended_ids() {
+    fn read_op_groups_derives_ids_from_authenticated_payloads() {
         let tmp = tempfile::TempDir::new().unwrap();
         let log_path = make_log_path(&tmp);
         let mk = generate_master_key();
@@ -271,7 +285,11 @@ mod tests {
         append_op_group(&log_path, &mk, &g1).unwrap();
         append_op_group(&log_path, &mk, &g2).unwrap();
 
-        let ids = read_op_ids(&log_path).unwrap();
+        let ids: HashSet<_> = read_op_groups(&log_path, &mk)
+            .unwrap()
+            .into_iter()
+            .map(|group| group.op_id)
+            .collect();
         assert_eq!(ids.len(), 2);
         assert!(ids.contains(&g1.op_id));
         assert!(ids.contains(&g2.op_id));
@@ -284,11 +302,10 @@ mod tests {
         let mk = generate_master_key();
 
         assert!(read_op_groups(&log_path, &mk).unwrap().is_empty());
-        assert!(read_op_ids(&log_path).unwrap().is_empty());
     }
 
     #[test]
-    fn partial_frame_at_eof_treated_as_eof() {
+    fn partial_frame_at_eof_returns_error() {
         let tmp = tempfile::TempDir::new().unwrap();
         let log_path = make_log_path(&tmp);
         let mk = generate_master_key();
@@ -302,9 +319,10 @@ mod tests {
         data.truncate(truncate_at);
         std::fs::write(&log_path, &data).unwrap();
 
-        // A truncated log has its partial frame silently ignored.
-        let groups = read_op_groups(&log_path, &mk).unwrap();
-        assert!(groups.is_empty(), "partial frame must be treated as EOF");
+        assert!(matches!(
+            read_op_groups(&log_path, &mk),
+            Err(OperationError::IncompleteFrame { .. })
+        ));
     }
 
     #[test]
@@ -318,10 +336,89 @@ mod tests {
 
         // Corrupt the blob version byte in the first frame.
         let mut data = std::fs::read(&log_path).unwrap();
-        assert!(data.len() > FRAME_HEADER, "log must have content");
-        data[FRAME_HEADER] = 0; // BLOB_FORMAT_VERSION is 1 so 0 triggers UnknownVersion
+        assert!(data.len() > BLOB_LEN_FIELD, "log must have content");
+        data[BLOB_LEN_FIELD] = 0; // BLOB_FORMAT_VERSION is 1 so 0 triggers UnknownVersion
         std::fs::write(&log_path, &data).unwrap();
 
         assert!(read_op_groups(&log_path, &mk).is_err());
+    }
+
+    #[test]
+    fn zero_blob_length_returns_error() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let log_path = make_log_path(&tmp);
+        let mk = generate_master_key();
+        std::fs::create_dir_all(log_path.parent().unwrap()).unwrap();
+        std::fs::write(&log_path, 0_u32.to_le_bytes()).unwrap();
+
+        assert!(matches!(
+            read_op_groups(&log_path, &mk),
+            Err(OperationError::ZeroLengthBlob)
+        ));
+    }
+
+    #[test]
+    fn oversized_blob_length_returns_error() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let log_path = make_log_path(&tmp);
+        let mk = generate_master_key();
+        std::fs::create_dir_all(log_path.parent().unwrap()).unwrap();
+        let oversized = (MAX_LOCAL_OP_BLOB_LEN as u32) + 1;
+        std::fs::write(&log_path, oversized.to_le_bytes()).unwrap();
+
+        assert!(matches!(
+            read_op_groups(&log_path, &mk),
+            Err(OperationError::BlobTooLarge { .. })
+        ));
+    }
+
+    #[test]
+    fn changed_blob_length_returns_error() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let log_path = make_log_path(&tmp);
+        let mk = generate_master_key();
+        append_op_group(&log_path, &mk, &sample_group(Utc::now())).unwrap();
+
+        let mut data = std::fs::read(&log_path).unwrap();
+        let blob_len = u32::from_le_bytes(data[..BLOB_LEN_FIELD].try_into().unwrap());
+        data[..BLOB_LEN_FIELD].copy_from_slice(&(blob_len - 1).to_le_bytes());
+        std::fs::write(&log_path, &data).unwrap();
+
+        assert!(read_op_groups(&log_path, &mk).is_err());
+    }
+
+    #[test]
+    fn enlarged_final_blob_length_returns_incomplete_frame_error() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let log_path = make_log_path(&tmp);
+        let mk = generate_master_key();
+        append_op_group(&log_path, &mk, &sample_group(Utc::now())).unwrap();
+
+        let mut data = std::fs::read(&log_path).unwrap();
+        let blob_len = u32::from_le_bytes(data[..BLOB_LEN_FIELD].try_into().unwrap());
+        data[..BLOB_LEN_FIELD].copy_from_slice(&(blob_len + 1).to_le_bytes());
+        std::fs::write(&log_path, &data).unwrap();
+
+        assert!(matches!(
+            read_op_groups(&log_path, &mk),
+            Err(OperationError::IncompleteFrame { .. })
+        ));
+    }
+
+    #[test]
+    fn corrupt_pending_file_returns_error() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let pending_path = make_pending_path(&tmp);
+        let mk = generate_master_key();
+        write_pending_op_group(&pending_path, &mk, &sample_group(Utc::now())).unwrap();
+
+        let mut data = std::fs::read(&pending_path).unwrap();
+        data.truncate(data.len() - 1);
+        std::fs::write(&pending_path, &data).unwrap();
+
+        assert!(matches!(
+            read_pending_op_group(&pending_path, &mk),
+            Err(OperationError::IncompleteFrame { .. })
+        ));
     }
 }

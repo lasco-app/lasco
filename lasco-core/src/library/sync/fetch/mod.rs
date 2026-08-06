@@ -81,7 +81,12 @@ pub(super) async fn fetch_impl(
         LastKnownState::download(storage, remote_last_known_state_dir, &processed, master_key)
             .await?;
 
-    let local_valid_ids = local_ops_read_write_lock.lock(master_key).read_log_ids()?;
+    let local_valid_ids: HashSet<_> = local_ops_read_write_lock
+        .lock(master_key)
+        .read_log_groups()?
+        .into_iter()
+        .map(|group| group.op_id)
+        .collect();
 
     let mut ops_downloaded = 0usize;
     let mut processed_changed = false;
