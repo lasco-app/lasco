@@ -263,7 +263,7 @@ pub async fn add_existing_library_s3(
             let mk_bytes = std::fs::read(lib_dir.path().join(&mk_name))
                 .with_context(|| format!("failed to read {mk_name}"))?;
             storage
-                .put(&format!("library/{mk_name}"), &mk_bytes)
+                .put_atomic(&format!("library/{mk_name}"), &mk_bytes)
                 .await
                 .map_err(|e| anyhow::anyhow!("failed to upload new user key: {e}"))?;
 

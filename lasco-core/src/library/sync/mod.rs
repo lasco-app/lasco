@@ -69,7 +69,7 @@ impl Library {
             let data = std::fs::read(&path)?;
             let key = format!("library/{filename}");
             remote
-                .put(&key, &data)
+                .put_atomic(&key, &data)
                 .await
                 .map_err(|e| LibraryError::Io(std::io::Error::other(e.to_string())))?;
         }

@@ -686,7 +686,7 @@ async fn push_skips_cascade_when_lock_held() {
     seed_tier1_files(&lib, &storage, 9).await;
 
     // Manually place a lock as if another client is mid-compaction.
-    storage.put("operations/LOCK.op", b"lock").await.unwrap();
+    storage.put_atomic("operations/LOCK.op", b"lock").await.unwrap();
 
     inject_op_groups(&lib, 20);
     let report = lib.push(&storage, REMOTE_ID).await.unwrap();

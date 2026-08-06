@@ -70,8 +70,14 @@ impl<'a> StorageReadWrite<'a> {
         self.storage.exists(key).await
     }
 
+    #[deprecated(note = "Use put_atomic for remote writes.")]
+    #[allow(deprecated)]
     pub async fn put(&self, key: &str, data: &[u8]) -> Result<()> {
         self.storage.put(key, data).await
+    }
+
+    pub async fn put_atomic(&self, key: &str, data: &[u8]) -> Result<()> {
+        self.storage.put_atomic(key, data).await
     }
 
     pub async fn put_if_absent(&self, key: &str, data: &[u8]) -> Result<bool> {
