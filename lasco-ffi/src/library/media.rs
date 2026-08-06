@@ -512,9 +512,11 @@ impl FfiLibrary {
             self.app_dir.clone(),
             &self.inner.library_id(),
         );
-        let media_dir = local_dirs.media_dir();
-        let (media_cached_count, media_cached_bytes) = count_files_with_ext(&media_dir, "data");
-        let (thumb_cached_count, thumb_cached_bytes) = count_files_with_ext(&media_dir, "thumb");
+        let media_dir = local_dirs.local_state_media_dir();
+        let (media_cached_count, media_cached_bytes) =
+            count_files_with_ext(media_dir.path(), "data");
+        let (thumb_cached_count, thumb_cached_bytes) =
+            count_files_with_ext(media_dir.path(), "thumb");
         FfiLocalStateStats {
             media_cached_count,
             media_cached_bytes,
