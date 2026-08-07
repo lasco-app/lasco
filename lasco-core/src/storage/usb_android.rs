@@ -184,6 +184,10 @@ impl Storage for StorageUsbAndroid {
         })
     }
 
+    async fn put_atomic(&self, _key: &str, _data: &[u8]) -> Result<()> {
+        Err(StorageError::Unavailable("Android USB storage does not support atomic replacement".to_string()))
+    }
+
     async fn put_if_absent(&self, key: &str, data: &[u8]) -> Result<bool> {
         if self.exists(key).await? { return Ok(false); }
         self.put(key, data).await?;

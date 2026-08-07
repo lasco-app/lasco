@@ -202,7 +202,7 @@ async fn fetch_library_dir(
             .await
             .map_err(SyncError::RemoteUnreachable)?;
         std::fs::create_dir_all(&local_dir).map_err(SyncError::Io)?;
-        std::fs::write(local_dir.join(name), &bytes).map_err(SyncError::Io)?;
+        crate::atomic_file::write(&local_dir.join(name), &bytes).map_err(SyncError::Io)?;
     }
 
     Ok(())

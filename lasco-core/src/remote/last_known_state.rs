@@ -52,7 +52,7 @@ impl LastKnownState {
                     .get(&remote_key)
                     .await
                     .map_err(SyncError::RemoteUnreachable)?;
-                std::fs::write(&local_path, &bytes)?;
+                crate::atomic_file::write(&local_path, &bytes)?;
             }
         }
 
@@ -176,8 +176,8 @@ impl LastKnownState {
         bytes: &[u8],
     ) -> Result<(), SyncError> {
         std::fs::create_dir_all(&self.ops_dir)?;
-        std::fs::write(
-            self.ops_dir.join(format!("{uuid}.op{tier}_{op_count}")),
+        crate::atomic_file::write(
+            &self.ops_dir.join(format!("{uuid}.op{tier}_{op_count}")),
             bytes,
         )?;
         Ok(())
