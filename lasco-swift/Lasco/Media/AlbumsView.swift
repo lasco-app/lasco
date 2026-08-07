@@ -316,7 +316,7 @@ struct AlbumContentView: View {
         .scrollContentBackground(.hidden)
         .toolbarBackButton(action: { dismiss() }, isVisible: !isRoot)
         .onAppear {
-            AppLogger.log(.info, "album shown — '\(album?.name ?? "root")' (\(album?.albumId ?? "root"))")
+            AppLogger.log(.info, "album shown — '\(album?.name ?? "root")' (\(album?.albumId.value ?? "root"))")
         }
         .task(id: album?.albumId) {
             await albumModel.load(parentID: album?.albumId)

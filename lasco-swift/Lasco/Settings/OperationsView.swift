@@ -74,7 +74,7 @@ private struct OperationGroupRow: View {
                             Text("↑")
                                 .font(LascoFont.mono())
                                 .foregroundStyle(theme.inkMuted)
-                            Text(parentId.prefix(12))
+                            Text(parentId.value.prefix(12))
                                 .font(LascoFont.mono())
                                 .foregroundStyle(theme.inkMuted)
                         }

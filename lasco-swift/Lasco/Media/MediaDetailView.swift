@@ -258,7 +258,7 @@ struct MediaDetailView: View {
         .preference(key: HideTabBarKey.self, value: true)
         .onChange(of: currentPosition) {
             pagerIndex = currentIndex
-            AppLogger.log(.info, "media navigated — '\(currentItem.map { $0.name ?? $0.filenameOriginal } ?? "")' (\(currentItem?.mediaId ?? "group"))")
+            AppLogger.log(.info, "media navigated — '\(currentItem.map { $0.name ?? $0.filenameOriginal } ?? "")' (\(currentItem?.mediaId.value ?? "group"))")
             if case .group(let g) = items[safe: currentIndex] { loadGroupMediaIfNeeded(for: g.groupId) }
             preloadAdjacent()
             groupMediaIndex = 0
@@ -365,11 +365,11 @@ struct MediaDetailView: View {
                         metaRow(label: "SIZE", value: formattedSize)
                         metaRow(label: "ADDED BY", value: infoDisplayItem?.author ?? "")
                         if expertMode {
-                            metaRow(label: "ID", value: infoDisplayItem?.mediaId ?? "")
+                            metaRow(label: "ID", value: infoDisplayItem?.mediaId.value ?? "")
                             metaRow(label: "HASH", value: infoDisplayItem?.contentHash ?? "")
                             if let aaeMediaId = infoDisplayItem?.appleAaeMediaId {
                                 Button(action: { presentAAEAdjustment(mediaId: aaeMediaId) }) {
-                                    metaRow(label: "AAE", value: aaeMediaId)
+                                    metaRow(label: "AAE", value: aaeMediaId.value)
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -818,7 +818,7 @@ struct MediaDetailView: View {
 
     private func evictDistantFullImages(around idx: Int, window: Int = 2) {
         let keepRange = (idx - window)...(idx + window)
-        let keepIds = Set(items.indices.flatMap { i -> [String] in
+        let keepIds = Set(items.indices.flatMap { i -> [FfiMediaUuid] in
             guard keepRange.contains(i) else { return [] }
             switch items[i] {
             case .media(let media): return [media.mediaId]
@@ -864,10 +864,10 @@ struct MediaDetailView: View {
                     metaRow(label: "DATE", value: infoDisplayItem.map { formatMediaDate($0.date) } ?? "")
                     metaRow(label: "SIZE", value: formattedSize)
                     if expertMode {
-                        metaRow(label: "ID", value: infoDisplayItem?.mediaId ?? "")
+                        metaRow(label: "ID", value: infoDisplayItem?.mediaId.value ?? "")
                         if let aaeMediaId = infoDisplayItem?.appleAaeMediaId {
                             Button(action: { presentAAEAdjustment(mediaId: aaeMediaId) }) {
-                                metaRow(label: "AAE", value: aaeMediaId)
+                                metaRow(label: "AAE", value: aaeMediaId.value)
                             }
                             .buttonStyle(.plain)
                         }
