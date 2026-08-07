@@ -72,8 +72,11 @@ impl Library {
         // Flush any pending (unpushed) op group into the main log before uploading.
         let flushed_pending = {
             let mut local_ops = self.local_ops_read_write();
-            if let Some(pending) = local_ops.take_pending()? {
+            if let Some(pending) = local_ops.read_pending()? {
                 local_ops.append_log(&pending)?;
+                // Deleting only after the append makes an interruption safe: it can
+                // leave a duplicate group, but the log reader deduplicates by op_id.
+                local_ops.remove_pending()?;
                 true
             } else {
                 false

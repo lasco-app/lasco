@@ -9,11 +9,9 @@ import React from 'react';
 ## Known issues (WIP)
 
 - Define the read and write tokens granted by the sync policy.
-- Appending to the local operation log is not atomic.
 - What are the implications when fetch completes without performing step 6 (appending to the local operation log)?
 - What happens during push if operations are uploaded but their media is not?
 - Master-key downloads and last-known operation-cache writes are currently in-place writes, rather than atomic writes.
-- `pending.op` is overwritten in place; an interruption can make a pending operation unreadable and it is currently treated as absent.
 - Extend the remote storage interface with an atomic publish/write operation. S3 object writes are atomic, but future backends such as USB drives cannot provide that guarantee with the current interface.
 
 export const AccessCard = ({ children }) => (
@@ -103,7 +101,7 @@ Fetch lists and downloads remote operation files missing from the remote's last-
 - Before a temporary file is renamed, an interruption leaves the previous last-known state for the remote unchanged. That state records only fully downloaded and validated operation files.
 - During a temporary-file write, an incomplete temporary file may remain and can be discarded.
 - After a file is renamed into place but before last-known-state metadata is updated, an extra local file may remain. The last-known state may therefore be stale, but it never records an incomplete or unvalidated download as known.
-- During a log append, previously written frames remain valid. The operation log contains only complete frames, so a partial final frame is ignored on the next read.
+- During a log append, previously written frames remain valid. A partial final frame makes the log unreadable; repair is intentionally a separate maintenance procedure rather than part of fetch.
 - Master-key files are additive: an interruption may leave a temporary file, but fetch never removes or replaces an existing local `mk_*.enc` file.
 - In-memory local state is not durable. If fetch terminates during its rebuild, the next rebuild starts from the persisted operation log.
 
@@ -153,7 +151,7 @@ For operation files, the client simply copies what it has locally. For media and
       <td style={{ whiteSpace: 'nowrap' }}>2</td>
       <td>Append any pending operation group to the local log, remove the pending file, and rebuild local state.</td>
       <td><span className="tag tag-warn">Append local log</span> <span className="tag tag-warn">Delete local pending file</span> <span className="tag tag-warn">Rebuild in-memory state</span></td>
-      <td>If interrupted before the pending file is removed, operations can be duplicated (allowed). Appending to the local log is not atomic; an incomplete frame is detected and makes the log unreadable. Repair is not automatic.</td>
+      <td>The pending file is removed only after the append. If interrupted before removal, operations can be duplicated (allowed). A partial log frame makes the log unreadable; repair is intentionally not automatic.</td>
     </tr>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>3</td>

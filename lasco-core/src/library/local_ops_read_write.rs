@@ -71,10 +71,9 @@ impl LocalOpsReadWrite<'_> {
         )?)
     }
 
-    pub(crate) fn take_pending(&mut self) -> Result<Option<OperationGroup>> {
-        Ok(op_log::take_pending_op_group(
+    pub(crate) fn remove_pending(&mut self) -> Result<()> {
+        Ok(op_log::remove_pending_op_group(
             &self.local_state_operations.pending_op_path(),
-            self.master_key,
         )?)
     }
 }
