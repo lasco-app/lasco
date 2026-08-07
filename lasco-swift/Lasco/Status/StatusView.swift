@@ -216,19 +216,19 @@ struct StatusView: View {
                         .frame(maxWidth: .infinity)
                 }
             } else {
-                ForEach(session.remotes, id: \.id) { remote in
+                ForEach(session.remotes, id: \.remoteId) { remote in
                     RemoteStatusCard(
                         remote: remote,
-                        isDefaultFetch: remote.id == session.defaultFetchRemoteID,
-                        lastPush: syncCoordinator.lastPushRecords[remote.id],
-                        lastFetch: syncCoordinator.lastFetchRecords[remote.id],
+                        isDefaultFetch: remote.remoteId == session.defaultFetchRemoteID,
+                        lastPush: syncCoordinator.lastPushRecords[remote.remoteId],
+                        lastFetch: syncCoordinator.lastFetchRecords[remote.remoteId],
                         isSynced: isSynced(remote),
                         nextPushDate: remote.autoPush ? syncCoordinator.nextPushDate : nil,
-                        pushEnabled: syncCoordinator.isPushAllowed(remote.id),
-                        fetchEnabled: syncCoordinator.isFetchAllowed(remote.id),
+                        pushEnabled: syncCoordinator.isPushAllowed(remote.remoteId),
+                        fetchEnabled: syncCoordinator.isFetchAllowed(remote.remoteId),
                         onPush: {
                             Task {
-                                if let err = await syncCoordinator.push(remoteID: remote.id) {
+                                if let err = await syncCoordinator.push(remoteID: remote.remoteId) {
                                     toastManager.show(error: err)
                                 } else {
                                     toastManager.show(ok: "\(remote.name): pushed")
@@ -237,7 +237,7 @@ struct StatusView: View {
                         },
                         onFetch: {
                             Task {
-                                if let err = await syncCoordinator.fetch(remoteID: remote.id) {
+                                if let err = await syncCoordinator.fetch(remoteID: remote.remoteId) {
                                     toastManager.show(error: err)
                                 } else {
                                     toastManager.show(ok: "\(remote.name): fetched")
@@ -256,7 +256,7 @@ struct StatusView: View {
     }
 
     private func isSynced(_ remote: FfiRemote) -> Bool {
-        model.isSynced(remoteID: remote.id)
+        model.isSynced(remoteID: remote.remoteId)
     }
 }
 
@@ -303,7 +303,7 @@ private struct RemoteStatusCard: View {
                         .font(LascoFont.mono())
                         .foregroundStyle(theme.inkMuted)
                 }
-                Text(remote.id)
+                Text(remote.remoteId.value)
                     .font(.system(size: 10))
                     .foregroundStyle(theme.inkMuted)
             }

@@ -66,7 +66,7 @@ private struct OperationGroupRow: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(group.opId.prefix(12))
+                    Text(group.opId.value.prefix(12))
                         .font(LascoFont.mono())
                         .foregroundStyle(theme.ink)
                     if let parentId = group.parentOpId {

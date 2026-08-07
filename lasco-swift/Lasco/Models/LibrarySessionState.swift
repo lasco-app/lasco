@@ -4,15 +4,15 @@ import Observation
 @MainActor
 @Observable
 final class LibrarySessionState {
-    private(set) var libraryID: String
+    private(set) var libraryID: FfiLibraryId
     private(set) var nickname: String
     private(set) var username: String?
     private(set) var users: [String] = []
     private(set) var remotes: [FfiRemote] = []
-    private(set) var defaultFetchRemoteID: String?
+    private(set) var defaultFetchRemoteID: FfiRemoteUuid?
     private(set) var autoImportDeviceMedia = false
 
-    init(libraryID: String, nickname: String, username: String?) {
+    init(libraryID: FfiLibraryId, nickname: String, username: String?) {
         self.libraryID = libraryID
         self.nickname = nickname
         self.username = username

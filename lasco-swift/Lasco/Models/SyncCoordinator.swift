@@ -38,11 +38,11 @@ private actor SyncCommandGate {
 @MainActor
 @Observable
 final class SyncCoordinator {
-    private(set) var busyRemotes: Set<String> = []
+    private(set) var busyRemotes: Set<FfiRemoteUuid> = []
     private(set) var fetchInProgress = false
     private(set) var nextPushDate: Date?
-    private(set) var lastPushRecords: [String: SyncRecord] = [:]
-    private(set) var lastFetchRecords: [String: SyncRecord] = [:]
+    private(set) var lastPushRecords: [FfiRemoteUuid: SyncRecord] = [:]
+    private(set) var lastFetchRecords: [FfiRemoteUuid: SyncRecord] = [:]
 
     private let repository: any LibraryRepositoryProtocol
     private let session: LibrarySessionState
@@ -58,11 +58,11 @@ final class SyncCoordinator {
         }
     }
 
-    func isPushAllowed(_ remoteID: String) -> Bool {
+    func isPushAllowed(_ remoteID: FfiRemoteUuid) -> Bool {
         !busyRemotes.contains(remoteID) && !fetchInProgress
     }
 
-    func isFetchAllowed(_ remoteID: String) -> Bool {
+    func isFetchAllowed(_ remoteID: FfiRemoteUuid) -> Bool {
         !busyRemotes.contains(remoteID) && !fetchInProgress
     }
 
@@ -71,7 +71,7 @@ final class SyncCoordinator {
         _ = await fetch(remoteID: remoteID)
     }
 
-    func push(remoteID: String, isAutomatic: Bool = false) async -> String? {
+    func push(remoteID: FfiRemoteUuid, isAutomatic: Bool = false) async -> String? {
         // A manual push supersedes the pending automatic push. Only the timer is
         // cancelled; an upload that has already started is left to finish.
         if !isAutomatic {
@@ -94,7 +94,7 @@ final class SyncCoordinator {
         }
     }
 
-    func fetch(remoteID: String) async -> String? {
+    func fetch(remoteID: FfiRemoteUuid) async -> String? {
         busyRemotes.insert(remoteID)
         fetchInProgress = true
         defer {
@@ -150,7 +150,7 @@ final class SyncCoordinator {
                 delayedPushTask = nil
                 nextPushDate = nil
                 for remote in session.remotes where remote.autoPush {
-                    _ = await push(remoteID: remote.id, isAutomatic: true)
+                    _ = await push(remoteID: remote.remoteId, isAutomatic: true)
                 }
             } catch is CancellationError {
                 return
@@ -207,15 +207,15 @@ final class SyncCoordinator {
     /// `LibrarySessionState` starts with no remotes, so this must be invoked after
     /// its asynchronous refresh rather than during `SyncCoordinator` initialization.
     func restorePersistedRecords(for remotes: [FfiRemote]) {
-        var restoredPushRecords: [String: SyncRecord] = [:]
-        var restoredFetchRecords: [String: SyncRecord] = [:]
+        var restoredPushRecords: [FfiRemoteUuid: SyncRecord] = [:]
+        var restoredFetchRecords: [FfiRemoteUuid: SyncRecord] = [:]
 
         for remote in remotes {
-            if let date = UserDefaults.standard.object(forKey: "lasco.lastPush.\(remote.id)") as? Date {
-                restoredPushRecords[remote.id] = SyncRecord(date: date, success: UserDefaults.standard.bool(forKey: "lasco.lastPushOk.\(remote.id)"))
+            if let date = UserDefaults.standard.object(forKey: "lasco.lastPush.\(remote.remoteId.value)") as? Date {
+                restoredPushRecords[remote.remoteId] = SyncRecord(date: date, success: UserDefaults.standard.bool(forKey: "lasco.lastPushOk.\(remote.remoteId.value)"))
             }
-            if let date = UserDefaults.standard.object(forKey: "lasco.lastFetch.\(remote.id)") as? Date {
-                restoredFetchRecords[remote.id] = SyncRecord(date: date, success: UserDefaults.standard.bool(forKey: "lasco.lastFetchOk.\(remote.id)"))
+            if let date = UserDefaults.standard.object(forKey: "lasco.lastFetch.\(remote.remoteId.value)") as? Date {
+                restoredFetchRecords[remote.remoteId] = SyncRecord(date: date, success: UserDefaults.standard.bool(forKey: "lasco.lastFetchOk.\(remote.remoteId.value)"))
             }
         }
 
@@ -223,10 +223,10 @@ final class SyncCoordinator {
         lastFetchRecords = restoredFetchRecords
     }
 
-    private func record(key: String, remoteID: String, success: Bool, in records: inout [String: SyncRecord]) {
+    private func record(key: String, remoteID: FfiRemoteUuid, success: Bool, in records: inout [FfiRemoteUuid: SyncRecord]) {
         let now = Date.now
-        UserDefaults.standard.set(now, forKey: "\(key).\(remoteID)")
-        UserDefaults.standard.set(success, forKey: "\(key)Ok.\(remoteID)")
+        UserDefaults.standard.set(now, forKey: "\(key).\(remoteID.value)")
+        UserDefaults.standard.set(success, forKey: "\(key)Ok.\(remoteID.value)")
         records[remoteID] = SyncRecord(date: now, success: success)
     }
 }

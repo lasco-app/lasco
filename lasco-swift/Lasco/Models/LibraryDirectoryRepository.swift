@@ -24,13 +24,13 @@ actor LibraryDirectoryRepository {
     }
 
     func openCached(entry: FfiLibraryEntry) throws -> FfiLibrary? {
-        guard let username = storedUsername(libraryID: entry.libraryId.value), !username.isEmpty else { return nil }
+        guard let username = storedUsername(libraryID: entry.libraryId), !username.isEmpty else { return nil }
         return try ffiOpenCached(nickname: entry.nickname, username: username, appDir: appSupportDirectory)
     }
 
     func open(nickname: String?, username: String, password: String) throws -> FfiLibrary {
         let library = try FfiLibrary.open(nickname: nickname, username: username, password: password, appDir: appSupportDirectory)
-        storeUsername(username, libraryID: library.libraryId().value)
+        storeUsername(username, libraryID: library.libraryId())
         return library
     }
 
@@ -60,7 +60,7 @@ actor LibraryDirectoryRepository {
             password: password,
             newUsername: newUsername,
             newPassword: newPassword,
-            remoteId: remoteID,
+            remoteName: remoteID,
             endpoint: endpoint,
             bucket: bucket,
             region: region,
@@ -70,30 +70,30 @@ actor LibraryDirectoryRepository {
             appDir: appSupportDirectory
         )
         let effectiveUsername = newUsername?.isEmpty == false ? newUsername! : username
-        storeUsername(effectiveUsername, libraryID: library.libraryId().value)
+        storeUsername(effectiveUsername, libraryID: library.libraryId())
         try library.loadLocalState()
         return library
     }
 
-    func delete(libraryID: String) throws {
-        try ffiDeleteLibrary(libraryId: FfiLibraryId(value: libraryID), appDir: appSupportDirectory)
-        UserDefaults.standard.removeObject(forKey: "lasco.lastUsername.\(libraryID)")
+    func delete(libraryID: FfiLibraryId) throws {
+        try ffiDeleteLibrary(libraryId: libraryID, appDir: appSupportDirectory)
+        UserDefaults.standard.removeObject(forKey: "lasco.lastUsername.\(libraryID.value)")
     }
 
-    func clearSession(libraryID: String) throws {
+    func clearSession(libraryID: FfiLibraryId) throws {
         let username = storedUsername(libraryID: libraryID) ?? ""
-        try sessionClear(libraryId: FfiLibraryId(value: libraryID), username: username, appDir: appSupportDirectory)
+        try sessionClear(libraryId: libraryID, username: username, appDir: appSupportDirectory)
     }
 
     func testS3Remote(endpoint: String, bucket: String, region: String, pathPrefix: String, accessKey: String, secretKey: String) throws {
         try ffiTestS3Remote(endpoint: endpoint, bucket: bucket, region: region, pathPrefix: pathPrefix, accessKey: accessKey, secretKey: secretKey)
     }
 
-    func storedUsername(libraryID: String) -> String? {
-        UserDefaults.standard.string(forKey: "lasco.lastUsername.\(libraryID)")
+    func storedUsername(libraryID: FfiLibraryId) -> String? {
+        UserDefaults.standard.string(forKey: "lasco.lastUsername.\(libraryID.value)")
     }
 
-    func storeUsername(_ username: String, libraryID: String) {
-        UserDefaults.standard.set(username, forKey: "lasco.lastUsername.\(libraryID)")
+    func storeUsername(_ username: String, libraryID: FfiLibraryId) {
+        UserDefaults.standard.set(username, forKey: "lasco.lastUsername.\(libraryID.value)")
     }
 }

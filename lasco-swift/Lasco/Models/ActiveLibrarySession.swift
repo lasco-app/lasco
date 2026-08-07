@@ -12,7 +12,7 @@ final class ActiveLibrarySession {
 
     init(library: FfiLibrary, nickname: String, username: String?) {
         let repository = LibraryRepository(library: library)
-        let state = LibrarySessionState(libraryID: library.libraryId().value, nickname: nickname, username: username)
+        let state = LibrarySessionState(libraryID: library.libraryId(), nickname: nickname, username: username)
         self.repository = repository
         self.state = state
         self.syncCoordinator = SyncCoordinator(repository: repository, session: state)

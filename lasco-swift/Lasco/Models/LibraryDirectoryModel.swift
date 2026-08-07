@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 struct CreateLibraryResult: Sendable, Equatable {
-    let libraryID: String
+    let libraryID: FfiLibraryId
     let masterKey: String
 }
 
@@ -61,7 +61,7 @@ final class LibraryDirectoryModel {
     func openCached(entry: FfiLibraryEntry) async -> Bool {
         do {
             guard let library = try await directory.openCached(entry: entry) else { return false }
-            await install(library: library, nickname: entry.nickname, username: await directory.storedUsername(libraryID: entry.id.value))
+            await install(library: library, nickname: entry.nickname, username: await directory.storedUsername(libraryID: entry.libraryId))
             return true
         } catch {
             onboarding.setError(error)
@@ -90,7 +90,7 @@ final class LibraryDirectoryModel {
             markOpen: false,
             showingOnboarding: remainsInOnboarding
         )
-        let result = CreateLibraryResult(libraryID: created.result.libraryId.value, masterKey: created.result.masterKeyHex)
+        let result = CreateLibraryResult(libraryID: created.result.libraryId, masterKey: created.result.masterKeyHex)
         setOnboardingStep(1, libraryID: result.libraryID)
         return result
     }
@@ -155,16 +155,16 @@ final class LibraryDirectoryModel {
         isOpen = false
     }
 
-    func onboardingStep(libraryID: String) -> Int? {
-        UserDefaults.standard.object(forKey: "lasco.onboardingStep.\(libraryID)") as? Int
+    func onboardingStep(libraryID: FfiLibraryId) -> Int? {
+        UserDefaults.standard.object(forKey: "lasco.onboardingStep.\(libraryID.value)") as? Int
     }
 
-    func setOnboardingStep(_ step: Int, libraryID: String) {
-        UserDefaults.standard.set(step, forKey: "lasco.onboardingStep.\(libraryID)")
+    func setOnboardingStep(_ step: Int, libraryID: FfiLibraryId) {
+        UserDefaults.standard.set(step, forKey: "lasco.onboardingStep.\(libraryID.value)")
     }
 
-    func clearOnboardingIncomplete(libraryID: String) {
-        UserDefaults.standard.removeObject(forKey: "lasco.onboardingStep.\(libraryID)")
+    func clearOnboardingIncomplete(libraryID: FfiLibraryId) {
+        UserDefaults.standard.removeObject(forKey: "lasco.onboardingStep.\(libraryID.value)")
     }
 
     func completeOnboarding() {

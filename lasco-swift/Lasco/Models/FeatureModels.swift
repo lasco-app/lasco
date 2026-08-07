@@ -4,9 +4,9 @@ import Observation
 enum MediaDetailSource: Hashable {
     case homeByDate
     case orphansByDate
-    case albumByDate(albumID: String, ascending: Bool)
+    case albumByDate(albumID: FfiAlbumUuid, ascending: Bool)
 
-    var currentAlbumID: String? {
+    var currentAlbumID: FfiAlbumUuid? {
         guard case .albumByDate(let albumID, _) = self else { return nil }
         return albumID
     }
@@ -98,16 +98,16 @@ final class RecentMediaModel {
         }
     }
 
-    func showMedia(id: String) async -> FfiMediaItem? {
+    func showMedia(id: FfiMediaUuid) async -> FfiMediaItem? {
         try? await repository.showMedia(id: id)
     }
 
-    func albumsContainingMedia(id: String) async -> [FfiAlbum] {
+    func albumsContainingMedia(id: FfiMediaUuid) async -> [FfiAlbum] {
         guard let ids = try? await repository.mediaAlbumIDs(mediaID: id) else { return [] }
         return (try? await repository.albums(withIDs: Set(ids))) ?? []
     }
 
-    func thumbnail(id: String) async -> Data? {
+    func thumbnail(id: FfiMediaUuid) async -> Data? {
         try? await repository.thumbnailAsync(mediaID: id)
     }
 
@@ -117,9 +117,9 @@ final class RecentMediaModel {
 @Observable
 final class AlbumListModel {
     private let repository: any LibraryRepositoryProtocol
-    private var albumsByParent: [String: [FfiAlbum]] = [:]
-    private var totalsByParent: [String: Int] = [:]
-    private var loadingParents = Set<String>()
+    private var albumsByParent: [FfiAlbumUuid?: [FfiAlbum]] = [:]
+    private var totalsByParent: [FfiAlbumUuid?: Int] = [:]
+    private var loadingParents = Set<FfiAlbumUuid?>()
 
     private static let pageSize = 100
 
@@ -136,32 +136,30 @@ final class AlbumListModel {
         }
     }
 
-    func albums(parentID: String?) -> [FfiAlbum] {
-        albumsByParent[key(for: parentID)] ?? []
+    func albums(parentID: FfiAlbumUuid?) -> [FfiAlbum] {
+        albumsByParent[parentID] ?? []
     }
 
-    func load(parentID: String?) async {
-        let key = key(for: parentID)
-        guard !loadingParents.contains(key) else { return }
-        loadingParents.insert(key)
-        defer { loadingParents.remove(key) }
+    func load(parentID: FfiAlbumUuid?) async {
+        guard !loadingParents.contains(parentID) else { return }
+        loadingParents.insert(parentID)
+        defer { loadingParents.remove(parentID) }
         do {
-            totalsByParent[key] = try await repository.albumsCount(parentID: parentID)
-            albumsByParent[key] = try await repository.albums(parentID: parentID, offset: 0, limit: Self.pageSize)
+            totalsByParent[parentID] = try await repository.albumsCount(parentID: parentID)
+            albumsByParent[parentID] = try await repository.albums(parentID: parentID, offset: 0, limit: Self.pageSize)
         } catch is CancellationError {
         } catch {
             AppLogger.log(.error, "album page query failed: \(error)")
         }
     }
 
-    func loadMore(parentID: String?) async {
-        let key = key(for: parentID)
-        guard !loadingParents.contains(key), let current = albumsByParent[key], current.count < (totalsByParent[key] ?? 0) else { return }
-        loadingParents.insert(key)
-        defer { loadingParents.remove(key) }
+    func loadMore(parentID: FfiAlbumUuid?) async {
+        guard !loadingParents.contains(parentID), let current = albumsByParent[parentID], current.count < (totalsByParent[parentID] ?? 0) else { return }
+        loadingParents.insert(parentID)
+        defer { loadingParents.remove(parentID) }
         do {
             let next = try await repository.albums(parentID: parentID, offset: current.count, limit: Self.pageSize)
-            albumsByParent[key, default: []].append(contentsOf: next)
+            albumsByParent[parentID, default: []].append(contentsOf: next)
         } catch is CancellationError {
         } catch {
             AppLogger.log(.error, "album next-page query failed: \(error)")
@@ -169,46 +167,43 @@ final class AlbumListModel {
     }
 
     private func reloadLoadedParents() async {
-        let keys = albumsByParent.isEmpty ? [Self.rootKey] : Array(albumsByParent.keys)
+        let keys = albumsByParent.isEmpty ? [nil] : Array(albumsByParent.keys)
         albumsByParent = [:]
         totalsByParent = [:]
         for key in keys {
-            await load(parentID: key == Self.rootKey ? nil : key)
+            await load(parentID: key)
         }
     }
 
-    private func key(for parentID: String?) -> String { parentID ?? Self.rootKey }
-    private static let rootKey = "<root>"
-
-    func createAlbum(name: String, parentID: String?) {
+    func createAlbum(name: String, parentID: FfiAlbumUuid?) {
         Task { try? await repository.createAlbum(name: name, parentID: parentID) }
     }
 
-    func renameAlbum(id: String, name: String) {
+    func renameAlbum(id: FfiAlbumUuid, name: String) {
         Task { try? await repository.renameAlbum(id: id, name: name) }
     }
 
-    func reparentAlbum(id: String, parentID: String?) {
+    func reparentAlbum(id: FfiAlbumUuid, parentID: FfiAlbumUuid?) {
         Task { try? await repository.reparentAlbum(id: id, parentID: parentID) }
     }
 
-    func deleteAlbum(id: String) {
+    func deleteAlbum(id: FfiAlbumUuid) {
         Task { try? await repository.deleteAlbum(id: id) }
     }
 
-    func setAlbumThumbnail(albumID: String, mediaID: String?) {
+    func setAlbumThumbnail(albumID: FfiAlbumUuid, mediaID: FfiMediaUuid?) {
         Task { try? await repository.setAlbumThumbnail(albumID: albumID, mediaID: mediaID) }
     }
 
-    func addMedia(mediaID: String, albumID: String) async throws {
+    func addMedia(mediaID: FfiMediaUuid, albumID: FfiAlbumUuid) async throws {
         try await repository.addMediaToAlbum(albumID: albumID, mediaID: mediaID)
     }
 
-    func mediaInAlbum(albumID: String) async -> [FfiMediaItem] {
+    func mediaInAlbum(albumID: FfiAlbumUuid) async -> [FfiMediaItem] {
         (try? await repository.mediaInAlbum(albumID: albumID)) ?? []
     }
 
-    func importMediaAsync(urls: [URL], albumID: String) async -> String? {
+    func importMediaAsync(urls: [URL], albumID: FfiAlbumUuid) async -> String? {
         let sources = urls.map { MediaImportSource(path: $0.path) }
         do {
             let ids = try await repository.importMediaBatch(sources, albumID: albumID)
@@ -223,43 +218,43 @@ final class AlbumListModel {
         }
     }
 
-    func addMediaToGroup(groupID: String, mediaID: String) {
+    func addMediaToGroup(groupID: FfiGroupUuid, mediaID: FfiMediaUuid) {
         Task { try? await repository.addMediaToGroup(groupID: groupID, mediaID: mediaID) }
     }
 
-    func removeMediaFromGroup(groupID: String, mediaID: String) {
+    func removeMediaFromGroup(groupID: FfiGroupUuid, mediaID: FfiMediaUuid) {
         Task { try? await repository.removeMediaFromGroup(groupID: groupID, mediaID: mediaID) }
     }
 
-    func createGroupFromSelectedMedia(mediaIDs: [String], albumID: String) {
+    func createGroupFromSelectedMedia(mediaIDs: [FfiMediaUuid], albumID: FfiAlbumUuid) {
         Task { try? await repository.createGroupFromSelectedMedia(mediaIDs: mediaIDs, albumID: albumID) }
     }
 
-    func deleteGroup(groupID: String) {
+    func deleteGroup(groupID: FfiGroupUuid) {
         Task { try? await repository.deleteGroup(groupID: groupID) }
     }
 
-    func removeMediaFromAlbum(albumID: String, mediaID: String) {
+    func removeMediaFromAlbum(albumID: FfiAlbumUuid, mediaID: FfiMediaUuid) {
         Task { try? await repository.removeMediaFromAlbum(albumID: albumID, mediaID: mediaID) }
     }
 
-    func moveMediaToAlbum(mediaID: String, fromAlbumID: String, toAlbumID: String) {
+    func moveMediaToAlbum(mediaID: FfiMediaUuid, fromAlbumID: FfiAlbumUuid, toAlbumID: FfiAlbumUuid) {
         Task { try? await repository.moveMedia(id: mediaID, from: fromAlbumID, to: toAlbumID) }
     }
 
-    func albumListItemsSorted(albumID: String, ascending: Bool) -> [FfiAlbumItem] {
+    func albumListItemsSorted(albumID: FfiAlbumUuid, ascending: Bool) -> [FfiAlbumItem] {
         []
     }
 
-    func thumbnail(for mediaID: String) -> Data? {
+    func thumbnail(for mediaID: FfiMediaUuid) -> Data? {
         nil
     }
 
-    func thumbnailAsync(for mediaID: String) async -> Data? {
+    func thumbnailAsync(for mediaID: FfiMediaUuid) async -> Data? {
         try? await repository.thumbnailAsync(mediaID: mediaID)
     }
 
-    func thumbnailMediaID(for album: FfiAlbum) async -> String? {
+    func thumbnailMediaID(for album: FfiAlbum) async -> FfiMediaUuid? {
         if let mediaID = album.thumbnailMediaId { return mediaID }
         let items = try? await repository.albumItems(albumID: album.albumId, ascending: false, offset: 0, limit: 1)
         return items?.compactMap { $0.media?.mediaId }.first
@@ -269,7 +264,7 @@ final class AlbumListModel {
 @MainActor
 @Observable
 final class AlbumDetailModel {
-    let albumID: String
+    let albumID: FfiAlbumUuid
     private(set) var items: [FfiAlbumItem] = []
     private(set) var groups: [FfiGroup] = []
     private(set) var hasMore = false
@@ -280,7 +275,7 @@ final class AlbumDetailModel {
 
     private static let pageSize = 100
 
-    init(albumID: String, repository: any LibraryRepositoryProtocol) {
+    init(albumID: FfiAlbumUuid, repository: any LibraryRepositoryProtocol) {
         self.albumID = albumID
         self.repository = repository
     }
@@ -336,27 +331,27 @@ final class AlbumDetailModel {
         await load()
     }
 
-    func thumbnail(id: String) async -> Data? {
+    func thumbnail(id: FfiMediaUuid) async -> Data? {
         try? await repository.thumbnailAsync(mediaID: id)
     }
 
-    func addMedia(mediaID: String) async throws {
+    func addMedia(mediaID: FfiMediaUuid) async throws {
         try await repository.addMediaToAlbum(albumID: albumID, mediaID: mediaID)
     }
 
-    func removeMedia(mediaID: String) async throws {
+    func removeMedia(mediaID: FfiMediaUuid) async throws {
         try await repository.removeMediaFromAlbum(albumID: albumID, mediaID: mediaID)
     }
 
-    func moveMedia(mediaID: String, to albumID: String) async throws {
+    func moveMedia(mediaID: FfiMediaUuid, to albumID: FfiAlbumUuid) async throws {
         try await repository.moveMedia(id: mediaID, from: self.albumID, to: albumID)
     }
 
-    func createGroupFromSelectedMedia(mediaIDs: [String]) async throws {
+    func createGroupFromSelectedMedia(mediaIDs: [FfiMediaUuid]) async throws {
         try await repository.createGroupFromSelectedMedia(mediaIDs: mediaIDs, albumID: albumID)
     }
 
-    func deleteGroup(groupID: String) async throws {
+    func deleteGroup(groupID: FfiGroupUuid) async throws {
         try await repository.deleteGroup(groupID: groupID)
     }
 }
@@ -371,9 +366,9 @@ final class MediaDetailModel {
     private(set) var totalCount: Int?
     private(set) var currentMedia: FfiMediaItem?
     private(set) var containingAlbums: [FfiAlbum] = []
-    private(set) var groupMedia: [String: [FfiMediaItem]] = [:]
+    private(set) var groupMedia: [FfiGroupUuid: [FfiMediaItem]] = [:]
     private let repository: any LibraryRepositoryProtocol
-    private var groupLoads = Set<String>()
+    private var groupLoads = Set<FfiGroupUuid>()
     private var requestID = 0
     private var navigationTask: Task<Void, Never>?
 
@@ -403,12 +398,12 @@ final class MediaDetailModel {
         }
     }
 
-    func loadGroupMediaIfNeeded(groupID: String) async {
+    func loadGroupMediaIfNeeded(groupID: FfiGroupUuid) async {
         guard groupMedia[groupID] == nil, groupLoads.insert(groupID).inserted else { return }
         defer { groupLoads.remove(groupID) }
         do {
             let media = try await repository.groupMedia(groupID: groupID)
-            guard !Task.isCancelled, neighbors?.items.contains(where: { $0.id == groupID }) == true else { return }
+            guard !Task.isCancelled, neighbors?.items.contains(where: { if case .group(groupID) = $0.id { return true }; return false }) == true else { return }
             groupMedia[groupID] = media
         } catch is CancellationError {
         } catch {
@@ -416,7 +411,7 @@ final class MediaDetailModel {
         }
     }
 
-    func refreshMedia(id: String) async {
+    func refreshMedia(id: FfiMediaUuid) async {
         do {
             let media = try await repository.showMedia(id: id)
             let albumIDs = try await repository.mediaContainingAlbumIDs(
@@ -487,7 +482,7 @@ final class MediaDetailModel {
             neighbors = loaded
             totalCount = loadedTotal
             groupMedia = groupMedia.filter { key, _ in
-                loaded.items.contains { $0.id == key }
+                loaded.items.contains { if case .group(key) = $0.id { return true }; return false }
             }
             currentMedia = nil
             containingAlbums = []
@@ -519,7 +514,7 @@ final class MediaDetailModel {
         }
     }
 
-    func rename(mediaID: String, name: String?) async throws {
+    func rename(mediaID: FfiMediaUuid, name: String?) async throws {
         try await repository.renameMedia(id: mediaID, name: name)
     }
 }
@@ -530,7 +525,7 @@ final class StatusModel {
     private(set) var mediaCount = 0
     private(set) var localStateStats: FfiLocalStateStats?
     private(set) var mediaCountWithoutRemoteBackup: Int?
-    private(set) var syncedByRemoteID: [String: Bool] = [:]
+    private(set) var syncedByRemoteID: [FfiRemoteUuid: Bool] = [:]
     private let repository: any LibraryRepositoryProtocol
 
     init(repository: any LibraryRepositoryProtocol) {
@@ -557,10 +552,10 @@ final class StatusModel {
             let unbacked = try await backupQuery
             mediaCountWithoutRemoteBackup = unbacked.isEmpty ? nil : unbacked.count
             let session = try await sessionQuery
-            var syncStatus: [String: Bool] = [:]
+            var syncStatus: [FfiRemoteUuid: Bool] = [:]
             for remote in session.remotes {
-                let hasUnpushedChanges = await repository.hasUnpushedChanges(remoteID: remote.id)
-                syncStatus[remote.id] = !hasUnpushedChanges
+                let hasUnpushedChanges = await repository.hasUnpushedChanges(remoteID: remote.remoteId)
+                syncStatus[remote.remoteId] = !hasUnpushedChanges
             }
             syncedByRemoteID = syncStatus
         } catch is CancellationError {
@@ -579,7 +574,7 @@ final class StatusModel {
         await load()
     }
 
-    func isSynced(remoteID: String) -> Bool {
+    func isSynced(remoteID: FfiRemoteUuid) -> Bool {
         syncedByRemoteID[remoteID] ?? true
     }
 }

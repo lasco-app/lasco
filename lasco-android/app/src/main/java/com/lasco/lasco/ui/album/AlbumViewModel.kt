@@ -23,19 +23,29 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
 import uniffi.lasco_ffi.FfiAlbum
 import uniffi.lasco_ffi.FfiAlbumItem
+import uniffi.lasco_ffi.FfiAlbumUuid
+import uniffi.lasco_ffi.FfiMediaUuid
+import uniffi.lasco_ffi.FfiGroupUuid
 
 sealed interface AlbumEntry {
-    val key: String
-    data class ChildAlbum(val album: FfiAlbum) : AlbumEntry { override val key = "album:${album.albumId}" }
+    val key: AlbumEntryKey
+    data class ChildAlbum(val album: FfiAlbum) : AlbumEntry { override val key = AlbumEntryKey.Album(album.albumId) }
     data class Item(val item: FfiAlbumItem, val position: Int) : AlbumEntry {
-        override val key = item.media?.mediaId?.let { "media:$it" } ?: "group:${item.group!!.groupId}"
+        override val key = item.media?.mediaId?.let(AlbumEntryKey::Media) ?: AlbumEntryKey.Group(item.group!!.groupId)
     }
-    data object DisconnectedHeader : AlbumEntry { override val key = "header:disconnected" }
+    data object DisconnectedHeader : AlbumEntry { override val key = AlbumEntryKey.DisconnectedHeader }
+}
+
+sealed interface AlbumEntryKey {
+    data class Album(val id: FfiAlbumUuid) : AlbumEntryKey
+    data class Media(val id: FfiMediaUuid) : AlbumEntryKey
+    data class Group(val id: FfiGroupUuid) : AlbumEntryKey
+    data object DisconnectedHeader : AlbumEntryKey
 }
 
 private class AlbumEntriesPagingSource(
     private val repo: LibraryRepository,
-    private val albumId: String?,
+    private val albumId: FfiAlbumUuid?,
     private val ascending: Boolean,
 ) : PagingSource<Int, AlbumEntry>() {
     override suspend fun load(params: LoadParams<Int>): LoadResult<Int, AlbumEntry> = try {
@@ -94,7 +104,7 @@ private class AlbumEntriesPagingSource(
 }
 
 class AlbumViewModel(
-    private val albumId: String?,
+    private val albumId: FfiAlbumUuid?,
     private val repo: LibraryRepository,
 ) : ViewModel() {
     private val _sortAscending = MutableStateFlow(false)
@@ -120,7 +130,7 @@ class AlbumViewModel(
         private const val PAGE_SIZE = 100
         private const val PREFETCH_DISTANCE = 30
 
-        fun factory(albumId: String?): ViewModelProvider.Factory = viewModelFactory {
+        fun factory(albumId: FfiAlbumUuid?): ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val app = this[APPLICATION_KEY]!!
                 AlbumViewModel(albumId, LibraryRepository.from(app))

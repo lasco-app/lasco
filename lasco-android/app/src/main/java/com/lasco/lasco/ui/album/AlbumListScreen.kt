@@ -56,6 +56,9 @@ import kotlinx.coroutines.launch
 import uniffi.lasco_ffi.FfiAlbum
 import uniffi.lasco_ffi.FfiAlbumItem
 import uniffi.lasco_ffi.FfiMediaItem
+import uniffi.lasco_ffi.FfiAlbumUuid
+import uniffi.lasco_ffi.FfiMediaUuid
+import uniffi.lasco_ffi.FfiGroupUuid
 
 /**
  * Hoisted selection state for AlbumListScreen's picker mode, used by
@@ -63,9 +66,9 @@ import uniffi.lasco_ffi.FfiMediaItem
  * out of nested albums across separate AlbumListScreen instances.
  */
 data class AlbumPickerState(
-    val disabledIds: Set<String>,
-    val selectedIds: Set<String>,
-    val onToggle: (mediaId: String) -> Unit,
+    val disabledIds: Set<FfiMediaUuid>,
+    val selectedIds: Set<FfiMediaUuid>,
+    val onToggle: (mediaId: FfiMediaUuid) -> Unit,
 )
 
 /**
@@ -76,7 +79,7 @@ data class AlbumPickerState(
  */
 @Composable
 fun AlbumListScreen(
-    albumId: String?,
+    albumId: FfiAlbumUuid?,
     albumName: String? = null,
     modifier: Modifier = Modifier,
     title: String = "ALBUMS",
@@ -87,7 +90,7 @@ fun AlbumListScreen(
     pickerState: AlbumPickerState? = null,
     onPickerVisibleChange: (Boolean) -> Unit = {},
     viewModel: AlbumViewModel = viewModel(
-        key = albumId ?: "root",
+        key = albumId?.value ?: "root",
         factory = AlbumViewModel.factory(albumId),
     ),
 ) {
@@ -100,10 +103,10 @@ fun AlbumListScreen(
 
     var isGridLayout by remember { mutableStateOf(true) }
 
-    var selectedMediaIds by remember { mutableStateOf(setOf<String>()) }
-    var selectedGroupIds by remember { mutableStateOf(setOf<String>()) }
-    var selectedAlbumIds by remember { mutableStateOf(setOf<String>()) }
-    var selectedAlbumNames by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var selectedMediaIds by remember { mutableStateOf(setOf<FfiMediaUuid>()) }
+    var selectedGroupIds by remember { mutableStateOf(setOf<FfiGroupUuid>()) }
+    var selectedAlbumIds by remember { mutableStateOf(setOf<FfiAlbumUuid>()) }
+    var selectedAlbumNames by remember { mutableStateOf<Map<FfiAlbumUuid, String>>(emptyMap()) }
     val isSelecting = selectedMediaIds.isNotEmpty() || selectedGroupIds.isNotEmpty() || selectedAlbumIds.isNotEmpty()
 
     fun clearSelection() {
@@ -112,15 +115,15 @@ fun AlbumListScreen(
         selectedAlbumIds = emptySet()
         selectedAlbumNames = emptyMap()
     }
-    fun toggleMedia(id: String) {
+    fun toggleMedia(id: FfiMediaUuid) {
         if (selectedAlbumIds.isNotEmpty()) return
         selectedMediaIds = if (id in selectedMediaIds) selectedMediaIds - id else selectedMediaIds + id
     }
-    fun toggleGroup(id: String) {
+    fun toggleGroup(id: FfiGroupUuid) {
         if (selectedAlbumIds.isNotEmpty()) return
         selectedGroupIds = if (id in selectedGroupIds) selectedGroupIds - id else selectedGroupIds + id
     }
-    fun toggleAlbum(id: String) {
+    fun toggleAlbum(id: FfiAlbumUuid) {
         if (selectedMediaIds.isNotEmpty() || selectedGroupIds.isNotEmpty()) return
         selectedAlbumIds = if (id in selectedAlbumIds) selectedAlbumIds - id else selectedAlbumIds + id
     }
@@ -634,9 +637,9 @@ private fun AlbumEntriesGrid(
     columns: Int,
     entries: androidx.paging.compose.LazyPagingItems<AlbumEntry>,
     isGridLayout: Boolean,
-    selectedAlbumIds: Set<String>,
-    selectedMediaIds: Set<String>,
-    selectedGroupIds: Set<String>,
+    selectedAlbumIds: Set<FfiAlbumUuid>,
+    selectedMediaIds: Set<FfiMediaUuid>,
+    selectedGroupIds: Set<FfiGroupUuid>,
     isSelecting: Boolean,
     pickerState: AlbumPickerState? = null,
     onAlbumTap: (FfiAlbum) -> Unit,
@@ -696,7 +699,7 @@ private fun AlbumEntriesGrid(
 /** A paged, navigable destination picker used for moving albums and media. */
 @Composable
 private fun MoveDestinationPicker(
-    excludedIds: Set<String>,
+    excludedIds: Set<FfiAlbumUuid>,
     onSelect: (FfiAlbum) -> Unit,
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
