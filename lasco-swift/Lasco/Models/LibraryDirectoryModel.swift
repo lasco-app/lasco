@@ -61,7 +61,7 @@ final class LibraryDirectoryModel {
     func openCached(entry: FfiLibraryEntry) async -> Bool {
         do {
             guard let library = try await directory.openCached(entry: entry) else { return false }
-            await install(library: library, nickname: entry.nickname, username: await directory.storedUsername(libraryID: entry.id))
+            await install(library: library, nickname: entry.nickname, username: await directory.storedUsername(libraryID: entry.id.value))
             return true
         } catch {
             onboarding.setError(error)
@@ -90,7 +90,7 @@ final class LibraryDirectoryModel {
             markOpen: false,
             showingOnboarding: remainsInOnboarding
         )
-        let result = CreateLibraryResult(libraryID: created.result.libraryId, masterKey: created.result.masterKeyHex)
+        let result = CreateLibraryResult(libraryID: created.result.libraryId.value, masterKey: created.result.masterKeyHex)
         setOnboardingStep(1, libraryID: result.libraryID)
         return result
     }

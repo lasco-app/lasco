@@ -1,6 +1,8 @@
 import SwiftUI
 
-extension FfiLibraryEntry: Identifiable {}
+extension FfiLibraryEntry: Identifiable {
+    public var id: FfiLibraryId { libraryId }
+}
 
 struct LibraryListView: View {
     @Environment(LibraryDirectoryModel.self) private var directory
@@ -66,7 +68,7 @@ struct LibraryListView: View {
                         ForEach(directory.libraries, id: \.id) { entry in
                             if let err = entry.loadError {
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text(entry.id.isEmpty ? "Unknown library" : entry.nickname)
+                                    Text(entry.id.value.isEmpty ? "Unknown library" : entry.nickname)
                                         .font(LascoFont.body())
                                         .foregroundStyle(Color.Lasco.ink)
                                     Text(err)

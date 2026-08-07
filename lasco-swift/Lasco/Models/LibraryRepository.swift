@@ -123,7 +123,7 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
 
     init(library: FfiLibrary, appSupportDirectory: String? = nil) {
         self.library = library
-        self.libraryID = library.libraryId()
+        self.libraryID = library.libraryId().value
         self.appSupportDirectory = appSupportDirectory ?? Self.defaultAppSupportDirectory
     }
 

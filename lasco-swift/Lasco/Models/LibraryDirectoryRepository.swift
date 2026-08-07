@@ -24,13 +24,13 @@ actor LibraryDirectoryRepository {
     }
 
     func openCached(entry: FfiLibraryEntry) throws -> FfiLibrary? {
-        guard let username = storedUsername(libraryID: entry.id), !username.isEmpty else { return nil }
+        guard let username = storedUsername(libraryID: entry.libraryId.value), !username.isEmpty else { return nil }
         return try ffiOpenCached(nickname: entry.nickname, username: username, appDir: appSupportDirectory)
     }
 
     func open(nickname: String?, username: String, password: String) throws -> FfiLibrary {
         let library = try FfiLibrary.open(nickname: nickname, username: username, password: password, appDir: appSupportDirectory)
-        storeUsername(username, libraryID: library.libraryId())
+        storeUsername(username, libraryID: library.libraryId().value)
         return library
     }
 
@@ -70,19 +70,19 @@ actor LibraryDirectoryRepository {
             appDir: appSupportDirectory
         )
         let effectiveUsername = newUsername?.isEmpty == false ? newUsername! : username
-        storeUsername(effectiveUsername, libraryID: library.libraryId())
+        storeUsername(effectiveUsername, libraryID: library.libraryId().value)
         try library.loadLocalState()
         return library
     }
 
     func delete(libraryID: String) throws {
-        try ffiDeleteLibrary(libraryId: libraryID, appDir: appSupportDirectory)
+        try ffiDeleteLibrary(libraryId: FfiLibraryId(value: libraryID), appDir: appSupportDirectory)
         UserDefaults.standard.removeObject(forKey: "lasco.lastUsername.\(libraryID)")
     }
 
     func clearSession(libraryID: String) throws {
         let username = storedUsername(libraryID: libraryID) ?? ""
-        try sessionClear(libraryId: libraryID, username: username, appDir: appSupportDirectory)
+        try sessionClear(libraryId: FfiLibraryId(value: libraryID), username: username, appDir: appSupportDirectory)
     }
 
     func testS3Remote(endpoint: String, bucket: String, region: String, pathPrefix: String, accessKey: String, secretKey: String) throws {
