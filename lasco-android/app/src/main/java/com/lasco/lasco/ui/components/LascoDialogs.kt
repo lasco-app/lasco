@@ -198,7 +198,7 @@ fun AlbumPickerDialog(
 fun ThumbnailPickerDialog(
     media: List<FfiMediaItem>,
     repo: LibraryRepository,
-    onPick: (String) -> Unit,
+    onPick: (uniffi.lasco_ffi.FfiMediaUuid) -> Unit,
     onCancel: () -> Unit,
 ) {
     val colors = LascoTheme.colors

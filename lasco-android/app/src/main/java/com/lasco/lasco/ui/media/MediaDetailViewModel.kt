@@ -21,8 +21,11 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import uniffi.lasco_ffi.FfiAlbum
+import uniffi.lasco_ffi.FfiAlbumUuid
 import uniffi.lasco_ffi.FfiAlbumItem
 import uniffi.lasco_ffi.FfiMediaItem
+import uniffi.lasco_ffi.FfiGroupUuid
+import uniffi.lasco_ffi.FfiMediaUuid
 import uniffi.lasco_ffi.LascoException
 
 private fun FfiAlbumItem.toDetailItem(): DetailItem =
@@ -51,13 +54,13 @@ class MediaDetailViewModel(
     private val _state = MutableStateFlow<MediaDetailState>(MediaDetailState.Loading)
     val state: StateFlow<MediaDetailState> = _state.asStateFlow()
 
-    private val _groupMediaCache = MutableStateFlow<Map<String, List<FfiMediaItem>>>(emptyMap())
-    val groupMediaCache: StateFlow<Map<String, List<FfiMediaItem>>> = _groupMediaCache.asStateFlow()
+    private val _groupMediaCache = MutableStateFlow<Map<FfiGroupUuid, List<FfiMediaItem>>>(emptyMap())
+    val groupMediaCache: StateFlow<Map<FfiGroupUuid, List<FfiMediaItem>>> = _groupMediaCache.asStateFlow()
     private val _groupMediaIndex = MutableStateFlow(0)
     val groupMediaIndex: StateFlow<Int> = _groupMediaIndex.asStateFlow()
     private val _showingLivePhotoVideo = MutableStateFlow(false)
     val showingLivePhotoVideo: StateFlow<Boolean> = _showingLivePhotoVideo.asStateFlow()
-    private val _livePhotoVideoItems = MutableStateFlow<Map<String, FfiMediaItem>>(emptyMap())
+    private val _livePhotoVideoItems = MutableStateFlow<Map<FfiMediaUuid, FfiMediaItem>>(emptyMap())
     private var neighborsJob: Job? = null
 
     init {
@@ -66,7 +69,7 @@ class MediaDetailViewModel(
             when (source) {
                 MediaDetailSource.HomeByDate -> repo.watch(Change.MediaList) { Unit }
                 is MediaDetailSource.AlbumByDate -> repo.watch(
-                    Change.Album(source.albumId), Change.AlbumList, Change.MediaList,
+                    Change.Album(FfiAlbumUuid(source.albumId)), Change.AlbumList, Change.MediaList,
                 ) { Unit }
             }.collect {
                 val position = (_state.value as? MediaDetailState.Content)?.neighbors?.currentPosition ?: startPosition
@@ -94,7 +97,7 @@ class MediaDetailViewModel(
                     MediaDetailSource.HomeByDate -> repo.mediaByDateNeighbors(position).let {
                         DetailNeighbors(it.previous?.let(DetailItem::Media), DetailItem.Media(it.current), it.next?.let(DetailItem::Media), position)
                     }
-                    is MediaDetailSource.AlbumByDate -> repo.albumItemsByDateNeighbors(source.albumId, source.ascending, position).let {
+                    is MediaDetailSource.AlbumByDate -> repo.albumItemsByDateNeighbors(FfiAlbumUuid(source.albumId), source.ascending, position).let {
                         DetailNeighbors(it.previous?.toDetailItem(), it.current.toDetailItem(), it.next?.toDetailItem(), position)
                     }
                 }
@@ -120,7 +123,7 @@ class MediaDetailViewModel(
 
     fun setGroupMediaIndex(index: Int) { _groupMediaIndex.value = index; _showingLivePhotoVideo.value = false }
     fun toggleLivePhotoVideo() { _showingLivePhotoVideo.value = !_showingLivePhotoVideo.value }
-    fun loadGroupMediaIfNeeded(groupId: String) {
+    fun loadGroupMediaIfNeeded(groupId: FfiGroupUuid) {
         if (_groupMediaCache.value.containsKey(groupId)) return
         viewModelScope.launch { _groupMediaCache.value += groupId to repo.groupMedia(groupId) }
     }
@@ -137,7 +140,7 @@ class MediaDetailViewModel(
     val currentGroupMedia: StateFlow<List<FfiMediaItem>> = combine(currentEntry, _groupMediaCache) { entry, cache ->
         (entry as? DetailItem.Group)?.let { cache[it.group.groupId] }.orEmpty()
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-    private val displayedMediaId: Flow<String?> = combine(currentEntry, _groupMediaCache, _groupMediaIndex) { entry, cache, index ->
+    private val displayedMediaId: Flow<FfiMediaUuid?> = combine(currentEntry, _groupMediaCache, _groupMediaIndex) { entry, cache, index ->
         when (entry) {
             is DetailItem.Media -> entry.item.mediaId
             is DetailItem.Group -> cache[entry.group.groupId]?.getOrNull(index)?.mediaId
@@ -156,7 +159,7 @@ class MediaDetailViewModel(
         if (item == null) flowOf(emptyList()) else repo.watch(Change.AlbumList, Change.Media(item.mediaId)) { repo.containingAlbums(item.mediaId, null) }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    fun rename(mediaId: String, name: String?) { viewModelScope.launch { repo.renameMedia(mediaId, name) } }
+    fun rename(mediaId: FfiMediaUuid, name: String?) { viewModelScope.launch { repo.renameMedia(mediaId, name) } }
 
     companion object {
         fun factory(source: MediaDetailSource, startPosition: Int): ViewModelProvider.Factory = viewModelFactory {

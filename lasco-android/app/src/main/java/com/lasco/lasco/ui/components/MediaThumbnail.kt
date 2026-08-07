@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import com.lasco.lasco.R
 import com.lasco.lasco.data.LibraryRepository
 import com.lasco.lasco.ui.theme.LascoTheme
+import uniffi.lasco_ffi.FfiMediaUuid
 
 /**
  * Thumbnail slot backed by the Rust FFI. Fetches lazily, only once this
@@ -33,7 +34,7 @@ import com.lasco.lasco.ui.theme.LascoTheme
  */
 @Composable
 fun MediaThumbnail(
-    mediaId: String?,
+    mediaId: FfiMediaUuid?,
     repo: LibraryRepository,
     modifier: Modifier = Modifier,
 ) {

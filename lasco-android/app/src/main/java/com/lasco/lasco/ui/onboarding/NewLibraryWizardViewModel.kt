@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import uniffi.lasco_ffi.FfiLibraryId
 
 sealed interface WizardStep {
     data object CreateLibrary : WizardStep
@@ -102,7 +103,7 @@ class NewLibraryWizardViewModel(
                 )
                 _uiState.value = WizardUiState(
                     step = WizardStep.SaveRecoveryKey,
-                    libraryId = result.libraryId,
+                    libraryId = result.libraryId.value,
                     nickname = name,
                     masterKeyHex = result.masterKeyHex,
                 )
@@ -124,7 +125,7 @@ class NewLibraryWizardViewModel(
     fun locationAccessGranted() = moveTo(WizardStep.ImportDeviceMedia)
 
     fun skipDeviceImport() {
-        _uiState.value.libraryId?.let(prefs::baselineImportWatermark)
+        _uiState.value.libraryId?.let { prefs.baselineImportWatermark(FfiLibraryId(it)) }
         moveTo(WizardStep.ChooseAutoImport)
     }
 
@@ -134,7 +135,7 @@ class NewLibraryWizardViewModel(
         viewModelScope.launch {
             try {
                 app.librarySession?.setAutoImportDeviceMedia(enabled)
-                _uiState.value.libraryId?.let(prefs::clearOnboardingIncomplete)
+                _uiState.value.libraryId?.let { prefs.clearOnboardingIncomplete(FfiLibraryId(it)) }
                 complete()
                 onSuccess()
             } catch (e: Throwable) {
@@ -180,7 +181,7 @@ class NewLibraryWizardViewModel(
     }
 
     fun complete() {
-        _uiState.value.libraryId?.let(prefs::clearOnboardingIncomplete)
+        _uiState.value.libraryId?.let { prefs.clearOnboardingIncomplete(FfiLibraryId(it)) }
         initialImportController?.cancel()
         importStateJob?.cancel()
         importStateJob = null
@@ -197,8 +198,8 @@ class NewLibraryWizardViewModel(
             masterKeyHex = current.masterKeyHex.takeIf { next == WizardStep.SaveRecoveryKey },
         )
         val libraryId = current.libraryId ?: return
-        next.toCheckpoint()?.let { prefs.setOnboardingCheckpoint(libraryId, it) }
-            ?: prefs.clearOnboardingIncomplete(libraryId)
+        next.toCheckpoint()?.let { prefs.setOnboardingCheckpoint(FfiLibraryId(libraryId), it) }
+            ?: prefs.clearOnboardingIncomplete(FfiLibraryId(libraryId))
     }
 
     private fun controllerOrNull(): InitialImportController? {

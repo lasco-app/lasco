@@ -16,8 +16,8 @@ sealed interface DetailItem {
 
 val DetailItem.id: String
     get() = when (this) {
-        is DetailItem.Media -> item.mediaId
-        is DetailItem.Group -> group.groupId
+        is DetailItem.Media -> item.mediaId.value
+        is DetailItem.Group -> group.groupId.value
     }
 
 @Serializable
