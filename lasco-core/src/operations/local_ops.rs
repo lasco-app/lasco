@@ -48,7 +48,12 @@ pub fn read_pending_op_group(
     Ok(Some(decrypt_op_group(master_key, blob_bytes)?))
 }
 
-/// Overwrite `pending.op` with a single frame containing `op_group`.
+/// Atomically replace `pending.op` with a single frame containing `op_group`.
+///
+/// The temporary file is a sibling of `pending.op`, so the rename stays within one
+/// filesystem. An interruption before the rename leaves the previous pending group
+/// intact; an interruption after it exposes the complete new frame. This deliberately
+/// does not request durable-storage flushes.
 pub fn write_pending_op_group(
     pending_path: &std::path::Path,
     master_key: &MasterKey,
@@ -56,30 +61,40 @@ pub fn write_pending_op_group(
 ) -> Result<()> {
     let frame = encode_frame(master_key, op_group)?;
 
-    if let Some(parent) = pending_path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
+    let parent = pending_path
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| std::path::Path::new("."));
+    std::fs::create_dir_all(parent)?;
 
+    let tmp_path = pending_path.with_file_name(format!(
+        ".{}.{}.tmp",
+        pending_path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy(),
+        uuid::Uuid::new_v4()
+    ));
     let mut file = std::fs::OpenOptions::new()
-        .create(true)
+        .create_new(true)
         .write(true)
-        .truncate(true)
-        .open(pending_path)?;
+        .open(&tmp_path)?;
 
-    file.write_all(&frame)?;
+    if let Err(error) = file.write_all(&frame) {
+        drop(file);
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(error.into());
+    }
+    drop(file);
+
+    std::fs::rename(tmp_path, pending_path)?;
     Ok(())
 }
 
-/// Read the pending op group and delete `pending.op`. Returns `None` if the file doesn't exist.
-pub fn take_pending_op_group(
-    pending_path: &std::path::Path,
-    master_key: &MasterKey,
-) -> Result<Option<OperationGroup>> {
-    let group = read_pending_op_group(pending_path, master_key)?;
-    if group.is_some() {
-        std::fs::remove_file(pending_path)?;
-    }
-    Ok(group)
+/// Delete `pending.op` after its group has been recorded in the log.
+pub fn remove_pending_op_group(pending_path: &std::path::Path) -> Result<()> {
+    std::fs::remove_file(pending_path)?;
+    Ok(())
 }
 
 pub fn append_op_group(
@@ -420,5 +435,21 @@ mod tests {
             read_pending_op_group(&pending_path, &mk),
             Err(OperationError::IncompleteFrame { .. })
         ));
+    }
+
+    #[test]
+    fn write_pending_replaces_an_existing_group() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let pending_path = make_pending_path(&tmp);
+        let mk = generate_master_key();
+        let old_group = sample_group(Utc::now());
+        let replacement = sample_group(Utc::now());
+
+        write_pending_op_group(&pending_path, &mk, &old_group).unwrap();
+        write_pending_op_group(&pending_path, &mk, &replacement).unwrap();
+
+        let pending = read_pending_op_group(&pending_path, &mk).unwrap().unwrap();
+        assert_eq!(pending.op_id, replacement.op_id);
+        assert_ne!(pending.op_id, old_group.op_id);
     }
 }
