@@ -7,7 +7,7 @@ sidebar_label: Storage Layout
 
 ## Server
 
-All server-side data lives under a single path prefix (the library root). Only encrypted blobs are stored.
+All server-side data lives under a single path prefix (the library root). Data blobs are stored only in encrypted form.
 
 ```
 /
@@ -49,9 +49,10 @@ The root can be overridden via the `--data-dir` CLI flag.
         ├── library.json                  per-library config and remotes
         ├── local_state/
         │   ├── library/
-        │   │   ├── library_salt          random 32-byte salt
-        │   │   ├── version_1             write format version
-        │   │   └── mk_{username}_{uuid}.enc     master key encrypted with the user's KEK
+        │   │   ├── library_id_{uuid}     UUID of this library (encoded in filename)
+        │   │   ├── library_salt           random 32-byte salt
+        │   │   ├── version_1              write format version
+        │   │   └── mk_{username}_{uuid}.enc  master key encrypted with the user's KEK
         │   ├── operations.log            append-only log of committed operation groups
         │   ├── pending.op                in-progress operation group
         │   └── media/
@@ -62,6 +63,7 @@ The root can be overridden via the `--data-dir` CLI flag.
         └── remotes/
             └── {remote_id}/
                 └── state/                last known state of the remote
+                    ├── processed.json    remote operation files already ingested into the local log
                     ├── operations/       downloaded remote op files
                     └── media/
                         └── media_list.json  last known remote media availability
