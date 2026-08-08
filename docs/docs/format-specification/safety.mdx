@@ -24,6 +24,62 @@ Lasco prioritizes preventing data loss. Duplicate data is acceptable: it is dete
 
 ## Rust prevents data races
 
+### Sync policy
+
+`SyncPolicy` enforces two runtime exclusions. A guard is held until fetch or
+push returns; a conflicting acquisition fails with `AlreadyRunning`.
+
+| Slot | Requested by | Scope | Effect |
+| --- | --- | --- | --- |
+| Per-remote sync slot | Fetch and push | One remote ID | Only one fetch or push may run for that remote. |
+| Global fetch slot | Fetch | One library | Only one fetch may run, regardless of its remote. |
+
+| Procedures started concurrently | Same remote | Different remotes |
+| --- | --- | --- |
+| Fetch + fetch | <span className="safety-denied">Denied</span> | <span className="safety-denied">Denied</span> |
+| Fetch + push | <span className="safety-denied">Denied</span> | <span className="safety-allowed">Allowed</span> |
+| Push + push | <span className="safety-denied">Denied</span> | <span className="safety-allowed">Allowed</span> |
+
+### Existing resource restrictions
+
+| Restriction | Protects | Effect |
+| --- | --- | --- |
+| Local operation-files mutex | `operations.log` and `pending.op` | Serializes one synchronous operation-file access at a time. The guard is released before an `await`. |
+| In-memory operation-state `RwLock` | Reconstructed in-memory state | Multiple readers may coexist; rebuilding installs state under the exclusive write lock. |
+| Remote compaction lock file | `operations/LOCK.op` | Only the client that created the lock with `put_if_absent` may compact. A client that cannot create it skips compaction. A stale lock requires manual removal. |
+
+### Current resource access boundaries
+
+The sync entry points pass narrow storage and local-directory handles into their
+implementations instead of a global `LocalDirs` handle.
+
+| Resource | Fetch implementation input | Push implementation input | Access used |
+| --- | --- | --- | --- |
+| Remote storage | `StorageRead` | `StorageReadWrite` | Fetch: list, read, and exists. Push: list, read, write, and delete. |
+| `local_state/library/` | `LocalStateLibraryDir`, `LibraryId` | — | Fetch reads and adds master-key files. |
+| `remotes/{remote_id}/state/` | `RemoteLastKnownStateDir` | `RemoteLastKnownStateDir` | Fetch and push read and write the selected remote's last-known state. |
+| `local_state/media/` | — | `LocalStateMediaDir` | Push reads local media data and thumbnails. |
+| `operations.log`, `pending.op` | `LocalOpsReadWriteLock`, `MasterKey` | `Library` | Fetch reads and appends operation groups. Push reads, appends, and removes the pending group. |
+| Reconstructed in-memory state | — | `Library` | Fetch rebuilds it after `fetch_impl`; push reads it and rebuilds after flushing pending operations. |
+
+### Required access compatibility
+
+This table defines the concurrency rule for one instance of each scoped
+resource. **Safe** operations may overlap. **Unsafe** operations must be
+excluded by the access policy. **Risky** operations can converge when the other
+criteria for the action are met—for example, when several clients push to the
+same remote—but Lasco should still exclude them within a single client.
+
+| Resource scope | Read + read | Read + write | Write + write | Reason |
+| --- | --- | --- | --- | --- |
+| Remote storage for one remote | <span className="safety-risky">Risky</span> | <span className="safety-risky">Risky</span> | <span className="safety-risky">Risky</span> | No riskier than concurrent operations by multiple clients; remote operations are designed to converge safely. We still exclude this overlap within one client. |
+| `local_state/library/` | <span className="safety-allowed">Safe</span> | <span className="safety-allowed">Safe</span> | <span className="safety-denied">Unsafe</span> | Atomic write-and-rename ensures readers observe either the complete old file or the complete new file, never a partial write. Concurrent writers can still overwrite one another's update. |
+| `remotes/{remote_id}/state/` for one remote | <span className="safety-allowed">Safe</span> | <span className="safety-denied">Unsafe</span> | <span className="safety-denied">Unsafe</span> | Writers add and remove cached operation files and independently update processed-file and media-list metadata; a concurrent reader or writer can observe an inconsistent multi-file snapshot. |
+| `local_state/media/{year}/{month}/{media_id}.{data,thumb}` | <span className="safety-allowed">Safe</span> | <span className="safety-allowed">Safe</span> | <span className="safety-allowed">Safe</span> | There is a bijection between a media file path and its content: a path identifies one immutable media file. |
+| `operations.log` and `pending.op` | <span className="safety-denied">Unsafe</span> | <span className="safety-denied">Unsafe</span> | <span className="safety-denied">Unsafe</span> | The existing mutex deliberately serializes every operation-file access, including reads. |
+| Reconstructed in-memory state | <span className="safety-allowed">Safe</span> | <span className="safety-denied">Unsafe</span> | <span className="safety-denied">Unsafe</span> | The existing `RwLock` permits concurrent readers only. |
+| Remote compaction source files | <span className="safety-allowed">Safe</span> | <span className="safety-risky">Risky</span> | <span className="safety-denied">Unsafe for two compactions</span> | A reader may observe a source before or after compaction and retry if needed. Compaction writes a replacement and deletes sources under `operations/LOCK.op`. |
+
 ## Corruption is detected
 
 ## Media files cannot currently be deleted
