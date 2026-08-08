@@ -306,11 +306,12 @@ impl FfiLibrary {
             .clone()
             .ok_or_else(|| LascoError::Other {
                 msg: "no remotes configured".to_string(),
-            })?;
+        })?;
 
-        let remote_id_string = remote_id.value.clone();
+        let remote_uuid: RemoteUuid = remote_id.clone().try_into()?;
+        let remote_id_string = remote_uuid.to_string();
         let storage =
-            self.build_storage_for_remote(&remote_id_string, app_support_dir.as_deref())?;
+            self.build_storage_for_remote(&remote_uuid, app_support_dir.as_deref())?;
         let report = self
             .rt
             .block_on(self.inner.sync(storage.as_ref(), &remote_id_string))
@@ -326,9 +327,10 @@ impl FfiLibrary {
         remote_id: FfiRemoteUuid,
         app_support_dir: Option<String>,
     ) -> Result<u32, LascoError> {
-        let remote_id_string = remote_id.value.clone();
+        let remote_uuid: RemoteUuid = remote_id.clone().try_into()?;
+        let remote_id_string = remote_uuid.to_string();
         let storage =
-            self.build_storage_for_remote(&remote_id_string, app_support_dir.as_deref())?;
+            self.build_storage_for_remote(&remote_uuid, app_support_dir.as_deref())?;
         let report = self
             .rt
             .block_on(self.inner.push(storage.as_ref(), &remote_id_string))
@@ -341,9 +343,10 @@ impl FfiLibrary {
         remote_id: FfiRemoteUuid,
         app_support_dir: Option<String>,
     ) -> Result<u32, LascoError> {
-        let remote_id_string = remote_id.value.clone();
+        let remote_uuid: RemoteUuid = remote_id.clone().try_into()?;
+        let remote_id_string = remote_uuid.to_string();
         let storage =
-            self.build_storage_for_remote(&remote_id_string, app_support_dir.as_deref())?;
+            self.build_storage_for_remote(&remote_uuid, app_support_dir.as_deref())?;
         let report = self
             .rt
             .block_on(self.inner.fetch(storage.as_ref(), &remote_id_string))
@@ -362,9 +365,10 @@ impl FfiLibrary {
                 msg: "no remotes configured".to_string(),
             })?;
 
-        let remote_id_string = remote_id.value.clone();
+        let remote_uuid: RemoteUuid = remote_id.clone().try_into()?;
+        let remote_id_string = remote_uuid.to_string();
         let storage =
-            self.build_storage_for_remote(&remote_id_string, app_support_dir.as_deref())?;
+            self.build_storage_for_remote(&remote_uuid, app_support_dir.as_deref())?;
         let inner = self.inner.clone();
         let report = self
             .rt
@@ -383,9 +387,10 @@ impl FfiLibrary {
         remote_id: FfiRemoteUuid,
         app_support_dir: Option<String>,
     ) -> Result<u32, LascoError> {
-        let remote_id_string = remote_id.value.clone();
+        let remote_uuid: RemoteUuid = remote_id.clone().try_into()?;
+        let remote_id_string = remote_uuid.to_string();
         let storage =
-            self.build_storage_for_remote(&remote_id_string, app_support_dir.as_deref())?;
+            self.build_storage_for_remote(&remote_uuid, app_support_dir.as_deref())?;
         let inner = self.inner.clone();
         let report = self
             .rt
@@ -401,9 +406,10 @@ impl FfiLibrary {
         remote_id: FfiRemoteUuid,
         app_support_dir: Option<String>,
     ) -> Result<u32, LascoError> {
-        let remote_id_string = remote_id.value.clone();
+        let remote_uuid: RemoteUuid = remote_id.clone().try_into()?;
+        let remote_id_string = remote_uuid.to_string();
         let storage =
-            self.build_storage_for_remote(&remote_id_string, app_support_dir.as_deref())?;
+            self.build_storage_for_remote(&remote_uuid, app_support_dir.as_deref())?;
         let inner = self.inner.clone();
         let report = self
             .rt
@@ -419,10 +425,9 @@ impl FfiLibrary {
         remote_id: FfiRemoteUuid,
         app_support_dir: Option<String>,
     ) -> Result<(), LascoError> {
-        let remote_id_string = remote_id.value.clone();
+        let remote_uuid: RemoteUuid = remote_id.clone().try_into()?;
         let storage =
-            self.build_storage_for_remote(&remote_id_string, app_support_dir.as_deref())?;
-        let remote_uuid = remote_id.clone().try_into()?;
+            self.build_storage_for_remote(&remote_uuid, app_support_dir.as_deref())?;
         let remote = lasco_core::library::sync::remote_access::StorageRead::new(storage.as_ref());
         self.rt
             .block_on(lasco_core::library::sync::verify_remote_identity(
@@ -447,9 +452,9 @@ impl FfiLibrary {
                 msg: format!("remote '{}' not found", remote_id.value),
             },
         )?;
-        let remote_id_string = remote_id.value.clone();
+        let remote_id_string = remote_uuid.to_string();
         let storage =
-            self.build_storage_for_remote(&remote_id_string, app_support_dir.as_deref())?;
+            self.build_storage_for_remote(&remote_uuid, app_support_dir.as_deref())?;
         self.rt
             .block_on(self.inner.initialize_remote(storage.as_ref(), remote_uuid))
             .map_err(LascoError::from)
@@ -500,27 +505,23 @@ impl FfiLibrary {
 
     pub(super) fn build_storage_for_remote(
         &self,
-        remote_id: &str,
+        remote_id: &RemoteUuid,
         app_support_dir: Option<&str>,
     ) -> Result<Box<dyn lasco_core::storage::Storage + Send + Sync>, LascoError> {
         let library_id = self.inner.library_id();
         let lib_config = self.load_library_json()?;
 
-        // Find the requested remote and temporarily move it to the front so
-        // build_storage (which always uses index 0) builds the right storage.
-        let idx = lib_config
+        let remote = lib_config
             .remotes
             .iter()
-            .position(|r| r.remote_uuid.to_string() == remote_id)
+            .find(|remote| remote.remote_uuid == *remote_id)
             .ok_or_else(|| LascoError::Other {
                 msg: format!("remote '{}' not found", remote_id),
             })?;
-        let mut reordered = lib_config;
-        reordered.remotes.swap(0, idx);
 
         lasco_core::client::build_storage(
             &self.app_dir,
-            &reordered,
+            remote,
             Some(self.inner.master_key()),
             app_support_dir.map(std::path::Path::new),
         )

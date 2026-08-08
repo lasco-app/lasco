@@ -15,18 +15,19 @@ use crate::s3_secret::{encrypt_s3_secret_key, resolve_s3_credentials};
 use crate::session::{session_load_master_key, session_store_master_key};
 use crate::storage::{Storage, StorageLocalFs, StorageS3};
 
+/// Constructs the storage backend for an already-selected remote configuration.
+///
+/// This factory does not select a remote, modify library configuration, initialize remote
+/// storage, or perform synchronization. Callers choose and validate the [`RemoteConfig`] first.
+/// `app_dir` is used by the debug Android backend, while `app_support_dir` is required by the
+/// debug Apple backend.
 pub fn build_storage(
     app_dir: &Path,
-    library: &LibraryJson,
+    remote: &RemoteConfig,
     master_key: Option<&MasterKey>,
     app_support_dir: Option<&Path>,
 ) -> Result<Box<dyn Storage + Send + Sync>> {
-    if library.remotes.is_empty() {
-        bail!("no remote configured")
-    }
-
-    let primary = &library.remotes[0];
-    match &primary.kind {
+    match &remote.kind {
         RemoteKind::FixedPath(cfg) => Ok(Box::new(StorageLocalFs::new(&cfg.root_dir)?)),
         RemoteKind::UsbAndroid(cfg) => build_usb_android_storage(&cfg.tree_uri),
         RemoteKind::UsbApple(cfg) => build_usb_apple_storage(&cfg.bookmark_base64),

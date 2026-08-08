@@ -109,8 +109,7 @@ impl FfiLibrary {
                     .remotes
                     .first()
                     .ok_or(LascoError::NotFound)?
-                    .remote_uuid
-                    .to_string();
+                    .remote_uuid;
                 let storage =
                     self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
                 self.rt
@@ -141,8 +140,7 @@ impl FfiLibrary {
                     .remotes
                     .first()
                     .ok_or(LascoError::NotFound)?
-                    .remote_uuid
-                    .to_string();
+                    .remote_uuid;
                 let storage =
                     self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
                 self.rt
@@ -170,8 +168,7 @@ impl FfiLibrary {
                     .remotes
                     .first()
                     .ok_or(LascoError::NotFound)?
-                    .remote_uuid
-                    .to_string();
+                    .remote_uuid;
                 let storage =
                     self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
                 let inner = self.inner.clone();
@@ -207,8 +204,7 @@ impl FfiLibrary {
                     .remotes
                     .first()
                     .ok_or(LascoError::NotFound)?
-                    .remote_uuid
-                    .to_string();
+                    .remote_uuid;
                 let storage =
                     self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
                 let inner = self.inner.clone();
