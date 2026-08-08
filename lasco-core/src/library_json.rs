@@ -18,6 +18,11 @@ pub struct RemoteConfig {
     pub name: String,
     #[serde(default)]
     pub auto_push: bool,
+    /// Lower values are tried first when media is fetched on demand.
+    pub media_fetch_priority: u32,
+    /// Excludes this remote from on-demand media retrieval while retaining it for other operations.
+    #[serde(default)]
+    pub exclude_from_media_fetch: bool,
     pub kind: RemoteKind,
 }
 
@@ -253,6 +258,8 @@ mod tests {
                 remote_uuid: RemoteUuid::new(),
                 name: "local".to_string(),
                 auto_push: true,
+                media_fetch_priority: 0,
+                exclude_from_media_fetch: false,
                 kind: RemoteKind::FixedPath(FixedPathConfig {
                     root_dir: remote_path,
                 }),
@@ -303,6 +310,8 @@ mod tests {
             remote_uuid: RemoteUuid::new(),
             name: "local".to_string(),
             auto_push: true,
+            media_fetch_priority: 1,
+            exclude_from_media_fetch: false,
             kind: RemoteKind::FixedPath(FixedPathConfig {
                 root_dir: PathBuf::from("/tmp/remote2"),
             }),

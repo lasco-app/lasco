@@ -309,6 +309,8 @@ pub async fn add_existing_library_s3(
         remote_uuid,
         name: remote_id.clone(),
         auto_push: true,
+        media_fetch_priority: 0,
+        exclude_from_media_fetch: false,
         kind: RemoteKind::S3(S3Config {
             endpoint,
             bucket,

@@ -17,7 +17,7 @@ use lasco_core::session::session_load_master_key;
 use remotes::remote_config_to_ffi;
 
 use crate::error::LascoError;
-use crate::ids::{FfiLibraryId, FfiRemoteUuid};
+use crate::ids::FfiLibraryId;
 
 fn sessions_dir(app_dir: &std::path::Path) -> std::path::PathBuf {
     app_dir.join("sessions")
@@ -179,7 +179,6 @@ pub fn ffi_open_cached(
     let rt =
         tokio::runtime::Runtime::new().map_err(|e| LascoError::Other { msg: e.to_string() })?;
 
-    let sync_remote_id = library_config.remotes.first().map(|r| r.remote_uuid.into());
     let remotes = library_config
         .remotes
         .iter()
@@ -198,7 +197,6 @@ pub fn ffi_open_cached(
         inner: library,
         rt,
         app_dir,
-        sync_remote_id,
         remotes: Mutex::new(remotes),
     })))
 }
@@ -261,11 +259,6 @@ pub fn ffi_add_existing_library_s3(
 
     let library_config =
         LibraryJson::load(&app_dir, &library.library_id())?.ok_or(LascoError::NotFound)?;
-    let sync_remote_id = library_config
-        .remotes
-        .iter()
-        .find(|r| r.name == remote_name)
-        .map(|r| FfiRemoteUuid::from(r.remote_uuid));
     let remotes = library_config
         .remotes
         .iter()
@@ -276,7 +269,6 @@ pub fn ffi_add_existing_library_s3(
         inner: library,
         rt,
         app_dir,
-        sync_remote_id,
         remotes: Mutex::new(remotes),
     }))
 }
@@ -286,7 +278,6 @@ pub struct FfiLibrary {
     inner: lasco_core::library::Library,
     rt: tokio::runtime::Runtime,
     app_dir: PathBuf,
-    sync_remote_id: Option<FfiRemoteUuid>,
     remotes: Mutex<Vec<FfiRemote>>,
 }
 
@@ -319,8 +310,6 @@ impl FfiLibrary {
             .ok_or(LascoError::NotFound)?;
         let library_config =
             LibraryJson::load(&app_dir, library_id)?.ok_or(LascoError::NotFound)?;
-        let sync_remote_id = library_config.remotes.first().map(|r| r.remote_uuid.into());
-
         let remotes = library_config
             .remotes
             .iter()
@@ -340,7 +329,6 @@ impl FfiLibrary {
             inner: library,
             rt,
             app_dir,
-            sync_remote_id,
             remotes: Mutex::new(remotes),
         }))
     }

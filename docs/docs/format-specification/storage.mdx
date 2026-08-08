@@ -105,6 +105,8 @@ An empty `remotes` list is valid: the library is local-only and has no remote st
     {
       "remote_uuid": "a1b2c3d4-0000-0000-0000-000000000001",
       "name": "my-s3-remote",
+      "media_fetch_priority": 0,
+      "exclude_from_media_fetch": false,
       "kind": {
         "kind": "s3",
         "endpoint": "https://s3.amazonaws.com",
@@ -118,6 +120,8 @@ An empty `remotes` list is valid: the library is local-only and has no remote st
     {
       "remote_uuid": "a1b2c3d4-0000-0000-0000-000000000002",
       "name": "usb-backup",
+      "media_fetch_priority": 1,
+      "exclude_from_media_fetch": false,
       "kind": {
         "kind": "fixed_path",
         "root_dir": "/Volumes/backup/my-photos"
@@ -134,5 +138,7 @@ The `kind` field's own `kind` tag selects the remote's storage type:
 - `s3` — an S3-compatible bucket, reached with the given credentials.
 - `fixed_path` — trusts the stored `root_dir` absolute path as-is. Suitable for USB drives, network mounts, or any path stable across the app's lifetime.
 - `debug_local_apple` (macOS/iOS only) — stores only a `local_dir_name` and re-resolves its location against the current app-support directory on every use, because sandboxed containers get a fresh container path on each install or reinstall. This is a development and testing convenience, not for production backup use.
+
+`media_fetch_priority` controls on-demand media retrieval. A lower value is tried first; equal values retain the configuration order. Set `exclude_from_media_fetch` to `true` for a remote that must not be queried for on-demand media. When media is absent locally, clients try each eligible remote in priority order until one supplies it.
 
 The secret key is never stored in plaintext. It is encrypted with the library master key using AES-256-GCM and held only in the `secret_key_encrypted` field. Local filesystem remotes have no credentials. See [Encryption](./encryption) for details.

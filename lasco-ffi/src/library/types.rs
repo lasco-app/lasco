@@ -72,12 +72,6 @@ pub struct FfiMediaOrGroupNeighbors {
 }
 
 #[derive(uniffi::Record, Debug)]
-pub struct FfiSyncResult {
-    pub pushed: u32,
-    pub pulled: u32,
-}
-
-#[derive(uniffi::Record, Debug)]
 pub struct FfiLibraryEntry {
     pub library_id: FfiLibraryId,
     pub nickname: String,
@@ -90,6 +84,8 @@ pub struct FfiRemote {
     pub remote_id: FfiRemoteUuid,
     pub name: String,
     pub auto_push: bool,
+    pub media_fetch_priority: u32,
+    pub exclude_from_media_fetch: bool,
     pub kind: String,
     pub endpoint: Option<String>,
     pub bucket: Option<String>,

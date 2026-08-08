@@ -89,10 +89,6 @@ impl Storage for StorageUsbApple {
         self.storage.put_atomic(key, data).await
     }
 
-    async fn put_atomic(&self, key: &str, data: &[u8]) -> Result<()> {
-        self.storage.put_atomic(key, data).await
-    }
-
     async fn put_if_absent(&self, key: &str, data: &[u8]) -> Result<bool> {
         self.storage.put_if_absent(key, data).await
     }

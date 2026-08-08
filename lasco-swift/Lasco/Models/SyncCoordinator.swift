@@ -115,21 +115,6 @@ final class SyncCoordinator {
         }
     }
 
-    func sync() async -> String? {
-        fetchInProgress = true
-        defer { fetchInProgress = false }
-        do {
-            _ = try await gate.run { [repository] in
-                try await repository.sync()
-            }
-            return nil
-        } catch is CancellationError {
-            return nil
-        } catch {
-            return error.localizedDescription
-        }
-    }
-
     func schedulePush() {
         cancelScheduledPush()
 

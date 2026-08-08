@@ -8,7 +8,7 @@ use lasco_core::library_json::{
 use lasco_core::operations::{LibraryPassword, LibraryUsername, Operation};
 
 use super::{
-    FfiKv, FfiLibrary, FfiMediaItem, FfiOperation, FfiOperationGroup, FfiRemote, FfiSyncResult,
+    FfiKv, FfiLibrary, FfiMediaItem, FfiOperation, FfiOperationGroup, FfiRemote,
 };
 use crate::error::LascoError;
 use crate::ids::FfiRemoteUuid;
@@ -73,6 +73,8 @@ impl FfiLibrary {
             remote_uuid,
             name,
             auto_push: true,
+            media_fetch_priority: lib_config.remotes.len() as u32,
+            exclude_from_media_fetch: false,
             kind: RemoteKind::FixedPath(FixedPathConfig {
                 root_dir: PathBuf::from(&path),
             }),
@@ -139,6 +141,8 @@ impl FfiLibrary {
             remote_uuid,
             name: name.clone(),
             auto_push: true,
+            media_fetch_priority: lib_config.remotes.len() as u32,
+            exclude_from_media_fetch: false,
             kind: RemoteKind::DebugLocalApple(DebugLocalAppleConfig {
                 local_dir_name: name,
             }),
@@ -172,6 +176,8 @@ impl FfiLibrary {
             remote_uuid,
             name: name.clone(),
             auto_push: true,
+            media_fetch_priority: lib_config.remotes.len() as u32,
+            exclude_from_media_fetch: false,
             kind: RemoteKind::DebugLocalAndroid(DebugLocalAndroidConfig {
                 local_dir_name: name,
             }),
@@ -225,6 +231,8 @@ impl FfiLibrary {
             remote_uuid,
             name,
             auto_push: true,
+            media_fetch_priority: lib_config.remotes.len() as u32,
+            exclude_from_media_fetch: false,
             kind: RemoteKind::S3(lasco_core::library_json::S3Config {
                 endpoint,
                 bucket,
@@ -252,16 +260,20 @@ impl FfiLibrary {
     pub fn remove_remote(&self, remote_id: FfiRemoteUuid) -> Result<(), LascoError> {
         let library_id = self.inner.library_id();
         let mut lib_config = self.load_library_json()?;
+        let remote_uuid: RemoteUuid = remote_id.clone().try_into()?;
 
         let index = lib_config
             .remotes
             .iter()
-            .position(|r| r.remote_uuid.to_string() == remote_id.value)
+            .position(|r| r.remote_uuid == remote_uuid)
             .ok_or_else(|| LascoError::Other {
                 msg: format!("remote '{}' not found", remote_id.value),
             })?;
 
         lib_config.remotes.remove(index);
+        if lib_config.default_fetch_remote == Some(remote_uuid) {
+            lib_config.default_fetch_remote = None;
+        }
         save_library(&self.app_dir, &library_id, &lib_config)
             .map_err(|e| LascoError::Other { msg: e.to_string() })?;
 
@@ -279,10 +291,11 @@ impl FfiLibrary {
     ) -> Result<(), LascoError> {
         let library_id = self.inner.library_id();
         let mut lib_config = self.load_library_json()?;
+        let remote_uuid: RemoteUuid = remote_id.clone().try_into()?;
         let remote = lib_config
             .remotes
             .iter_mut()
-            .find(|r| r.remote_uuid.to_string() == remote_id.value)
+            .find(|r| r.remote_uuid == remote_uuid)
             .ok_or_else(|| LascoError::Other {
                 msg: format!("remote '{}' not found", remote_id.value),
             })?;
@@ -300,26 +313,34 @@ impl FfiLibrary {
         Ok(())
     }
 
-    pub fn sync(&self, app_support_dir: Option<String>) -> Result<FfiSyncResult, LascoError> {
-        let remote_id = self
-            .sync_remote_id
-            .clone()
-            .ok_or_else(|| LascoError::Other {
-                msg: "no remotes configured".to_string(),
-        })?;
-
+    pub fn set_remote_media_fetch_priority(
+        &self,
+        remote_id: FfiRemoteUuid,
+        priority: u32,
+    ) -> Result<(), LascoError> {
+        let library_id = self.inner.library_id();
+        let mut lib_config = self.load_library_json()?;
         let remote_uuid: RemoteUuid = remote_id.clone().try_into()?;
-        let remote_id_string = remote_uuid.to_string();
-        let storage =
-            self.build_storage_for_remote(&remote_uuid, app_support_dir.as_deref())?;
-        let report = self
-            .rt
-            .block_on(self.inner.sync(storage.as_ref(), &remote_id_string))
-            .map_err(LascoError::from)?;
-        Ok(FfiSyncResult {
-            pushed: report.push.ops_uploaded as u32,
-            pulled: report.fetch.ops_downloaded as u32,
-        })
+        let remote = lib_config
+            .remotes
+            .iter_mut()
+            .find(|remote| remote.remote_uuid == remote_uuid)
+            .ok_or_else(|| LascoError::Other {
+                msg: format!("remote '{}' not found", remote_id.value),
+            })?;
+        remote.media_fetch_priority = priority;
+        save_library(&self.app_dir, &library_id, &lib_config)
+            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+        if let Some(remote) = self
+            .remotes
+            .lock()
+            .unwrap()
+            .iter_mut()
+            .find(|remote| remote.remote_id == remote_id)
+        {
+            remote.media_fetch_priority = priority;
+        }
+        Ok(())
     }
 
     pub fn push_remote(
@@ -352,34 +373,6 @@ impl FfiLibrary {
             .block_on(self.inner.fetch(storage.as_ref(), &remote_id_string))
             .map_err(LascoError::from)?;
         Ok(report.ops_downloaded as u32)
-    }
-
-    pub async fn sync_async(
-        &self,
-        app_support_dir: Option<String>,
-    ) -> Result<FfiSyncResult, LascoError> {
-        let remote_id = self
-            .sync_remote_id
-            .clone()
-            .ok_or_else(|| LascoError::Other {
-                msg: "no remotes configured".to_string(),
-            })?;
-
-        let remote_uuid: RemoteUuid = remote_id.clone().try_into()?;
-        let remote_id_string = remote_uuid.to_string();
-        let storage =
-            self.build_storage_for_remote(&remote_uuid, app_support_dir.as_deref())?;
-        let inner = self.inner.clone();
-        let report = self
-            .rt
-            .spawn(async move { inner.sync(storage.as_ref(), &remote_id_string).await })
-            .await
-            .map_err(|e| LascoError::Other { msg: e.to_string() })?
-            .map_err(LascoError::from)?;
-        Ok(FfiSyncResult {
-            pushed: report.push.ops_uploaded as u32,
-            pulled: report.fetch.ops_downloaded as u32,
-        })
     }
 
     pub async fn push_remote_async(
@@ -452,7 +445,6 @@ impl FfiLibrary {
                 msg: format!("remote '{}' not found", remote_id.value),
             },
         )?;
-        let remote_id_string = remote_uuid.to_string();
         let storage =
             self.build_storage_for_remote(&remote_uuid, app_support_dir.as_deref())?;
         self.rt
@@ -483,6 +475,8 @@ impl FfiLibrary {
             remote_uuid,
             name,
             auto_push: true,
+            media_fetch_priority: lib_config.remotes.len() as u32,
+            exclude_from_media_fetch: false,
             kind,
         };
         let ffi_remote = remote_config_to_ffi(&remote_config);
@@ -508,7 +502,6 @@ impl FfiLibrary {
         remote_id: &RemoteUuid,
         app_support_dir: Option<&str>,
     ) -> Result<Box<dyn lasco_core::storage::Storage + Send + Sync>, LascoError> {
-        let library_id = self.inner.library_id();
         let lib_config = self.load_library_json()?;
 
         let remote = lib_config
@@ -566,6 +559,8 @@ pub(super) fn remote_config_to_ffi(r: &RemoteConfig) -> FfiRemote {
         remote_id: r.remote_uuid.into(),
         name: r.name.clone(),
         auto_push: r.auto_push,
+        media_fetch_priority: r.media_fetch_priority,
+        exclude_from_media_fetch: r.exclude_from_media_fetch,
         kind,
         endpoint,
         bucket,

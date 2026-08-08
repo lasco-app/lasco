@@ -89,6 +89,7 @@ protocol LibraryRepositoryProtocol: Sendable {
 
     func setDefaultFetchRemote(remoteID: FfiRemoteUuid?) async throws
     func setRemoteAutoPush(remoteID: FfiRemoteUuid, enabled: Bool) async throws
+    func setRemoteMediaFetchPriority(remoteID: FfiRemoteUuid, priority: UInt32) async throws
     func setAutoImportDeviceMedia(enabled: Bool) async throws
     func addUser(username: String, password: String) async throws
     func addRemoteFixedPath(name: String, path: String) async throws -> FfiRemoteUuid
@@ -101,7 +102,6 @@ protocol LibraryRepositoryProtocol: Sendable {
 
     func push(remoteID: FfiRemoteUuid) async throws -> UInt32
     func fetch(remoteID: FfiRemoteUuid) async throws -> UInt32
-    func sync() async throws -> FfiSyncResult
     func close() async
 }
 
@@ -536,6 +536,12 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         await notify(.session)
     }
 
+    func setRemoteMediaFetchPriority(remoteID: FfiRemoteUuid, priority: UInt32) async throws {
+        try ensureOpen()
+        try library.setRemoteMediaFetchPriority(remoteId: remoteID, priority: priority)
+        await notify(.session)
+    }
+
     func setAutoImportDeviceMedia(enabled: Bool) async throws {
         try ensureOpen()
         try library.setAutoImportDeviceMedia(enabled: enabled)
@@ -602,13 +608,6 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
     func fetch(remoteID: FfiRemoteUuid) async throws -> UInt32 {
         try ensureOpen()
         let result = try await library.fetchRemoteAsync(remoteId: remoteID, appSupportDir: appSupportDirectory)
-        await notify(.all)
-        return result
-    }
-
-    func sync() async throws -> FfiSyncResult {
-        try ensureOpen()
-        let result = try await library.syncAsync(appSupportDir: appSupportDirectory)
         await notify(.all)
         return result
     }
@@ -736,6 +735,7 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     func allMediaIDs() async -> [FfiMediaUuid] { await storage.allMediaIDs() }
     func setDefaultFetchRemote(remoteID: FfiRemoteUuid?) async throws { try await storage.setDefaultFetchRemote(remoteID: remoteID) }
     func setRemoteAutoPush(remoteID: FfiRemoteUuid, enabled: Bool) async throws { try await storage.setRemoteAutoPush(remoteID: remoteID, enabled: enabled) }
+    func setRemoteMediaFetchPriority(remoteID: FfiRemoteUuid, priority: UInt32) async throws { try await storage.setRemoteMediaFetchPriority(remoteID: remoteID, priority: priority) }
     func setAutoImportDeviceMedia(enabled: Bool) async throws { try await storage.setAutoImportDeviceMedia(enabled: enabled) }
     func addUser(username: String, password: String) async throws { try await storage.addUser(username: username, password: password) }
     func addRemoteFixedPath(name: String, path: String) async throws -> FfiRemoteUuid { try await storage.addRemoteFixedPath(name: name, path: path) }
@@ -747,6 +747,5 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     func hasUnpushedChanges(remoteID: FfiRemoteUuid) async -> Bool { await storage.hasUnpushedChanges(remoteID: remoteID) }
     func push(remoteID: FfiRemoteUuid) async throws -> UInt32 { try await storage.push(remoteID: remoteID) }
     func fetch(remoteID: FfiRemoteUuid) async throws -> UInt32 { try await storage.fetch(remoteID: remoteID) }
-    func sync() async throws -> FfiSyncResult { try await storage.sync() }
     func close() async { await storage.close() }
 }

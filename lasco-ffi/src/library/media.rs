@@ -46,7 +46,18 @@ impl FfiLibrary {
         let library_id = self.inner.library_id();
         let mut lib_config =
             LibraryJson::load(&self.app_dir, &library_id)?.ok_or(LascoError::NotFound)?;
-        lib_config.default_fetch_remote = remote_id.map(TryInto::try_into).transpose()?;
+        let remote_uuid = remote_id.map(TryInto::try_into).transpose()?;
+        if let Some(remote_uuid) = remote_uuid
+            && !lib_config
+                .remotes
+                .iter()
+                .any(|remote| remote.remote_uuid == remote_uuid)
+        {
+            return Err(LascoError::Other {
+                msg: format!("remote '{}' not found", remote_uuid),
+            });
+        }
+        lib_config.default_fetch_remote = remote_uuid;
         lib_config.save(&self.app_dir, &library_id)?;
         Ok(())
     }
@@ -104,20 +115,21 @@ impl FfiLibrary {
         {
             Ok(b) => Ok(b),
             Err(lasco_core::error::LibraryError::MediaNotFound(_)) => {
-                let lib_config = self.load_library_json()?;
-                let remote_id = lib_config
-                    .remotes
-                    .first()
-                    .ok_or(LascoError::NotFound)?
-                    .remote_uuid;
-                let storage =
-                    self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
-                self.rt
-                    .block_on(
-                        self.inner
-                            .media_get_thumbnail(media_uuid, Some(storage.as_ref())),
-                    )
-                    .map_err(LascoError::from)
+                let mut last_error = None;
+                for remote_id in self.media_fetch_remote_ids()? {
+                    let storage = match self.build_storage_for_remote(&remote_id, app_support_dir.as_deref()) {
+                        Ok(storage) => storage,
+                        Err(error) => {
+                            last_error = Some(error);
+                            continue;
+                        }
+                    };
+                    match self.rt.block_on(self.inner.media_get_thumbnail(media_uuid, Some(storage.as_ref()))) {
+                        Ok(bytes) => return Ok(bytes),
+                        Err(error) => last_error = Some(LascoError::from(error)),
+                    }
+                }
+                Err(last_error.unwrap_or(LascoError::NotFound))
             }
             Err(e) => Err(LascoError::from(e)),
         }
@@ -135,20 +147,21 @@ impl FfiLibrary {
         {
             Ok(b) => Ok(b),
             Err(lasco_core::error::LibraryError::MediaNotFound(_)) => {
-                let lib_config = self.load_library_json()?;
-                let remote_id = lib_config
-                    .remotes
-                    .first()
-                    .ok_or(LascoError::NotFound)?
-                    .remote_uuid;
-                let storage =
-                    self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
-                self.rt
-                    .block_on(
-                        self.inner
-                            .media_get_bytes(media_uuid, Some(storage.as_ref())),
-                    )
-                    .map_err(LascoError::from)
+                let mut last_error = None;
+                for remote_id in self.media_fetch_remote_ids()? {
+                    let storage = match self.build_storage_for_remote(&remote_id, app_support_dir.as_deref()) {
+                        Ok(storage) => storage,
+                        Err(error) => {
+                            last_error = Some(error);
+                            continue;
+                        }
+                    };
+                    match self.rt.block_on(self.inner.media_get_bytes(media_uuid, Some(storage.as_ref()))) {
+                        Ok(bytes) => return Ok(bytes),
+                        Err(error) => last_error = Some(LascoError::from(error)),
+                    }
+                }
+                Err(last_error.unwrap_or(LascoError::NotFound))
             }
             Err(e) => Err(LascoError::from(e)),
         }
@@ -163,28 +176,20 @@ impl FfiLibrary {
         match self.inner.media_get_thumbnail(media_uuid, None).await {
             Ok(b) => Ok(b),
             Err(lasco_core::error::LibraryError::MediaNotFound(_)) => {
-                let lib_config = self.load_library_json()?;
-                let remote_id = lib_config
-                    .remotes
-                    .first()
-                    .ok_or(LascoError::NotFound)?
-                    .remote_uuid;
-                let storage =
-                    self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
-                let inner = self.inner.clone();
-                // Storage backends like S3 rely on hyper/tokio networking, which
-                // needs an active reactor. Uniffi polls this future from its own
-                // foreign executor with no reactor entered, so the remote fetch
-                // is spawned onto our own tokio runtime instead of awaited inline.
-                self.rt
-                    .spawn(async move {
-                        inner
-                            .media_get_thumbnail(media_uuid, Some(storage.as_ref()))
-                            .await
-                    })
-                    .await
-                    .map_err(|e| LascoError::Other { msg: e.to_string() })?
-                    .map_err(LascoError::from)
+                let mut last_error = None;
+                for remote_id in self.media_fetch_remote_ids()? {
+                    let storage = match self.build_storage_for_remote(&remote_id, app_support_dir.as_deref()) {
+                        Ok(storage) => storage,
+                        Err(error) => { last_error = Some(error); continue; }
+                    };
+                    let inner = self.inner.clone();
+                    match self.rt.spawn(async move { inner.media_get_thumbnail(media_uuid, Some(storage.as_ref())).await }).await {
+                        Ok(Ok(bytes)) => return Ok(bytes),
+                        Ok(Err(error)) => last_error = Some(LascoError::from(error)),
+                        Err(error) => last_error = Some(LascoError::Other { msg: error.to_string() }),
+                    }
+                }
+                Err(last_error.unwrap_or(LascoError::NotFound))
             }
             Err(e) => Err(LascoError::from(e)),
         }
@@ -199,28 +204,20 @@ impl FfiLibrary {
         match self.inner.media_get_bytes(media_uuid, None).await {
             Ok(b) => Ok(b),
             Err(lasco_core::error::LibraryError::MediaNotFound(_)) => {
-                let lib_config = self.load_library_json()?;
-                let remote_id = lib_config
-                    .remotes
-                    .first()
-                    .ok_or(LascoError::NotFound)?
-                    .remote_uuid;
-                let storage =
-                    self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
-                let inner = self.inner.clone();
-                // Storage backends like S3 rely on hyper/tokio networking, which
-                // needs an active reactor. Uniffi polls this future from its own
-                // foreign executor with no reactor entered, so the remote fetch
-                // is spawned onto our own tokio runtime instead of awaited inline.
-                self.rt
-                    .spawn(async move {
-                        inner
-                            .media_get_bytes(media_uuid, Some(storage.as_ref()))
-                            .await
-                    })
-                    .await
-                    .map_err(|e| LascoError::Other { msg: e.to_string() })?
-                    .map_err(LascoError::from)
+                let mut last_error = None;
+                for remote_id in self.media_fetch_remote_ids()? {
+                    let storage = match self.build_storage_for_remote(&remote_id, app_support_dir.as_deref()) {
+                        Ok(storage) => storage,
+                        Err(error) => { last_error = Some(error); continue; }
+                    };
+                    let inner = self.inner.clone();
+                    match self.rt.spawn(async move { inner.media_get_bytes(media_uuid, Some(storage.as_ref())).await }).await {
+                        Ok(Ok(bytes)) => return Ok(bytes),
+                        Ok(Err(error)) => last_error = Some(LascoError::from(error)),
+                        Err(error) => last_error = Some(LascoError::Other { msg: error.to_string() }),
+                    }
+                }
+                Err(last_error.unwrap_or(LascoError::NotFound))
             }
             Err(e) => Err(LascoError::from(e)),
         }
@@ -481,6 +478,22 @@ impl FfiLibrary {
         self.rt
             .block_on(self.inner.media_delete(media_uuid))
             .map_err(LascoError::from)
+    }
+}
+
+impl FfiLibrary {
+    fn media_fetch_remote_ids(&self) -> Result<Vec<lasco_core::identifiers::RemoteUuid>, LascoError> {
+        let library_id = self.inner.library_id();
+        let lib_config =
+            LibraryJson::load(&self.app_dir, &library_id)?.ok_or(LascoError::NotFound)?;
+        let mut remotes: Vec<_> = lib_config
+            .remotes
+            .into_iter()
+            .filter(|remote| !remote.exclude_from_media_fetch)
+            .enumerate()
+            .collect();
+        remotes.sort_by_key(|(index, remote)| (remote.media_fetch_priority, *index));
+        Ok(remotes.into_iter().map(|(_, remote)| remote.remote_uuid).collect())
     }
 }
 

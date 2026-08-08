@@ -33,7 +33,6 @@ import uniffi.lasco_ffi.FfiMediaOrGroupNeighbors
 import uniffi.lasco_ffi.FfiOperationGroup
 import uniffi.lasco_ffi.FfiGroupUuid
 import uniffi.lasco_ffi.FfiRemoteUuid
-import uniffi.lasco_ffi.FfiSyncResult
 
 /**
  * Session scoped wrapper around an opened FfiLibrary, replacing the Swift
@@ -373,13 +372,6 @@ class LibraryRepository(
         changes.emit(Change.AlbumList)
     }
 
-    suspend fun sync(appSupportDir: String?): FfiSyncResult {
-        val result = lib.syncAsync(appSupportDir)
-        changes.emit(Change.All)
-        refreshSessionState()
-        return result
-    }
-
     suspend fun connectRemote(remoteId: FfiRemoteUuid, appSupportDir: String?): Boolean =
         try {
             lib.connectRemote(remoteId, appSupportDir)
@@ -442,6 +434,11 @@ class LibraryRepository(
 
     suspend fun setRemoteAutoPush(remoteId: FfiRemoteUuid, enabled: Boolean) {
         lib.setRemoteAutoPush(remoteId, enabled)
+        refreshSessionState()
+    }
+
+    suspend fun setRemoteMediaFetchPriority(remoteId: FfiRemoteUuid, priority: UInt) {
+        lib.setRemoteMediaFetchPriority(remoteId, priority)
         refreshSessionState()
     }
 
