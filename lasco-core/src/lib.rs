@@ -1,3 +1,4 @@
+mod atomic_file;
 pub mod client;
 pub mod config_json;
 pub mod encryption;

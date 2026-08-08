@@ -803,6 +803,34 @@ html[class] .button--sm:active {
 .tag-ok { color: var(--lasco-ok); border-color: var(--lasco-ok); background: #f0f7eb; }
 .tag-warn { color: var(--lasco-warn); border-color: var(--lasco-warn); background: #fdf6e8; }
 .tag-error { color: var(--lasco-error); border-color: var(--lasco-error); background: #fdf0ef; }
+
+/* Safety matrices use a filled treatment for incompatible combinations. */
+.safety-denied {
+  display: inline-block;
+  padding: 0.125rem 0.375rem;
+  color: #fff;
+  font-weight: 700;
+  line-height: 1.2;
+  background: var(--lasco-error);
+}
+
+.safety-allowed {
+  display: inline-block;
+  padding: 0.125rem 0.375rem;
+  color: #fff;
+  font-weight: 700;
+  line-height: 1.2;
+  background: var(--lasco-ok);
+}
+
+.safety-risky {
+  display: inline-block;
+  padding: 0.125rem 0.375rem;
+  color: #fff;
+  font-weight: 700;
+  line-height: 1.2;
+  background: var(--lasco-warn);
+}
 .tag-muted { color: var(--lasco-ink-muted); border-color: var(--lasco-line-soft); background: var(--lasco-surface); }
 
 /* Inputs */

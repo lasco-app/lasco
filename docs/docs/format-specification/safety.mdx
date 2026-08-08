@@ -5,11 +5,8 @@ sidebar_label: Safety
 
 # Safety
 
-## Goal
-
-Lasco prioritizes preventing data loss. Duplicate data is acceptable: it is detected and ignored during state reconstruction.
-
-## Prevention measures
+{/*
+## What we care about
 
 - **Successful procedures preserve data.** Fetch and push only add or merge data.
 - **Procedures are interruption-safe.** They may be killed at any point and safely resumed or repeated.
@@ -17,15 +14,56 @@ Lasco prioritizes preventing data loss. Duplicate data is acceptable: it is dete
 - **Corruption is detected.** Data is validated before use.
 - **Media files cannot currently be deleted.** Removing media from an album or group does not delete its file.
 - **Destructive file access is unrepresentable.** Code that deletes or overwrites a media file must not compile.
+*/}
 
-## Successful procedures preserve data
+### Sync policy
 
-## Procedures are interruption-safe
+`SyncPolicy` enforces runtime exclusions. A guard is held until fetch or push
+returns; a conflicting acquisition fails with `AlreadyRunning`.
 
-## Rust prevents data races
+| Procedures started concurrently | Same remote | Different remotes |
+| --- | --- | --- |
+| Fetch + fetch | <span className="safety-denied">Denied</span> | <span className="safety-denied">Denied</span> |
+| Fetch + push | <span className="safety-denied">Denied</span> | <span className="safety-allowed">Allowed</span> |
+| Push + push | <span className="safety-denied">Denied</span> | <span className="safety-allowed">Allowed</span> |
 
-## Corruption is detected
+### Existing resource restrictions
 
-## Media files cannot currently be deleted
+| Restriction | Protects | Effect |
+| --- | --- | --- |
+| Local operation-files mutex | `operations.log` and `pending.op` | Serializes one synchronous operation-file access at a time. The guard is released before an `await`. |
+| In-memory operation-state `RwLock` | Reconstructed in-memory state | Multiple readers may coexist; rebuilding installs state under the exclusive write lock. |
+| Remote compaction lock file | `operations/LOCK.op` | Only the client that created the lock with `put_if_absent` may compact. A client that cannot create it skips compaction. A stale lock requires manual removal. |
 
-## Destructive file access is unrepresentable
+### Access boundaries
+
+To restrict remote-storage access, fetch receives only `StorageRead`, while push
+receives `StorageReadWrite`.
+
+Local-state subdirectory access is not strictly enforced. However, path builders
+are separated by domain, so each caller receives a focused handle for the part of
+local state it needs.
+
+The safety assessments below apply to concurrent work within one `Library`
+instance.
+
+#### In-memory state
+
+| Resource | Fetch implementation input | Push implementation input | Local-edit implementation input | Safe? |
+| --- | --- | --- | --- | --- |
+| Reconstructed in-memory state | Operation-state `RwLock` (through `Library`) | Operation-state `RwLock` (through `Library`) | Operation-state `RwLock` (through `Library`) | <span className="tag tag-ok">Safe</span> `RwLock` |
+
+#### Remote storage
+
+| Resource | Fetch implementation input | Push implementation input | Local-edit implementation input | Safe? |
+| --- | --- | --- | --- | --- |
+| Remote storage | `StorageRead` | `StorageReadWrite` | Not used | <span className="tag tag-ok">Safe</span> Only one sync operation per remote |
+
+#### Local state
+
+| Resource | Fetch implementation input | Push implementation input | Local-edit implementation input | Safe? |
+| --- | --- | --- | --- | --- |
+| `local_state/library/` | `LocalStateLibraryDir` | Not used | Not used | <span className="tag tag-ok">Safe</span> Only one fetch per library |
+| `remotes/{remote_id}/state/` | `RemoteLastKnownStateDir` | `RemoteLastKnownStateDir` | Not used | <span className="tag tag-ok">Safe</span> Only one sync operation per remote |
+| `local_state/media/` | Not used | `LocalStateMediaDir` | `LocalStateMediaDir` (through `Library`) | <span className="tag tag-ok">Safe</span> Atomic write; immutable file with a 1-to-1 filename/content relation |
+| `operations.log`, `pending.op` | `LocalOpsReadWriteLock` | `LocalOpsReadWriteLock` (through `Library`) | `LocalOpsReadWriteLock` (through `Library`) | <span className="tag tag-ok">Safe</span> Mutex |

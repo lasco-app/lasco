@@ -77,7 +77,11 @@ impl Drop for StorageUsbApple {
 #[async_trait]
 impl Storage for StorageUsbApple {
     async fn put(&self, key: &str, data: &[u8]) -> Result<()> {
-        self.storage.put(key, data).await
+        self.storage.put_atomic(key, data).await
+    }
+
+    async fn put_atomic(&self, key: &str, data: &[u8]) -> Result<()> {
+        self.storage.put_atomic(key, data).await
     }
 
     async fn put_if_absent(&self, key: &str, data: &[u8]) -> Result<bool> {
