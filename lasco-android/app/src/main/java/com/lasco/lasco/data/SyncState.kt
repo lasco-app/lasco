@@ -1,6 +1,7 @@
 package com.lasco.lasco.data
 
 import uniffi.lasco_ffi.FfiSyncResult
+import uniffi.lasco_ffi.FfiRemoteUuid
 
 sealed interface IncrementalImportState {
     data object Idle : IncrementalImportState
@@ -15,7 +16,7 @@ sealed interface IncrementalImportState {
  * there is no per record sync history on the FFI surface.
  */
 data class SyncState(
-    val busyRemoteIds: Set<String> = emptySet(),
+    val busyRemoteIds: Set<FfiRemoteUuid> = emptySet(),
     val fetchInProgress: Boolean = false,
     val bulkImportProgress: Pair<Int, Int>? = null,
     val incrementalImportState: IncrementalImportState = IncrementalImportState.Idle,
@@ -27,5 +28,5 @@ data class SyncState(
     val pushDeadlineElapsedMs: Long? = null,
     // Immutable set of Auto push remotes eligible when the active countdown
     // began. Remotes are revalidated against their current setting at expiry.
-    val scheduledAutoPushRemoteIds: Set<String> = emptySet(),
+    val scheduledAutoPushRemoteIds: Set<FfiRemoteUuid> = emptySet(),
 )

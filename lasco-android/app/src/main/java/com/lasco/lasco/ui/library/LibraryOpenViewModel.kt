@@ -44,7 +44,7 @@ class LibraryOpenViewModel(
 
     init {
         viewModelScope.launch {
-            val found = repository.listLibraries().firstOrNull { it.id == entryId }
+            val found = repository.listLibraries().firstOrNull { it.libraryId.value == entryId }
             if (found == null) {
                 _uiState.value = LibraryOpenUiState(checkingCache = false, error = "Library not found")
             } else {

@@ -3,6 +3,7 @@ package com.lasco.lasco.media
 import android.content.Context
 import com.lasco.lasco.data.LibraryRepository
 import java.io.File
+import uniffi.lasco_ffi.FfiMediaUuid
 
 /**
  * Materializes a media item's full-quality bytes to a real file in the
@@ -16,9 +17,9 @@ import java.io.File
  * MediaImporter.kt elsewhere in this codebase.
  */
 object VideoFileCache {
-    suspend fun file(context: Context, repo: LibraryRepository, mediaId: String, filenameOriginal: String): File? {
+    suspend fun file(context: Context, repo: LibraryRepository, mediaId: FfiMediaUuid, filenameOriginal: String): File? {
         val ext = filenameOriginal.substringAfterLast('.', "")
-        val name = if (ext.isEmpty()) mediaId else "$mediaId.$ext"
+        val name = if (ext.isEmpty()) mediaId.value else "${mediaId.value}.$ext"
         val file = File(context.cacheDir, "media_$name")
         if (file.exists()) return file
         val bytes = repo.mediaBytes(mediaId) ?: return null

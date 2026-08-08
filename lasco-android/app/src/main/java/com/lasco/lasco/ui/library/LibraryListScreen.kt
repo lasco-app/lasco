@@ -113,10 +113,10 @@ fun LibraryListScreen(
                 }
                 else -> items(
                     items = state.libraries,
-                    key = { it.id },
+                    key = { it.libraryId.value },
                     contentType = { "library" },
                 ) { entry ->
-                    LibraryRow(entry, onClick = { if (entry.loadError == null) onOpenLibrary(entry.id) })
+                    LibraryRow(entry, onClick = { if (entry.loadError == null) onOpenLibrary(entry.libraryId.value) })
                 }
             }
         }
@@ -159,7 +159,7 @@ private fun LibraryRow(entry: FfiLibraryEntry, onClick: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
-                text = if (entry.id.isEmpty()) "Unknown library" else entry.nickname,
+                text = if (entry.libraryId.value.isEmpty()) "Unknown library" else entry.nickname,
                 style = LascoTheme.type.body(),
                 color = colors.ink,
             )

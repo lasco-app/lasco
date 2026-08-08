@@ -6,6 +6,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import uniffi.lasco_ffi.FfiLibraryId
+import uniffi.lasco_ffi.FfiRemoteUuid
 
 /**
  * Small local settings store, the Android equivalent of Swift's
@@ -30,29 +32,29 @@ class Prefs(context: Context) {
         _expertMode.value = value
     }
 
-    fun onboardingCheckpoint(libraryId: String): WizardCheckpoint? {
-        return sp.getString("$KEY_ONBOARDING_CHECKPOINT.$libraryId", null)
+    fun onboardingCheckpoint(libraryId: FfiLibraryId): WizardCheckpoint? {
+        return sp.getString("$KEY_ONBOARDING_CHECKPOINT.${libraryId.value}", null)
             ?.let { value -> WizardCheckpoint.entries.firstOrNull { it.name == value } }
     }
 
-    fun setOnboardingCheckpoint(libraryId: String, checkpoint: WizardCheckpoint) {
-        sp.edit().putString("$KEY_ONBOARDING_CHECKPOINT.$libraryId", checkpoint.name).apply()
+    fun setOnboardingCheckpoint(libraryId: FfiLibraryId, checkpoint: WizardCheckpoint) {
+        sp.edit().putString("$KEY_ONBOARDING_CHECKPOINT.${libraryId.value}", checkpoint.name).apply()
     }
 
-    fun clearOnboardingIncomplete(libraryId: String) {
-        sp.edit().remove("$KEY_ONBOARDING_CHECKPOINT.$libraryId").apply()
+    fun clearOnboardingIncomplete(libraryId: FfiLibraryId) {
+        sp.edit().remove("$KEY_ONBOARDING_CHECKPOINT.${libraryId.value}").apply()
     }
 
     // DATE_ADDED of the newest device media row imported so far, the Android
     // equivalent of PhotoLibraryImporter's lastImportDate. Used by the
     // incremental import path to scan only newer rows.
-    fun importWatermark(libraryId: String): Long? {
-        val value = sp.getLong("$KEY_IMPORT_WATERMARK.$libraryId", -1L)
+    fun importWatermark(libraryId: FfiLibraryId): Long? {
+        val value = sp.getLong("$KEY_IMPORT_WATERMARK.${libraryId.value}", -1L)
         return if (value < 0) null else value
     }
 
-    fun setImportWatermark(libraryId: String, dateAdded: Long) {
-        sp.edit().putLong("$KEY_IMPORT_WATERMARK.$libraryId", dateAdded).apply()
+    fun setImportWatermark(libraryId: FfiLibraryId, dateAdded: Long) {
+        sp.edit().putLong("$KEY_IMPORT_WATERMARK.${libraryId.value}", dateAdded).apply()
     }
 
     // Stamps the watermark with the current time, for the paths that end
@@ -61,33 +63,33 @@ class Prefs(context: Context) {
     // floor to scan from, so it would treat the whole camera folder as new.
     // Seconds, to match the MediaStore DATE_ADDED it is compared against.
     // An already stored watermark is left alone, a real import knows better.
-    fun baselineImportWatermark(libraryId: String) {
+    fun baselineImportWatermark(libraryId: FfiLibraryId) {
         if (importWatermark(libraryId) != null) return
         setImportWatermark(libraryId, System.currentTimeMillis() / 1000)
     }
 
     private val _lastPush = MutableStateFlow(readAll(KEY_LAST_PUSH))
-    val lastPush: StateFlow<Map<String, SyncRecord>> = _lastPush.asStateFlow()
+    val lastPush: StateFlow<Map<FfiRemoteUuid, SyncRecord>> = _lastPush.asStateFlow()
 
     private val _lastFetch = MutableStateFlow(readAll(KEY_LAST_FETCH))
-    val lastFetch: StateFlow<Map<String, SyncRecord>> = _lastFetch.asStateFlow()
+    val lastFetch: StateFlow<Map<FfiRemoteUuid, SyncRecord>> = _lastFetch.asStateFlow()
 
-    fun recordPush(remoteId: String, success: Boolean) =
+    fun recordPush(remoteId: FfiRemoteUuid, success: Boolean) =
         record(KEY_LAST_PUSH, _lastPush, remoteId, success)
 
-    fun recordFetch(remoteId: String, success: Boolean) =
+    fun recordFetch(remoteId: FfiRemoteUuid, success: Boolean) =
         record(KEY_LAST_FETCH, _lastFetch, remoteId, success)
 
     private fun record(
         key: String,
-        flow: MutableStateFlow<Map<String, SyncRecord>>,
-        remoteId: String,
+        flow: MutableStateFlow<Map<FfiRemoteUuid, SyncRecord>>,
+        remoteId: FfiRemoteUuid,
         success: Boolean,
     ) {
         val record = SyncRecord(System.currentTimeMillis(), success)
         sp.edit()
-            .putLong("$key.$remoteId", record.epochMillis)
-            .putBoolean("${key}Ok.$remoteId", record.success)
+            .putLong("$key.${remoteId.value}", record.epochMillis)
+            .putBoolean("${key}Ok.${remoteId.value}", record.success)
             .apply()
         // Called from the push and fetch coroutines on the io dispatcher, so
         // this has to be an atomic update rather than a read then write.
@@ -96,15 +98,15 @@ class Prefs(context: Context) {
 
     // The remote ids are not known here, so the stored keys say which remotes
     // have a record.
-    private fun readAll(key: String): Map<String, SyncRecord> {
+    private fun readAll(key: String): Map<FfiRemoteUuid, SyncRecord> {
         val prefix = "$key."
         return sp.all.keys
             .filter { it.startsWith(prefix) }
             .associate { storedKey ->
-                val remoteId = storedKey.removePrefix(prefix)
+                val remoteId = FfiRemoteUuid(storedKey.removePrefix(prefix))
                 remoteId to SyncRecord(
                     epochMillis = sp.getLong(storedKey, 0L),
-                    success = sp.getBoolean("${key}Ok.$remoteId", false),
+                    success = sp.getBoolean("${key}Ok.${remoteId.value}", false),
                 )
             }
     }

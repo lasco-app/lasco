@@ -1,6 +1,8 @@
 package com.lasco.lasco.data
 
 import uniffi.lasco_ffi.FfiRemote
+import uniffi.lasco_ffi.FfiLibraryId
+import uniffi.lasco_ffi.FfiRemoteUuid
 
 /**
  * The only slice of the opened library that is genuinely shared across
@@ -9,11 +11,11 @@ import uniffi.lasco_ffi.FfiRemote
  * LibraryRepository.watch instead.
  */
 data class SessionState(
-    val libraryId: String,
+    val libraryId: FfiLibraryId,
     val nickname: String,
     val username: String?,
     val users: List<String>,
     val remotes: List<FfiRemote>,
-    val defaultFetchRemoteId: String?,
+    val defaultFetchRemoteId: FfiRemoteUuid?,
     val autoImportDeviceMedia: Boolean,
 )

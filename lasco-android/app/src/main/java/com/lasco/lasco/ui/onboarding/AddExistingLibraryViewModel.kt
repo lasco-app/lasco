@@ -56,7 +56,7 @@ class AddExistingLibraryViewModel(
                     password = password,
                     newUsername = newUsername,
                     newPassword = newPassword,
-                    remoteId = remoteName,
+                    remoteName = remoteName,
                     endpoint = endpoint,
                     bucket = bucket,
                     region = region,

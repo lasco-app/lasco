@@ -40,7 +40,7 @@ struct ContentView: View {
     @State private var showingPhotosPicker = false
     @State private var photosPickerItems: [PhotosPickerItem] = []
     @State private var path: [LibraryDestination] = []
-    @State private var selection: Set<String> = []
+    @State private var selection: Set<FfiMediaUuid> = []
     @State private var isSelecting = false
     @State private var albumsForMedia: AlbumList? = nil
 
@@ -315,7 +315,7 @@ struct ContentView: View {
 
     // MARK: Open album
 
-    private func triggerOpenAlbum(for mediaId: String) {
+    private func triggerOpenAlbum(for mediaId: FfiMediaUuid) {
         Task {
             let containing = await model.albumsContainingMedia(id: mediaId)
             guard !containing.isEmpty else { return }

@@ -13,6 +13,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.onTimeout
 import kotlinx.coroutines.selects.select
 import uniffi.lasco_ffi.FfiLibrary
+import uniffi.lasco_ffi.FfiRemoteUuid
 
 /**
  * Owned by LibraryRepository for the lifetime of the open library. Holds the
@@ -37,8 +38,8 @@ class SyncController(
     private sealed interface Cmd {
         data object Mutated : Cmd
         data object StopCountdown : Cmd
-        data class Push(val remoteId: String, val ack: CompletableDeferred<String?>) : Cmd
-        data class Fetch(val remoteId: String, val ack: CompletableDeferred<String?>) : Cmd
+        data class Push(val remoteId: FfiRemoteUuid, val ack: CompletableDeferred<String?>) : Cmd
+        data class Fetch(val remoteId: FfiRemoteUuid, val ack: CompletableDeferred<String?>) : Cmd
     }
 
     private val commands = Channel<Cmd>(Channel.UNLIMITED)
@@ -49,7 +50,7 @@ class SyncController(
         // means commands arriving mid wait cannot push the deadline back,
         // however often they arrive.
         var deadline: Long? = null
-        var scheduledAutoPushRemoteIds = emptySet<String>()
+        var scheduledAutoPushRemoteIds = emptySet<FfiRemoteUuid>()
         try {
             while (true) {
                 val cmd = select<Cmd?> {
@@ -69,7 +70,7 @@ class SyncController(
                     Cmd.Mutated -> if (deadline == null) {
                         val candidateRemoteIds = lib.listRemotes()
                             .filter { it.autoPush }
-                            .map { it.id }
+                            .map { it.remoteId }
                             .toSet()
                         if (candidateRemoteIds.isNotEmpty()) {
                             deadline = SystemClock.elapsedRealtime() + PUSH_DELAY_MS
@@ -117,7 +118,7 @@ class SyncController(
      * mirroring Swift's LibraryModel.pushRemote. Clears any pending countdown
      * and queues behind a push or fetch already running.
      */
-    suspend fun pushRemote(remoteId: String): String? {
+    suspend fun pushRemote(remoteId: FfiRemoteUuid): String? {
         val ack = CompletableDeferred<String?>()
         commands.send(Cmd.Push(remoteId, ack))
         return ack.await()
@@ -128,7 +129,7 @@ class SyncController(
      * mirroring Swift's LibraryModel.fetchRemote. Queues behind a push or
      * fetch already running.
      */
-    suspend fun fetchRemoteWithResult(remoteId: String): String? {
+    suspend fun fetchRemoteWithResult(remoteId: FfiRemoteUuid): String? {
         val ack = CompletableDeferred<String?>()
         commands.send(Cmd.Fetch(remoteId, ack))
         return ack.await()
@@ -142,13 +143,13 @@ class SyncController(
         loop.join()
     }
 
-    private suspend fun pushScheduledRemotes(candidateRemoteIds: Set<String>) {
-        for (remote in lib.listRemotes().filter { it.id in candidateRemoteIds && it.autoPush }) {
-            push(remote.id)
+    private suspend fun pushScheduledRemotes(candidateRemoteIds: Set<FfiRemoteUuid>) {
+        for (remote in lib.listRemotes().filter { it.remoteId in candidateRemoteIds && it.autoPush }) {
+            push(remote.remoteId)
         }
     }
 
-    private suspend fun push(remoteId: String): String? {
+    private suspend fun push(remoteId: FfiRemoteUuid): String? {
         _syncState.update { it.copy(busyRemoteIds = it.busyRemoteIds + remoteId) }
         return try {
             lib.pushRemoteAsync(remoteId, null)
@@ -162,7 +163,7 @@ class SyncController(
         }
     }
 
-    private suspend fun fetch(remoteId: String): String? {
+    private suspend fun fetch(remoteId: FfiRemoteUuid): String? {
         _syncState.update { it.copy(busyRemoteIds = it.busyRemoteIds + remoteId, fetchInProgress = true) }
         return try {
             lib.fetchRemoteAsync(remoteId, null)
@@ -177,7 +178,7 @@ class SyncController(
         }
     }
 
-    private fun publishCountdown(deadline: Long?, remoteIds: Set<String>) {
+    private fun publishCountdown(deadline: Long?, remoteIds: Set<FfiRemoteUuid>) {
         _syncState.update {
             it.copy(
                 pushDeadlineElapsedMs = deadline,

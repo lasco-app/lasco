@@ -3,15 +3,15 @@ import Photos
 import UIKit
 
 actor PhotoLibraryImporter {
-    private static func lastImportDateKey(libraryId: String) -> String {
-        "lasco.lastPhotoImport.\(libraryId)"
+    private static func lastImportDateKey(libraryId: FfiLibraryId) -> String {
+        "lasco.lastPhotoImport.\(libraryId.value)"
     }
 
-    private func lastImportDate(libraryId: String) -> Date? {
+    private func lastImportDate(libraryId: FfiLibraryId) -> Date? {
         UserDefaults.standard.object(forKey: Self.lastImportDateKey(libraryId: libraryId)) as? Date
     }
 
-    private func setLastImportDate(_ date: Date, libraryId: String) {
+    private func setLastImportDate(_ date: Date, libraryId: FfiLibraryId) {
         UserDefaults.standard.set(date, forKey: Self.lastImportDateKey(libraryId: libraryId))
     }
 
@@ -37,8 +37,8 @@ actor PhotoLibraryImporter {
     }
 
     struct ImportedAsset {
-        let linkableMediaIDs: [String]
-        let allMediaIDs: [String]
+        let linkableMediaIDs: [FfiMediaUuid]
+        let allMediaIDs: [FfiMediaUuid]
     }
 
     struct AssetAnalysis {
@@ -186,7 +186,7 @@ actor PhotoLibraryImporter {
     /// Imports PHAssets created after the last recorded watermark date.
     /// On first run, stores the current date and imports nothing.
     /// Returns the number of newly imported assets.
-    func importNewAssets(libraryId: String, albumId: String?, repository: any LibraryRepositoryProtocol) async -> Int {
+    func importNewAssets(libraryId: FfiLibraryId, albumId: FfiAlbumUuid?, repository: any LibraryRepositoryProtocol) async -> Int {
         let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
         guard status == .authorized || status == .limited else { return 0 }
 
@@ -227,12 +227,12 @@ actor PhotoLibraryImporter {
     // MARK: - Single asset import
 
     @discardableResult
-    func importPHAsset(_ asset: PHAsset, into albumId: String?, repository: any LibraryRepositoryProtocol) async throws -> [String] {
+    func importPHAsset(_ asset: PHAsset, into albumId: FfiAlbumUuid?, repository: any LibraryRepositoryProtocol) async throws -> [FfiMediaUuid] {
         try await importPHAssetResources(asset, into: albumId, repository: repository).linkableMediaIDs
     }
 
     @discardableResult
-    func importPHAssetResources(_ asset: PHAsset, into albumId: String?, repository: any LibraryRepositoryProtocol) async throws -> ImportedAsset {
+    func importPHAssetResources(_ asset: PHAsset, into albumId: FfiAlbumUuid?, repository: any LibraryRepositoryProtocol) async throws -> ImportedAsset {
         let analysis = Self.analyzeAsset(asset)
         guard analysis.isImportable else {
             return ImportedAsset(linkableMediaIDs: [], allMediaIDs: [])
@@ -254,11 +254,11 @@ actor PhotoLibraryImporter {
         }
 
         let hasStill = analysis.hasStill
-        var linkableMediaIDs: [String] = []
-        var allMediaIDs: [String] = []
+        var linkableMediaIDs: [FfiMediaUuid] = []
+        var allMediaIDs: [FfiMediaUuid] = []
         var didSetThumbnail = false
 
-        func importResource(_ resource: PHAssetResource, albumId: String?, appleAaeMediaId: String?, appleLivePhotoMediaId: String?, allowThumbnail: Bool) async throws -> String {
+        func importResource(_ resource: PHAssetResource, albumId: FfiAlbumUuid?, appleAaeMediaId: FfiMediaUuid?, appleLivePhotoMediaId: FfiMediaUuid?, allowThumbnail: Bool) async throws -> FfiMediaUuid {
             let filePath = try await downloadResource(resource)
             defer { try? FileManager.default.removeItem(at: filePath) }
 
@@ -280,7 +280,7 @@ actor PhotoLibraryImporter {
             return mediaId
         }
 
-        var aaeMediaId: String?
+        var aaeMediaId: FfiMediaUuid?
         if isEdited, let adjustmentDataResource {
             aaeMediaId = try await importResource(adjustmentDataResource, albumId: nil, appleAaeMediaId: nil, appleLivePhotoMediaId: nil, allowThumbnail: false)
             if let aaeMediaId { allMediaIDs.append(aaeMediaId) }
@@ -288,7 +288,7 @@ actor PhotoLibraryImporter {
 
         // The Live Photo's motion video is imported first without album membership, and
         // linked from the still below. It never becomes a standalone album item.
-        var livePhotoMediaId: String?
+        var livePhotoMediaId: FfiMediaUuid?
         if hasStill, let livePhotoVideoResource {
             livePhotoMediaId = try await importResource(livePhotoVideoResource, albumId: nil, appleAaeMediaId: nil, appleLivePhotoMediaId: nil, allowThumbnail: false)
             if let livePhotoMediaId { allMediaIDs.append(livePhotoMediaId) }

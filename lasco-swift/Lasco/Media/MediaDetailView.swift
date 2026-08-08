@@ -38,10 +38,10 @@ struct MediaDetailView: View {
     @State private var detailModel: MediaDetailModel
     @State private var pagerIndex = 0
     @State private var groupMediaIndex: Int = 0
-    @State private var fullImages: [String: Image] = [:]
-    @State private var thumbnails: [String: Image] = [:]
-    @State private var videoPlayers: [String: AVPlayer] = [:]
-    @State private var livePhotoVideoItems: [String: FfiMediaItem] = [:] // keyed by the still's mediaId
+    @State private var fullImages: [FfiMediaUuid: Image] = [:]
+    @State private var thumbnails: [FfiMediaUuid: Image] = [:]
+    @State private var videoPlayers: [FfiMediaUuid: AVPlayer] = [:]
+    @State private var livePhotoVideoItems: [FfiMediaUuid: FfiMediaItem] = [:] // keyed by the still's mediaId
     @State private var showingLivePhotoVideo = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.lascoTheme) var theme
@@ -71,7 +71,7 @@ struct MediaDetailView: View {
     @State private var aaePayload: AAEViewerPayload? = nil
     @State private var exportData: Data?
 
-    var currentAlbumId: String? { detailModel.source.currentAlbumID }
+    var currentAlbumId: FfiAlbumUuid? { detailModel.source.currentAlbumID }
     var onAlbumTap: ((FfiAlbum) -> Void)? = nil
 
     init(
@@ -138,7 +138,7 @@ struct MediaDetailView: View {
     private var isTitleTruncated: Bool { titleIntrinsicWidth > titleAvailableWidth }
     private var useCompactTitle: Bool { panelOpen && isTitleTruncated }
 
-    private func itemForMediaId(_ mediaId: String) -> FfiMediaItem? {
+    private func itemForMediaId(_ mediaId: FfiMediaUuid) -> FfiMediaItem? {
         for item in items {
             if case .media(let m) = item, m.mediaId == mediaId { return m }
         }
@@ -148,7 +148,7 @@ struct MediaDetailView: View {
         return nil
     }
 
-    private func loadGroupMediaIfNeeded(for groupId: String) {
+    private func loadGroupMediaIfNeeded(for groupId: FfiGroupUuid) {
         Task {
             await detailModel.loadGroupMediaIfNeeded(groupID: groupId)
         }
@@ -183,7 +183,7 @@ struct MediaDetailView: View {
         }
     }
 
-    private func presentAAEAdjustment(mediaId: String) {
+    private func presentAAEAdjustment(mediaId: FfiMediaUuid) {
         Task {
             guard let data = try? await repository.mediaBytes(mediaID: mediaId) else {
                 aaePayload = AAEViewerPayload(text: "no adjustment data")
@@ -258,7 +258,7 @@ struct MediaDetailView: View {
         .preference(key: HideTabBarKey.self, value: true)
         .onChange(of: currentPosition) {
             pagerIndex = currentIndex
-            AppLogger.log(.info, "media navigated — '\(currentItem.map { $0.name ?? $0.filenameOriginal } ?? "")' (\(currentItem?.mediaId ?? "group"))")
+            AppLogger.log(.info, "media navigated — '\(currentItem.map { $0.name ?? $0.filenameOriginal } ?? "")' (\(currentItem?.mediaId.value ?? "group"))")
             if case .group(let g) = items[safe: currentIndex] { loadGroupMediaIfNeeded(for: g.groupId) }
             preloadAdjacent()
             groupMediaIndex = 0
@@ -365,11 +365,11 @@ struct MediaDetailView: View {
                         metaRow(label: "SIZE", value: formattedSize)
                         metaRow(label: "ADDED BY", value: infoDisplayItem?.author ?? "")
                         if expertMode {
-                            metaRow(label: "ID", value: infoDisplayItem?.mediaId ?? "")
+                            metaRow(label: "ID", value: infoDisplayItem?.mediaId.value ?? "")
                             metaRow(label: "HASH", value: infoDisplayItem?.contentHash ?? "")
                             if let aaeMediaId = infoDisplayItem?.appleAaeMediaId {
                                 Button(action: { presentAAEAdjustment(mediaId: aaeMediaId) }) {
-                                    metaRow(label: "AAE", value: aaeMediaId)
+                                    metaRow(label: "AAE", value: aaeMediaId.value)
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -773,14 +773,14 @@ struct MediaDetailView: View {
         Task {
             guard let data = try? await repository.mediaBytesAsync(mediaID: item.mediaId) else { return }
             let url = FileManager.default.temporaryDirectory
-                .appendingPathComponent(item.mediaId)
+                .appendingPathComponent(item.mediaId.value)
                 .appendingPathExtension(ext)
             guard (try? data.write(to: url)) != nil else { return }
             videoPlayers[item.mediaId] = AVPlayer(url: url)
         }
     }
 
-    private func loadImagesAsync(for mediaId: String) async {
+    private func loadImagesAsync(for mediaId: FfiMediaUuid) async {
         guard let item = itemForMediaId(mediaId), !isVideo(item) else { return }
         if thumbnails[mediaId] == nil,
            let data = try? await repository.thumbnailAsync(mediaID: mediaId),
@@ -818,7 +818,7 @@ struct MediaDetailView: View {
 
     private func evictDistantFullImages(around idx: Int, window: Int = 2) {
         let keepRange = (idx - window)...(idx + window)
-        let keepIds = Set(items.indices.flatMap { i -> [String] in
+        let keepIds = Set(items.indices.flatMap { i -> [FfiMediaUuid] in
             guard keepRange.contains(i) else { return [] }
             switch items[i] {
             case .media(let media): return [media.mediaId]
@@ -864,10 +864,10 @@ struct MediaDetailView: View {
                     metaRow(label: "DATE", value: infoDisplayItem.map { formatMediaDate($0.date) } ?? "")
                     metaRow(label: "SIZE", value: formattedSize)
                     if expertMode {
-                        metaRow(label: "ID", value: infoDisplayItem?.mediaId ?? "")
+                        metaRow(label: "ID", value: infoDisplayItem?.mediaId.value ?? "")
                         if let aaeMediaId = infoDisplayItem?.appleAaeMediaId {
                             Button(action: { presentAAEAdjustment(mediaId: aaeMediaId) }) {
-                                metaRow(label: "AAE", value: aaeMediaId)
+                                metaRow(label: "AAE", value: aaeMediaId.value)
                             }
                             .buttonStyle(.plain)
                         }

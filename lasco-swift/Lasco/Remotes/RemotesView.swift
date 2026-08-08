@@ -48,15 +48,15 @@ struct RemotesView: View {
                             .padding(.vertical, 20)
                             .lascoPanel()
                     } else {
-                        ForEach(session.remotes, id: \.id) { remote in
+                        ForEach(session.remotes, id: \.remoteId) { remote in
                             RemoteCard(
                                 remote: remote,
-                                isDefaultFetch: remote.id == session.defaultFetchRemoteID,
-                                onDelete: { Task { try? await repository.removeRemote(id: remote.id) } },
+                                isDefaultFetch: remote.remoteId == session.defaultFetchRemoteID,
+                                onDelete: { Task { try? await repository.removeRemote(id: remote.remoteId) } },
                                 onTestConnection: {
                                     Task {
                                         do {
-                                            try await repository.connectRemote(id: remote.id)
+                                            try await repository.connectRemote(id: remote.remoteId)
                                             toastManager.show(ok: "\(remote.name): reachable")
                                         } catch {
                                             toastManager.show(error: "\(remote.name): unreachable")
@@ -64,10 +64,10 @@ struct RemotesView: View {
                                     }
                                 },
                                 onSetDefaultFetch: {
-                                    Task { try? await repository.setDefaultFetchRemote(remoteID: remote.id) }
+                                    Task { try? await repository.setDefaultFetchRemote(remoteID: remote.remoteId) }
                                 },
                                 onSetAutoPush: { enabled in
-                                    Task { try? await repository.setRemoteAutoPush(remoteID: remote.id, enabled: enabled) }
+                                    Task { try? await repository.setRemoteAutoPush(remoteID: remote.remoteId, enabled: enabled) }
                                 }
                             )
                         }

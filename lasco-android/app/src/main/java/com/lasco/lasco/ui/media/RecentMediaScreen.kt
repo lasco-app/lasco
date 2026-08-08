@@ -47,6 +47,7 @@ import com.lasco.lasco.ui.components.MediaThumbnail
 import com.lasco.lasco.ui.theme.LascoTheme
 import kotlinx.coroutines.launch
 import uniffi.lasco_ffi.FfiMediaItem
+import uniffi.lasco_ffi.FfiMediaUuid
 
 /**
  * Recent media grid, the Android equivalent of the Swift ContentView home
@@ -67,7 +68,7 @@ fun RecentMediaScreen(
     val context = LocalContext.current
 
     var isSelecting by remember { mutableStateOf(false) }
-    var selection by remember { mutableStateOf(setOf<String>()) }
+    var selection by remember { mutableStateOf(setOf<FfiMediaUuid>()) }
     var albumPicker by remember { mutableStateOf<List<uniffi.lasco_ffi.FfiAlbum>?>(null) }
     var isImporting by remember { mutableStateOf(false) }
     var showImportMenu by remember { mutableStateOf(false) }
@@ -77,13 +78,13 @@ fun RecentMediaScreen(
         selection = emptySet()
     }
 
-    fun openContainingAlbums(mediaId: String) {
+    fun openContainingAlbums(mediaId: FfiMediaUuid) {
         scope.launch {
             val containing = repo.albumsContainingMedia(mediaId)
             if (containing.isEmpty()) return@launch
             clearSelection()
             if (containing.size == 1) {
-                onOpenAlbum(containing.first().albumId)
+                onOpenAlbum(containing.first().albumId.value)
             } else {
                 albumPicker = containing
             }
@@ -115,7 +116,7 @@ fun RecentMediaScreen(
             albums = albums,
             onSelect = {
                 albumPicker = null
-                onOpenAlbum(it.albumId)
+                onOpenAlbum(it.albumId.value)
             },
             onCancel = { albumPicker = null },
         )

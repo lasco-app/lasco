@@ -16,6 +16,7 @@ import com.lasco.lasco.ui.media.MediaDetailKey
 import com.lasco.lasco.ui.media.MediaDetailSource
 import com.lasco.lasco.ui.media.MediaDetailScreen
 import kotlinx.serialization.Serializable
+import uniffi.lasco_ffi.FfiAlbumUuid
 
 /** Nav 3 key for one Albums level, root (albumId null) or a specific album. */
 @Serializable
@@ -64,12 +65,12 @@ fun AlbumsScreen(
                 val backLabel = path.dropLast(1).lastOrNull()?.albumName ?: "Albums"
 
                 AlbumListScreen(
-                    albumId = key.albumId,
+                    albumId = key.albumId?.let(::FfiAlbumUuid),
                     albumName = key.albumName,
                     title = title,
                     backLabel = backLabel,
                     onBack = if (key.albumId != null) { { backStack.removeLastOrNull() } } else null,
-                    onOpenChild = { child -> backStack.add(AlbumKey(child.albumId, child.name)) },
+                    onOpenChild = { child -> backStack.add(AlbumKey(child.albumId.value, child.name)) },
                     onOpenMedia = { position, ascending ->
                         key.albumId?.let { albumId ->
                             backStack.add(MediaDetailKey(MediaDetailSource.AlbumByDate(albumId, ascending), position))

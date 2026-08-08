@@ -133,7 +133,7 @@ class InitialImportController(
         }
     }
 
-    private suspend fun importScan(scan: DeviceScan, remoteId: String) {
+    private suspend fun importScan(scan: DeviceScan, remoteId: uniffi.lasco_ffi.FfiRemoteUuid) {
         val total = scan.rows.size
 
         // Read before the first row so the incremental import later picks up
@@ -157,7 +157,7 @@ class InitialImportController(
 
         try {
             for (chunk in scan.rows.chunked(CHUNK_SIZE)) {
-                val chunkIds = mutableListOf<String>()
+                val chunkIds = mutableListOf<uniffi.lasco_ffi.FfiMediaUuid>()
 
                 withContext(io) {
                     for (row in chunk) {
@@ -221,7 +221,7 @@ class InitialImportController(
     // through failed pushes would write the whole camera roll to internal
     // storage and never take any of it back. Failing the run is what stops
     // that, the alternative is a silently filled disk.
-    private suspend fun pushChunk(remoteId: String) {
+    private suspend fun pushChunk(remoteId: uniffi.lasco_ffi.FfiRemoteUuid) {
         var lastError: String? = null
         repeat(PUSH_ATTEMPTS) { attempt ->
             if (attempt > 0) delay(PUSH_RETRY_DELAY_MS * attempt)

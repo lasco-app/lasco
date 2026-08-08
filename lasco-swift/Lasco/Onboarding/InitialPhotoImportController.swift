@@ -8,7 +8,7 @@ import Photos
 @MainActor
 @Observable
 final class InitialPhotoImportController {
-    typealias PushChunk = @MainActor (_ remoteID: String) async -> String?
+    typealias PushChunk = @MainActor (_ remoteID: FfiRemoteUuid) async -> String?
 
     private static let chunkSize = 32
 
@@ -36,7 +36,7 @@ final class InitialPhotoImportController {
         isScanning = false
     }
 
-    func start(remoteID: String?) async {
+    func start(remoteID: FfiRemoteUuid?) async {
         guard importTask == nil, let scan else { return }
         guard let remoteID else {
             error = "Add a remote before importing your photo library."
@@ -62,7 +62,7 @@ final class InitialPhotoImportController {
         progress = nil
     }
 
-    private func performImport(scan: PhotoLibraryImporter.LibraryScan, remoteID: String) async {
+    private func performImport(scan: PhotoLibraryImporter.LibraryScan, remoteID: FfiRemoteUuid) async {
         let nodes = await photoImporter.scanAlbumTree()
         guard !Task.isCancelled else {
             await repository.notifyPhotoImportChanged(initialImport: true)
@@ -75,7 +75,7 @@ final class InitialPhotoImportController {
             return
         }
 
-        var assetMediaMap: [String: [String]] = [:]
+        var assetMediaMap: [String: [FfiMediaUuid]] = [:]
         for chunkStart in stride(from: 0, to: scan.assets.count, by: Self.chunkSize) {
             guard !Task.isCancelled else {
                 await repository.notifyPhotoImportChanged(initialImport: true)
@@ -83,7 +83,7 @@ final class InitialPhotoImportController {
             }
             let chunkEnd = min(chunkStart + Self.chunkSize, scan.assets.count)
             let chunk = Array(scan.assets[chunkStart..<chunkEnd])
-            var chunkMediaIDs: [String] = []
+            var chunkMediaIDs: [FfiMediaUuid] = []
 
             for (offset, asset) in chunk.enumerated() {
                 guard !Task.isCancelled else {
@@ -146,8 +146,8 @@ final class InitialPhotoImportController {
         result = (photos: scan.photoCount, videos: scan.videoCount)
     }
 
-    private func createAlbumStructure(_ nodes: [PhotoLibraryImporter.AlbumNode]) async -> [String: String] {
-        var albumIDMap: [String: String] = [:]
+    private func createAlbumStructure(_ nodes: [PhotoLibraryImporter.AlbumNode]) async -> [String: FfiAlbumUuid] {
+        var albumIDMap: [String: FfiAlbumUuid] = [:]
         for node in nodes {
             guard !Task.isCancelled else { return albumIDMap }
             do {
@@ -164,10 +164,10 @@ final class InitialPhotoImportController {
 
     private func linkAlbumMemberships(
         nodes: [PhotoLibraryImporter.AlbumNode],
-        albumIDMap: [String: String],
-        assetMediaMap: [String: [String]]
+        albumIDMap: [String: FfiAlbumUuid],
+        assetMediaMap: [String: [FfiMediaUuid]]
     ) async {
-        var assetAlbumIDs: [String: [String]] = [:]
+        var assetAlbumIDs: [String: [FfiAlbumUuid]] = [:]
         for node in nodes {
             guard let albumID = albumIDMap[node.iosId] else { continue }
             for assetID in node.memberAssetIds {

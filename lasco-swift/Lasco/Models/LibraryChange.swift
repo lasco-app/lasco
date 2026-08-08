@@ -4,9 +4,8 @@ enum LibraryChange: Sendable, Hashable {
     case all
     case session
     case mediaList
-    case media(String)
+    case media(FfiMediaUuid)
     case albumList
-    case album(String)
+    case album(FfiAlbumUuid)
     case localMutation
 }
-

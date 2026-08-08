@@ -5,7 +5,7 @@ struct AddMediaView: View {
     let targetAlbum: FfiAlbum?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.lascoTheme) var theme
-    @State private var selectedMediaIds: Set<String> = []
+    @State private var selectedMediaIds: Set<FfiMediaUuid> = []
     @State private var path: [FfiAlbum] = []
 
     var body: some View {
@@ -67,7 +67,7 @@ struct AddMediaAlbumBrowser: View {
     let album: FfiAlbum?
     let targetAlbumName: String
     @Binding var path: [FfiAlbum]
-    @Binding var selectedMediaIds: Set<String>
+    @Binding var selectedMediaIds: Set<FfiMediaUuid>
 
     @State private var albumMedia: [FfiMediaItem] = []
     @State private var mediaLayout: MediaLayout = .grid

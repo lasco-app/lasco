@@ -42,6 +42,7 @@ import com.lasco.lasco.ui.onboarding.OnboardingResume
 import com.lasco.lasco.ui.onboarding.OnboardingScreen
 import com.lasco.lasco.ui.theme.LascoTheme
 import java.util.UUID
+import uniffi.lasco_ffi.FfiLibraryId
 
 /**
  * The screens reachable around the library open flow. Kept as a small sealed
@@ -55,8 +56,8 @@ private sealed interface Screen {
     data object AddExisting : Screen
     data class OpeningLibrary(val entryId: String) : Screen
     data object Opened : Screen
-    data class DeletingLibrary(val libraryId: String) : Screen
-    data class DeletionFailed(val libraryId: String, val detail: String) : Screen
+    data class DeletingLibrary(val libraryId: FfiLibraryId) : Screen
+    data class DeletionFailed(val libraryId: FfiLibraryId, val detail: String) : Screen
     data class Onboarding(val resume: OnboardingResume?) : Screen
 }
 
@@ -65,7 +66,7 @@ private data class OpenedLibraryKey(val libraryId: String) : NavKey
 
 private sealed interface LibrarySessionExit {
     data object SignedOut : LibrarySessionExit
-    data class Delete(val libraryId: String) : LibrarySessionExit
+    data class Delete(val libraryId: FfiLibraryId) : LibrarySessionExit
 }
 
 /**
@@ -95,7 +96,7 @@ fun LascoRoot(modifier: Modifier = Modifier, onLibraryOpenChanged: (Boolean) -> 
     LaunchedEffect(libraryListState.loading, libraryListState.libraries) {
         if (screen != null || libraryListState.loading) return@LaunchedEffect
 
-        val incomplete = libraryListState.libraries.firstOrNull { prefs.onboardingCheckpoint(it.id) != null }
+        val incomplete = libraryListState.libraries.firstOrNull { prefs.onboardingCheckpoint(it.libraryId) != null }
         if (incomplete != null) {
             val username = incomplete.username
             val opened = if (username != null) repository.openCached(nickname = incomplete.nickname, username = username) else null
@@ -108,18 +109,18 @@ fun LascoRoot(modifier: Modifier = Modifier, onLibraryOpenChanged: (Boolean) -> 
                     context = app,
                     prefs = prefs,
                 )
-                val checkpoint = prefs.onboardingCheckpoint(incomplete.id)
+                val checkpoint = prefs.onboardingCheckpoint(incomplete.libraryId)
                 if (checkpoint == null) {
-                    prefs.clearOnboardingIncomplete(incomplete.id)
+                    prefs.clearOnboardingIncomplete(incomplete.libraryId)
                     screen = Screen.LibraryList
                 } else {
                     screen = Screen.Onboarding(
-                        OnboardingResume(UUID.randomUUID().toString(), incomplete.id, incomplete.nickname, checkpoint),
+                        OnboardingResume(UUID.randomUUID().toString(), incomplete.libraryId.value, incomplete.nickname, checkpoint),
                     )
                 }
                 return@LaunchedEffect
             } else {
-                prefs.clearOnboardingIncomplete(incomplete.id)
+                prefs.clearOnboardingIncomplete(incomplete.libraryId)
             }
         }
 
@@ -220,13 +221,13 @@ fun LascoRoot(modifier: Modifier = Modifier, onLibraryOpenChanged: (Boolean) -> 
 
 @Composable
 private fun LibrarySessionHost(
-    libraryId: String,
+    libraryId: FfiLibraryId,
     modifier: Modifier = Modifier,
     onExitLibrarySession: (LibrarySessionExit) -> Unit,
 ) {
     val context = LocalContext.current
     val app = remember { context.applicationContext as LascoApp }
-    val backStack = rememberNavBackStack(OpenedLibraryKey(libraryId))
+    val backStack = rememberNavBackStack(OpenedLibraryKey(libraryId.value))
     val scope = rememberCoroutineScope()
 
     fun exitLibrarySession(exit: LibrarySessionExit) {

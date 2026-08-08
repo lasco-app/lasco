@@ -24,7 +24,7 @@ actor LibraryDirectoryRepository {
     }
 
     func openCached(entry: FfiLibraryEntry) throws -> FfiLibrary? {
-        guard let username = storedUsername(libraryID: entry.id), !username.isEmpty else { return nil }
+        guard let username = storedUsername(libraryID: entry.libraryId), !username.isEmpty else { return nil }
         return try ffiOpenCached(nickname: entry.nickname, username: username, appDir: appSupportDirectory)
     }
 
@@ -60,7 +60,7 @@ actor LibraryDirectoryRepository {
             password: password,
             newUsername: newUsername,
             newPassword: newPassword,
-            remoteId: remoteID,
+            remoteName: remoteID,
             endpoint: endpoint,
             bucket: bucket,
             region: region,
@@ -75,12 +75,12 @@ actor LibraryDirectoryRepository {
         return library
     }
 
-    func delete(libraryID: String) throws {
+    func delete(libraryID: FfiLibraryId) throws {
         try ffiDeleteLibrary(libraryId: libraryID, appDir: appSupportDirectory)
-        UserDefaults.standard.removeObject(forKey: "lasco.lastUsername.\(libraryID)")
+        UserDefaults.standard.removeObject(forKey: "lasco.lastUsername.\(libraryID.value)")
     }
 
-    func clearSession(libraryID: String) throws {
+    func clearSession(libraryID: FfiLibraryId) throws {
         let username = storedUsername(libraryID: libraryID) ?? ""
         try sessionClear(libraryId: libraryID, username: username, appDir: appSupportDirectory)
     }
@@ -89,11 +89,11 @@ actor LibraryDirectoryRepository {
         try ffiTestS3Remote(endpoint: endpoint, bucket: bucket, region: region, pathPrefix: pathPrefix, accessKey: accessKey, secretKey: secretKey)
     }
 
-    func storedUsername(libraryID: String) -> String? {
-        UserDefaults.standard.string(forKey: "lasco.lastUsername.\(libraryID)")
+    func storedUsername(libraryID: FfiLibraryId) -> String? {
+        UserDefaults.standard.string(forKey: "lasco.lastUsername.\(libraryID.value)")
     }
 
-    func storeUsername(_ username: String, libraryID: String) {
-        UserDefaults.standard.set(username, forKey: "lasco.lastUsername.\(libraryID)")
+    func storeUsername(_ username: String, libraryID: FfiLibraryId) {
+        UserDefaults.standard.set(username, forKey: "lasco.lastUsername.\(libraryID.value)")
     }
 }
