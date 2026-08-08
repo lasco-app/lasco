@@ -521,7 +521,6 @@ impl FfiLibrary {
         lasco_core::client::build_storage(
             &self.app_dir,
             &reordered,
-            &library_id,
             Some(self.inner.master_key()),
             app_support_dir.map(std::path::Path::new),
         )

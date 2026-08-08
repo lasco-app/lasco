@@ -91,6 +91,8 @@ The global index. It maps each library id to its nickname and records the defaul
 
 Per-library configuration stored at `{app dir}/libraries/{library_id}/library.json`. It holds the library preferences and the ordered list of remotes. Each remote entry carries a stable `remote_uuid`, a human-readable `name`, and a `kind` object with that kind's connection details, including, for credentialed remotes, the encrypted secret key.
 
+An empty `remotes` list is valid: the library is local-only and has no remote storage layout. The `library/`, `media/`, and `operations/` server layout is created only after a configured remote is initialized.
+
 ```json
 {
   "version": 1,

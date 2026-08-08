@@ -15,21 +15,14 @@ use crate::s3_secret::{encrypt_s3_secret_key, resolve_s3_credentials};
 use crate::session::{session_load_master_key, session_store_master_key};
 use crate::storage::{Storage, StorageLocalFs, StorageS3};
 
-pub fn local_storage_path(app_dir: &Path, library_id: &LibraryId) -> std::path::PathBuf {
-    app_dir.join("local_storage").join(library_id.to_string())
-}
-
 pub fn build_storage(
     app_dir: &Path,
     library: &LibraryJson,
-    library_id: &LibraryId,
     master_key: Option<&MasterKey>,
     app_support_dir: Option<&Path>,
 ) -> Result<Box<dyn Storage + Send + Sync>> {
-    // Libraries with no remotes always use the convention local storage path.
     if library.remotes.is_empty() {
-        let path = local_storage_path(app_dir, library_id);
-        return Ok(Box::new(StorageLocalFs::new(&path)?));
+        bail!("no remote configured")
     }
 
     let primary = &library.remotes[0];
@@ -369,7 +362,7 @@ pub fn delete_library(
             .with_context(|| format!("failed to remove {}", lib_dir.display()))?;
     }
 
-    let local_storage = local_storage_path(app_dir, library_id);
+    let local_storage = app_dir.join("local_storage").join(library_id.to_string());
     if local_storage.exists() {
         std::fs::remove_dir_all(&local_storage)
             .with_context(|| format!("failed to remove {}", local_storage.display()))?;
