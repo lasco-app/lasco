@@ -91,6 +91,9 @@ impl Library {
         let local_state_media_dir = self.inner.local_dirs.local_state_media_dir();
         let remote_last_known_state_dir =
             self.inner.local_dirs.remote_last_known_state_dir(remote_id);
+        let remote_media_list = self.inner.local_dirs.remote_media_list(remote_id);
+        let remote_merged_remote_files =
+            self.inner.local_dirs.remote_merged_remote_files(remote_id);
         let fetch_report = {
             let _fetch_guard = self
                 .try_acquire_fetch_slot()
@@ -102,7 +105,10 @@ impl Library {
                 self.inner.library_id,
                 &local_state_library_dir,
                 &remote_last_known_state_dir,
+                &remote_media_list,
+                &remote_merged_remote_files,
                 &self.inner.local_ops_read_write_lock,
+                &self.inner.remote_media_list_lock,
                 &self.inner.master_key,
             )
             .await?;
@@ -118,6 +124,7 @@ impl Library {
                 remote_id,
                 &local_state_media_dir,
                 &remote_last_known_state_dir,
+                &remote_media_list,
             )
             .await?;
         Ok(SyncReport {

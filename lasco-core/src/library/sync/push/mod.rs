@@ -1,7 +1,7 @@
 use crate::error::{LibraryError, SyncError};
 use crate::identifiers::{CompactedOpId, MediaUuid, RemoteUuid};
 use crate::library::Library;
-use crate::library::local_dirs::{LocalStateMediaDir, RemoteLastKnownStateDir};
+use crate::library::local_dirs::{LocalStateMediaDir, RemoteLastKnownStateDir, RemoteMediaList};
 use crate::operations::remote_ops::{self as op_io, RemoteOpFile};
 use crate::operations::{CompactionEntry, CompactionFile, StorageDate};
 use crate::remote::last_known_state::collect_group_ids_from_dir;
@@ -31,11 +31,13 @@ impl Library {
         let local_state_media_dir = self.inner.local_dirs.local_state_media_dir();
         let remote_last_known_state_dir =
             self.inner.local_dirs.remote_last_known_state_dir(remote_id);
+        let remote_media_list = self.inner.local_dirs.remote_media_list(remote_id);
         self.push_impl(
             &remote,
             remote_id,
             &local_state_media_dir,
             &remote_last_known_state_dir,
+            &remote_media_list,
         )
         .await
     }
@@ -46,6 +48,7 @@ impl Library {
         remote_id: &str,
         local_state_media_dir: &LocalStateMediaDir,
         remote_last_known_state_dir: &RemoteLastKnownStateDir,
+        remote_media_list: &RemoteMediaList,
     ) -> Result<SyncReportPush, LibraryError> {
         let master_key = &self.inner.master_key;
 
@@ -66,8 +69,12 @@ impl Library {
         let remote_covered = collect_group_ids_from_dir(&ops_dir, master_key)
             .map_err(SyncError::LocalCacheCorrupt)?;
 
-        let media_list_path = remote_last_known_state_dir.media_list_path();
-        let mut media_list = MediaList::load_or_default(&media_list_path)?;
+        // Only the snapshot read is locked. Network storage awaits below must remain unlocked.
+        let media_list = self.inner.remote_media_list_lock.with_lock(
+            remote_id,
+            remote_media_list,
+            |remote_media_list| MediaList::load_or_default(&remote_media_list.media_list_path()),
+        )?;
 
         // Flush any pending (unpushed) op group into the main log before uploading.
         let flushed_pending = {
@@ -243,8 +250,20 @@ impl Library {
                     .map_err(SyncError::RemoteUnreachable)?;
             }
 
-            media_list.insert_present(item.media_id);
-            media_list.save(&media_list_path)?;
+            // Reload under the lock so this write preserves any concurrent fetch or on-demand
+            // download observations made while the upload was in progress.
+            self.inner.remote_media_list_lock.with_lock(
+                remote_id,
+                remote_media_list,
+                |remote_media_list| {
+                    let path = remote_media_list.media_list_path();
+                    let mut media_list = MediaList::load_or_default(&path)?;
+                    if media_list.insert_present(item.media_id) {
+                        media_list.save(&path)?;
+                    }
+                    Ok::<_, std::io::Error>(())
+                },
+            )?;
 
             if data_uploaded {
                 media_uploaded += 1;

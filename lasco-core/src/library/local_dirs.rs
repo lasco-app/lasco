@@ -73,7 +73,10 @@ impl LocalStateMediaDir {
     }
 }
 
-/// `remotes/{remote_id}/state/`: this client's last known state for one remote.
+/// `remotes/{remote_id}/state/operations/`: this client's last known remote operation cache.
+///
+/// This deliberately excludes `merged_remote_files.json` and `media/media_list.json`, despite
+/// their shared `state/` parent directory.
 #[derive(Clone, Debug)]
 pub struct RemoteLastKnownStateDir {
     path: PathBuf,
@@ -85,20 +88,32 @@ impl RemoteLastKnownStateDir {
     }
 
     pub fn operations_dir(&self) -> PathBuf {
-        self.path.join("operations")
+        self.path.clone()
     }
+}
 
-    pub fn media_dir(&self) -> PathBuf {
-        self.path.join("media")
-    }
+/// `remotes/{remote_id}/state/media/media_list.json`: positive media inventory for one remote.
+#[derive(Clone, Debug)]
+pub struct RemoteMediaList {
+    path: PathBuf,
+}
 
+impl RemoteMediaList {
     pub fn media_list_path(&self) -> PathBuf {
-        self.media_dir().join("media_list.json")
+        self.path.clone()
     }
+}
 
+/// `remotes/{remote_id}/state/merged_remote_files.json`: fetch merge progress for one remote.
+#[derive(Clone, Debug)]
+pub struct RemoteMergedRemoteFiles {
+    path: PathBuf,
+}
+
+impl RemoteMergedRemoteFiles {
     /// Records immutable remote operation files already merged into `operations.log`.
     pub fn merged_remote_files_path(&self) -> PathBuf {
-        self.path.join("merged_remote_files.json")
+        self.path.clone()
     }
 }
 
@@ -138,7 +153,35 @@ impl LocalDirs {
 
     pub fn remote_last_known_state_dir(&self, remote_id: &str) -> RemoteLastKnownStateDir {
         RemoteLastKnownStateDir {
-            path: self.root.join("remotes").join(remote_id).join("state"),
+            path: self
+                .root
+                .join("remotes")
+                .join(remote_id)
+                .join("state")
+                .join("operations"),
+        }
+    }
+
+    pub fn remote_media_list(&self, remote_id: &str) -> RemoteMediaList {
+        RemoteMediaList {
+            path: self
+                .root
+                .join("remotes")
+                .join(remote_id)
+                .join("state")
+                .join("media")
+                .join("media_list.json"),
+        }
+    }
+
+    pub fn remote_merged_remote_files(&self, remote_id: &str) -> RemoteMergedRemoteFiles {
+        RemoteMergedRemoteFiles {
+            path: self
+                .root
+                .join("remotes")
+                .join(remote_id)
+                .join("state")
+                .join("merged_remote_files.json"),
         }
     }
 

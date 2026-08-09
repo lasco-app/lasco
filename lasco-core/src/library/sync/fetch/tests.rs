@@ -374,7 +374,7 @@ async fn fetch_updates_media_list_from_ops() {
     let media_list_path = lib_b
         .inner
         .local_dirs
-        .remote_last_known_state_dir(REMOTE_ID)
+        .remote_media_list(REMOTE_ID)
         .media_list_path();
     let media_list =
         crate::remote::local_state::media_list_json::MediaList::load_or_default(&media_list_path)

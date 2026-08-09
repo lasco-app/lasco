@@ -374,17 +374,20 @@ impl Library {
     }
 
     fn record_remote_media_presence(&self, remote_id: &str, media_id: MediaUuid) {
-        let path = self
-            .inner
-            .local_dirs
-            .remote_last_known_state_dir(remote_id)
-            .media_list_path();
-        let Ok(mut media_list) = MediaList::load_or_default(&path) else {
-            return;
-        };
-        if media_list.insert_present(media_id) {
-            let _ = media_list.save(&path);
-        }
+        let remote_media_list = self.inner.local_dirs.remote_media_list(remote_id);
+        self.inner.remote_media_list_lock.with_lock(
+            remote_id,
+            &remote_media_list,
+            |remote_media_list| {
+                let path = remote_media_list.media_list_path();
+                let Ok(mut media_list) = MediaList::load_or_default(&path) else {
+                    return;
+                };
+                if media_list.insert_present(media_id) {
+                    let _ = media_list.save(&path);
+                }
+            },
+        );
     }
 
     /// Returns IDs of all non-deleted albums that directly contain `media_id`.
@@ -448,12 +451,14 @@ impl Library {
     pub fn media_ids_without_remote_backup(&self, remote_ids: &[String]) -> Vec<MediaUuid> {
         let mut backed_up = std::collections::HashSet::new();
         for remote_id in remote_ids {
-            let path = self
-                .inner
-                .local_dirs
-                .remote_last_known_state_dir(remote_id)
-                .media_list_path();
-            if let Ok(list) = MediaList::load_or_default(&path) {
+            let remote_media_list = self.inner.local_dirs.remote_media_list(remote_id);
+            if let Ok(list) = self.inner.remote_media_list_lock.with_lock(
+                remote_id,
+                &remote_media_list,
+                |remote_media_list| {
+                    MediaList::load_or_default(&remote_media_list.media_list_path())
+                },
+            ) {
                 backed_up.extend(list.media.into_keys());
             }
         }

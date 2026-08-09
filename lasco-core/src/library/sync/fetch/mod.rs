@@ -4,8 +4,11 @@ use crate::encryption::master_key::{MasterKey, parse_mk_filename};
 use crate::error::{LibraryError, SyncError};
 use crate::identifiers::{LibraryId, RemoteUuid};
 use crate::library::Library;
-use crate::library::local_dirs::{LocalStateLibraryDir, RemoteLastKnownStateDir};
+use crate::library::local_dirs::{
+    LocalStateLibraryDir, RemoteLastKnownStateDir, RemoteMediaList, RemoteMergedRemoteFiles,
+};
 use crate::library::local_ops_read_write::LocalOpsReadWriteLock;
+use crate::library::remote_media_list_lock::RemoteMediaListLock;
 use crate::operations::remote_ops::RemoteOpFile;
 use crate::operations::{Operation, OperationGroup};
 use crate::remote::{LastKnownState, MediaList, MergedRemoteFiles};
@@ -29,13 +32,19 @@ impl Library {
         let local_state_library_dir = self.inner.local_dirs.local_state_library_dir();
         let remote_last_known_state_dir =
             self.inner.local_dirs.remote_last_known_state_dir(remote_id);
+        let remote_media_list = self.inner.local_dirs.remote_media_list(remote_id);
+        let remote_merged_remote_files =
+            self.inner.local_dirs.remote_merged_remote_files(remote_id);
         let report = fetch_impl(
             &remote,
             remote_id,
             self.inner.library_id,
             &local_state_library_dir,
             &remote_last_known_state_dir,
+            &remote_media_list,
+            &remote_merged_remote_files,
             &self.inner.local_ops_read_write_lock,
+            &self.inner.remote_media_list_lock,
             &self.inner.master_key,
         )
         .await?;
@@ -52,7 +61,10 @@ pub(super) async fn fetch_impl(
     library_id: LibraryId,
     local_state_library_dir: &LocalStateLibraryDir,
     remote_last_known_state_dir: &RemoteLastKnownStateDir,
+    remote_media_list: &RemoteMediaList,
+    remote_merged_remote_files: &RemoteMergedRemoteFiles,
     local_ops_read_write_lock: &LocalOpsReadWriteLock,
+    remote_media_list_lock: &RemoteMediaListLock,
     master_key: &MasterKey,
 ) -> Result<SyncReportFetch, LibraryError> {
     let remote_uuid = remote_id
@@ -69,15 +81,8 @@ pub(super) async fn fetch_impl(
 
     // Load merge progress for immutable remote operation files. It controls only whether a file
     // must be merged again; cache presence is determined independently by LastKnownState.
-    let merged_files_path = remote_last_known_state_dir.merged_remote_files_path();
+    let merged_files_path = remote_merged_remote_files.merged_remote_files_path();
     let mut merged_files = MergedRemoteFiles::load_or_default(&merged_files_path)?;
-
-    // Load the media list for lazy update during merge.
-    let media_list_path = remote_last_known_state_dir.media_list_path();
-    // This is a positive-only, opportunistic inventory. Its absence or corruption must not
-    // prevent fetch from establishing the exact operation-file cache and local operation log.
-    let mut media_list = MediaList::load_or_default(&media_list_path).ok();
-    let mut media_list_changed = false;
 
     let last_known_state =
         LastKnownState::download(storage, remote_last_known_state_dir, master_key).await?;
@@ -119,8 +124,9 @@ pub(super) async fn fetch_impl(
                         update_media_list_from_group(
                             storage,
                             &entry.group,
-                            &mut media_list,
-                            &mut media_list_changed,
+                            remote_id,
+                            remote_media_list,
+                            remote_media_list_lock,
                         )
                         .await;
                         ops_downloaded += 1;
@@ -135,12 +141,6 @@ pub(super) async fn fetch_impl(
 
     if merged_files_changed {
         merged_files.save(&merged_files_path)?;
-    }
-
-    if media_list_changed {
-        if let Some(media_list) = &media_list {
-            let _ = media_list.save(&media_list_path);
-        }
     }
 
     Ok(SyncReportFetch {
@@ -217,12 +217,13 @@ async fn fetch_library_dir(
 }
 
 /// For each MediaCreation op in `group`, checks if the file exists on the remote and
-/// inserts it into `media_list` if so.
+/// records it in `media_list` if so. Inventory errors are intentionally ignored.
 async fn update_media_list_from_group(
     storage: &StorageRead<'_>,
     group: &OperationGroup,
-    media_list: &mut Option<MediaList>,
-    changed: &mut bool,
+    remote_id: &str,
+    remote_media_list: &RemoteMediaList,
+    remote_media_list_lock: &RemoteMediaListLock,
 ) {
     for op in &group.operations {
         if let Operation::MediaCreation {
@@ -236,11 +237,21 @@ async fn update_media_list_from_group(
                 storage_date.year, storage_date.month, media_id.0
             );
             if matches!(storage.exists(&key).await, Ok(true)) {
-                if let Some(media_list) = media_list {
-                    if media_list.insert_present(*media_id) {
-                        *changed = true;
-                    }
-                }
+                remote_media_list_lock.with_lock(
+                    remote_id,
+                    remote_media_list,
+                    |remote_media_list| {
+                        let path = remote_media_list.media_list_path();
+                        // This is a positive-only, opportunistic inventory. Its absence or corruption
+                        // must not prevent fetch from establishing the operation cache and local log.
+                        let Ok(mut media_list) = MediaList::load_or_default(&path) else {
+                            return;
+                        };
+                        if media_list.insert_present(*media_id) {
+                            let _ = media_list.save(&path);
+                        }
+                    },
+                );
             }
         }
     }

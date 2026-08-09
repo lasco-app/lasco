@@ -686,7 +686,10 @@ async fn push_skips_cascade_when_lock_held() {
     seed_tier1_files(&lib, &storage, 9).await;
 
     // Manually place a lock as if another client is mid-compaction.
-    storage.put_atomic("operations/LOCK.op", b"lock").await.unwrap();
+    storage
+        .put_atomic("operations/LOCK.op", b"lock")
+        .await
+        .unwrap();
 
     inject_op_groups(&lib, 20);
     let report = lib.push(&storage, REMOTE_ID).await.unwrap();
@@ -740,7 +743,7 @@ async fn push_writes_media_list_after_upload() {
     let media_list_path = lib
         .inner
         .local_dirs
-        .remote_last_known_state_dir(REMOTE_ID)
+        .remote_media_list(REMOTE_ID)
         .media_list_path();
     let media_list =
         crate::remote::local_state::media_list_json::MediaList::load_or_default(&media_list_path)
