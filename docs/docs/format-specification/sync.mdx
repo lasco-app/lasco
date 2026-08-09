@@ -70,8 +70,8 @@ Fetch lists and downloads remote operation files missing from the remote's last-
     </tr>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>5</td>
-      <td>Merge compacted operation files not already recorded in `remotes/{remote_id}/state/processed.json` into the local log. Update `processed.json`, then rebuild in-memory local state.</td>
-      <td><span className="tag tag-warn">Append local log</span> <span className="tag tag-warn">Write local state</span> <span className="tag tag-warn">Rebuild in-memory state</span></td>
+      <td>Merge compacted operation files not already recorded in `remotes/{remote_id}/state/processed.json` into the local log. For each merged media-creation operation, check whether its remote data blob exists and update `media_list.json`. Update `processed.json`, then rebuild in-memory local state.</td>
+      <td><span className="tag tag-ok">Read remote</span> <span className="tag tag-warn">Append local log</span> <span className="tag tag-warn">Write local state</span> <span className="tag tag-warn">Rebuild in-memory state</span></td>
     </tr>
   </tbody>
 </table>
