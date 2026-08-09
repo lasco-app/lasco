@@ -31,7 +31,9 @@ Fetch lists and downloads remote operation files missing from the remote's last-
 - **Remote:** List and read access.
 - **Local:**
   - Read and append to the local operation log.
-  - Read and atomically write the remote's last-known state.
+  - Read and atomically write the remote's last-known operation state (`remotes/{remote_id}/state/operations/`).
+  - Read and atomically write the merge marker (`remotes/{remote_id}/state/merged_remote_files.json`).
+  - Read and opportunistically atomically update the media inventory (`remotes/{remote_id}/state/media/media_list.json`) under its per-remote mutex.
   - Atomically write missing `mk_*.enc` files in the library directory.
 - **In-memory local state:** Rebuild from the local operation log.
 
@@ -65,7 +67,7 @@ Fetch lists and downloads remote operation files missing from the remote's last-
     </tr>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>4</td>
-      <td>Verify that the resulting set of remote operation-group IDs is a superset of the group IDs previously known from this remote. If it is not, fail without writing anything. Atomically write the validated files to the last-known state for the remote.</td>
+      <td>Verify that the resulting set of remote operation-group IDs is a superset of the group IDs previously known from this remote. If it is not, fail without writing any operation-related files. Atomically write the validated files to the last-known state for the remote.</td>
       <td><span className="tag tag-ok">Read local state</span> <span className="tag tag-warn">Write local state</span></td>
     </tr>
     <tr>
@@ -93,9 +95,10 @@ For operation files, the client simply copies what it has locally. For media and
 - **Sync policy:** Acquire the per-remote sync slot.
 - **Remote:** List, read, write, and delete access.
 - **Local:**
-  - Read local master-key files, the operation log, reconstructed state, media files, and the remote's last-known state.
+  - Read local master-key files, the operation log, reconstructed state, and media files.
+  - Read the remote's last-known operation state (`remotes/{remote_id}/state/operations/`) and the media inventory (`remotes/{remote_id}/state/media/media_list.json`).
   - Append to the operation log and delete a pending operation file.
-  - Atomically write the remote's last-known operation state and media list.
+  - Atomically write the remote's last-known operation state and, under its per-remote mutex, the media inventory.
 - **In-memory local state:** Rebuild after flushing a pending operation group.
 
 </AccessCard>

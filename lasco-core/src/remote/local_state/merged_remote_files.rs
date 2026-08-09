@@ -8,7 +8,7 @@ use crate::identifiers::CompactedOpId;
 /// Persisted set of immutable remote operation files already merged into the local log.
 ///
 /// Stored at `remotes/{remote_id}/state/merged_remote_files.json`. This is merge progress,
-/// not the last-known remote-operation cache: a file may be merged while its cached ciphertext
+/// not the remote's last-known operation state: a file may be merged while its ciphertext
 /// still needs to be restored.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct MergedRemoteFiles {

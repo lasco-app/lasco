@@ -73,7 +73,7 @@ impl LocalStateMediaDir {
     }
 }
 
-/// `remotes/{remote_id}/state/operations/`: this client's last known remote operation cache.
+/// `remotes/{remote_id}/state/operations/`: this client's last-known operation state for one remote.
 ///
 /// This deliberately excludes `merged_remote_files.json` and `media/media_list.json`, despite
 /// their shared `state/` parent directory.

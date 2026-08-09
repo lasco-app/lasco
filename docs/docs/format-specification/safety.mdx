@@ -74,7 +74,7 @@ instance.
 #### Remote media inventory
 
 The sibling path accessors enforce ownership within the shared `state/` parent: 
-`RemoteLastKnownStateDir` owns only the operation cache, `RemoteMergedRemoteFiles` owns only the
+`RemoteLastKnownStateDir` owns only the remote's last-known operation state, `RemoteMergedRemoteFiles` owns only the
 merge marker, and `RemoteMediaList` owns only the media inventory.
 
 `media_list.json` is a positive-only inventory: an entry means the client has confirmed a media

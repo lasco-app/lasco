@@ -243,7 +243,7 @@ async fn update_media_list_from_group(
                     |remote_media_list| {
                         let path = remote_media_list.media_list_path();
                         // This is a positive-only, opportunistic inventory. Its absence or corruption
-                        // must not prevent fetch from establishing the operation cache and local log.
+                        // must not prevent fetch from establishing the last-known operation state and local log.
                         let Ok(mut media_list) = MediaList::load_or_default(&path) else {
                             return;
                         };

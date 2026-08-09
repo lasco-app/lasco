@@ -74,7 +74,7 @@ async fn fetch_calls_list_on_every_invocation() {
 }
 
 #[tokio::test]
-// After lib_a pushes a second file, lib_b's next fetch sees it (no stale remote cache).
+// After lib_a pushes a second file, lib_b's next fetch sees it (no stale last-known state).
 async fn fetch_sees_externally_modified_remote() {
     let storage = StorageMockMemory::new();
     let tmp_a = TempDir::new().unwrap();
