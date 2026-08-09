@@ -34,6 +34,7 @@ returns; a conflicting acquisition fails with `AlreadyRunning`.
 | Local operation-files mutex | `operations.log` and `pending.op` | Serializes one synchronous operation-file access at a time. The guard is released before an `await`. |
 | In-memory operation-state `RwLock` | Reconstructed in-memory state | Multiple readers may coexist; rebuilding installs state under the exclusive write lock. |
 | Remote compaction lock file | `operations/LOCK.op` | Only the client that created the lock with `put_if_absent` may compact. A client that cannot create it skips compaction. A stale lock requires manual removal. |
+| _No dedicated restriction yet_ | `remotes/{remote_id}/state/media/media_list.json` | Atomic replacement prevents torn JSON files, but does not serialize concurrent read-modify-write updates. |
 
 ### Access boundaries
 
@@ -61,9 +62,24 @@ instance.
 
 #### Local state
 
-| Resource | Fetch implementation input | Push implementation input | Local-edit implementation input | Safe? |
-| --- | --- | --- | --- | --- |
-| `local_state/library/` | `LocalStateLibraryDir` | Not used | Not used | <span className="tag tag-ok">Safe</span> Only one fetch per library |
-| `remotes/{remote_id}/state/` | `RemoteLastKnownStateDir` | `RemoteLastKnownStateDir` | Not used | <span className="tag tag-ok">Safe</span> Only one sync operation per remote |
-| `local_state/media/` | Not used | `LocalStateMediaDir` | `LocalStateMediaDir` (through `Library`) | <span className="tag tag-ok">Safe</span> Atomic write; immutable file with a 1-to-1 filename/content relation |
-| `operations.log`, `pending.op` | `LocalOpsReadWriteLock` | `LocalOpsReadWriteLock` (through `Library`) | `LocalOpsReadWriteLock` (through `Library`) | <span className="tag tag-ok">Safe</span> Mutex |
+| Resource | Fetch implementation input | Push implementation input | On-demand media download input | Local-edit implementation input | Safe? |
+| --- | --- | --- | --- | --- | --- |
+| `local_state/library/` | `LocalStateLibraryDir` | Not used | Not used | Not used | <span className="tag tag-ok">Safe</span> Only one fetch per library |
+| `remotes/{remote_id}/state/operations/` and `merged_remote_files.json` | `RemoteLastKnownStateDir` | `RemoteLastKnownStateDir` | Not used | Not used | <span className="tag tag-ok">Safe</span> Only one sync operation per remote |
+| `remotes/{remote_id}/state/media/media_list.json` | Reads and may add confirmed media | Reads and adds successfully ensured media | Reads and adds successfully validated downloads | Not used | <span className="tag tag-warn">Needs a per-remote inventory mutex</span> Atomic writes prevent corruption, but concurrent updates can lose additions |
+| `local_state/media/` | Not used | `LocalStateMediaDir` | `LocalStateMediaDir` (through `Library`) | `LocalStateMediaDir` (through `Library`) | <span className="tag tag-ok">Safe</span> Atomic write; immutable file with a 1-to-1 filename/content relation |
+| `operations.log`, `pending.op` | `LocalOpsReadWriteLock` | `LocalOpsReadWriteLock` (through `Library`) | Not used | `LocalOpsReadWriteLock` (through `Library`) | <span className="tag tag-ok">Safe</span> Mutex |
+
+#### Remote media inventory
+
+`media_list.json` is a positive-only inventory: an entry means the client has confirmed a
+media blob on that remote through fetch, push, or an on-demand download. Its absence means
+unconfirmed, not absent from the remote.
+
+Fetch checks are optional bookkeeping, so an inventory write failure cannot prevent a validated
+operation fetch. A lost concurrent update is therefore conservative: a later push may redundantly
+ensure a blob, but must not assume the blob is absent or delete/replace it.
+
+The current atomic replacement writes keep the JSON file readable, but they do not make concurrent
+load–modify–save sequences safe. A per-remote media-inventory mutex is required before the safety
+assessment can be upgraded to safe.

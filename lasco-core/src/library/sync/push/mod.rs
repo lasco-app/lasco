@@ -225,8 +225,8 @@ impl Library {
                 &item.media_id,
             );
             let bytes = std::fs::read(&data_path)?;
-            storage
-                .put_atomic(&data_key, &bytes)
+            let data_uploaded = storage
+                .put_if_absent(&data_key, &bytes)
                 .await
                 .map_err(SyncError::RemoteUnreachable)?;
 
@@ -238,7 +238,7 @@ impl Library {
             if thumb_path.exists() {
                 let bytes = std::fs::read(&thumb_path)?;
                 storage
-                    .put_atomic(&thumb_key, &bytes)
+                    .put_if_absent(&thumb_key, &bytes)
                     .await
                     .map_err(SyncError::RemoteUnreachable)?;
             }
@@ -246,7 +246,9 @@ impl Library {
             media_list.insert_present(item.media_id);
             media_list.save(&media_list_path)?;
 
-            media_uploaded += 1;
+            if data_uploaded {
+                media_uploaded += 1;
+            }
         }
 
         Ok(SyncReportPush {

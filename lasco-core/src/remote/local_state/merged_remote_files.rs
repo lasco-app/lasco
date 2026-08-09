@@ -5,17 +5,17 @@ use serde::{Deserialize, Serialize};
 
 use crate::identifiers::CompactedOpId;
 
-/// Persisted set of remote operation-file UUIDs that have been fully ingested into the local log.
+/// Persisted set of immutable remote operation files already merged into the local log.
 ///
-/// Stored at `remotes/{remote_id}/state/processed.json`. Consulted during fetch to skip files that
-/// were already processed in a previous run (raw `.op` or compaction `.opN`). For raw files the
-/// UUID equals the op_id. For compaction files it is the fresh UUID embedded in the filename.
+/// Stored at `remotes/{remote_id}/state/merged_remote_files.json`. This is merge progress,
+/// not the last-known remote-operation cache: a file may be merged while its cached ciphertext
+/// still needs to be restored.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ProcessedFiles {
+pub struct MergedRemoteFiles {
     pub file_uuids: HashSet<CompactedOpId>,
 }
 
-impl ProcessedFiles {
+impl MergedRemoteFiles {
     pub fn load_or_default(path: &Path) -> std::io::Result<Self> {
         if !path.exists() {
             return Ok(Self::default());

@@ -70,7 +70,7 @@ Fetch lists and downloads remote operation files missing from the remote's last-
     </tr>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>5</td>
-      <td>Merge compacted operation files not already recorded in `remotes/{remote_id}/state/processed.json` into the local log. For each merged media-creation operation, check whether its remote data blob exists and update `media_list.json`. Update `processed.json`, then rebuild in-memory local state.</td>
+      <td>Merge compacted operation files not already recorded in `remotes/{remote_id}/state/merged_remote_files.json` into the local log. Fetch may record media blobs whose remote existence it successfully confirms in `media_list.json`; this positive-only inventory may be incomplete. Update `merged_remote_files.json`, then rebuild in-memory local state.</td>
       <td><span className="tag tag-ok">Read remote</span> <span className="tag tag-warn">Append local log</span> <span className="tag tag-warn">Write local state</span> <span className="tag tag-warn">Rebuild in-memory state</span></td>
     </tr>
   </tbody>
@@ -133,7 +133,7 @@ For operation files, the client simply copies what it has locally. For media and
     </tr>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>5</td>
-      <td>For each reconstructed media item absent from the target's media list and available locally, upload its data blob and thumbnail when present, then record the media ID in the target's media list.</td>
+      <td>For each reconstructed media item not yet confirmed in the target's media inventory and available locally, ensure its data blob and thumbnail when present exist with non-overwriting writes, then record the media ID in that inventory.</td>
       <td><span className="tag tag-ok">Read local media</span> <span className="tag tag-warn">Write remote media and thumbnail</span> <span className="tag tag-warn">Write local media list</span></td>
     </tr>
   </tbody>

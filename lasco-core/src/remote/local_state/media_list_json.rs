@@ -18,8 +18,9 @@ pub struct MediaListEntry {
     pub thumb: BlobStatus,
 }
 
-/// Tracks which media blobs are present at a known remote
-/// (`remotes/{remote_id}/state/media/media_list.json`).
+/// Positive-only inventory of media blobs confirmed present at a known remote
+/// (`remotes/{remote_id}/state/media/media_list.json`). It is intentionally allowed to be
+/// incomplete: absence means unconfirmed, not absent from the remote.
 ///
 /// All entries use `BlobStatus::OnRemote` (via `insert_present`).
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

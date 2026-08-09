@@ -17,6 +17,9 @@ use remote_access::{StorageRead, StorageReadWrite};
 #[derive(Debug)]
 pub struct SyncReportFetch {
     pub ops_downloaded: usize,
+    /// True when this invocation merged a remote file and callers must rebuild state, even when
+    /// every operation was already appended by an interrupted earlier invocation.
+    pub(crate) local_state_rebuild_required: bool,
 }
 
 #[derive(Debug)]
@@ -103,7 +106,7 @@ impl Library {
                 &self.inner.master_key,
             )
             .await?;
-            if report.ops_downloaded > 0 {
+            if report.local_state_rebuild_required {
                 self.load_local_state().await?;
             }
             report

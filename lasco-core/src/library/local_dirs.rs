@@ -77,7 +77,6 @@ impl LocalStateMediaDir {
 #[derive(Clone, Debug)]
 pub struct RemoteLastKnownStateDir {
     path: PathBuf,
-    legacy_processed_files_path: PathBuf,
 }
 
 impl RemoteLastKnownStateDir {
@@ -97,19 +96,9 @@ impl RemoteLastKnownStateDir {
         self.media_dir().join("media_list.json")
     }
 
-    pub fn processed_files_path(&self) -> PathBuf {
-        self.path.join("processed.json")
-    }
-
-    /// Moves the former `remotes/{remote_id}/processed.json` location into this
-    /// last-known-state directory. A destination already present always wins.
-    pub fn migrate_legacy_processed_files(&self) -> std::io::Result<()> {
-        let destination = self.processed_files_path();
-        if destination.exists() || !self.legacy_processed_files_path.exists() {
-            return Ok(());
-        }
-        std::fs::create_dir_all(&self.path)?;
-        std::fs::rename(&self.legacy_processed_files_path, destination)
+    /// Records immutable remote operation files already merged into `operations.log`.
+    pub fn merged_remote_files_path(&self) -> PathBuf {
+        self.path.join("merged_remote_files.json")
     }
 }
 
@@ -150,11 +139,6 @@ impl LocalDirs {
     pub fn remote_last_known_state_dir(&self, remote_id: &str) -> RemoteLastKnownStateDir {
         RemoteLastKnownStateDir {
             path: self.root.join("remotes").join(remote_id).join("state"),
-            legacy_processed_files_path: self
-                .root
-                .join("remotes")
-                .join(remote_id)
-                .join("processed.json"),
         }
     }
 
@@ -166,47 +150,5 @@ impl LocalDirs {
 
     pub fn ensure_sync_dirs(&self) -> std::io::Result<()> {
         std::fs::create_dir_all(self.root.join("remotes"))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use tempfile::TempDir;
-
-    use super::*;
-
-    #[test]
-    fn migrates_processed_files_into_remote_last_known_state() {
-        let tmp = TempDir::new().unwrap();
-        let library_id = LibraryId(uuid::Uuid::new_v4());
-        let local_dirs = LocalDirs::new(tmp.path().to_path_buf(), &library_id);
-        let remote_last_known_state_dir = local_dirs.remote_last_known_state_dir("remote-a");
-
-        std::fs::create_dir_all(
-            remote_last_known_state_dir
-                .legacy_processed_files_path
-                .parent()
-                .unwrap(),
-        )
-        .unwrap();
-        std::fs::write(
-            &remote_last_known_state_dir.legacy_processed_files_path,
-            b"[]",
-        )
-        .unwrap();
-
-        remote_last_known_state_dir
-            .migrate_legacy_processed_files()
-            .unwrap();
-
-        assert_eq!(
-            std::fs::read(remote_last_known_state_dir.processed_files_path()).unwrap(),
-            b"[]"
-        );
-        assert!(
-            !remote_last_known_state_dir
-                .legacy_processed_files_path
-                .exists()
-        );
     }
 }

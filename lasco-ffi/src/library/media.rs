@@ -151,10 +151,11 @@ impl FfiLibrary {
                 let storage =
                     self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
                 self.rt
-                    .block_on(
-                        self.inner
-                            .media_get_bytes(media_uuid, Some(storage.as_ref())),
-                    )
+                    .block_on(self.inner.media_get_bytes_from_remote(
+                        media_uuid,
+                        &remote_id,
+                        storage.as_ref(),
+                    ))
                     .map_err(LascoError::from)
             }
             Err(e) => Err(LascoError::from(e)),
@@ -228,7 +229,7 @@ impl FfiLibrary {
                 self.rt
                     .spawn(async move {
                         inner
-                            .media_get_bytes(media_uuid, Some(storage.as_ref()))
+                            .media_get_bytes_from_remote(media_uuid, &remote_id, storage.as_ref())
                             .await
                     })
                     .await
