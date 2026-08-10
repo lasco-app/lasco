@@ -3,15 +3,15 @@ import UniformTypeIdentifiers
 import PhotosUI
 
 extension FfiAlbum: Identifiable {
-    public var id: String { albumId }
+    public var id: FfiAlbumUuid { albumId }
 }
 
 // MARK: - Supporting types
 
 enum ContentSelection {
     case none
-    case items(mediaIds: Set<String>, groupIds: Set<String>)
-    case albums(Set<String>)
+    case items(mediaIds: Set<FfiMediaUuid>, groupIds: Set<FfiGroupUuid>)
+    case albums(Set<FfiAlbumUuid>)
 
     var isSelecting: Bool {
         switch self {
@@ -28,22 +28,22 @@ enum ContentSelection {
         }
     }
 
-    func containsMedia(_ id: String) -> Bool {
+    func containsMedia(_ id: FfiMediaUuid) -> Bool {
         if case .items(let m, _) = self { return m.contains(id) }
         return false
     }
 
-    func containsGroup(_ id: String) -> Bool {
+    func containsGroup(_ id: FfiGroupUuid) -> Bool {
         if case .items(_, let g) = self { return g.contains(id) }
         return false
     }
 
-    func containsAlbum(_ id: String) -> Bool {
+    func containsAlbum(_ id: FfiAlbumUuid) -> Bool {
         if case .albums(let s) = self { return s.contains(id) }
         return false
     }
 
-    mutating func toggleMedia(_ id: String) {
+    mutating func toggleMedia(_ id: FfiMediaUuid) {
         switch self {
         case .none:
             self = .items(mediaIds: [id], groupIds: [])
@@ -55,7 +55,7 @@ enum ContentSelection {
         }
     }
 
-    mutating func toggleGroup(_ id: String) {
+    mutating func toggleGroup(_ id: FfiGroupUuid) {
         switch self {
         case .none:
             self = .items(mediaIds: [], groupIds: [id])
@@ -67,7 +67,7 @@ enum ContentSelection {
         }
     }
 
-    mutating func toggleAlbum(_ id: String) {
+    mutating func toggleAlbum(_ id: FfiAlbumUuid) {
         switch self {
         case .none:
             self = .albums([id])
@@ -79,17 +79,17 @@ enum ContentSelection {
         }
     }
 
-    var selectedMediaIds: Set<String> {
+    var selectedMediaIds: Set<FfiMediaUuid> {
         if case .items(let m, _) = self { return m }
         return []
     }
 
-    var selectedGroupIds: Set<String> {
+    var selectedGroupIds: Set<FfiGroupUuid> {
         if case .items(_, let g) = self { return g }
         return []
     }
 
-    var selectedAlbumIds: Set<String> {
+    var selectedAlbumIds: Set<FfiAlbumUuid> {
         if case .albums(let s) = self { return s }
         return []
     }
@@ -101,10 +101,12 @@ enum AlbumItem: Hashable, Identifiable {
     case media(FfiMediaItem)
     case group(FfiGroup)
 
-    var id: String {
+    enum ID: Hashable { case media(FfiMediaUuid), group(FfiGroupUuid) }
+
+    var id: ID {
         switch self {
-        case .media(let m): return m.mediaId
-        case .group(let g): return g.groupId
+        case .media(let m): return .media(m.mediaId)
+        case .group(let g): return .group(g.groupId)
         }
     }
 }
@@ -208,7 +210,7 @@ struct AlbumContentView: View {
         return albumNames.joined(separator: " / ")
     }
 
-    private var ancestors: Set<String> {
+    private var ancestors: Set<FfiAlbumUuid> {
         Set(path.compactMap { if case .album(let a) = $0 { return a.albumId } else { return nil } })
     }
 
@@ -314,7 +316,7 @@ struct AlbumContentView: View {
         .scrollContentBackground(.hidden)
         .toolbarBackButton(action: { dismiss() }, isVisible: !isRoot)
         .onAppear {
-            AppLogger.log(.info, "album shown — '\(album?.name ?? "root")' (\(album?.albumId ?? "root"))")
+            AppLogger.log(.info, "album shown — '\(album?.name ?? "root")' (\(album?.albumId.value ?? "root"))")
         }
         .task(id: album?.albumId) {
             await albumModel.load(parentID: album?.albumId)
@@ -815,7 +817,7 @@ struct AlbumContentView: View {
         }
     }
 
-    private func handleMoveTo(targetAlbumId: String) {
+    private func handleMoveTo(targetAlbumId: FfiAlbumUuid) {
         switch selection {
         case .none:
             break
@@ -1112,10 +1114,10 @@ struct AlbumCell: View {
 // MARK: - ThumbnailPickerSheet
 
 private struct ThumbnailPickerSheet: View {
-    let albumId: String
+    let albumId: FfiAlbumUuid
     let albumName: String
     let media: [FfiMediaItem]
-    let onPick: (String) -> Void
+    let onPick: (FfiMediaUuid) -> Void
     @Environment(LibraryRepository.self) private var repository
     @Environment(\.lascoTheme) var theme
     @Environment(\.dismiss) private var dismiss

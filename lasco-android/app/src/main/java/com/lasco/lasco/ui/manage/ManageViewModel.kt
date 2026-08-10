@@ -43,7 +43,7 @@ class ManageViewModel(
         }
     }
 
-    fun setRemoteAutoPush(remoteId: String, enabled: Boolean) {
+    fun setRemoteAutoPush(remoteId: uniffi.lasco_ffi.FfiRemoteUuid, enabled: Boolean) {
         viewModelScope.launch {
             repo.setRemoteAutoPush(remoteId, enabled)
         }

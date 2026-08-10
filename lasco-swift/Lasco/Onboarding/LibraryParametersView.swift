@@ -32,7 +32,7 @@ struct LibraryParametersView: View {
                             Text(activeSession.state.nickname)
                                 .font(LascoFont.categoryLarge())
                                 .foregroundStyle(theme.ink)
-                            Text(activeSession.state.libraryID)
+                            Text(activeSession.state.libraryID.value)
                                 .font(LascoFont.mono())
                                 .foregroundStyle(theme.inkMuted)
                                 .lineLimit(1)

@@ -1,6 +1,10 @@
+use crate::ids::{
+    FfiAlbumUuid, FfiGroupUuid, FfiLibraryId, FfiMediaUuid, FfiOpUuid, FfiRemoteUuid,
+};
+
 #[derive(uniffi::Record, Debug)]
 pub struct FfiCreateLibraryResult {
-    pub library_id: String,
+    pub library_id: FfiLibraryId,
     pub master_key_hex: String,
 }
 
@@ -10,7 +14,7 @@ pub struct FfiCreateLibraryResult {
 // regenerating a thumbnail.
 #[derive(uniffi::Record, Debug)]
 pub struct FfiMediaAddResult {
-    pub media_id: String,
+    pub media_id: FfiMediaUuid,
     pub already_existed: bool,
 }
 
@@ -31,7 +35,7 @@ impl From<lasco_core::identifiers::MediaUuid> for FfiMediaId {
 
 #[derive(uniffi::Record, Debug)]
 pub struct FfiMediaItem {
-    pub media_id: String,
+    pub media_id: FfiMediaUuid,
     pub filename_original: String,
     pub name: Option<String>,
     pub date: String,
@@ -40,8 +44,8 @@ pub struct FfiMediaItem {
     pub size_bytes: u64,
     pub content_hash: String,
     pub author: String,
-    pub apple_aae_media_id: Option<String>,
-    pub apple_live_photo_media_id: Option<String>,
+    pub apple_aae_media_id: Option<FfiMediaUuid>,
+    pub apple_live_photo_media_id: Option<FfiMediaUuid>,
 }
 
 #[derive(uniffi::Record, Debug)]
@@ -53,20 +57,20 @@ pub struct FfiMediaNeighbors {
 
 #[derive(uniffi::Record, Debug)]
 pub struct FfiAlbum {
-    pub album_id: String,
+    pub album_id: FfiAlbumUuid,
     pub name: String,
-    pub parent_album_id: Option<String>,
+    pub parent_album_id: Option<FfiAlbumUuid>,
     pub media_count: u32,
     pub deleted: bool,
     pub is_disconnected: bool,
-    pub thumbnail_media_id: Option<String>,
+    pub thumbnail_media_id: Option<FfiMediaUuid>,
 }
 
 #[derive(uniffi::Record, Debug)]
 pub struct FfiGroup {
-    pub group_id: String,
-    pub album_id_parent: String,
-    pub media_ids: Vec<String>,
+    pub group_id: FfiGroupUuid,
+    pub album_id_parent: FfiAlbumUuid,
+    pub media_ids: Vec<FfiMediaUuid>,
 }
 
 #[derive(uniffi::Record, Debug)]
@@ -85,14 +89,8 @@ pub struct FfiMediaOrGroupNeighbors {
 }
 
 #[derive(uniffi::Record, Debug)]
-pub struct FfiSyncResult {
-    pub pushed: u32,
-    pub pulled: u32,
-}
-
-#[derive(uniffi::Record, Debug)]
 pub struct FfiLibraryEntry {
-    pub id: String,
+    pub library_id: FfiLibraryId,
     pub nickname: String,
     pub username: Option<String>,
     pub load_error: Option<String>,
@@ -100,9 +98,11 @@ pub struct FfiLibraryEntry {
 
 #[derive(uniffi::Record, Debug, Clone)]
 pub struct FfiRemote {
-    pub id: String,
+    pub remote_id: FfiRemoteUuid,
     pub name: String,
     pub auto_push: bool,
+    pub media_fetch_priority: u32,
+    pub exclude_from_media_fetch: bool,
     pub kind: String,
     pub endpoint: Option<String>,
     pub bucket: Option<String>,
@@ -133,8 +133,8 @@ pub struct FfiLocalStateStats {
 
 #[derive(uniffi::Record, Debug)]
 pub struct FfiOperationGroup {
-    pub op_id: String,
-    pub parent_op_id: Option<String>,
+    pub op_id: FfiOpUuid,
+    pub parent_op_id: Option<FfiOpUuid>,
     pub operations: Vec<FfiOperation>,
     pub author: String,
 }

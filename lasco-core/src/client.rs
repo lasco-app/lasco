@@ -15,25 +15,19 @@ use crate::s3_secret::{encrypt_s3_secret_key, resolve_s3_credentials};
 use crate::session::{session_load_master_key, session_store_master_key};
 use crate::storage::{Storage, StorageLocalFs, StorageS3};
 
-pub fn local_storage_path(app_dir: &Path, library_id: &LibraryId) -> std::path::PathBuf {
-    app_dir.join("local_storage").join(library_id.to_string())
-}
-
+/// Constructs the storage backend for an already-selected remote configuration.
+///
+/// This factory does not select a remote, modify library configuration, initialize remote
+/// storage, or perform synchronization. Callers choose and validate the [`RemoteConfig`] first.
+/// `app_dir` is used by the debug Android backend, while `app_support_dir` is required by the
+/// debug Apple backend.
 pub fn build_storage(
     app_dir: &Path,
-    library: &LibraryJson,
-    library_id: &LibraryId,
+    remote: &RemoteConfig,
     master_key: Option<&MasterKey>,
     app_support_dir: Option<&Path>,
 ) -> Result<Box<dyn Storage + Send + Sync>> {
-    // Libraries with no remotes always use the convention local storage path.
-    if library.remotes.is_empty() {
-        let path = local_storage_path(app_dir, library_id);
-        return Ok(Box::new(StorageLocalFs::new(&path)?));
-    }
-
-    let primary = &library.remotes[0];
-    match &primary.kind {
+    match &remote.kind {
         RemoteKind::FixedPath(cfg) => Ok(Box::new(StorageLocalFs::new(&cfg.root_dir)?)),
         RemoteKind::UsbAndroid(cfg) => build_usb_android_storage(&cfg.tree_uri),
         RemoteKind::UsbApple(cfg) => build_usb_apple_storage(&cfg.bookmark_base64),
@@ -315,6 +309,8 @@ pub async fn add_existing_library_s3(
         remote_uuid,
         name: remote_id.clone(),
         auto_push: true,
+        media_fetch_priority: 0,
+        exclude_from_media_fetch: false,
         kind: RemoteKind::S3(S3Config {
             endpoint,
             bucket,
@@ -369,7 +365,7 @@ pub fn delete_library(
             .with_context(|| format!("failed to remove {}", lib_dir.display()))?;
     }
 
-    let local_storage = local_storage_path(app_dir, library_id);
+    let local_storage = app_dir.join("local_storage").join(library_id.to_string());
     if local_storage.exists() {
         std::fs::remove_dir_all(&local_storage)
             .with_context(|| format!("failed to remove {}", local_storage.display()))?;

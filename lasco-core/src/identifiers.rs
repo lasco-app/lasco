@@ -94,6 +94,11 @@ impl std::fmt::Display for OpUuid {
 pub struct LibraryId(pub Uuid);
 
 impl LibraryId {
+    // Not impl From<Uuid>. Prevents accidental cross-type UUID coercions.
+    pub fn from_uuid(id: Uuid) -> Self {
+        Self(id)
+    }
+
     pub fn new() -> Self {
         LibraryId(Uuid::new_v4())
     }

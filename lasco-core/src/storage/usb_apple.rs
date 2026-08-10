@@ -56,7 +56,9 @@ impl StorageUsbApple {
         }
 
         let path = url.path().ok_or_else(|| {
-            StorageError::Unavailable("USB bookmark did not resolve to a filesystem path".to_string())
+            StorageError::Unavailable(
+                "USB bookmark did not resolve to a filesystem path".to_string(),
+            )
         })?;
 
         Ok(Self {
@@ -70,7 +72,10 @@ impl Drop for StorageUsbApple {
     fn drop(&mut self) {
         // SAFETY: the matching successful start call is made in `new`, and the
         // retained URL remains valid for the entire lifetime of this object.
-        unsafe { self.security_scoped_url.stopAccessingSecurityScopedResource() };
+        unsafe {
+            self.security_scoped_url
+                .stopAccessingSecurityScopedResource()
+        };
     }
 }
 

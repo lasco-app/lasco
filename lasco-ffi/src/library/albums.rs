@@ -1,4 +1,4 @@
-use lasco_core::identifiers::{AlbumUuid, MediaUuid};
+use lasco_core::identifiers::AlbumUuid;
 use lasco_core::library::albums::{AlbumItem, AlbumSummary, DatedAlbumItem};
 use lasco_core::operations::AlbumName;
 
@@ -6,18 +6,19 @@ use super::groups::group_entry_to_ffi;
 use super::remotes::media_entry_to_ffi;
 use super::{FfiAlbum, FfiAlbumItem, FfiLibrary, FfiMediaItem, FfiMediaOrGroupNeighbors};
 use crate::error::LascoError;
+use crate::ids::{FfiAlbumUuid, FfiMediaUuid};
 
 use super::media::inclusive_range;
 
 fn album_summary_to_ffi(a: AlbumSummary) -> FfiAlbum {
     FfiAlbum {
-        album_id: a.album_id.to_string(),
+        album_id: a.album_id.into(),
         name: a.name.0,
-        parent_album_id: a.album_id_parent.map(|p| p.to_string()),
+        parent_album_id: a.album_id_parent.map(Into::into),
         media_count: a.media_count as u32,
         deleted: false,
         is_disconnected: false,
-        thumbnail_media_id: a.thumbnail_media_id.map(|m| m.to_string()),
+        thumbnail_media_id: a.thumbnail_media_id.map(Into::into),
     }
 }
 
@@ -27,13 +28,13 @@ fn disconnected_album_to_ffi(library: &FfiLibrary, id: AlbumUuid) -> Option<FfiA
         .album_node_by_id(id)
         .map(
             |(name, parent_id, media_count, thumbnail_media_id)| FfiAlbum {
-                album_id: id.to_string(),
+                album_id: id.into(),
                 name: name.0,
-                parent_album_id: parent_id.map(|p| p.to_string()),
+                parent_album_id: parent_id.map(Into::into),
                 media_count: media_count as u32,
                 deleted: false,
                 is_disconnected: true,
-                thumbnail_media_id: thumbnail_media_id.map(|m| m.to_string()),
+                thumbnail_media_id: thumbnail_media_id.map(Into::into),
             },
         )
 }
@@ -64,13 +65,13 @@ impl FfiLibrary {
             .album_list()
             .into_iter()
             .map(|a| FfiAlbum {
-                album_id: a.album_id.to_string(),
+                album_id: a.album_id.into(),
                 name: a.name.0,
-                parent_album_id: a.album_id_parent.map(|p| p.to_string()),
+                parent_album_id: a.album_id_parent.map(Into::into),
                 media_count: a.media_count as u32,
                 deleted: false,
                 is_disconnected: false,
-                thumbnail_media_id: a.thumbnail_media_id.map(|m| m.to_string()),
+                thumbnail_media_id: a.thumbnail_media_id.map(Into::into),
             })
             .collect();
         albums.extend(
@@ -82,11 +83,11 @@ impl FfiLibrary {
         Ok(albums)
     }
 
-    pub fn album_albums_count(&self, parent_album_id: Option<String>) -> Result<u32, LascoError> {
-        let parent = parent_album_id
-            .map(|id| uuid::Uuid::parse_str(&id).map(AlbumUuid::from_uuid))
-            .transpose()
-            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+    pub fn album_albums_count(
+        &self,
+        parent_album_id: Option<FfiAlbumUuid>,
+    ) -> Result<u32, LascoError> {
+        let parent = parent_album_id.map(TryInto::try_into).transpose()?;
         Ok(self.inner.album_albums_count(parent) as u32)
     }
 
@@ -94,14 +95,11 @@ impl FfiLibrary {
     /// Positions are zero-based and both ends of the range are inclusive.
     pub fn album_albums_range(
         &self,
-        parent_album_id: Option<String>,
+        parent_album_id: Option<FfiAlbumUuid>,
         pos_start_inclusive: u32,
         pos_end_inclusive: u32,
     ) -> Result<Vec<FfiAlbum>, LascoError> {
-        let parent = parent_album_id
-            .map(|id| uuid::Uuid::parse_str(&id).map(AlbumUuid::from_uuid))
-            .transpose()
-            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+        let parent = parent_album_id.map(TryInto::try_into).transpose()?;
         let (start, end) = inclusive_range(pos_start_inclusive, pos_end_inclusive)?;
         Ok(self
             .inner
@@ -133,10 +131,8 @@ impl FfiLibrary {
             .collect())
     }
 
-    pub fn rename_album(&self, album_id: String, name: String) -> Result<(), LascoError> {
-        let uuid = uuid::Uuid::parse_str(&album_id)
-            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
-        let album_uuid = AlbumUuid::from_uuid(uuid);
+    pub fn rename_album(&self, album_id: FfiAlbumUuid, name: String) -> Result<(), LascoError> {
+        let album_uuid = album_id.try_into()?;
         self.rt
             .block_on(self.inner.album_rename(album_uuid, AlbumName(name)))
             .map_err(LascoError::from)
@@ -144,16 +140,11 @@ impl FfiLibrary {
 
     pub fn reparent_album(
         &self,
-        album_id: String,
-        new_parent_album_id: Option<String>,
+        album_id: FfiAlbumUuid,
+        new_parent_album_id: Option<FfiAlbumUuid>,
     ) -> Result<(), LascoError> {
-        let uuid = uuid::Uuid::parse_str(&album_id)
-            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
-        let album_uuid = AlbumUuid::from_uuid(uuid);
-        let parent = new_parent_album_id
-            .map(|s| uuid::Uuid::parse_str(&s).map(AlbumUuid::from_uuid))
-            .transpose()
-            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+        let album_uuid = album_id.try_into()?;
+        let parent = new_parent_album_id.map(TryInto::try_into).transpose()?;
         self.rt
             .block_on(self.inner.album_reparent(album_uuid, parent))
             .map_err(LascoError::from)
@@ -162,23 +153,18 @@ impl FfiLibrary {
     pub fn create_album(
         &self,
         name: String,
-        parent_album_id: Option<String>,
-    ) -> Result<String, LascoError> {
-        let parent = parent_album_id
-            .map(|s| uuid::Uuid::parse_str(&s).map(AlbumUuid::from_uuid))
-            .transpose()
-            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+        parent_album_id: Option<FfiAlbumUuid>,
+    ) -> Result<FfiAlbumUuid, LascoError> {
+        let parent = parent_album_id.map(TryInto::try_into).transpose()?;
         let album_id = self
             .rt
             .block_on(self.inner.album_create(AlbumName(name), parent))
             .map_err(LascoError::from)?;
-        Ok(album_id.to_string())
+        Ok(album_id.into())
     }
 
-    pub fn media_in_album(&self, album_id: String) -> Result<Vec<FfiMediaItem>, LascoError> {
-        let uuid = uuid::Uuid::parse_str(&album_id)
-            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
-        let album_uuid = AlbumUuid::from_uuid(uuid);
+    pub fn media_in_album(&self, album_id: FfiAlbumUuid) -> Result<Vec<FfiMediaItem>, LascoError> {
+        let album_uuid = album_id.try_into()?;
         let entries = self
             .inner
             .album_list_media(album_uuid)
@@ -186,26 +172,19 @@ impl FfiLibrary {
         Ok(entries.into_iter().map(media_entry_to_ffi).collect())
     }
 
-    pub fn delete_album(&self, album_id: String) -> Result<(), LascoError> {
-        let uuid = uuid::Uuid::parse_str(&album_id)
-            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+    pub fn delete_album(&self, album_id: FfiAlbumUuid) -> Result<(), LascoError> {
         self.rt
-            .block_on(self.inner.album_delete(AlbumUuid::from_uuid(uuid)))
+            .block_on(self.inner.album_delete(album_id.try_into()?))
             .map_err(LascoError::from)
     }
 
     pub fn set_album_thumbnail(
         &self,
-        album_id: String,
-        media_id: Option<String>,
+        album_id: FfiAlbumUuid,
+        media_id: Option<FfiMediaUuid>,
     ) -> Result<(), LascoError> {
-        let album_uuid = uuid::Uuid::parse_str(&album_id)
-            .map(AlbumUuid::from_uuid)
-            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
-        let media_uuid = media_id
-            .map(|s| uuid::Uuid::parse_str(&s).map(MediaUuid::from_uuid))
-            .transpose()
-            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+        let album_uuid = album_id.try_into()?;
+        let media_uuid = media_id.map(TryInto::try_into).transpose()?;
         self.rt
             .block_on(self.inner.album_set_thumbnail(album_uuid, media_uuid))
             .map_err(LascoError::from)
@@ -213,27 +192,23 @@ impl FfiLibrary {
 
     pub fn remove_media_from_album(
         &self,
-        album_id: String,
-        media_id: String,
+        album_id: FfiAlbumUuid,
+        media_id: FfiMediaUuid,
     ) -> Result<(), LascoError> {
-        let album_uuid = uuid::Uuid::parse_str(&album_id)
-            .map(AlbumUuid::from_uuid)
-            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
-        let media_uuid = uuid::Uuid::parse_str(&media_id)
-            .map(MediaUuid::from_uuid)
-            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+        let album_uuid = album_id.try_into()?;
+        let media_uuid = media_id.try_into()?;
         self.rt
             .block_on(self.inner.album_remove_media(album_uuid, media_uuid))
             .map_err(LascoError::from)
     }
 
-    pub fn add_media_to_album(&self, album_id: String, media_id: String) -> Result<(), LascoError> {
-        let album_uuid = uuid::Uuid::parse_str(&album_id)
-            .map(AlbumUuid::from_uuid)
-            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
-        let media_uuid = uuid::Uuid::parse_str(&media_id)
-            .map(MediaUuid::from_uuid)
-            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+    pub fn add_media_to_album(
+        &self,
+        album_id: FfiAlbumUuid,
+        media_id: FfiMediaUuid,
+    ) -> Result<(), LascoError> {
+        let album_uuid = album_id.try_into()?;
+        let media_uuid = media_id.try_into()?;
         self.rt
             .block_on(self.inner.album_add_media(album_uuid, media_uuid))
             .map_err(LascoError::from)
@@ -241,19 +216,13 @@ impl FfiLibrary {
 
     pub fn move_media_to_album(
         &self,
-        media_id: String,
-        from_album_id: String,
-        to_album_id: String,
+        media_id: FfiMediaUuid,
+        from_album_id: FfiAlbumUuid,
+        to_album_id: FfiAlbumUuid,
     ) -> Result<(), LascoError> {
-        let media_uuid = uuid::Uuid::parse_str(&media_id)
-            .map(MediaUuid::from_uuid)
-            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
-        let from_uuid = uuid::Uuid::parse_str(&from_album_id)
-            .map(AlbumUuid::from_uuid)
-            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
-        let to_uuid = uuid::Uuid::parse_str(&to_album_id)
-            .map(AlbumUuid::from_uuid)
-            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+        let media_uuid = media_id.try_into()?;
+        let from_uuid = from_album_id.try_into()?;
+        let to_uuid = to_album_id.try_into()?;
         self.rt
             .block_on(async {
                 self.inner.album_remove_media(from_uuid, media_uuid).await?;
@@ -264,12 +233,10 @@ impl FfiLibrary {
 
     pub fn album_list_items_sorted(
         &self,
-        album_id: String,
+        album_id: FfiAlbumUuid,
         ascending: bool,
     ) -> Result<Vec<FfiAlbumItem>, LascoError> {
-        let album_uuid = uuid::Uuid::parse_str(&album_id)
-            .map(AlbumUuid::from_uuid)
-            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+        let album_uuid = album_id.try_into()?;
 
         let count = self
             .inner
@@ -284,10 +251,8 @@ impl FfiLibrary {
             .collect())
     }
 
-    pub fn album_items_count(&self, album_id: String) -> Result<u32, LascoError> {
-        let album_uuid = uuid::Uuid::parse_str(&album_id)
-            .map(AlbumUuid::from_uuid)
-            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+    pub fn album_items_count(&self, album_id: FfiAlbumUuid) -> Result<u32, LascoError> {
+        let album_uuid = album_id.try_into()?;
         Ok(self
             .inner
             .album_items_count(album_uuid)
@@ -297,13 +262,11 @@ impl FfiLibrary {
     /// Returns the entries immediately surrounding a zero-based album position.
     pub fn album_items_by_date_neighbors(
         &self,
-        album_id: String,
+        album_id: FfiAlbumUuid,
         ascending: bool,
         position: u32,
     ) -> Result<FfiMediaOrGroupNeighbors, LascoError> {
-        let album_uuid = uuid::Uuid::parse_str(&album_id)
-            .map(AlbumUuid::from_uuid)
-            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+        let album_uuid = album_id.try_into()?;
         let count = self
             .inner
             .album_items_count(album_uuid)
@@ -333,14 +296,12 @@ impl FfiLibrary {
     /// Positions are zero-based and both ends of the range are inclusive.
     pub fn album_items_by_date_range(
         &self,
-        album_id: String,
+        album_id: FfiAlbumUuid,
         ascending: bool,
         pos_start_inclusive: u32,
         pos_end_inclusive: u32,
     ) -> Result<Vec<FfiAlbumItem>, LascoError> {
-        let album_uuid = uuid::Uuid::parse_str(&album_id)
-            .map(AlbumUuid::from_uuid)
-            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+        let album_uuid = album_id.try_into()?;
         let (start, end) = inclusive_range(pos_start_inclusive, pos_end_inclusive)?;
         Ok(self
             .inner

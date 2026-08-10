@@ -8,13 +8,14 @@ import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import uniffi.lasco_ffi.FfiAlbumUuid
 
 // Copies picked images/videos (from the Photos picker or the Files/document picker) into
 // the library. The Android equivalent of the simple PhotosPicker/fileImporter paths in
 // Swift's AlbumsView (temp-file copy then importMedia), not the full PHAsset/iCloud sync
 // handled by PhotoLibraryImporter.swift.
 object MediaImporter {
-    suspend fun importUris(context: Context, repo: LibraryRepository, uris: List<Uri>, albumId: String?) =
+    suspend fun importUris(context: Context, repo: LibraryRepository, uris: List<Uri>, albumId: FfiAlbumUuid?) =
         withContext(Dispatchers.IO) {
             for (uri in uris) {
                 val originalFilename = queryDisplayName(context, uri)

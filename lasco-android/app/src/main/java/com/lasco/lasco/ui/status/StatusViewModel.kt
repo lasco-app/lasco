@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import uniffi.lasco_ffi.FfiLocalStateStats
 import uniffi.lasco_ffi.FfiMediaItem
+import uniffi.lasco_ffi.FfiRemoteUuid
 
 private val VIDEO_EXTENSIONS = setOf(
     "mp4", "mov", "avi", "mkv", "m4v", "wmv", "flv", "webm", "mpg", "mpeg", "3gp", "ts", "mts", "m2ts",
@@ -49,19 +50,19 @@ class StatusViewModel(
 
     val syncState: StateFlow<SyncState> = repo.sync.syncState
 
-    private val _unpushed = MutableStateFlow<Map<String, Boolean>>(emptyMap())
-    val unpushed: StateFlow<Map<String, Boolean>> = _unpushed.asStateFlow()
+    private val _unpushed = MutableStateFlow<Map<FfiRemoteUuid, Boolean>>(emptyMap())
+    val unpushed: StateFlow<Map<FfiRemoteUuid, Boolean>> = _unpushed.asStateFlow()
 
     private val _localStateStats = MutableStateFlow<FfiLocalStateStats?>(null)
     val localStateStats: StateFlow<FfiLocalStateStats?> = _localStateStats.asStateFlow()
 
     init {
         viewModelScope.launch {
-            sessionState.collect { state -> refreshUnpushed(state.remotes.map { it.id }) }
+            sessionState.collect { state -> refreshUnpushed(state.remotes.map { it.remoteId }) }
         }
         viewModelScope.launch {
             repo.watch(Change.MediaList, Change.AlbumList) {}
-                .collect { refreshUnpushed(sessionState.value.remotes.map { it.id }) }
+                .collect { refreshUnpushed(sessionState.value.remotes.map { it.remoteId }) }
         }
         viewModelScope.launch {
             prefs.lastPush.collect { records -> refreshUnpushed(records.keys.toList()) }
@@ -69,18 +70,18 @@ class StatusViewModel(
         refreshLocalStateStats()
     }
 
-    suspend fun pushRemote(remoteId: String): PushResult = repo.sync.pushRemote(remoteId)
+    suspend fun pushRemote(remoteId: FfiRemoteUuid): PushResult = repo.sync.pushRemote(remoteId)
 
-    suspend fun pushRemoteFromSource(targetRemoteId: String, sourceRemoteId: String): PushResult =
+    suspend fun pushRemoteFromSource(targetRemoteId: FfiRemoteUuid, sourceRemoteId: FfiRemoteUuid): PushResult =
         repo.sync.pushRemoteFromSource(targetRemoteId, sourceRemoteId)
 
-    suspend fun fetchRemote(remoteId: String): String? {
+    suspend fun fetchRemote(remoteId: FfiRemoteUuid): String? {
         val result = repo.sync.fetchRemoteWithResult(remoteId)
         refreshUnpushed(listOf(remoteId))
         return result
     }
 
-    private suspend fun refreshUnpushed(remoteIds: List<String>) {
+    private suspend fun refreshUnpushed(remoteIds: List<FfiRemoteUuid>) {
         val updates = remoteIds.associateWith { repo.hasUnpushedChanges(it) }
         _unpushed.value = _unpushed.value + updates
     }

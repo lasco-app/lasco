@@ -94,6 +94,7 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collectLatest
 import uniffi.lasco_ffi.FfiMediaItem
+import uniffi.lasco_ffi.FfiGroupUuid
 
 private val videoExtensions = setOf("mp4", "mov", "m4v", "avi", "3gp", "webm", "mkv")
 
@@ -108,7 +109,7 @@ private fun isVideo(item: FfiMediaItem): Boolean =
 private fun displayItemForPage(
     page: Int,
     items: List<DetailItem>,
-    groupMediaCache: Map<String, List<FfiMediaItem>>,
+    groupMediaCache: Map<FfiGroupUuid, List<FfiMediaItem>>,
     groupMediaIndex: Int,
     currentIndex: Int?,
 ): FfiMediaItem? = when (val entry = items.getOrNull(page)) {
@@ -393,9 +394,9 @@ fun MediaDetailScreen(
                             MetadataRow("SIZE", formatSize(media.sizeBytes.toLong()))
                             MetadataRow("ADDED BY", media.author)
                             if (expertMode) {
-                                MetadataRow("ID", media.mediaId)
+                                MetadataRow("ID", media.mediaId.value)
                                 MetadataRow("HASH", media.contentHash)
-                                media.appleAaeMediaId?.let { MetadataRow("AAE", it) }
+                                media.appleAaeMediaId?.let { MetadataRow("AAE", it.value) }
                             }
                         }
                     }
@@ -432,7 +433,7 @@ fun MediaDetailScreen(
                                     album = album,
                                     repo = repo,
                                     modifier = Modifier.width(96.dp),
-                                    onClick = { if (progress > 0.5f) onOpenAlbum(album.albumId) },
+                                    onClick = { if (progress > 0.5f) onOpenAlbum(album.albumId.value) },
                                 )
                             }
                         }

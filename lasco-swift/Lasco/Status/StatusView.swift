@@ -116,11 +116,11 @@ struct StatusView: View {
             titleVisibility: .visible
         ) {
             if let request = pendingRelay {
-                ForEach(request.candidates, id: \.id) { source in
+                ForEach(request.candidates, id: \.remoteId) { source in
                     Button(source.name) {
                         pendingRelay = nil
                         Task {
-                            switch await syncCoordinator.push(remoteID: request.target.id, sourceRemoteID: source.id) {
+                            switch await syncCoordinator.push(remoteID: request.target.remoteId, sourceRemoteID: source.remoteId) {
                             case .success:
                                 toastManager.show(ok: "\(request.target.name): pushed")
                             case .failed(let message):
@@ -243,25 +243,25 @@ struct StatusView: View {
                         .frame(maxWidth: .infinity)
                 }
             } else {
-                ForEach(session.remotes, id: \.id) { remote in
+                ForEach(session.remotes, id: \.remoteId) { remote in
                     RemoteStatusCard(
                         remote: remote,
-                        isDefaultFetch: remote.id == session.defaultFetchRemoteID,
-                        lastPush: syncCoordinator.lastPushRecords[remote.id],
-                        lastFetch: syncCoordinator.lastFetchRecords[remote.id],
+                        isDefaultFetch: remote.remoteId == session.defaultFetchRemoteID,
+                        lastPush: syncCoordinator.lastPushRecords[remote.remoteId],
+                        lastFetch: syncCoordinator.lastFetchRecords[remote.remoteId],
                         isSynced: isSynced(remote),
                         nextPushDate: remote.autoPush ? syncCoordinator.nextPushDate : nil,
-                        pushEnabled: syncCoordinator.isPushAllowed(remote.id),
-                        fetchEnabled: syncCoordinator.isFetchAllowed(remote.id),
+                        pushEnabled: syncCoordinator.isPushAllowed(remote.remoteId),
+                        fetchEnabled: syncCoordinator.isFetchAllowed(remote.remoteId),
                         onPush: {
                             Task {
-                                switch await syncCoordinator.push(remoteID: remote.id) {
+                                switch await syncCoordinator.push(remoteID: remote.remoteId) {
                                 case .success:
                                     toastManager.show(ok: "\(remote.name): pushed")
                                 case .failed(let message):
                                     toastManager.show(error: message)
                                 case .missingLocalMedia(let mediaIDs):
-                                    let candidates = session.remotes.filter { $0.id != remote.id }
+                                    let candidates = session.remotes.filter { $0.remoteId != remote.remoteId }
                                     if candidates.isEmpty {
                                         toastManager.show(error: "Some media is not stored on this device, and no other remote is available to retrieve it from.")
                                     } else {
@@ -272,7 +272,7 @@ struct StatusView: View {
                         },
                         onFetch: {
                             Task {
-                                if let err = await syncCoordinator.fetch(remoteID: remote.id) {
+                                if let err = await syncCoordinator.fetch(remoteID: remote.remoteId) {
                                     toastManager.show(error: err)
                                 } else {
                                     toastManager.show(ok: "\(remote.name): fetched")
@@ -291,7 +291,7 @@ struct StatusView: View {
     }
 
     private func isSynced(_ remote: FfiRemote) -> Bool {
-        model.isSynced(remoteID: remote.id)
+        model.isSynced(remoteID: remote.remoteId)
     }
 }
 
@@ -344,7 +344,7 @@ private struct RemoteStatusCard: View {
                         .font(LascoFont.mono())
                         .foregroundStyle(theme.inkMuted)
                 }
-                Text(remote.id)
+                Text(remote.remoteId.value)
                     .font(.system(size: 10))
                     .foregroundStyle(theme.inkMuted)
             }

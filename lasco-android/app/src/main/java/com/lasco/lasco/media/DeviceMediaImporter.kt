@@ -11,6 +11,8 @@ import androidx.core.content.ContextCompat
 import java.io.File
 import java.io.IOException
 import uniffi.lasco_ffi.FfiLibrary
+import uniffi.lasco_ffi.FfiAlbumUuid
+import uniffi.lasco_ffi.FfiMediaUuid
 
 /**
  * Copies one device media row out of MediaStore and hands it to the core.
@@ -27,7 +29,7 @@ class DeviceMediaImporter(
 ) {
     // A row whose content hash is already in the library keeps its existing
     // thumbnail, regenerating it would re-encrypt and rewrite the same bytes.
-    fun import(row: DeviceMediaRow, albumId: String?, tempIndex: Int): String {
+    fun import(row: DeviceMediaRow, albumId: FfiAlbumUuid?, tempIndex: Int): FfiMediaUuid {
         val tempFile = copyToCache(row, tempIndex)
         try {
             // Always named explicitly. Passing null makes media_add fall back to

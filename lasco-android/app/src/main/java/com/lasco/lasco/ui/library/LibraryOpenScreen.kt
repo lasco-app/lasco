@@ -62,10 +62,10 @@ fun LibraryOpenScreen(
     }
     val entry = resolvedEntry!!
 
-    var username by remember(entry.id) { mutableStateOf(entry.username ?: "") }
+    var username by remember(entry.libraryId) { mutableStateOf(entry.username ?: "") }
     var password by remember { mutableStateOf("") }
 
-    LaunchedEffect(entry.id) {
+    LaunchedEffect(entry.libraryId) {
         viewModel.tryOpenCached(entry.nickname, entry.username)
     }
 

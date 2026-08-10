@@ -27,6 +27,8 @@ import androidx.navigation3.ui.NavDisplay
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import com.lasco.lasco.ui.theme.LascoTheme
 import kotlinx.serialization.Serializable
+import uniffi.lasco_ffi.FfiAlbumUuid
+import uniffi.lasco_ffi.FfiMediaUuid
 
 @Serializable
 private data class PickerAlbumKey(val albumId: String?, val albumName: String? = null) : NavKey
@@ -39,13 +41,13 @@ private data class PickerAlbumKey(val albumId: String?, val albumName: String? =
 @Composable
 fun AlbumMediaPickerScreen(
     destAlbumName: String,
-    disabledIds: Set<String>,
-    onConfirm: (Set<String>) -> Unit,
+    disabledIds: Set<FfiMediaUuid>,
+    onConfirm: (Set<FfiMediaUuid>) -> Unit,
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val backStack = rememberNavBackStack(PickerAlbumKey(null))
-    var selectedIds by remember { mutableStateOf(setOf<String>()) }
+    var selectedIds by remember { mutableStateOf(setOf<FfiMediaUuid>()) }
 
     Column(modifier = modifier.fillMaxSize()) {
         PickerTopBar(destAlbumName = destAlbumName)
@@ -68,12 +70,12 @@ fun AlbumMediaPickerScreen(
                         val backLabel = path.dropLast(1).lastOrNull()?.albumName ?: "Albums"
 
                         AlbumListScreen(
-                            albumId = key.albumId,
+                            albumId = key.albumId?.let(::FfiAlbumUuid),
                             albumName = key.albumName,
                             title = title,
                             backLabel = backLabel,
                             onBack = if (key.albumId != null) { { backStack.removeLastOrNull() } } else null,
-                            onOpenChild = { child -> backStack.add(PickerAlbumKey(child.albumId, child.name)) },
+                            onOpenChild = { child -> backStack.add(PickerAlbumKey(child.albumId.value, child.name)) },
                             pickerState = AlbumPickerState(
                                 disabledIds = disabledIds,
                                 selectedIds = selectedIds,

@@ -97,11 +97,11 @@ private fun OperationGroupCard(group: FfiOperationGroup) {
     ) {
         Row(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(text = group.opId.take(12), style = LascoTheme.type.mono(), color = colors.ink)
+                Text(text = group.opId.value.take(12), style = LascoTheme.type.mono(), color = colors.ink)
                 group.parentOpId?.let { parentId ->
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(text = "↑", style = LascoTheme.type.mono(), color = colors.inkMuted)
-                        Text(text = parentId.take(12), style = LascoTheme.type.mono(), color = colors.inkMuted)
+                        Text(text = parentId.value.take(12), style = LascoTheme.type.mono(), color = colors.inkMuted)
                     }
                 }
             }

@@ -195,22 +195,22 @@ fun StatusScreen(modifier: Modifier = Modifier) {
                 session.remotes.forEach { remote ->
                     RemoteStatusCard(
                         remote = remote,
-                        isDefaultFetch = remote.id == session.defaultFetchRemoteId,
-                        isSynced = unpushed[remote.id] != true,
+                        isDefaultFetch = remote.remoteId == session.defaultFetchRemoteId,
+                        isSynced = unpushed[remote.remoteId] != true,
                         pushCountdownSeconds = pushCountdownSeconds.takeIf {
-                            remote.id in syncState.scheduledAutoPushRemoteIds && remote.autoPush
+                            remote.remoteId in syncState.scheduledAutoPushRemoteIds && remote.autoPush
                         },
-                        lastPush = pushRecords[remote.id],
-                        lastFetch = fetchRecords[remote.id],
-                        pushEnabled = remote.id !in syncState.busyRemoteIds,
-                        fetchEnabled = remote.id !in syncState.busyRemoteIds && !syncState.fetchInProgress,
+                        lastPush = pushRecords[remote.remoteId],
+                        lastFetch = fetchRecords[remote.remoteId],
+                        pushEnabled = remote.remoteId !in syncState.busyRemoteIds,
+                        fetchEnabled = remote.remoteId !in syncState.busyRemoteIds && !syncState.fetchInProgress,
                         onPush = {
                             scope.launch {
-                                when (val result = statusViewModel.pushRemote(remote.id)) {
+                                when (val result = statusViewModel.pushRemote(remote.remoteId)) {
                                     PushResult.Success -> feedback = "${remote.name}: pushed"
                                     is PushResult.Failed -> feedback = result.message
                                     is PushResult.MissingLocalMedia -> {
-                                        val candidates = session.remotes.filter { it.id != remote.id }
+                                        val candidates = session.remotes.filter { it.remoteId != remote.remoteId }
                                         if (candidates.isEmpty()) {
                                             feedback = "Some media is not stored on this device, and no other remote is available to retrieve it from."
                                         } else {
@@ -222,7 +222,7 @@ fun StatusScreen(modifier: Modifier = Modifier) {
                         },
                         onFetch = {
                             scope.launch {
-                                val err = statusViewModel.fetchRemote(remote.id)
+                                val err = statusViewModel.fetchRemote(remote.remoteId)
                                 feedback = err ?: "${remote.name}: fetched"
                             }
                         },
@@ -291,7 +291,7 @@ fun StatusScreen(modifier: Modifier = Modifier) {
                         Button(onClick = {
                             pendingRelay = null
                             scope.launch {
-                                when (val result = statusViewModel.pushRemoteFromSource(request.target.id, source.id)) {
+                                when (val result = statusViewModel.pushRemoteFromSource(request.target.remoteId, source.remoteId)) {
                                     PushResult.Success -> feedback = "${request.target.name}: pushed"
                                     is PushResult.Failed -> feedback = result.message
                                     is PushResult.MissingLocalMedia -> feedback = "The selected remote does not contain all missing media."
@@ -383,7 +383,7 @@ private fun RemoteStatusCard(
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(text = remote.kind, style = LascoTheme.type.mono(), color = colors.inkMuted)
             }
-            Text(text = remote.id, style = LascoTheme.type.mono(10), color = colors.inkMuted)
+            Text(text = remote.remoteId.value, style = LascoTheme.type.mono(10), color = colors.inkMuted)
         }
         // isSynced wins over a stale countdown, covering the window between a
         // push landing and unpushed refreshing.

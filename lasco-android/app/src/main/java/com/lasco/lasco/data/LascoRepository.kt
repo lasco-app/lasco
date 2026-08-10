@@ -12,6 +12,7 @@ import kotlinx.coroutines.withContext
 import uniffi.lasco_ffi.FfiCreateLibraryResult
 import uniffi.lasco_ffi.FfiLibrary
 import uniffi.lasco_ffi.FfiLibraryEntry
+import uniffi.lasco_ffi.FfiLibraryId
 import uniffi.lasco_ffi.ffiAddExistingLibraryS3
 import uniffi.lasco_ffi.ffiCreateLibrary
 import uniffi.lasco_ffi.ffiDeleteLibrary
@@ -78,7 +79,7 @@ class LascoRepository(
         password: String,
         newUsername: String? = null,
         newPassword: String? = null,
-        remoteId: String,
+        remoteName: String,
         endpoint: String,
         bucket: String,
         region: String,
@@ -93,7 +94,7 @@ class LascoRepository(
                 password = password,
                 newUsername = newUsername,
                 newPassword = newPassword,
-                remoteId = remoteId,
+                remoteName = remoteName,
                 endpoint = endpoint,
                 bucket = bucket,
                 region = region,
@@ -107,11 +108,11 @@ class LascoRepository(
         return library
     }
 
-    suspend fun signOut(libraryId: String, username: String) = withContext(Dispatchers.IO) {
+    suspend fun signOut(libraryId: FfiLibraryId, username: String) = withContext(Dispatchers.IO) {
         sessionClear(libraryId = libraryId, username = username, appDir = appDir)
     }
 
-    suspend fun deleteLibrary(libraryId: String) {
+    suspend fun deleteLibrary(libraryId: FfiLibraryId) {
         withContext(Dispatchers.IO) {
             ffiDeleteLibrary(libraryId = libraryId, appDir = appDir)
         }

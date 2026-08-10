@@ -97,21 +97,21 @@ fun RemotesScreen(
             session.remotes.forEach { remote ->
                 RemoteCard(
                     remote = remote,
-                    isDefaultFetch = remote.id == session.defaultFetchRemoteId,
-                    busy = remote.id in syncState.busyRemoteIds,
+                    isDefaultFetch = remote.remoteId == session.defaultFetchRemoteId,
+                    busy = remote.remoteId in syncState.busyRemoteIds,
                     onTestConnection = {
                         scope.launch {
-                            val ok = repo.connectRemote(remote.id, null)
+                            val ok = repo.connectRemote(remote.remoteId, null)
                             feedback = if (ok) "${remote.name}: connection succeeded" else "${remote.name}: connection failed"
                         }
                     },
                     onSetDefaultFetch = {
                         scope.launch {
-                            repo.setDefaultFetchRemote(remote.id)
+                            repo.setDefaultFetchRemote(remote.remoteId)
                             feedback = "${remote.name}: set as default fetch"
                         }
                     },
-                    onSetAutoPush = { enabled -> manageViewModel.setRemoteAutoPush(remote.id, enabled) },
+                    onSetAutoPush = { enabled -> manageViewModel.setRemoteAutoPush(remote.remoteId, enabled) },
                     onDelete = { pendingDelete = remote },
                 )
                 Spacer(modifier = Modifier.height(12.dp))
@@ -149,7 +149,7 @@ fun RemotesScreen(
             message = "This removes \"${remote.name}\" from this library. Data already pushed to it is not deleted.",
             onConfirm = {
                 scope.launch {
-                    repo.removeRemote(remote.id)
+                    repo.removeRemote(remote.remoteId)
                     feedback = "${remote.name}: removed"
                 }
                 pendingDelete = null
