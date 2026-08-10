@@ -11,6 +11,7 @@ import com.lasco.lasco.data.LibraryRepository
 import com.lasco.lasco.data.Prefs
 import com.lasco.lasco.data.SessionState
 import com.lasco.lasco.data.SyncState
+import com.lasco.lasco.data.PushResult
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -68,7 +69,10 @@ class StatusViewModel(
         refreshLocalStateStats()
     }
 
-    suspend fun pushRemote(remoteId: String): String? = repo.sync.pushRemote(remoteId)
+    suspend fun pushRemote(remoteId: String): PushResult = repo.sync.pushRemote(remoteId)
+
+    suspend fun pushRemoteFromSource(targetRemoteId: String, sourceRemoteId: String): PushResult =
+        repo.sync.pushRemoteFromSource(targetRemoteId, sourceRemoteId)
 
     suspend fun fetchRemote(remoteId: String): String? {
         val result = repo.sync.fetchRemoteWithResult(remoteId)

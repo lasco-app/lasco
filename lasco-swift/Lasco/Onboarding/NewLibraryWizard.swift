@@ -737,7 +737,13 @@ struct NewLibraryWizard: View {
         guard initialImportController == nil else { return }
         let controller = InitialPhotoImportController(
             repository: activeSession.repository,
-            pushChunk: { remoteID in await activeSession.syncCoordinator.push(remoteID: remoteID) }
+            pushChunk: { remoteID in
+                switch await activeSession.syncCoordinator.push(remoteID: remoteID) {
+                case .success: nil
+                case .failed(let message): message
+                case .missingLocalMedia: "Media missing from local cache"
+                }
+            }
         )
         initialImportController = controller
         await controller.scanPhotoLibrary()

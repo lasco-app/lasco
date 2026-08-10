@@ -100,6 +100,7 @@ protocol LibraryRepositoryProtocol: Sendable {
     func hasUnpushedChanges(remoteID: String) async -> Bool
 
     func push(remoteID: String) async throws -> UInt32
+    func push(remoteID: String, sourceRemoteID: String) async throws -> UInt32
     func fetch(remoteID: String) async throws -> UInt32
     func sync() async throws -> FfiSyncResult
     func close() async
@@ -600,6 +601,17 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         return result
     }
 
+    func push(remoteID: String, sourceRemoteID: String) async throws -> UInt32 {
+        try ensureOpen()
+        let result = try await library.pushRemoteFromRemoteAsync(
+            targetRemoteId: remoteID,
+            sourceRemoteId: sourceRemoteID,
+            appSupportDir: appSupportDirectory
+        )
+        await notify(.all)
+        return result
+    }
+
     func fetch(remoteID: String) async throws -> UInt32 {
         try ensureOpen()
         let result = try await library.fetchRemoteAsync(remoteId: remoteID, appSupportDir: appSupportDirectory)
@@ -747,6 +759,9 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     func connectRemote(id: String) async throws { try await storage.connectRemote(id: id) }
     func hasUnpushedChanges(remoteID: String) async -> Bool { await storage.hasUnpushedChanges(remoteID: remoteID) }
     func push(remoteID: String) async throws -> UInt32 { try await storage.push(remoteID: remoteID) }
+    func push(remoteID: String, sourceRemoteID: String) async throws -> UInt32 {
+        try await storage.push(remoteID: remoteID, sourceRemoteID: sourceRemoteID)
+    }
     func fetch(remoteID: String) async throws -> UInt32 { try await storage.fetch(remoteID: remoteID) }
     func sync() async throws -> FfiSyncResult { try await storage.sync() }
     func close() async { await storage.close() }

@@ -885,6 +885,16 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -925,6 +935,10 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_debug_local_apple(
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_fixed_path(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_s3(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_usb_android(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_usb_apple(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_album_albums_count(
 ): Short
@@ -1022,6 +1036,8 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_count(
 ): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_neighbors(
+): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_range(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_pending_media_count(
@@ -1029,6 +1045,10 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_pending_media_count(
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_async(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_from_remote(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_from_remote_async(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_remove_media_from_album(
 ): Short
@@ -1131,6 +1151,10 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_fixed_path(`ptr`: Pointer,`
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_s3(`ptr`: Pointer,`name`: RustBuffer.ByValue,`endpoint`: RustBuffer.ByValue,`bucket`: RustBuffer.ByValue,`region`: RustBuffer.ByValue,`pathPrefix`: RustBuffer.ByValue,`accessKey`: RustBuffer.ByValue,`secretKey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_usb_android(`ptr`: Pointer,`name`: RustBuffer.ByValue,`treeUri`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_usb_apple(`ptr`: Pointer,`name`: RustBuffer.ByValue,`bookmarkBase64`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_album_albums_count(`ptr`: Pointer,`parentAlbumId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Int
 fun uniffi_lasco_ffi_fn_method_ffilibrary_album_albums_range(`ptr`: Pointer,`parentAlbumId`: RustBuffer.ByValue,`posStartInclusive`: Int,`posEndInclusive`: Int,uniffi_out_err: UniffiRustCallStatus, 
@@ -1227,6 +1251,8 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date(`ptr`: Pointer,un
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date_count(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Int
+fun uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date_neighbors(`ptr`: Pointer,`position`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date_range(`ptr`: Pointer,`posStartInclusive`: Int,`posEndInclusive`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_pending_media_count(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -1234,6 +1260,10 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_pending_media_count(`ptr`: Pointer,uni
 fun uniffi_lasco_ffi_fn_method_ffilibrary_push_remote(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Int
 fun uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_async(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,
+): Long
+fun uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_from_remote(`ptr`: Pointer,`targetRemoteId`: RustBuffer.ByValue,`sourceRemoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Int
+fun uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_from_remote_async(`ptr`: Pointer,`targetRemoteId`: RustBuffer.ByValue,`sourceRemoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,
 ): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_remove_media_from_album(`ptr`: Pointer,`albumId`: RustBuffer.ByValue,`mediaId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -1446,6 +1476,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_s3() != 47455.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_usb_android() != 40834.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_usb_apple() != 5478.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_album_albums_count() != 32729.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1590,6 +1626,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_count() != 51224.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_neighbors() != 28984.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_range() != 37391.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1600,6 +1639,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_async() != 9871.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_from_remote() != 59747.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_from_remote_async() != 37876.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_remove_media_from_album() != 37957.toShort()) {
@@ -2140,6 +2185,18 @@ public interface FfiLibraryInterface {
     
     fun `addRemoteS3`(`name`: kotlin.String, `endpoint`: kotlin.String, `bucket`: kotlin.String, `region`: kotlin.String, `pathPrefix`: kotlin.String, `accessKey`: kotlin.String, `secretKey`: kotlin.String): kotlin.String
     
+    /**
+     * Add a wired USB drive selected through Android's Storage Access
+     * Framework. `tree_uri` is an opaque, persistable access grant.
+     */
+    fun `addRemoteUsbAndroid`(`name`: kotlin.String, `treeUri`: kotlin.String): kotlin.String
+    
+    /**
+     * Add a wired USB drive selected through Apple's document picker.
+     * `bookmark_base64` is an opaque security-scoped bookmark.
+     */
+    fun `addRemoteUsbApple`(`name`: kotlin.String, `bookmarkBase64`: kotlin.String): kotlin.String
+    
     fun `albumAlbumsCount`(`parentAlbumId`: kotlin.String?): kotlin.UInt
     
     /**
@@ -2257,6 +2314,11 @@ public interface FfiLibraryInterface {
     fun `orphanMediaByDateCount`(): kotlin.UInt
     
     /**
+     * Returns the entries immediately surrounding a zero-based orphan position.
+     */
+    fun `orphanMediaByDateNeighbors`(`position`: kotlin.UInt): FfiMediaNeighbors
+    
+    /**
      * Positions are zero-based and both ends of the range are inclusive.
      */
     fun `orphanMediaByDateRange`(`posStartInclusive`: kotlin.UInt, `posEndInclusive`: kotlin.UInt): List<FfiMediaItem>
@@ -2266,6 +2328,15 @@ public interface FfiLibraryInterface {
     fun `pushRemote`(`remoteId`: kotlin.String, `appSupportDir`: kotlin.String?): kotlin.UInt
     
     suspend fun `pushRemoteAsync`(`remoteId`: kotlin.String, `appSupportDir`: kotlin.String?): kotlin.UInt
+    
+    /**
+     * Push to `target_remote_id`, relaying absent local media from the selected
+     * configured source remote. Callers should only use this after an explicit
+     * user choice; ordinary and scheduled pushes remain local-only.
+     */
+    fun `pushRemoteFromRemote`(`targetRemoteId`: kotlin.String, `sourceRemoteId`: kotlin.String, `appSupportDir`: kotlin.String?): kotlin.UInt
+    
+    suspend fun `pushRemoteFromRemoteAsync`(`targetRemoteId`: kotlin.String, `sourceRemoteId`: kotlin.String, `appSupportDir`: kotlin.String?): kotlin.UInt
     
     fun `removeMediaFromAlbum`(`albumId`: kotlin.String, `mediaId`: kotlin.String)
     
@@ -2454,6 +2525,40 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     uniffiRustCallWithError(LascoException) { _status ->
     UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_s3(
         it, FfiConverterString.lower(`name`),FfiConverterString.lower(`endpoint`),FfiConverterString.lower(`bucket`),FfiConverterString.lower(`region`),FfiConverterString.lower(`pathPrefix`),FfiConverterString.lower(`accessKey`),FfiConverterString.lower(`secretKey`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Add a wired USB drive selected through Android's Storage Access
+     * Framework. `tree_uri` is an opaque, persistable access grant.
+     */
+    @Throws(LascoException::class)override fun `addRemoteUsbAndroid`(`name`: kotlin.String, `treeUri`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_usb_android(
+        it, FfiConverterString.lower(`name`),FfiConverterString.lower(`treeUri`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Add a wired USB drive selected through Apple's document picker.
+     * `bookmark_base64` is an opaque security-scoped bookmark.
+     */
+    @Throws(LascoException::class)override fun `addRemoteUsbApple`(`name`: kotlin.String, `bookmarkBase64`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_usb_apple(
+        it, FfiConverterString.lower(`name`),FfiConverterString.lower(`bookmarkBase64`),_status)
 }
     }
     )
@@ -3111,6 +3216,22 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
 
     
     /**
+     * Returns the entries immediately surrounding a zero-based orphan position.
+     */
+    @Throws(LascoException::class)override fun `orphanMediaByDateNeighbors`(`position`: kotlin.UInt): FfiMediaNeighbors {
+            return FfiConverterTypeFfiMediaNeighbors.lift(
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date_neighbors(
+        it, FfiConverterUInt.lower(`position`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Positions are zero-based and both ends of the range are inclusive.
      */
     @Throws(LascoException::class)override fun `orphanMediaByDateRange`(`posStartInclusive`: kotlin.UInt, `posEndInclusive`: kotlin.UInt): List<FfiMediaItem> {
@@ -3159,6 +3280,45 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
             UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_async(
                 thisPtr,
                 FfiConverterString.lower(`remoteId`),FfiConverterOptionalString.lower(`appSupportDir`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_poll_u32(future, callback, continuation) },
+        { future, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_complete_u32(future, continuation) },
+        { future -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_free_u32(future) },
+        // lift function
+        { FfiConverterUInt.lift(it) },
+        // Error FFI converter
+        LascoException.ErrorHandler,
+    )
+    }
+
+    
+    /**
+     * Push to `target_remote_id`, relaying absent local media from the selected
+     * configured source remote. Callers should only use this after an explicit
+     * user choice; ordinary and scheduled pushes remain local-only.
+     */
+    @Throws(LascoException::class)override fun `pushRemoteFromRemote`(`targetRemoteId`: kotlin.String, `sourceRemoteId`: kotlin.String, `appSupportDir`: kotlin.String?): kotlin.UInt {
+            return FfiConverterUInt.lift(
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_from_remote(
+        it, FfiConverterString.lower(`targetRemoteId`),FfiConverterString.lower(`sourceRemoteId`),FfiConverterOptionalString.lower(`appSupportDir`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(LascoException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `pushRemoteFromRemoteAsync`(`targetRemoteId`: kotlin.String, `sourceRemoteId`: kotlin.String, `appSupportDir`: kotlin.String?) : kotlin.UInt {
+        return uniffiRustCallAsync(
+        callWithPointer { thisPtr ->
+            UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_from_remote_async(
+                thisPtr,
+                FfiConverterString.lower(`targetRemoteId`),FfiConverterString.lower(`sourceRemoteId`),FfiConverterOptionalString.lower(`appSupportDir`),
             )
         },
         { future, callback, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_poll_u32(future, callback, continuation) },
@@ -3733,6 +3893,38 @@ public object FfiConverterTypeFfiMediaAddResult: FfiConverterRustBuffer<FfiMedia
 
 
 
+/**
+ * A media identifier returned to clients when a local-only push cannot find
+ * every required original in this device's cache.
+ */
+data class FfiMediaId (
+    var `value`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFfiMediaId: FfiConverterRustBuffer<FfiMediaId> {
+    override fun read(buf: ByteBuffer): FfiMediaId {
+        return FfiMediaId(
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FfiMediaId) = (
+            FfiConverterString.allocationSize(value.`value`)
+    )
+
+    override fun write(value: FfiMediaId, buf: ByteBuffer) {
+            FfiConverterString.write(value.`value`, buf)
+    }
+}
+
+
+
 data class FfiMediaItem (
     var `mediaId`: kotlin.String, 
     var `filenameOriginal`: kotlin.String, 
@@ -4059,6 +4251,14 @@ sealed class LascoException: kotlin.Exception() {
             get() = ""
     }
     
+    class MissingLocalMedia(
+        
+        val `mediaIds`: List<FfiMediaId>
+        ) : LascoException() {
+        override val message
+            get() = "mediaIds=${ `mediaIds` }"
+    }
+    
     class Storage(
         
         val `msg`: kotlin.String
@@ -4094,10 +4294,13 @@ public object FfiConverterTypeLascoError : FfiConverterRustBuffer<LascoException
             1 -> LascoException.InvalidCredentials()
             2 -> LascoException.NotFound()
             3 -> LascoException.SyncBusy()
-            4 -> LascoException.Storage(
+            4 -> LascoException.MissingLocalMedia(
+                FfiConverterSequenceTypeFfiMediaId.read(buf),
+                )
+            5 -> LascoException.Storage(
                 FfiConverterString.read(buf),
                 )
-            5 -> LascoException.Other(
+            6 -> LascoException.Other(
                 FfiConverterString.read(buf),
                 )
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
@@ -4117,6 +4320,11 @@ public object FfiConverterTypeLascoError : FfiConverterRustBuffer<LascoException
             is LascoException.SyncBusy -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
+            )
+            is LascoException.MissingLocalMedia -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterSequenceTypeFfiMediaId.allocationSize(value.`mediaIds`)
             )
             is LascoException.Storage -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
@@ -4145,13 +4353,18 @@ public object FfiConverterTypeLascoError : FfiConverterRustBuffer<LascoException
                 buf.putInt(3)
                 Unit
             }
-            is LascoException.Storage -> {
+            is LascoException.MissingLocalMedia -> {
                 buf.putInt(4)
+                FfiConverterSequenceTypeFfiMediaId.write(value.`mediaIds`, buf)
+                Unit
+            }
+            is LascoException.Storage -> {
+                buf.putInt(5)
                 FfiConverterString.write(value.`msg`, buf)
                 Unit
             }
             is LascoException.Other -> {
-                buf.putInt(5)
+                buf.putInt(6)
                 FfiConverterString.write(value.`msg`, buf)
                 Unit
             }
@@ -4484,6 +4697,34 @@ public object FfiConverterSequenceTypeFfiLibraryEntry: FfiConverterRustBuffer<Li
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeFfiLibraryEntry.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeFfiMediaId: FfiConverterRustBuffer<List<FfiMediaId>> {
+    override fun read(buf: ByteBuffer): List<FfiMediaId> {
+        val len = buf.getInt()
+        return List<FfiMediaId>(len) {
+            FfiConverterTypeFfiMediaId.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<FfiMediaId>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeFfiMediaId.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<FfiMediaId>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeFfiMediaId.write(it, buf)
         }
     }
 }

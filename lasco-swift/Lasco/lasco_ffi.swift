@@ -561,6 +561,18 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     
     func addRemoteS3(name: String, endpoint: String, bucket: String, region: String, pathPrefix: String, accessKey: String, secretKey: String) throws  -> String
     
+    /**
+     * Add a wired USB drive selected through Android's Storage Access
+     * Framework. `tree_uri` is an opaque, persistable access grant.
+     */
+    func addRemoteUsbAndroid(name: String, treeUri: String) throws  -> String
+    
+    /**
+     * Add a wired USB drive selected through Apple's document picker.
+     * `bookmark_base64` is an opaque security-scoped bookmark.
+     */
+    func addRemoteUsbApple(name: String, bookmarkBase64: String) throws  -> String
+    
     func albumAlbumsCount(parentAlbumId: String?) throws  -> UInt32
     
     /**
@@ -692,6 +704,15 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     func pushRemote(remoteId: String, appSupportDir: String?) throws  -> UInt32
     
     func pushRemoteAsync(remoteId: String, appSupportDir: String?) async throws  -> UInt32
+    
+    /**
+     * Push to `target_remote_id`, relaying absent local media from the selected
+     * configured source remote. Callers should only use this after an explicit
+     * user choice; ordinary and scheduled pushes remain local-only.
+     */
+    func pushRemoteFromRemote(targetRemoteId: String, sourceRemoteId: String, appSupportDir: String?) throws  -> UInt32
+    
+    func pushRemoteFromRemoteAsync(targetRemoteId: String, sourceRemoteId: String, appSupportDir: String?) async throws  -> UInt32
     
     func removeMediaFromAlbum(albumId: String, mediaId: String) throws 
     
@@ -844,6 +865,32 @@ nonisolated open func addRemoteS3(name: String, endpoint: String, bucket: String
         FfiConverterString.lower(pathPrefix),
         FfiConverterString.lower(accessKey),
         FfiConverterString.lower(secretKey),$0
+    )
+})
+}
+    
+    /**
+     * Add a wired USB drive selected through Android's Storage Access
+     * Framework. `tree_uri` is an opaque, persistable access grant.
+     */
+nonisolated open func addRemoteUsbAndroid(name: String, treeUri: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_usb_android(self.uniffiClonePointer(),
+        FfiConverterString.lower(name),
+        FfiConverterString.lower(treeUri),$0
+    )
+})
+}
+    
+    /**
+     * Add a wired USB drive selected through Apple's document picker.
+     * `bookmark_base64` is an opaque security-scoped bookmark.
+     */
+nonisolated open func addRemoteUsbApple(name: String, bookmarkBase64: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_usb_apple(self.uniffiClonePointer(),
+        FfiConverterString.lower(name),
+        FfiConverterString.lower(bookmarkBase64),$0
     )
 })
 }
@@ -1323,6 +1370,38 @@ nonisolated open func pushRemoteAsync(remoteId: String, appSupportDir: String?)a
                 uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_async(
                     self.uniffiClonePointer(),
                     FfiConverterString.lower(remoteId),FfiConverterOptionString.lower(appSupportDir)
+                )
+            },
+            pollFunc: ffi_lasco_ffi_rust_future_poll_u32,
+            completeFunc: ffi_lasco_ffi_rust_future_complete_u32,
+            freeFunc: ffi_lasco_ffi_rust_future_free_u32,
+            liftFunc: FfiConverterUInt32.lift,
+            errorHandler: FfiConverterTypeLascoError_lift
+        )
+}
+    
+    /**
+     * Push to `target_remote_id`, relaying absent local media from the selected
+     * configured source remote. Callers should only use this after an explicit
+     * user choice; ordinary and scheduled pushes remain local-only.
+     */
+nonisolated open func pushRemoteFromRemote(targetRemoteId: String, sourceRemoteId: String, appSupportDir: String?)throws  -> UInt32  {
+    return try  FfiConverterUInt32.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_from_remote(self.uniffiClonePointer(),
+        FfiConverterString.lower(targetRemoteId),
+        FfiConverterString.lower(sourceRemoteId),
+        FfiConverterOptionString.lower(appSupportDir),$0
+    )
+})
+}
+    
+nonisolated open func pushRemoteFromRemoteAsync(targetRemoteId: String, sourceRemoteId: String, appSupportDir: String?)async throws  -> UInt32  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_from_remote_async(
+                    self.uniffiClonePointer(),
+                    FfiConverterString.lower(targetRemoteId),FfiConverterString.lower(sourceRemoteId),FfiConverterOptionString.lower(appSupportDir)
                 )
             },
             pollFunc: ffi_lasco_ffi_rust_future_poll_u32,
@@ -2178,6 +2257,72 @@ nonisolated public func FfiConverterTypeFfiMediaAddResult_lower(_ value: FfiMedi
 }
 
 
+/**
+ * A media identifier returned to clients when a local-only push cannot find
+ * every required original in this device's cache.
+ */
+nonisolated public struct FfiMediaId {
+    public var value: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(value: String) {
+        self.value = value
+    }
+}
+
+#if compiler(>=6)
+nonisolated extension FfiMediaId: Sendable {}
+#endif
+
+
+nonisolated extension FfiMediaId: Equatable, Hashable {
+    public static func ==(lhs: FfiMediaId, rhs: FfiMediaId) -> Bool {
+        if lhs.value != rhs.value {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(value)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public struct FfiConverterTypeFfiMediaId: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiMediaId {
+        return
+            try FfiMediaId(
+                value: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiMediaId, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.value, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public func FfiConverterTypeFfiMediaId_lift(_ buf: RustBuffer) throws -> FfiMediaId {
+    return try FfiConverterTypeFfiMediaId.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public func FfiConverterTypeFfiMediaId_lower(_ value: FfiMediaId) -> RustBuffer {
+    return FfiConverterTypeFfiMediaId.lower(value)
+}
+
+
 nonisolated public struct FfiMediaItem {
     public var mediaId: String
     public var filenameOriginal: String
@@ -2835,6 +2980,8 @@ nonisolated public enum LascoError: Swift.Error {
     case InvalidCredentials
     case NotFound
     case SyncBusy
+    case MissingLocalMedia(mediaIds: [FfiMediaId]
+    )
     case Storage(msg: String
     )
     case Other(msg: String
@@ -2858,10 +3005,13 @@ nonisolated public struct FfiConverterTypeLascoError: FfiConverterRustBuffer {
         case 1: return .InvalidCredentials
         case 2: return .NotFound
         case 3: return .SyncBusy
-        case 4: return .Storage(
+        case 4: return .MissingLocalMedia(
+            mediaIds: try FfiConverterSequenceTypeFfiMediaId.read(from: &buf)
+            )
+        case 5: return .Storage(
             msg: try FfiConverterString.read(from: &buf)
             )
-        case 5: return .Other(
+        case 6: return .Other(
             msg: try FfiConverterString.read(from: &buf)
             )
 
@@ -2888,13 +3038,18 @@ nonisolated public struct FfiConverterTypeLascoError: FfiConverterRustBuffer {
             writeInt(&buf, Int32(3))
         
         
-        case let .Storage(msg):
+        case let .MissingLocalMedia(mediaIds):
             writeInt(&buf, Int32(4))
+            FfiConverterSequenceTypeFfiMediaId.write(mediaIds, into: &buf)
+            
+        
+        case let .Storage(msg):
+            writeInt(&buf, Int32(5))
             FfiConverterString.write(msg, into: &buf)
             
         
         case let .Other(msg):
-            writeInt(&buf, Int32(5))
+            writeInt(&buf, Int32(6))
             FfiConverterString.write(msg, into: &buf)
             
         }
@@ -3204,6 +3359,31 @@ nonisolated fileprivate struct FfiConverterSequenceTypeFfiLibraryEntry: FfiConve
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+nonisolated fileprivate struct FfiConverterSequenceTypeFfiMediaId: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiMediaId]
+
+    public static func write(_ value: [FfiMediaId], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiMediaId.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiMediaId] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiMediaId]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiMediaId.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 nonisolated fileprivate struct FfiConverterSequenceTypeFfiMediaItem: FfiConverterRustBuffer {
     typealias SwiftType = [FfiMediaItem]
 
@@ -3486,6 +3666,12 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_s3() != 47455) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_usb_android() != 40834) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_usb_apple() != 5478) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_album_albums_count() != 32729) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -3643,6 +3829,12 @@ nonisolated private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_async() != 9871) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_from_remote() != 59747) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_from_remote_async() != 37876) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_remove_media_from_album() != 37957) {

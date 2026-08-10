@@ -18,6 +18,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -34,6 +36,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lasco.lasco.data.Prefs
 import com.lasco.lasco.data.SyncRecord
+import com.lasco.lasco.data.PushResult
 import com.lasco.lasco.ui.components.LascoConfirmDialog
 import com.lasco.lasco.ui.components.LascoInfoDialog
 import com.lasco.lasco.ui.components.LascoPrimaryButton
@@ -79,6 +82,7 @@ fun StatusScreen(modifier: Modifier = Modifier) {
     var showClearThumbsConfirm by remember { mutableStateOf(false) }
     var cleanBlockedCount by remember { mutableStateOf<Int?>(null) }
     var feedback by remember { mutableStateOf<String?>(null) }
+    var pendingRelay by remember { mutableStateOf<PendingRelayRequest?>(null) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) { statusViewModel.refreshLocalStateStats() }
@@ -202,8 +206,18 @@ fun StatusScreen(modifier: Modifier = Modifier) {
                         fetchEnabled = remote.id !in syncState.busyRemoteIds && !syncState.fetchInProgress,
                         onPush = {
                             scope.launch {
-                                val err = statusViewModel.pushRemote(remote.id)
-                                feedback = err ?: "${remote.name}: pushed"
+                                when (val result = statusViewModel.pushRemote(remote.id)) {
+                                    PushResult.Success -> feedback = "${remote.name}: pushed"
+                                    is PushResult.Failed -> feedback = result.message
+                                    is PushResult.MissingLocalMedia -> {
+                                        val candidates = session.remotes.filter { it.id != remote.id }
+                                        if (candidates.isEmpty()) {
+                                            feedback = "Some media is not stored on this device, and no other remote is available to retrieve it from."
+                                        } else {
+                                            pendingRelay = PendingRelayRequest(remote, result.mediaIds, candidates)
+                                        }
+                                    }
+                                }
                             }
                         },
                         onFetch = {
@@ -266,7 +280,37 @@ fun StatusScreen(modifier: Modifier = Modifier) {
             onDismiss = { cleanBlockedCount = null },
         )
     }
+    pendingRelay?.let { request ->
+        AlertDialog(
+            onDismissRequest = { pendingRelay = null },
+            title = { Text("Choose media source") },
+            text = {
+                Column {
+                    Text("Some media is not stored on this device. Choose a remote to download it from before continuing this backup.")
+                    request.candidates.forEach { source ->
+                        Button(onClick = {
+                            pendingRelay = null
+                            scope.launch {
+                                when (val result = statusViewModel.pushRemoteFromSource(request.target.id, source.id)) {
+                                    PushResult.Success -> feedback = "${request.target.name}: pushed"
+                                    is PushResult.Failed -> feedback = result.message
+                                    is PushResult.MissingLocalMedia -> feedback = "The selected remote does not contain all missing media."
+                                }
+                            }
+                        }) { Text(source.name) }
+                    }
+                }
+            },
+            confirmButton = { Button(onClick = { pendingRelay = null }) { Text("Cancel") } },
+        )
+    }
 }
+
+private data class PendingRelayRequest(
+    val target: FfiRemote,
+    val mediaIds: List<uniffi.lasco_ffi.FfiMediaId>,
+    val candidates: List<FfiRemote>,
+)
 
 private fun formatGB(bytes: ULong): String {
     val gb = bytes.toDouble() / 1_000_000_000

@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use lasco_core::identifiers::RemoteUuid;
+use lasco_core::library::sync::{PushMediaSource, remote_access::StorageRead};
 use lasco_core::library_json::{
     DebugLocalAndroidConfig, DebugLocalAppleConfig, FixedPathConfig, LibraryJson, RemoteConfig,
     RemoteKind, UsbAndroidConfig, UsbAppleConfig, save_library,
@@ -329,6 +330,33 @@ impl FfiLibrary {
         Ok(report.ops_uploaded as u32)
     }
 
+    /// Push to `target_remote_id`, relaying absent local media from the selected
+    /// configured source remote. Callers should only use this after an explicit
+    /// user choice; ordinary and scheduled pushes remain local-only.
+    pub fn push_remote_from_remote(
+        &self,
+        target_remote_id: String,
+        source_remote_id: String,
+        app_support_dir: Option<String>,
+    ) -> Result<u32, LascoError> {
+        let target_storage =
+            self.build_storage_for_remote(&target_remote_id, app_support_dir.as_deref())?;
+        let source_storage =
+            self.build_storage_for_remote(&source_remote_id, app_support_dir.as_deref())?;
+        let report = self
+            .rt
+            .block_on(self.inner.push_with_media_source(
+                target_storage.as_ref(),
+                &target_remote_id,
+                PushMediaSource::FromRemote {
+                    remote_id: &source_remote_id,
+                    storage: StorageRead::new(source_storage.as_ref()),
+                },
+            ))
+            .map_err(LascoError::from)?;
+        Ok(report.ops_uploaded as u32)
+    }
+
     pub fn fetch_remote(
         &self,
         remote_id: String,
@@ -377,6 +405,37 @@ impl FfiLibrary {
         let report = self
             .rt
             .spawn(async move { inner.push(storage.as_ref(), &remote_id).await })
+            .await
+            .map_err(|e| LascoError::Other { msg: e.to_string() })?
+            .map_err(LascoError::from)?;
+        Ok(report.ops_uploaded as u32)
+    }
+
+    pub async fn push_remote_from_remote_async(
+        &self,
+        target_remote_id: String,
+        source_remote_id: String,
+        app_support_dir: Option<String>,
+    ) -> Result<u32, LascoError> {
+        let target_storage =
+            self.build_storage_for_remote(&target_remote_id, app_support_dir.as_deref())?;
+        let source_storage =
+            self.build_storage_for_remote(&source_remote_id, app_support_dir.as_deref())?;
+        let inner = self.inner.clone();
+        let report = self
+            .rt
+            .spawn(async move {
+                inner
+                    .push_with_media_source(
+                        target_storage.as_ref(),
+                        &target_remote_id,
+                        PushMediaSource::FromRemote {
+                            remote_id: &source_remote_id,
+                            storage: StorageRead::new(source_storage.as_ref()),
+                        },
+                    )
+                    .await
+            })
             .await
             .map_err(|e| LascoError::Other { msg: e.to_string() })?
             .map_err(LascoError::from)?;
@@ -526,20 +585,8 @@ pub(super) fn remote_config_to_ffi(r: &RemoteConfig) -> FfiRemote {
             None,
             Some(fs.root_dir.to_string_lossy().into_owned()),
         ),
-        RemoteKind::UsbAndroid(_) => (
-            "usb_android".to_string(),
-            None,
-            None,
-            None,
-            None,
-        ),
-        RemoteKind::UsbApple(_) => (
-            "usb_apple".to_string(),
-            None,
-            None,
-            None,
-            None,
-        ),
+        RemoteKind::UsbAndroid(_) => ("usb_android".to_string(), None, None, None, None),
+        RemoteKind::UsbApple(_) => ("usb_apple".to_string(), None, None, None, None),
         RemoteKind::DebugLocalApple(cfg) => (
             "debug_local_apple".to_string(),
             None,
