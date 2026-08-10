@@ -6,6 +6,12 @@ struct SyncRecord: Sendable, Equatable {
     let success: Bool
 }
 
+enum PushResult: Sendable {
+    case success
+    case missingLocalMedia([FfiMediaId])
+    case failed(String)
+}
+
 private actor SyncCommandGate {
     private var tail: Task<Void, Never>?
     private var cancelOperations: [UUID: @Sendable () -> Void] = [:]
@@ -71,7 +77,7 @@ final class SyncCoordinator {
         _ = await fetch(remoteID: remoteID)
     }
 
-    func push(remoteID: FfiRemoteUuid, isAutomatic: Bool = false) async -> String? {
+    func push(remoteID: FfiRemoteUuid, isAutomatic: Bool = false) async -> PushResult {
         // A manual push supersedes the pending automatic push. Only the timer is
         // cancelled; an upload that has already started is left to finish.
         if !isAutomatic {
@@ -85,12 +91,36 @@ final class SyncCoordinator {
                 try await repository.push(remoteID: remoteID)
             }
             record(key: "lasco.lastPush", remoteID: remoteID, success: true, in: &lastPushRecords)
-            return nil
+            return .success
         } catch is CancellationError {
-            return nil
+            return .failed("Push cancelled")
+        } catch LascoError.MissingLocalMedia(let mediaIds) {
+            record(key: "lasco.lastPush", remoteID: remoteID, success: false, in: &lastPushRecords)
+            return .missingLocalMedia(mediaIds)
         } catch {
             record(key: "lasco.lastPush", remoteID: remoteID, success: false, in: &lastPushRecords)
-            return error.localizedDescription
+            return .failed(error.localizedDescription)
+        }
+    }
+
+    func push(remoteID: FfiRemoteUuid, sourceRemoteID: FfiRemoteUuid) async -> PushResult {
+        cancelScheduledPush()
+        busyRemotes.insert(remoteID)
+        defer { busyRemotes.remove(remoteID) }
+        do {
+            _ = try await gate.run { [repository] in
+                try await repository.push(remoteID: remoteID, sourceRemoteID: sourceRemoteID)
+            }
+            record(key: "lasco.lastPush", remoteID: remoteID, success: true, in: &lastPushRecords)
+            return .success
+        } catch is CancellationError {
+            return .failed("Push cancelled")
+        } catch LascoError.MissingLocalMedia(let mediaIds) {
+            record(key: "lasco.lastPush", remoteID: remoteID, success: false, in: &lastPushRecords)
+            return .missingLocalMedia(mediaIds)
+        } catch {
+            record(key: "lasco.lastPush", remoteID: remoteID, success: false, in: &lastPushRecords)
+            return .failed(error.localizedDescription)
         }
     }
 

@@ -9,6 +9,7 @@ use crate::error::{LibraryError, OperationError};
 use crate::identifiers::{AlbumUuid, GroupUuid, MediaUuid};
 use crate::library::Library;
 use crate::operations::{MediaName, Operation};
+use crate::remote::MediaList;
 use crate::storage::Storage;
 
 use super::MediaEntry;
@@ -228,6 +229,37 @@ impl Library {
         Ok(plaintext)
     }
 
+    /// Downloads a media blob from a known remote and records that positive observation in the
+    /// remote's media inventory after the encrypted blob has been validated and cached locally.
+    pub async fn media_get_bytes_from_remote(
+        &self,
+        media_id: MediaUuid,
+        remote_id: &str,
+        storage: &dyn Storage,
+    ) -> Result<Vec<u8>> {
+        let (year, month) = self.media_year_month(media_id)?;
+        let local_state_media_dir = self.inner.local_dirs.local_state_media_dir();
+        let data_path = local_state_media_dir.data_path(year, month, &media_id);
+
+        if data_path.exists() {
+            let blob_bytes = std::fs::read(&data_path)?;
+            return self.decrypt_media_blob(media_id, &blob_bytes);
+        }
+
+        let blob_bytes = self
+            .download_media_blob(media_id, year, month, storage)
+            .await?;
+        let plaintext = self.decrypt_media_blob(media_id, &blob_bytes)?;
+
+        if let Some(parent) = data_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        write_atomic(&data_path, &blob_bytes)?;
+        self.record_remote_media_presence(remote_id, media_id);
+
+        Ok(plaintext)
+    }
+
     /// Decrypts the media blob and writes plaintext to `path_dest`.
     ///
     /// If the blob is not locally cached, `storage` is used to download it. Pass `None`
@@ -341,6 +373,23 @@ impl Library {
             .map_err(|_| LibraryError::MediaNotFound(media_id))
     }
 
+    pub(crate) fn record_remote_media_presence(&self, remote_id: &str, media_id: MediaUuid) {
+        let remote_media_list = self.inner.local_dirs.remote_media_list(remote_id);
+        self.inner.remote_media_list_lock.with_lock(
+            remote_id,
+            &remote_media_list,
+            |remote_media_list| {
+                let path = remote_media_list.media_list_path();
+                let Ok(mut media_list) = MediaList::load_or_default(&path) else {
+                    return;
+                };
+                if media_list.insert_present(media_id) {
+                    let _ = media_list.save(&path);
+                }
+            },
+        );
+    }
+
     /// Returns IDs of all non-deleted albums that directly contain `media_id`.
     pub fn media_album_ids(&self, media_id: MediaUuid) -> Vec<AlbumUuid> {
         let state = self.inner.operation_state.read();
@@ -397,19 +446,19 @@ impl Library {
         album_ids
     }
 
-    /// Returns the ids of local media not present in the last known state of any of
+    /// Returns the ids of local media not confirmed by the positive media inventory of any of
     /// `remote_ids`. If `remote_ids` is empty, returns all local media.
     pub fn media_ids_without_remote_backup(&self, remote_ids: &[String]) -> Vec<MediaUuid> {
-        use crate::remote::MediaList;
-
         let mut backed_up = std::collections::HashSet::new();
         for remote_id in remote_ids {
-            let path = self
-                .inner
-                .local_dirs
-                .remote_last_known_state_dir(remote_id)
-                .media_list_path();
-            if let Ok(list) = MediaList::load_or_default(&path) {
+            let remote_media_list = self.inner.local_dirs.remote_media_list(remote_id);
+            if let Ok(list) = self.inner.remote_media_list_lock.with_lock(
+                remote_id,
+                &remote_media_list,
+                |remote_media_list| {
+                    MediaList::load_or_default(&remote_media_list.media_list_path())
+                },
+            ) {
                 backed_up.extend(list.media.into_keys());
             }
         }

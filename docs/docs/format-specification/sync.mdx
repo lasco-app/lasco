@@ -6,11 +6,6 @@ import React from 'react';
 
 # Sync
 
-## Known issues (WIP)
-
-- What are the implications when fetch completes without performing step 6 (appending to the local operation log)?
-- What happens during push if operations are uploaded but their media is not?
-
 export const AccessCard = ({ children }) => (
   <div style={{
     border: '2px solid var(--lasco-line)',
@@ -33,12 +28,14 @@ Fetch lists and downloads remote operation files missing from the remote's last-
 <AccessCard>
 
 - **Sync policy:** Acquire the per-remote sync slot and the global fetch slot.
-- **Remote:** List and read access. <span className="tag tag-ok">Safe because of per-remote sync slot</span>
+- **Remote:** List and read access.
 - **Local:**
-  - Read and append to the local operation log. <span className="tag tag-warn">Safety to be determined</span>
-  - Read and atomically write the remote's last-known state. <span className="tag tag-ok">Safe because of per-remote sync slot</span>
-  - Atomically write missing `mk_*.enc` files in the library directory. <span className="tag tag-ok">Safe because of global fetch slot</span>
-- **In-memory local state:** Rebuild from the local operation log. <span className="tag tag-ok">Safe under mutex</span>
+  - Read and append to the local operation log.
+  - Read and atomically write the remote's last-known operation state (`remotes/{remote_id}/state/operations/`).
+  - Read and atomically write the merge marker (`remotes/{remote_id}/state/merged_remote_files.json`).
+  - Read and opportunistically atomically update the media inventory (`remotes/{remote_id}/state/media/media_list.json`) under its per-remote mutex.
+  - Atomically write missing `mk_*.enc` files in the library directory.
+- **In-memory local state:** Rebuild from the local operation log.
 
 </AccessCard>
 
@@ -50,57 +47,36 @@ Fetch lists and downloads remote operation files missing from the remote's last-
       <th style={{ width: '1%', whiteSpace: 'nowrap' }}>#</th>
       <th>Behavior</th>
       <th>Required authorization</th>
-      <th>Interruption safety</th>
     </tr>
   </thead>
   <tbody>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>1</td>
-      <td>Download each `mk_*.enc` file present on the remote but missing from the local library. Never remove or replace an existing local master-key file.</td>
+      <td>Verify the remote and library identity markers, then download each `mk_*.enc` file present on the remote but missing from the local library. Never remove or replace an existing local master-key file.</td>
       <td><span className="tag tag-ok">List remote</span> <span className="tag tag-ok">Read remote</span> <span className="tag tag-warn">Write local key file</span></td>
-      <td>Atomic `mk_*.enc` writes.</td>
     </tr>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>2</td>
       <td>Identify the remote operation files that are not already recorded in the last-known state for the remote.</td>
       <td><span className="tag tag-ok">List remote</span></td>
-      <td></td>
     </tr>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>3</td>
       <td>Download and validate those files without changing the last-known state for the remote.</td>
       <td><span className="tag tag-ok">Read remote</span></td>
-      <td></td>
     </tr>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>4</td>
-      <td>Verify that the resulting set of remote operation-group IDs is a superset of the group IDs previously known from this remote. If it is not, fail without writing anything.</td>
-      <td><span className="tag tag-ok">Read local state</span></td>
-      <td></td>
+      <td>Verify that the resulting set of remote operation-group IDs is a superset of the group IDs previously known from this remote. If it is not, fail without writing any operation-related files. Atomically write the validated files to the last-known state for the remote.</td>
+      <td><span className="tag tag-ok">Read local state</span> <span className="tag tag-warn">Write local state</span></td>
     </tr>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>5</td>
-      <td>Atomically write the validated files to the last-known state for the remote.</td>
-      <td><span className="tag tag-warn">Write local state</span></td>
-      <td>Atomic write. If terminated, the last-known state contains a subset of the current remote state.</td>
-    </tr>
-    <tr>
-      <td style={{ whiteSpace: 'nowrap' }}>6</td>
-      <td>Append operation groups not already in the local log, then rebuild in-memory local state.</td>
-      <td><span className="tag tag-warn">Append local log</span> <span className="tag tag-warn">Rebuild in-memory state</span></td>
-      <td>TODO: Think about the implications of an up-to-date last-known state that is not appended to the local log.</td>
+      <td>Merge compacted operation files not already recorded in `remotes/{remote_id}/state/merged_remote_files.json` into the local log. Fetch may record media blobs whose remote existence it successfully confirms in `media_list.json`; this positive-only inventory may be incomplete. Update `merged_remote_files.json`, then rebuild in-memory local state.</td>
+      <td><span className="tag tag-ok">Read remote</span> <span className="tag tag-warn">Append local log</span> <span className="tag tag-warn">Write local state</span> <span className="tag tag-warn">Rebuild in-memory state</span></td>
     </tr>
   </tbody>
 </table>
-
-### Interruption safety
-
-- Before a temporary file is renamed, an interruption leaves the previous last-known state for the remote unchanged. That state records only fully downloaded and validated operation files.
-- During a temporary-file write, an incomplete temporary file may remain and can be discarded.
-- After a file is renamed into place but before last-known-state metadata is updated, an extra local file may remain. The last-known state may therefore be stale, but it never records an incomplete or unvalidated download as known.
-- During a log append, previously written frames remain valid. A partial final frame makes the log unreadable; repair is intentionally a separate maintenance procedure rather than part of fetch.
-- Master-key files are additive: an interruption may leave a temporary file, but fetch never removes or replaces an existing local `mk_*.enc` file.
-- In-memory local state is not durable. If fetch terminates during its rebuild, the next rebuild starts from the persisted operation log.
 
 ## Push
 
@@ -117,12 +93,13 @@ For operation files, the client simply copies what it has locally. For media and
 <AccessCard>
 
 - **Sync policy:** Acquire the per-remote sync slot.
-- **Remote:** List, read, write, and delete access. <span className="tag tag-ok">Safe because of per-remote sync slot</span>
+- **Remote:** List, read, write, and delete access.
 - **Local:**
-  - Read local master-key files, the operation log, reconstructed state, media files, and the remote's last-known state. <span className="tag tag-ok">Safe because of per-remote sync slot</span>
-  - Append to the operation log and delete a pending operation file. <span className="tag tag-warn">Safety to be determined</span>
-  - Atomically write the remote's last-known operation state and media list. <span className="tag tag-ok">Safe because of per-remote sync slot</span>
-- **In-memory local state:** Rebuild after flushing a pending operation group. <span className="tag tag-ok">Safe under mutex</span>
+  - Read local master-key files, the operation log, reconstructed state, and media files.
+  - Read the remote's last-known operation state (`remotes/{remote_id}/state/operations/`) and the media inventory (`remotes/{remote_id}/state/media/media_list.json`).
+  - Append to the operation log and delete a pending operation file.
+  - Atomically write the remote's last-known operation state and, under its per-remote mutex, the media inventory.
+- **In-memory local state:** Rebuild after flushing a pending operation group.
 
 </AccessCard>
 
@@ -134,7 +111,6 @@ For operation files, the client simply copies what it has locally. For media and
       <th style={{ width: '1%', whiteSpace: 'nowrap' }}>#</th>
       <th>Behavior</th>
       <th>Required authorization</th>
-      <th>Interruption safety</th>
     </tr>
   </thead>
   <tbody>
@@ -142,31 +118,26 @@ For operation files, the client simply copies what it has locally. For media and
       <td style={{ whiteSpace: 'nowrap' }}>1</td>
       <td>Verify that the target remote belongs to this library, then upload local `mk_*.enc` files that are absent from the remote. Never remove a remote master-key file.</td>
       <td><span className="tag tag-ok">List remote</span> <span className="tag tag-warn">Write remote key file</span></td>
-      <td>Additive upload.</td>
     </tr>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>2</td>
       <td>Append any pending operation group to the local log, remove the pending file, and rebuild local state.</td>
       <td><span className="tag tag-warn">Append local log</span> <span className="tag tag-warn">Delete local pending file</span> <span className="tag tag-warn">Rebuild in-memory state</span></td>
-      <td>The pending file is removed only after the append. If interrupted before removal, operations can be duplicated (allowed). A partial log frame makes the log unreadable; repair is intentionally not automatic.</td>
     </tr>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>3</td>
       <td>Compare local operation groups with the target remote's last-known state, compact groups the target is missing, upload the resulting operation file, and record it in the last-known state.</td>
       <td><span className="tag tag-ok">Read local log</span> <span className="tag tag-ok">Read local state</span> <span className="tag tag-warn">Write remote operation file</span> <span className="tag tag-warn">Write local state</span></td>
-      <td>May leave an unrecorded remote file; a later push can upload it again.</td>
     </tr>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>4</td>
       <td>When compaction is needed and its remote lock can be acquired, merge the applicable remote operation files, upload the replacement, delete its source files, and update the last-known state.</td>
       <td><span className="tag tag-ok">Read remote operation files</span> <span className="tag tag-warn">Write and delete remote operation files</span> <span className="tag tag-warn">Write local state</span></td>
-      <td>An incomplete compaction can be retried.</td>
     </tr>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>5</td>
-      <td>For each reconstructed media item absent from the target's media list and available locally, upload its data blob and thumbnail when present, then record the media ID in the target's media list.</td>
+      <td>For each reconstructed media item not yet confirmed in the target's media inventory and available locally, ensure its data blob and thumbnail when present exist with non-overwriting writes, then record the media ID in that inventory.</td>
       <td><span className="tag tag-ok">Read local media</span> <span className="tag tag-warn">Write remote media and thumbnail</span> <span className="tag tag-warn">Write local media list</span></td>
-      <td>May leave an unrecorded remote file; a later push can upload it again.</td>
     </tr>
   </tbody>
 </table>
@@ -181,15 +152,13 @@ With concurrent clients pushing to the same remote, or a single client pushing t
 
 Compaction bounds the number of remote operation files by merging every known file in an overfull tier into one file in the next tier. It runs as part of push and operates only on the target remote's last-known state; it never lists or reads arbitrary remote operation files and therefore cannot become an implicit fetch.
 
-Compaction preserves logical operation data. It uploads the replacement file, containing every source operation group, before deleting any source file. An interruption can therefore leave duplicate operation groups or an unrecorded replacement file, but it cannot remove an operation group from the remote.
-
 ### Required access
 
 <AccessCard>
 
 - **Sync policy:** Uses push's per-remote sync slot.
-- **Remote:** Write and delete access. <span className="tag tag-ok">Safe because of the per-remote sync slot and the global operations lock</span>
-- **Local:** Read, write, and delete access to the target remote's last-known operation state. <span className="tag tag-ok">Safe because of per-remote sync slot</span>
+- **Remote:** Write and delete access.
+- **Local:** Read, write, and delete access to the target remote's last-known operation state.
 
 </AccessCard>
 
@@ -201,7 +170,6 @@ Compaction preserves logical operation data. It uploads the replacement file, co
       <th style={{ width: '1%', whiteSpace: 'nowrap' }}>#</th>
       <th>Behavior</th>
       <th>Required authorization</th>
-      <th>Interruption safety</th>
     </tr>
   </thead>
   <tbody>
@@ -209,25 +177,21 @@ Compaction preserves logical operation data. It uploads the replacement file, co
       <td style={{ whiteSpace: 'nowrap' }}>1</td>
       <td>When a known tier reaches its file limit, acquire the global remote operations lock. If the lock is already held, skip compaction for this push.</td>
       <td><span className="tag tag-warn">Create remote lock</span></td>
-      <td>A lock left by an interrupted client must be removed manually.</td>
     </tr>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>2</td>
       <td>Read every source file from the target's last-known state, merge their operation groups, upload one replacement file at the next tier, and record that file in the last-known state.</td>
       <td><span className="tag tag-ok">Read local state</span> <span className="tag tag-warn">Write remote operation file</span> <span className="tag tag-warn">Write local state</span></td>
-      <td>May leave an unrecorded remote file; a later push can upload it again.</td>
     </tr>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>3</td>
       <td>Delete each source file from the remote and remove it from the last-known state after its deletion succeeds.</td>
       <td><span className="tag tag-warn">Delete remote operation file</span> <span className="tag tag-warn">Delete local state</span></td>
-      <td>The last-known state records each completed deletion.</td>
     </tr>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>4</td>
       <td>Repeat for the next tier while it exceeds its file limit, then release the lock.</td>
       <td><span className="tag tag-warn">Delete remote lock</span></td>
-      <td>An interrupted cascade leaves the lock in place and must be resumed after manual cleanup.</td>
     </tr>
   </tbody>
 </table>

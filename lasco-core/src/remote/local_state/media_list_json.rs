@@ -18,8 +18,9 @@ pub struct MediaListEntry {
     pub thumb: BlobStatus,
 }
 
-/// Tracks which media blobs are present at a known remote
-/// (`remotes/{remote_id}/state/media/media_list.json`).
+/// Positive-only inventory of media blobs confirmed present at a known remote
+/// (`remotes/{remote_id}/state/media/media_list.json`). It is intentionally allowed to be
+/// incomplete: absence means unconfirmed, not absent from the remote.
 ///
 /// All entries use `BlobStatus::OnRemote` (via `insert_present`).
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -41,15 +42,9 @@ impl MediaList {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let tmp_name = format!(
-            "{}.tmp",
-            path.file_name().unwrap_or_default().to_string_lossy()
-        );
-        let tmp = path.with_file_name(tmp_name);
         let data = serde_json::to_vec_pretty(self)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        std::fs::write(&tmp, &data)?;
-        std::fs::rename(&tmp, path)
+        crate::atomic_file::write(path, &data)
     }
 
     pub fn contains(&self, media_id: &MediaUuid) -> bool {

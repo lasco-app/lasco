@@ -225,7 +225,11 @@ class InitialImportController(
         var lastError: String? = null
         repeat(PUSH_ATTEMPTS) { attempt ->
             if (attempt > 0) delay(PUSH_RETRY_DELAY_MS * attempt)
-            val error = sync.pushRemote(remoteId) ?: return
+            val error = when (val result = sync.pushRemote(remoteId)) {
+                is com.lasco.lasco.data.PushResult.Success -> return
+                is com.lasco.lasco.data.PushResult.Failed -> result.message
+                is com.lasco.lasco.data.PushResult.MissingLocalMedia -> "Media missing from local cache"
+            }
             lastError = error
             Log.w(TAG, "push attempt ${attempt + 1} of $PUSH_ATTEMPTS failed: $error")
         }

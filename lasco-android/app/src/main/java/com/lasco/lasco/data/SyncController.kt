@@ -13,7 +13,15 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.onTimeout
 import kotlinx.coroutines.selects.select
 import uniffi.lasco_ffi.FfiLibrary
+import uniffi.lasco_ffi.FfiMediaId
+import uniffi.lasco_ffi.LascoException
 import uniffi.lasco_ffi.FfiRemoteUuid
+
+sealed interface PushResult {
+    data object Success : PushResult
+    data class MissingLocalMedia(val mediaIds: List<FfiMediaId>) : PushResult
+    data class Failed(val message: String) : PushResult
+}
 
 /**
  * Owned by LibraryRepository for the lifetime of the open library. Holds the
@@ -38,7 +46,8 @@ class SyncController(
     private sealed interface Cmd {
         data object Mutated : Cmd
         data object StopCountdown : Cmd
-        data class Push(val remoteId: FfiRemoteUuid, val ack: CompletableDeferred<String?>) : Cmd
+        data class Push(val remoteId: FfiRemoteUuid, val ack: CompletableDeferred<PushResult>) : Cmd
+        data class PushFromSource(val targetRemoteId: FfiRemoteUuid, val sourceRemoteId: FfiRemoteUuid, val ack: CompletableDeferred<PushResult>) : Cmd
         data class Fetch(val remoteId: FfiRemoteUuid, val ack: CompletableDeferred<String?>) : Cmd
     }
 
@@ -89,6 +98,12 @@ class SyncController(
                         publishCountdown(null, emptySet())
                         cmd.ack.complete(push(cmd.remoteId))
                     }
+                    is Cmd.PushFromSource -> {
+                        deadline = null
+                        scheduledAutoPushRemoteIds = emptySet()
+                        publishCountdown(null, emptySet())
+                        cmd.ack.complete(push(cmd.targetRemoteId, cmd.sourceRemoteId))
+                    }
                     is Cmd.Fetch -> cmd.ack.complete(fetch(cmd.remoteId))
                 }
             }
@@ -118,9 +133,15 @@ class SyncController(
      * mirroring Swift's LibraryModel.pushRemote. Clears any pending countdown
      * and queues behind a push or fetch already running.
      */
-    suspend fun pushRemote(remoteId: FfiRemoteUuid): String? {
-        val ack = CompletableDeferred<String?>()
+    suspend fun pushRemote(remoteId: FfiRemoteUuid): PushResult {
+        val ack = CompletableDeferred<PushResult>()
         commands.send(Cmd.Push(remoteId, ack))
+        return ack.await()
+    }
+
+    suspend fun pushRemoteFromSource(targetRemoteId: FfiRemoteUuid, sourceRemoteId: FfiRemoteUuid): PushResult {
+        val ack = CompletableDeferred<PushResult>()
+        commands.send(Cmd.PushFromSource(targetRemoteId, sourceRemoteId, ack))
         return ack.await()
     }
 
@@ -149,15 +170,19 @@ class SyncController(
         }
     }
 
-    private suspend fun push(remoteId: FfiRemoteUuid): String? {
+    private suspend fun push(remoteId: FfiRemoteUuid, sourceRemoteId: FfiRemoteUuid? = null): PushResult {
         _syncState.update { it.copy(busyRemoteIds = it.busyRemoteIds + remoteId) }
         return try {
-            lib.pushRemoteAsync(remoteId, null)
+            if (sourceRemoteId == null) lib.pushRemoteAsync(remoteId, null)
+            else lib.pushRemoteFromRemoteAsync(remoteId, sourceRemoteId, null)
             prefs.recordPush(remoteId, success = true)
-            null
+            PushResult.Success
+        } catch (e: LascoException.MissingLocalMedia) {
+            prefs.recordPush(remoteId, success = false)
+            PushResult.MissingLocalMedia(e.mediaIds)
         } catch (e: Exception) {
             prefs.recordPush(remoteId, success = false)
-            e.message?.ifBlank { null } ?: "Push failed"
+            PushResult.Failed(e.message?.ifBlank { null } ?: "Push failed")
         } finally {
             _syncState.update { it.copy(busyRemoteIds = it.busyRemoteIds - remoteId) }
         }
@@ -193,7 +218,8 @@ class SyncController(
         while (true) {
             val cmd = commands.tryReceive().getOrNull() ?: break
             when (cmd) {
-                is Cmd.Push -> cmd.ack.complete("Library closed")
+                is Cmd.Push -> cmd.ack.complete(PushResult.Failed("Library closed"))
+                is Cmd.PushFromSource -> cmd.ack.complete(PushResult.Failed("Library closed"))
                 is Cmd.Fetch -> cmd.ack.complete("Library closed")
                 Cmd.Mutated, Cmd.StopCountdown -> {}
             }

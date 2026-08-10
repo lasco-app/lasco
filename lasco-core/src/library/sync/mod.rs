@@ -17,6 +17,9 @@ use remote_access::{StorageRead, StorageReadWrite};
 #[derive(Debug)]
 pub struct SyncReportFetch {
     pub ops_downloaded: usize,
+    /// True when this invocation merged a remote file and callers must rebuild state, even when
+    /// every operation was already appended by an interrupted earlier invocation.
+    pub(crate) local_state_rebuild_required: bool,
 }
 
 #[derive(Debug)]
@@ -24,6 +27,38 @@ pub struct SyncReportPush {
     pub ops_uploaded: usize,
     pub media_uploaded: usize,
     pub compactions_run: usize,
+}
+
+/// Controls how [`Library::push`] obtains media that is absent from the local cache.
+///
+/// The default intentionally does not download from another remote. This keeps Push from
+/// becoming an implicit fetch and lets callers ask the user to select a source explicitly.
+pub enum PushMediaSource<'a> {
+    /// Upload only locally cached media. Missing files cause Push to return their IDs.
+    LocalOnly,
+    /// Relay missing media from exactly one verified, read-only remote.
+    FromRemote {
+        remote_id: &'a str,
+        storage: StorageRead<'a>,
+    },
+}
+
+impl std::fmt::Debug for PushMediaSource<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::LocalOnly => formatter.write_str("PushMediaSource::LocalOnly"),
+            Self::FromRemote { remote_id, .. } => formatter
+                .debug_struct("PushMediaSource::FromRemote")
+                .field("remote_id", remote_id)
+                .finish_non_exhaustive(),
+        }
+    }
+}
+
+impl Default for PushMediaSource<'_> {
+    fn default() -> Self {
+        Self::LocalOnly
+    }
 }
 
 #[derive(Debug)]
@@ -84,10 +119,13 @@ impl Library {
         let _remote_guard = self
             .try_acquire_remote_sync(remote_id)
             .ok_or(SyncError::AlreadyRunning)?;
-        let local_state_library_dir = self.inner.local_dirs.local_state_library_dir();
         let local_state_media_dir = self.inner.local_dirs.local_state_media_dir();
+        let local_state_library_dir = self.inner.local_dirs.local_state_library_dir();
         let remote_last_known_state_dir =
             self.inner.local_dirs.remote_last_known_state_dir(remote_id);
+        let remote_media_list = self.inner.local_dirs.remote_media_list(remote_id);
+        let remote_merged_remote_files =
+            self.inner.local_dirs.remote_merged_remote_files(remote_id);
         let fetch_report = {
             let _fetch_guard = self
                 .try_acquire_fetch_slot()
@@ -99,11 +137,14 @@ impl Library {
                 self.inner.library_id,
                 &local_state_library_dir,
                 &remote_last_known_state_dir,
+                &remote_media_list,
+                &remote_merged_remote_files,
                 &self.inner.local_ops_read_write_lock,
+                &self.inner.remote_media_list_lock,
                 &self.inner.master_key,
             )
             .await?;
-            if report.ops_downloaded > 0 {
+            if report.local_state_rebuild_required {
                 self.load_local_state().await?;
             }
             report
@@ -115,6 +156,9 @@ impl Library {
                 remote_id,
                 &local_state_media_dir,
                 &remote_last_known_state_dir,
+                &remote_media_list,
+                &local_state_library_dir,
+                PushMediaSource::LocalOnly,
             )
             .await?;
         Ok(SyncReport {

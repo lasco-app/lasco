@@ -74,7 +74,7 @@ async fn fetch_calls_list_on_every_invocation() {
 }
 
 #[tokio::test]
-// After lib_a pushes a second file, lib_b's next fetch sees it (no stale remote cache).
+// After lib_a pushes a second file, lib_b's next fetch sees it (no stale last-known state).
 async fn fetch_sees_externally_modified_remote() {
     let storage = StorageMockMemory::new();
     let tmp_a = TempDir::new().unwrap();
@@ -374,7 +374,7 @@ async fn fetch_updates_media_list_from_ops() {
     let media_list_path = lib_b
         .inner
         .local_dirs
-        .remote_last_known_state_dir(REMOTE_ID)
+        .remote_media_list(REMOTE_ID)
         .media_list_path();
     let media_list =
         crate::remote::local_state::media_list_json::MediaList::load_or_default(&media_list_path)

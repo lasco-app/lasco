@@ -4,6 +4,7 @@ pub mod groups;
 pub mod local_dirs;
 mod local_ops_read_write;
 pub mod media;
+mod remote_media_list_lock;
 pub mod sync;
 mod sync_policy;
 pub mod user;
@@ -21,6 +22,7 @@ use crate::error::LibraryError;
 use crate::identifiers::OpUuid;
 use crate::library::local_dirs::LocalDirs;
 use crate::library::local_ops_read_write::LocalOpsReadWriteLock;
+use crate::library::remote_media_list_lock::RemoteMediaListLock;
 use crate::library::sync_policy::{FetchSlotGuard, RemoteSyncGuard, SyncPolicy};
 use crate::operations::{LibraryPassword, LibraryUsername, Operation, OperationGroup};
 use crate::state::OperationState;
@@ -54,6 +56,8 @@ pub(crate) struct LibraryInner {
     pub(crate) username: LibraryUsername,
     /// The sole lock that grants access to `pending.op` and `operations.log`.
     pub(crate) local_ops_read_write_lock: LocalOpsReadWriteLock,
+    /// Per-remote locks for synchronous `media_list.json` read-modify-write access.
+    pub(crate) remote_media_list_lock: RemoteMediaListLock,
 }
 
 #[derive(Clone)]
@@ -126,6 +130,7 @@ impl Library {
                 operation_state: parking_lot::RwLock::new(OperationState::build(&[])),
                 sync_policy: SyncPolicy::new(),
                 local_ops_read_write_lock,
+                remote_media_list_lock: RemoteMediaListLock::new(),
             }),
         };
         Ok((library, password_uuid))
@@ -158,6 +163,7 @@ impl Library {
                 operation_state: parking_lot::RwLock::new(OperationState::build(&[])),
                 sync_policy: SyncPolicy::new(),
                 local_ops_read_write_lock,
+                remote_media_list_lock: RemoteMediaListLock::new(),
             }),
         })
     }
@@ -180,6 +186,7 @@ impl Library {
                 operation_state: parking_lot::RwLock::new(OperationState::build(&[])),
                 sync_policy: SyncPolicy::new(),
                 local_ops_read_write_lock,
+                remote_media_list_lock: RemoteMediaListLock::new(),
             }),
         })
     }

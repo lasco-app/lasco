@@ -6,7 +6,41 @@ use crate::identifiers::{AlbumUuid, MediaUuid, OpUuid};
 use crate::operations::{LibraryUsername, Operation, OperationGroup};
 use crate::storage::{Storage, StorageMockMemory};
 
+use super::super::remote_access::StorageRead;
 use super::super::test_utils::{REMOTE_ID, make_library, stamp_remote_id, write_file};
+use super::super::{PushMediaSource, SyncError};
+
+const SOURCE_REMOTE_ID: &str = "22222222-2222-2222-2222-222222222222";
+
+async fn stamp_source_remote(storage: &dyn Storage) {
+    storage
+        .put_if_absent(&format!("remote_id_{SOURCE_REMOTE_ID}"), b"")
+        .await
+        .unwrap();
+}
+
+fn remove_local_media(lib: &crate::library::Library, media_id: MediaUuid) {
+    let entry = lib
+        .inner
+        .operation_state
+        .read()
+        .reconstructed
+        .media
+        .get(&media_id)
+        .unwrap()
+        .clone();
+    let media_dir = lib.inner.local_dirs.local_state_media_dir();
+    std::fs::remove_file(media_dir.data_path(
+        entry.storage_date.year,
+        entry.storage_date.month,
+        &media_id,
+    ))
+    .unwrap();
+    let thumb = media_dir.thumb_path(entry.storage_date.year, entry.storage_date.month, &media_id);
+    if thumb.exists() {
+        std::fs::remove_file(thumb).unwrap();
+    }
+}
 
 /// Inject `count` synthetic op groups directly into the main operations log, bypassing pending.
 /// Used by compaction/tier tests that need N distinct groups to exercise push logic.
@@ -686,7 +720,10 @@ async fn push_skips_cascade_when_lock_held() {
     seed_tier1_files(&lib, &storage, 9).await;
 
     // Manually place a lock as if another client is mid-compaction.
-    storage.put_atomic("operations/LOCK.op", b"lock").await.unwrap();
+    storage
+        .put_atomic("operations/LOCK.op", b"lock")
+        .await
+        .unwrap();
 
     inject_op_groups(&lib, 20);
     let report = lib.push(&storage, REMOTE_ID).await.unwrap();
@@ -740,7 +777,7 @@ async fn push_writes_media_list_after_upload() {
     let media_list_path = lib
         .inner
         .local_dirs
-        .remote_last_known_state_dir(REMOTE_ID)
+        .remote_media_list(REMOTE_ID)
         .media_list_path();
     let media_list =
         crate::remote::local_state::media_list_json::MediaList::load_or_default(&media_list_path)
@@ -805,4 +842,190 @@ async fn push_errors_on_corrupt_local_frame() {
 
     let result = lib.push(&storage, REMOTE_ID).await;
     assert!(result.is_err(), "push must abort on a corrupt local frame");
+}
+
+#[tokio::test]
+async fn push_without_relay_reports_missing_local_media() {
+    let source = StorageMockMemory::new();
+    stamp_source_remote(&source).await;
+    let target = StorageMockMemory::new();
+    stamp_remote_id(&target).await;
+    let tmp = TempDir::new().unwrap();
+    let lib = make_library(&tmp).await;
+    let media_id = lib
+        .media_add(
+            crate::library::media::upload::MediaAddSource::CopyFrom(write_file(
+                tmp.path(),
+                "relay.jpg",
+                b"pixels",
+            )),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap()
+        .id();
+    lib.push(&source, SOURCE_REMOTE_ID).await.unwrap();
+    remove_local_media(&lib, media_id);
+
+    let error = lib.push(&target, REMOTE_ID).await.unwrap_err();
+    assert!(
+        matches!(error, crate::error::LibraryError::Sync(SyncError::MissingLocalMedia(ids)) if ids == vec![media_id])
+    );
+}
+
+#[tokio::test]
+async fn push_relays_selected_source_without_caching_media_locally() {
+    let source = StorageMockMemory::new();
+    stamp_source_remote(&source).await;
+    let target = StorageMockMemory::new();
+    stamp_remote_id(&target).await;
+    let tmp = TempDir::new().unwrap();
+    let lib = make_library(&tmp).await;
+    let media_id = lib
+        .media_add(
+            crate::library::media::upload::MediaAddSource::CopyFrom(write_file(
+                tmp.path(),
+                "relay.jpg",
+                b"pixels",
+            )),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap()
+        .id();
+    lib.push(&source, SOURCE_REMOTE_ID).await.unwrap();
+    remove_local_media(&lib, media_id);
+
+    let report = lib
+        .push_with_media_source(
+            &target,
+            REMOTE_ID,
+            PushMediaSource::FromRemote {
+                remote_id: SOURCE_REMOTE_ID,
+                storage: StorageRead::new(&source),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(report.media_uploaded, 1);
+    let entry = lib.inner.operation_state.read().reconstructed.media[&media_id].clone();
+    assert!(
+        target
+            .exists(&format!(
+                "media/{}/{:02}/{media_id}.data",
+                entry.storage_date.year, entry.storage_date.month
+            ))
+            .await
+            .unwrap()
+    );
+    assert!(
+        !lib.inner
+            .local_dirs
+            .local_state_media_dir()
+            .data_path(entry.storage_date.year, entry.storage_date.month, &media_id)
+            .exists()
+    );
+    assert!(
+        lib.inner
+            .local_dirs
+            .remote_media_list(SOURCE_REMOTE_ID)
+            .media_list_path()
+            .exists()
+    );
+    assert!(
+        !lib.inner
+            .local_dirs
+            .local_state_media_dir()
+            .path()
+            .join(".push-staging")
+            .exists(),
+        "relay staging must not be stored in library media state"
+    );
+}
+
+#[tokio::test]
+async fn corrupt_relay_media_is_not_uploaded_to_target() {
+    let source = StorageMockMemory::new();
+    stamp_source_remote(&source).await;
+    let target = StorageMockMemory::new();
+    stamp_remote_id(&target).await;
+    let tmp = TempDir::new().unwrap();
+    let lib = make_library(&tmp).await;
+    let media_id = lib
+        .media_add(
+            crate::library::media::upload::MediaAddSource::CopyFrom(write_file(
+                tmp.path(),
+                "relay.jpg",
+                b"pixels",
+            )),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap()
+        .id();
+    lib.push(&source, SOURCE_REMOTE_ID).await.unwrap();
+    let entry = lib.inner.operation_state.read().reconstructed.media[&media_id].clone();
+    let key = format!(
+        "media/{}/{:02}/{media_id}.data",
+        entry.storage_date.year, entry.storage_date.month
+    );
+    source.put_atomic(&key, b"corrupt").await.unwrap();
+    remove_local_media(&lib, media_id);
+
+    assert!(
+        lib.push_with_media_source(
+            &target,
+            REMOTE_ID,
+            PushMediaSource::FromRemote {
+                remote_id: SOURCE_REMOTE_ID,
+                storage: StorageRead::new(&source)
+            }
+        )
+        .await
+        .is_err()
+    );
+    assert!(!target.exists(&key).await.unwrap());
+}
+
+#[tokio::test]
+async fn push_propagates_master_key_files_without_overwriting() {
+    let target = StorageMockMemory::new();
+    stamp_remote_id(&target).await;
+    let tmp = TempDir::new().unwrap();
+    let lib = make_library(&tmp).await;
+    let library_dir = lib.inner.local_dirs.local_state_library_dir();
+    let name = std::fs::read_dir(library_dir.path())
+        .unwrap()
+        .filter_map(Result::ok)
+        .map(|entry| entry.file_name().into_string().unwrap())
+        .find(|name| name.starts_with("mk_") && name.ends_with(".enc"))
+        .unwrap();
+    let local = std::fs::read(library_dir.path().join(&name)).unwrap();
+    target
+        .put_atomic(&format!("library/{name}"), b"existing")
+        .await
+        .unwrap();
+
+    lib.push(&target, REMOTE_ID).await.unwrap();
+    assert_eq!(
+        target.get(&format!("library/{name}")).await.unwrap(),
+        b"existing"
+    );
+
+    let fresh_target = StorageMockMemory::new();
+    stamp_remote_id(&fresh_target).await;
+    lib.push(&fresh_target, REMOTE_ID).await.unwrap();
+    assert_eq!(
+        fresh_target.get(&format!("library/{name}")).await.unwrap(),
+        local
+    );
 }

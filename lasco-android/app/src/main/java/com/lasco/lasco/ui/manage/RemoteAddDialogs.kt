@@ -182,7 +182,11 @@ fun AddS3RemoteDialog(
                             onDismiss()
                             val error = try {
                                 repo.initializeRemote(remoteId, null)
-                                repo.sync.pushRemote(remoteId)
+                                when (val result = repo.sync.pushRemote(remoteId)) {
+                                    com.lasco.lasco.data.PushResult.Success -> null
+                                    is com.lasco.lasco.data.PushResult.Failed -> result.message
+                                    is com.lasco.lasco.data.PushResult.MissingLocalMedia -> "Some media is not stored on this device. Push from Status and choose another remote as its source."
+                                }
                             } catch (e: Exception) {
                                 e.message?.ifBlank { null } ?: "Initialization failed"
                             }
@@ -242,7 +246,11 @@ fun AddLocalFSRemoteDialog(
                             onDismiss()
                             val error = try {
                                 repo.initializeRemote(remoteId, null)
-                                repo.sync.pushRemote(remoteId)
+                                when (val result = repo.sync.pushRemote(remoteId)) {
+                                    com.lasco.lasco.data.PushResult.Success -> null
+                                    is com.lasco.lasco.data.PushResult.Failed -> result.message
+                                    is com.lasco.lasco.data.PushResult.MissingLocalMedia -> "Some media is not stored on this device. Push from Status and choose another remote as its source."
+                                }
                             } catch (e: Exception) {
                                 e.message?.ifBlank { null } ?: "Initialization failed"
                             }

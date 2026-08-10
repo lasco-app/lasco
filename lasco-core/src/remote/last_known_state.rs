@@ -11,9 +11,10 @@ use crate::error::SyncError;
 use crate::identifiers::{CompactedOpId, OpUuid};
 use crate::library::local_dirs::RemoteLastKnownStateDir;
 use crate::library::sync::remote_access::StorageRead;
+#[cfg(test)]
+use crate::operations::encrypt_compaction_file;
 use crate::operations::remote_ops::{RemoteOpFile, list_remote_op_files_read};
-use crate::operations::{CompactionFile, compaction_file_from_cbor, encrypt_compaction_file};
-use crate::remote::local_state::processed_files::ProcessedFiles;
+use crate::operations::{CompactionFile, compaction_file_from_cbor};
 
 /// On-disk cache of all remote operation files for a single remote.
 ///
@@ -27,24 +28,26 @@ pub(crate) struct LastKnownState {
 }
 
 impl LastKnownState {
-    /// Phase 1 of fetch. Lists remote op files and downloads any not yet cached in the
-    /// last known state dir. Files already present on disk or whose UUID appears in `processed` are
-    /// skipped, making this idempotent.
+    /// Phase 1 of fetch. Lists remote operation files, stages every cache-missing file in
+    /// memory, and validates remote history before committing staged files to disk.
+    ///
+    /// The durable cache is unchanged when listing, download, decryption, parsing, or history
+    /// validation fails. Merge progress is deliberately not consulted here: it is independent
+    /// from whether the ciphertext is present in this cache.
     pub(crate) async fn download(
         storage: &StorageRead<'_>,
         remote_last_known_state_dir: &RemoteLastKnownStateDir,
-        processed: &ProcessedFiles,
         master_key: &MasterKey,
     ) -> Result<Self, SyncError> {
         let ops_dir = remote_last_known_state_dir.operations_dir();
         std::fs::create_dir_all(&ops_dir)?;
 
         let remote_files = list_remote_op_files_read(storage).await?;
+        let cached_group_ids = collect_group_ids_from_dir(&ops_dir, master_key)
+            .map_err(SyncError::LocalCacheCorrupt)?;
+        let mut staged_files: Vec<(RemoteOpFile, Vec<u8>, Vec<OpUuid>)> = Vec::new();
 
         for file in &remote_files {
-            if processed.contains(&Self::file_uuid(file)) {
-                continue;
-            }
             let (remote_key, local_name) = Self::file_paths(file);
             let local_path = ops_dir.join(&local_name);
             if !local_path.exists() {
@@ -52,26 +55,30 @@ impl LastKnownState {
                     .get(&remote_key)
                     .await
                     .map_err(SyncError::RemoteUnreachable)?;
-                crate::atomic_file::write(&local_path, &bytes)?;
+                let op_ids = read_op_ids_from_bytes(&bytes, master_key, &Self::file_uuid(file))
+                    .map_err(SyncError::LocalCacheCorrupt)?;
+                staged_files.push((file.clone(), bytes, op_ids));
             }
         }
 
-        // Verify no op groups have been lost. Collect group IDs from every file on disk
-        // (including stale files no longer on the remote) and from every current remote file.
-        // If the remote no longer covers a previously cached group, history was rewritten.
-        let cached_group_ids: HashSet<OpUuid> = collect_group_ids_from_dir(&ops_dir, master_key)
-            .map_err(SyncError::LocalCacheCorrupt)?;
+        // Verify no op groups have been lost. The current remote set is assembled from the
+        // validated staged bytes and the existing cache; stale cached files remain in
+        // `cached_group_ids` and make a remote rewrite detectable.
         if !cached_group_ids.is_empty() {
             let mut remote_group_ids: HashSet<OpUuid> = HashSet::new();
             for f in &remote_files {
-                let (_, local_name) = Self::file_paths(f);
-                let ids = read_op_ids_from_file(
-                    &ops_dir.join(local_name),
-                    master_key,
-                    &Self::file_uuid(f),
-                )
-                .map_err(SyncError::LocalCacheCorrupt)?;
-                remote_group_ids.extend(ids);
+                if let Some((_, _, ids)) = staged_files.iter().find(|(staged, _, _)| staged == f) {
+                    remote_group_ids.extend(ids.iter().copied());
+                } else {
+                    let (_, local_name) = Self::file_paths(f);
+                    let ids = read_op_ids_from_file(
+                        &ops_dir.join(local_name),
+                        master_key,
+                        &Self::file_uuid(f),
+                    )
+                    .map_err(SyncError::LocalCacheCorrupt)?;
+                    remote_group_ids.extend(ids);
+                }
             }
             if !remote_group_ids.is_superset(&cached_group_ids) {
                 let mut missing: Vec<OpUuid> = cached_group_ids
@@ -85,6 +92,11 @@ impl LastKnownState {
                     remote_group_ids.len(),
                 )));
             }
+        }
+
+        for (file, bytes, _) in staged_files {
+            let (_, local_name) = Self::file_paths(&file);
+            crate::atomic_file::write(&ops_dir.join(local_name), &bytes)?;
         }
 
         Ok(Self {
@@ -151,6 +163,7 @@ impl LastKnownState {
     /// Encrypts and writes `file` into the on-disk last known state, without contacting the
     /// remote. Used by push after it has itself uploaded or merged a file, so the cache stays
     /// accurate without downloading back what was just written.
+    #[cfg(test)]
     pub(crate) fn write_compaction_file(
         &self,
         master_key: &MasterKey,
@@ -247,13 +260,22 @@ fn read_op_ids_from_file(
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
         Err(e) => return Err(format!("failed to read {}: {e}", path.display())),
     };
-    let blob = BlobEncrypted::from_bytes(&bytes)
-        .map_err(|e| format!("failed to parse blob {}: {e}", path.display()))?;
+    read_op_ids_from_bytes(&bytes, master_key, file_uuid)
+        .map_err(|error| format!("{} ({})", error, path.display()))
+}
+
+fn read_op_ids_from_bytes(
+    bytes: &[u8],
+    master_key: &MasterKey,
+    file_uuid: &CompactedOpId,
+) -> Result<Vec<OpUuid>, String> {
+    let blob =
+        BlobEncrypted::from_bytes(bytes).map_err(|e| format!("failed to parse blob: {e}"))?;
     let file_key = derive_blob_key(master_key, &file_uuid.0);
-    let plaintext = decrypt_blob(&file_key, &blob)
-        .map_err(|e| format!("failed to decrypt {}: {e}", path.display()))?;
+    let plaintext =
+        decrypt_blob(&file_key, &blob).map_err(|e| format!("failed to decrypt: {e}"))?;
     let file = compaction_file_from_cbor(&plaintext)
-        .map_err(|e| format!("failed to parse compaction file {}: {e}", path.display()))?;
+        .map_err(|e| format!("failed to parse compaction file: {e}"))?;
     Ok(file.contents.into_iter().map(|e| e.op_id).collect())
 }
 
@@ -292,4 +314,119 @@ pub(crate) fn collect_group_ids_from_dir(
         ids.extend(read_op_ids_from_file(&entry.path(), master_key, &uuid)?);
     }
     Ok(ids)
+}
+
+#[cfg(test)]
+mod tests {
+    use tempfile::TempDir;
+
+    use crate::encryption::master_key::generate_master_key;
+    use crate::identifiers::LibraryId;
+    use crate::library::local_dirs::LocalDirs;
+    use crate::operations::remote_ops::write_compaction_file;
+    use crate::operations::{CompactionEntry, LibraryUsername, OperationGroup};
+    use crate::storage::{Storage, StorageMockMemory};
+
+    use super::*;
+
+    fn compaction(op_id: OpUuid) -> CompactionFile {
+        CompactionFile {
+            tier: 1,
+            contents: vec![CompactionEntry {
+                op_id,
+                group: OperationGroup {
+                    op_id,
+                    parent_op_id: None,
+                    author: LibraryUsername("test".into()),
+                    operations: Vec::new(),
+                },
+            }],
+        }
+    }
+
+    #[tokio::test]
+    async fn rewritten_history_does_not_commit_staged_files() {
+        let storage = StorageMockMemory::new();
+        let temp = TempDir::new().unwrap();
+        let master_key = generate_master_key();
+        let local_dirs =
+            LocalDirs::new(temp.path().to_path_buf(), &LibraryId(uuid::Uuid::new_v4()));
+        let remote_dir = local_dirs.remote_last_known_state_dir("remote-a");
+
+        let old_uuid = CompactedOpId::new();
+        let old_key = format!("operations/{old_uuid}.op1_0");
+        write_compaction_file(
+            &storage,
+            &master_key,
+            &old_key,
+            &old_uuid,
+            &compaction(OpUuid::new()),
+        )
+        .await
+        .unwrap();
+        LastKnownState::download(&StorageRead::new(&storage), &remote_dir, &master_key)
+            .await
+            .unwrap();
+
+        storage.delete(&old_key).await.unwrap();
+        let new_uuid = CompactedOpId::new();
+        let new_key = format!("operations/{new_uuid}.op1_0");
+        write_compaction_file(
+            &storage,
+            &master_key,
+            &new_key,
+            &new_uuid,
+            &compaction(OpUuid::new()),
+        )
+        .await
+        .unwrap();
+
+        let error =
+            match LastKnownState::download(&StorageRead::new(&storage), &remote_dir, &master_key)
+                .await
+            {
+                Ok(_) => panic!("rewritten remote history must fail"),
+                Err(error) => error,
+            };
+        assert!(matches!(error, SyncError::RemoteHistoryRewritten(_)));
+        assert!(
+            !remote_dir
+                .operations_dir()
+                .join(format!("{new_uuid}.op1_0"))
+                .exists(),
+            "a failed history validation must not commit staged files"
+        );
+    }
+
+    #[tokio::test]
+    async fn missing_cached_file_is_restored_from_remote() {
+        let storage = StorageMockMemory::new();
+        let temp = TempDir::new().unwrap();
+        let master_key = generate_master_key();
+        let local_dirs =
+            LocalDirs::new(temp.path().to_path_buf(), &LibraryId(uuid::Uuid::new_v4()));
+        let remote_dir = local_dirs.remote_last_known_state_dir("remote-a");
+        let uuid = CompactedOpId::new();
+        let key = format!("operations/{uuid}.op1_0");
+        write_compaction_file(
+            &storage,
+            &master_key,
+            &key,
+            &uuid,
+            &compaction(OpUuid::new()),
+        )
+        .await
+        .unwrap();
+
+        LastKnownState::download(&StorageRead::new(&storage), &remote_dir, &master_key)
+            .await
+            .unwrap();
+        let cached_path = remote_dir.operations_dir().join(format!("{uuid}.op1_0"));
+        std::fs::remove_file(&cached_path).unwrap();
+
+        LastKnownState::download(&StorageRead::new(&storage), &remote_dir, &master_key)
+            .await
+            .unwrap();
+        assert!(cached_path.exists());
+    }
 }

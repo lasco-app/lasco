@@ -1,4 +1,6 @@
-use crate::ids::{FfiAlbumUuid, FfiGroupUuid, FfiLibraryId, FfiMediaUuid, FfiOpUuid, FfiRemoteUuid};
+use crate::ids::{
+    FfiAlbumUuid, FfiGroupUuid, FfiLibraryId, FfiMediaUuid, FfiOpUuid, FfiRemoteUuid,
+};
 
 #[derive(uniffi::Record, Debug)]
 pub struct FfiCreateLibraryResult {
@@ -14,6 +16,21 @@ pub struct FfiCreateLibraryResult {
 pub struct FfiMediaAddResult {
     pub media_id: FfiMediaUuid,
     pub already_existed: bool,
+}
+
+/// A media identifier returned to clients when a local-only push cannot find
+/// every required original in this device's cache.
+#[derive(uniffi::Record, Debug, Clone)]
+pub struct FfiMediaId {
+    pub value: String,
+}
+
+impl From<lasco_core::identifiers::MediaUuid> for FfiMediaId {
+    fn from(value: lasco_core::identifiers::MediaUuid) -> Self {
+        Self {
+            value: value.to_string(),
+        }
+    }
 }
 
 #[derive(uniffi::Record, Debug)]

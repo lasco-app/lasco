@@ -1,15 +1,13 @@
 use lasco_core::identifiers::RemoteUuid;
-use std::path::PathBuf;
-
+use lasco_core::library::sync::{PushMediaSource, remote_access::StorageRead};
 use lasco_core::library_json::{
     DebugLocalAndroidConfig, DebugLocalAppleConfig, FixedPathConfig, LibraryJson, RemoteConfig,
     RemoteKind, UsbAndroidConfig, UsbAppleConfig, save_library,
 };
 use lasco_core::operations::{LibraryPassword, LibraryUsername, Operation};
+use std::path::PathBuf;
 
-use super::{
-    FfiKv, FfiLibrary, FfiMediaItem, FfiOperation, FfiOperationGroup, FfiRemote,
-};
+use super::{FfiKv, FfiLibrary, FfiMediaItem, FfiOperation, FfiOperationGroup, FfiRemote};
 use crate::error::LascoError;
 use crate::ids::FfiRemoteUuid;
 
@@ -161,7 +159,10 @@ impl FfiLibrary {
         Ok(remote_uuid.into())
     }
 
-    pub fn add_remote_debug_local_android(&self, name: String) -> Result<FfiRemoteUuid, LascoError> {
+    pub fn add_remote_debug_local_android(
+        &self,
+        name: String,
+    ) -> Result<FfiRemoteUuid, LascoError> {
         let library_id = self.inner.library_id();
         let mut lib_config = self.load_library_json()?;
 
@@ -350,11 +351,41 @@ impl FfiLibrary {
     ) -> Result<u32, LascoError> {
         let remote_uuid: RemoteUuid = remote_id.clone().try_into()?;
         let remote_id_string = remote_uuid.to_string();
-        let storage =
-            self.build_storage_for_remote(&remote_uuid, app_support_dir.as_deref())?;
+        let storage = self.build_storage_for_remote(&remote_uuid, app_support_dir.as_deref())?;
         let report = self
             .rt
             .block_on(self.inner.push(storage.as_ref(), &remote_id_string))
+            .map_err(LascoError::from)?;
+        Ok(report.ops_uploaded as u32)
+    }
+
+    /// Push to `target_remote_id`, relaying absent local media from the selected
+    /// configured source remote. Callers should only use this after an explicit
+    /// user choice; ordinary and scheduled pushes remain local-only.
+    pub fn push_remote_from_remote(
+        &self,
+        target_remote_id: FfiRemoteUuid,
+        source_remote_id: FfiRemoteUuid,
+        app_support_dir: Option<String>,
+    ) -> Result<u32, LascoError> {
+        let target_remote_uuid: RemoteUuid = target_remote_id.clone().try_into()?;
+        let source_remote_uuid: RemoteUuid = source_remote_id.clone().try_into()?;
+        let target_remote_id_string = target_remote_uuid.to_string();
+        let source_remote_id_string = source_remote_uuid.to_string();
+        let target_storage =
+            self.build_storage_for_remote(&target_remote_uuid, app_support_dir.as_deref())?;
+        let source_storage =
+            self.build_storage_for_remote(&source_remote_uuid, app_support_dir.as_deref())?;
+        let report = self
+            .rt
+            .block_on(self.inner.push_with_media_source(
+                target_storage.as_ref(),
+                &target_remote_id_string,
+                PushMediaSource::FromRemote {
+                    remote_id: &source_remote_id_string,
+                    storage: StorageRead::new(source_storage.as_ref()),
+                },
+            ))
             .map_err(LascoError::from)?;
         Ok(report.ops_uploaded as u32)
     }
@@ -366,8 +397,7 @@ impl FfiLibrary {
     ) -> Result<u32, LascoError> {
         let remote_uuid: RemoteUuid = remote_id.clone().try_into()?;
         let remote_id_string = remote_uuid.to_string();
-        let storage =
-            self.build_storage_for_remote(&remote_uuid, app_support_dir.as_deref())?;
+        let storage = self.build_storage_for_remote(&remote_uuid, app_support_dir.as_deref())?;
         let report = self
             .rt
             .block_on(self.inner.fetch(storage.as_ref(), &remote_id_string))
@@ -382,12 +412,46 @@ impl FfiLibrary {
     ) -> Result<u32, LascoError> {
         let remote_uuid: RemoteUuid = remote_id.clone().try_into()?;
         let remote_id_string = remote_uuid.to_string();
-        let storage =
-            self.build_storage_for_remote(&remote_uuid, app_support_dir.as_deref())?;
+        let storage = self.build_storage_for_remote(&remote_uuid, app_support_dir.as_deref())?;
         let inner = self.inner.clone();
         let report = self
             .rt
             .spawn(async move { inner.push(storage.as_ref(), &remote_id_string).await })
+            .await
+            .map_err(|e| LascoError::Other { msg: e.to_string() })?
+            .map_err(LascoError::from)?;
+        Ok(report.ops_uploaded as u32)
+    }
+
+    pub async fn push_remote_from_remote_async(
+        &self,
+        target_remote_id: FfiRemoteUuid,
+        source_remote_id: FfiRemoteUuid,
+        app_support_dir: Option<String>,
+    ) -> Result<u32, LascoError> {
+        let target_remote_uuid: RemoteUuid = target_remote_id.clone().try_into()?;
+        let source_remote_uuid: RemoteUuid = source_remote_id.clone().try_into()?;
+        let target_remote_id_string = target_remote_uuid.to_string();
+        let source_remote_id_string = source_remote_uuid.to_string();
+        let target_storage =
+            self.build_storage_for_remote(&target_remote_uuid, app_support_dir.as_deref())?;
+        let source_storage =
+            self.build_storage_for_remote(&source_remote_uuid, app_support_dir.as_deref())?;
+        let inner = self.inner.clone();
+        let report = self
+            .rt
+            .spawn(async move {
+                inner
+                    .push_with_media_source(
+                        target_storage.as_ref(),
+                        &target_remote_id_string,
+                        PushMediaSource::FromRemote {
+                            remote_id: &source_remote_id_string,
+                            storage: StorageRead::new(source_storage.as_ref()),
+                        },
+                    )
+                    .await
+            })
             .await
             .map_err(|e| LascoError::Other { msg: e.to_string() })?
             .map_err(LascoError::from)?;
@@ -401,8 +465,7 @@ impl FfiLibrary {
     ) -> Result<u32, LascoError> {
         let remote_uuid: RemoteUuid = remote_id.clone().try_into()?;
         let remote_id_string = remote_uuid.to_string();
-        let storage =
-            self.build_storage_for_remote(&remote_uuid, app_support_dir.as_deref())?;
+        let storage = self.build_storage_for_remote(&remote_uuid, app_support_dir.as_deref())?;
         let inner = self.inner.clone();
         let report = self
             .rt
@@ -419,8 +482,7 @@ impl FfiLibrary {
         app_support_dir: Option<String>,
     ) -> Result<(), LascoError> {
         let remote_uuid: RemoteUuid = remote_id.clone().try_into()?;
-        let storage =
-            self.build_storage_for_remote(&remote_uuid, app_support_dir.as_deref())?;
+        let storage = self.build_storage_for_remote(&remote_uuid, app_support_dir.as_deref())?;
         let remote = lasco_core::library::sync::remote_access::StorageRead::new(storage.as_ref());
         self.rt
             .block_on(lasco_core::library::sync::verify_remote_identity(
@@ -445,8 +507,7 @@ impl FfiLibrary {
                 msg: format!("remote '{}' not found", remote_id.value),
             },
         )?;
-        let storage =
-            self.build_storage_for_remote(&remote_uuid, app_support_dir.as_deref())?;
+        let storage = self.build_storage_for_remote(&remote_uuid, app_support_dir.as_deref())?;
         self.rt
             .block_on(self.inner.initialize_remote(storage.as_ref(), remote_uuid))
             .map_err(LascoError::from)
@@ -454,7 +515,11 @@ impl FfiLibrary {
 }
 
 impl FfiLibrary {
-    fn add_remote_config(&self, name: String, kind: RemoteKind) -> Result<FfiRemoteUuid, LascoError> {
+    fn add_remote_config(
+        &self,
+        name: String,
+        kind: RemoteKind,
+    ) -> Result<FfiRemoteUuid, LascoError> {
         if name.trim().is_empty() {
             return Err(LascoError::Other {
                 msg: "remote name must not be empty".to_string(),
