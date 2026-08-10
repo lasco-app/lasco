@@ -21,7 +21,7 @@ export const AccessCard = ({ children }) => (
 
 ### Summary
 
-Fetch lists and downloads remote operation files missing from the remote's last-known state, verifies that the remote has not lost any previously known operation groups, then merges unseen operations into the local log and rebuilds in-memory state. It only adds missing `mk_*.enc` files and does not download media or thumbnails. Fetch never modifies or removes a remote file.
+Fetch lists and downloads remote operation files missing from the remote's last-known state, verifies that the remote has not lost any previously known CRDT dots, then merges unseen operations into canonical state and the local log before rebuilding derived state. It only adds missing `mk_*.enc` files and does not download media or thumbnails. Fetch never modifies or removes a remote file.
 
 ### Required access
 
@@ -35,7 +35,7 @@ Fetch lists and downloads remote operation files missing from the remote's last-
   - Read and atomically write the merge marker (`remotes/{remote_id}/state/merged_remote_files.json`).
   - Read and opportunistically atomically update the media inventory (`remotes/{remote_id}/state/media/media_list.json`) under its per-remote mutex.
   - Atomically write missing `mk_*.enc` files in the library directory.
-- **In-memory local state:** Rebuild from the local operation log.
+- **In-memory local state:** Rebuild derived state from canonical CRDT state.
 
 </AccessCard>
 
@@ -67,12 +67,12 @@ Fetch lists and downloads remote operation files missing from the remote's last-
     </tr>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>4</td>
-      <td>Verify that the resulting set of remote operation-group IDs is a superset of the group IDs previously known from this remote. If it is not, fail without writing any operation-related files. Atomically write the validated files to the last-known state for the remote.</td>
+      <td>Verify that the resulting set of remote dots is a superset of dots previously known from this remote. If it is not, fail without writing any operation-related files. Atomically write the validated files to the last-known state for the remote.</td>
       <td><span className="tag tag-ok">Read local state</span> <span className="tag tag-warn">Write local state</span></td>
     </tr>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>5</td>
-      <td>Merge compacted operation files not already recorded in `remotes/{remote_id}/state/merged_remote_files.json` into the local log. Fetch may record media blobs whose remote existence it successfully confirms in `media_list.json`; this positive-only inventory may be incomplete. Update `merged_remote_files.json`, then rebuild in-memory local state.</td>
+      <td>Merge unseen individual operations from compacted files not already recorded in `remotes/{remote_id}/state/merged_remote_files.json` into `crdt-state.enc` and the local log. Fetch may record media blobs whose remote existence it successfully confirms in `media_list.json`; this positive-only inventory may be incomplete. Update `merged_remote_files.json`, then rebuild derived state once.</td>
       <td><span className="tag tag-ok">Read remote</span> <span className="tag tag-warn">Append local log</span> <span className="tag tag-warn">Write local state</span> <span className="tag tag-warn">Rebuild in-memory state</span></td>
     </tr>
   </tbody>
@@ -95,11 +95,11 @@ For operation files, the client simply copies what it has locally. For media and
 - **Sync policy:** Acquire the per-remote sync slot.
 - **Remote:** List, read, write, and delete access.
 - **Local:**
-  - Read local master-key files, the operation log, reconstructed state, and media files.
+  - Read local master-key files, the CRDT outbox, reconstructed derived state, and media files.
   - Read the remote's last-known operation state (`remotes/{remote_id}/state/operations/`) and the media inventory (`remotes/{remote_id}/state/media/media_list.json`).
-  - Append to the operation log and delete a pending operation file.
+  - Read the append-only operation log; no pending operation file exists.
   - Atomically write the remote's last-known operation state and, under its per-remote mutex, the media inventory.
-- **In-memory local state:** Rebuild after flushing a pending operation group.
+- **In-memory local state:** Already rebuilt after each local CRDT merge.
 
 </AccessCard>
 
@@ -121,13 +121,13 @@ For operation files, the client simply copies what it has locally. For media and
     </tr>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>2</td>
-      <td>Append any pending operation group to the local log, remove the pending file, and rebuild local state.</td>
-      <td><span className="tag tag-warn">Append local log</span> <span className="tag tag-warn">Delete local pending file</span> <span className="tag tag-warn">Rebuild in-memory state</span></td>
+      <td>Read the durable CRDT outbox and the dots covered by this remote's cached compaction files.</td>
+      <td><span className="tag tag-ok">Read local CRDT state</span> <span className="tag tag-ok">Read local cache</span></td>
     </tr>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>3</td>
-      <td>Compare local operation groups with the target remote's last-known state, compact groups the target is missing, upload the resulting operation file, and record it in the last-known state.</td>
-      <td><span className="tag tag-ok">Read local log</span> <span className="tag tag-ok">Read local state</span> <span className="tag tag-warn">Write remote operation file</span> <span className="tag tag-warn">Write local state</span></td>
+      <td>Select outbox operations whose dots are not covered by the target remote, upload one immutable compaction file containing those operations, and record the identical ciphertext in the last-known state.</td>
+      <td><span className="tag tag-ok">Read local CRDT state</span> <span className="tag tag-ok">Read local cache</span> <span className="tag tag-warn">Write remote operation file</span> <span className="tag tag-warn">Write local state</span></td>
     </tr>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>4</td>
@@ -144,7 +144,7 @@ For operation files, the client simply copies what it has locally. For media and
 
 ### Duplicate operations on the remote
 
-With concurrent clients pushing to the same remote, or a single client pushing to several remotes, the same operation group can end up uploaded more than once. This is rare in practice. An op group that appears more than once is applied only once to the local log. We do not attempt to detect or remove duplicates on the remote.
+With concurrent clients pushing to the same remote, or a single client pushing to several remotes, the same operation can end up uploaded more than once. Merge and local-log reads deduplicate by dot; remote duplicates are harmless and are not deleted just for duplication.
 
 ## Compaction Procedure
 
@@ -180,7 +180,7 @@ Compaction bounds the number of remote operation files by merging every known fi
     </tr>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>2</td>
-      <td>Read every source file from the target's last-known state, merge their operation groups, upload one replacement file at the next tier, and record that file in the last-known state.</td>
+      <td>Read every source file from the target's last-known state, concatenate and deduplicate their operations by dot, upload one replacement file at the next tier, and record that file in the last-known state.</td>
       <td><span className="tag tag-ok">Read local state</span> <span className="tag tag-warn">Write remote operation file</span> <span className="tag tag-warn">Write local state</span></td>
     </tr>
     <tr>

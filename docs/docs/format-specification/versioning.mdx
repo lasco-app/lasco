@@ -23,7 +23,7 @@ library/
 
 ## Encrypted blob format
 
-Every encrypted blob (media files `.data`, thumbnails `.thumb`, and operation group files `.op`) begins with a single-byte version header:
+Every encrypted blob (media files `.data`, thumbnails `.thumb`, and CRDT operation files `.op`) begins with a single-byte version header:
 
 ```
 [ format_version: u8 (1 byte) | nonce: 24 bytes | ciphertext ]

@@ -63,7 +63,9 @@ An **Operation** is the atomic unit of change in a library. Every action is reco
 
 Operations are bundled into **OperationGroups**: each group carries a unique ID, a timestamp, and one or more operations applied together. The group file is encrypted and stored on the server under `operations/`.
 
-To reconstruct the library state, a client downloads all operation groups, sorts them by timestamp, and replays them in order. This append-only design means all devices converge to the same state as long as they have seen the same operations.
+Clients merge immutable CRDT operations by dot into canonical state. The merge is commutative,
+associative, and idempotent, so devices converge after observing the same operation set without a
+shared replay order.
 
 ---
 

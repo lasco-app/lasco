@@ -1,364 +1,89 @@
 ---
-sidebar_position: 2
+sidebar_position: 3
 sidebar_label: Operations
 ---
-import React from 'react';
 
-# Operations
+# CRDT operations
 
-Everything except media blob content, thumbnails, and encryption keys is stored as operations. They form a growing set of immutable CRDT modifications on the library. For example: renaming a photo, creating an album, adding a member. State is determined by the **set** of operations, independent of their order, and is maintained incrementally as each operation arrives.
+Every library mutation is one immutable, encrypted CRDT operation. A mutation is identified by a
+**dot**: `{ lamport_counter, device_id }`. Dots are unique per device and globally comparable;
+they are the only duplicate-detection identity. Each operation is an independent protocol unit and
+merge order has no semantic meaning.
 
-export const Field = ({ name, type, example, note }) => (
-  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', padding: '0 20px 8px 0' }}>
-    <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--lasco-ink)' }}>{name}</span>
-    {type && <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '11px', color: 'var(--lasco-ink-muted)' }}>{type}</span>}
-    <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '12px', color: 'var(--lasco-accent)', marginTop: '1px' }}>{note || example}</span>
-  </div>
-);
+## Operation envelope
 
-export const CardGrid = ({ children }) => (
-  <div style={{ marginBottom: '16px' }}>{children}</div>
-);
+Before encryption, every log frame and every item in a compaction file is CBOR encoding of:
 
-export const SchemaCard = ({ title, description, children }) => {
-  const displayTitle = /\s/.test(title) ? title : title.replace(/([a-z])([A-Z])/g, '$1 $2');
-  const hasEx = React.Children.toArray(children).some(
-    (child) => child.props && child.props.example && !child.props.note
-  );
-  return (
-    <div style={{
-      border: '2px solid var(--lasco-line)',
-      padding: '16px 20px',
-      margin: '0 80px 14px 80px',
-      background: 'var(--lasco-surface-alt)',
-    }}>
-      <div style={{ marginBottom: '10px', paddingBottom: '10px', borderBottom: '1px solid var(--lasco-line-soft)' }}>
-        <span style={{ fontFamily: 'Jersey 10, monospace', fontSize: '20px', fontWeight: 400, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--lasco-ink)', lineHeight: 1 }}>{displayTitle}</span>
-        {description && <div style={{ fontFamily: 'Space Grotesk, sans-serif', fontSize: '16px', color: 'var(--lasco-ink)', marginTop: '5px' }}>{description}</div>}
-      </div>
-      <div style={{ display: 'flex', alignItems: 'flex-start', paddingTop: '4px' }}>
-        {hasEx && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', padding: '0 12px 8px 0' }}>
-            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '11px', visibility: 'hidden' }}>ex</span>
-            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '11px', visibility: 'hidden' }}>ex</span>
-            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '12px', color: 'var(--lasco-ink-muted)', marginTop: '1px' }}>ex:</span>
-          </div>
-        )}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 0' }}>
-          {children}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export const Panel = ({ title, children }) => (
-  <div style={{
-    border: '2px solid var(--ink)',
-    padding: '16px 20px',
-    marginBottom: '14px',
-    background: 'var(--bg-deep)',
-  }}>
-    <div style={{ marginBottom: '12px', borderBottom: '2px solid var(--ink)', paddingBottom: '10px' }}>
-      <span style={{ fontFamily: 'Jersey 10, monospace', fontSize: '24px', fontWeight: 400, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ink)', lineHeight: 1 }}>{title}</span>
-    </div>
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px' }}>
-      {children}
-    </div>
-  </div>
-);
-
-export const MediaTree = ({ items }) => (
-  <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '13px', lineHeight: '1.9', padding: '14px 20px', border: '2px solid var(--ink)', background: 'var(--surface)', margin: '16px 0' }}>
-    {items.map((item, i) => (
-      <div key={i} style={{ paddingLeft: `${item.depth * 22}px`, display: 'flex', alignItems: 'baseline', gap: '7px' }}>
-        <span style={{ userSelect: 'none' }}>{item.icon}</span>
-        <span style={{ color: 'var(--ink)' }}>{item.name}</span>
-        {item.note && <span style={{ color: 'var(--ink-muted)', fontSize: '12px' }}>{item.note}</span>}
-      </div>
-    ))}
-  </div>
-);
-
-export const AlbumTree = () => (
-  <div style={{ overflow: 'auto', margin: '20px 0', border: '2px solid var(--ink)', padding: '20px', background: 'var(--surface)' }}>
-    <svg viewBox="0 0 620 210" width="100%" style={{ maxWidth: '620px', display: 'block', margin: '0 auto' }}>
-      <line x1="310" y1="39" x2="160" y2="86" stroke="var(--line-soft)" strokeWidth="1.5"/>
-      <line x1="310" y1="39" x2="460" y2="86" stroke="var(--line-soft)" strokeWidth="1.5"/>
-      <line x1="160" y1="114" x2="100" y2="164" stroke="var(--line-soft)" strokeWidth="1.5"/>
-      <line x1="160" y1="114" x2="220" y2="164" stroke="var(--line-soft)" strokeWidth="1.5"/>
-      <line x1="460" y1="114" x2="400" y2="164" stroke="var(--line-soft)" strokeWidth="1.5"/>
-      <line x1="460" y1="114" x2="520" y2="164" stroke="var(--line-soft)" strokeWidth="1.5"/>
-      {/* root - uses accent bg */}
-      <rect x="250" y="11" width="120" height="28" fill="var(--accent)" stroke="var(--ink)" strokeWidth="2"/>
-      <text x="310" y="30" textAnchor="middle" fill="#f3efe2" fontSize="12" fontWeight="700" fontFamily="JetBrains Mono, monospace">Library</text>
-      {/* albums - surface panels */}
-      <rect x="95" y="86" width="130" height="28" fill="var(--bg-deep)" stroke="var(--ink)" strokeWidth="2"/>
-      <text x="160" y="105" textAnchor="middle" fill="var(--ink)" fontSize="11" fontWeight="600" fontFamily="JetBrains Mono, monospace">Summer 2024</text>
-      <rect x="395" y="86" width="130" height="28" fill="var(--bg-deep)" stroke="var(--ink)" strokeWidth="2"/>
-      <text x="460" y="105" textAnchor="middle" fill="var(--ink)" fontSize="11" fontWeight="600" fontFamily="JetBrains Mono, monospace">Family</text>
-      {/* media items - muted */}
-      <rect x="40" y="164" width="120" height="24" fill="var(--surface)" stroke="var(--line-soft)" strokeWidth="1.5"/>
-      <text x="100" y="180" textAnchor="middle" fill="var(--ink-muted)" fontSize="10" fontFamily="JetBrains Mono, monospace">IMG_001.jpg</text>
-      <rect x="160" y="164" width="120" height="24" fill="var(--surface)" stroke="var(--line-soft)" strokeWidth="1.5"/>
-      <text x="220" y="180" textAnchor="middle" fill="var(--ink-muted)" fontSize="10" fontFamily="JetBrains Mono, monospace">IMG_002.jpg</text>
-      <rect x="340" y="164" width="120" height="24" fill="var(--surface)" stroke="var(--line-soft)" strokeWidth="1.5"/>
-      <text x="400" y="180" textAnchor="middle" fill="var(--ink-muted)" fontSize="10" fontFamily="JetBrains Mono, monospace">IMG_003.jpg</text>
-      <rect x="460" y="164" width="120" height="24" fill="var(--surface)" stroke="var(--line-soft)" strokeWidth="1.5"/>
-      <text x="520" y="180" textAnchor="middle" fill="var(--ink-muted)" fontSize="10" fontFamily="JetBrains Mono, monospace">IMG_004.jpg</text>
-    </svg>
-  </div>
-);
-
-## Operation and Incremental Merge
-
-Every mutation is an individual immutable CRDT operation. There are no semantic operation groups,
-operation UUIDs, parent-operation links, or global replay order.
-
-<SchemaCard title="Operation">
-  <Field name="dot" type="Dot { counter: u64, device_id: u128 }" note="Stable operation identity and deterministic tie-break key." />
-  <Field name="author" type="LibraryUsername" note="Display/audit metadata only; never used for merge." />
-  <Field name="timestamp" type="DateTime<Utc>" note="Display/audit metadata only; never used for merge." />
-  <Field name="operation_content" type="OperationContent" />
-</SchemaCard>
-
-`device_id` is a random 128-bit identifier generated once per device and persisted. A device
-increments its Lamport counter for every local operation and advances it beyond counters observed
-from remote operations. The counter is persisted alongside canonical state; on load it must not
-be lower than the highest known dot from that device. Dots are ordered by counter, then by the
-lexicographic bytes of `device_id`.
-
-The app merges each newly received operation directly into the persisted in-memory CRDT state. Merge
-is commutative, associative, and idempotent. Replicas therefore converge despite duplicate or
-out-of-order delivery. Persisted state includes winner dots, OR-set tags and removal observations,
-tombstones, and replica causal context, not just UI values. Replica causal context supports sync
-and duplicate detection. It is not copied onto each operation. Browse views are derived from the
-canonical state.
-
----
-
-## Operation List
-
-Each operation carries its timestamp (time of write). This is not used in merge logic.
-
-## CRDT Semantics
-
-The materialized library is derived from CRDT state, not from replaying this list in a particular
-order. Every entity can have a placeholder state because an operation may arrive before its
-creation. A placeholder is never visible; only the corresponding creation operation sets
-`created = true`.
-
-| Operation | Merge representation |
-| --- | --- |
-| `MediaCreation` | Immutable creation record keyed by `media_id`, with a deterministic dot tie-break for the impossible-in-normal-use same-ID conflict. |
-| `MediaRename` | LWW register of `Option<MediaName>`. |
-| `MediaPropsUpdate` | Per-key LWW string register. |
-| `AlbumCreation` | Marks the entity created and writes `name` and desired parent to their LWW registers using the creation dot. |
-| `AlbumMediaAdd` / `AlbumMediaRemove` | Add-wins observed-remove set. An add stores its dot; a remove carries the exact `observed: Set<Dot>` of add dots it cancels. |
-| `AlbumDeletion` | Permanent tombstone. It hides the album and its contents without erasing their CRDT metadata. |
-| `AlbumRename` | LWW name register. |
-| `AlbumReparent` | LWW desired-parent register, followed by deterministic acyclic parent projection. |
-| `AlbumThumbnailSet` | LWW `Option<MediaUuid>` register. |
-| `GroupCreation` | Immutable creation record keyed by `group_id`; its parent is permanently fixed. |
-| `GroupMediaAdd` / `GroupMediaRemove` | Add-wins observed-remove set; a remove carries the exact `observed: Set<Dot>` of add dots it cancels. |
-| `GroupDeletion` | Permanent tombstone. |
-
-An LWW register compares dots, never wall-clock timestamps. An entity is visible only when it is
-created, not tombstoned, and has a live resolved ancestor chain. Membership is add-wins only
-within its OR-set: an add concurrent with deletion of its containing album or group is retained
-in canonical state but is not visible. This is deliberately **add-wins unless the container is
-tombstoned**. There is intentionally no `MediaDeletion`: media may leave albums and groups but
-remains in the library. Album and group tombstones are permanent; there is currently no restore
-operation. A future restore feature requires explicit CRDT semantics.
-
-For an LWW register of `Option<T>`, `None` is an ordinary value written with a dot. Clearing a
-name, thumbnail, or parent must never be represented by omitting an operation.
-
-For album parentage, replicas select each live album's desired parent from its LWW register. A
-reference to a missing, uncreated, or tombstoned parent makes the album temporarily invisible.
-For each remaining parent cycle, replicas sever the edge with the lowest winning dot and treat
-that album as rooted. This produces one deterministic acyclic forest. Groups cannot be
-reparented; that is a product and UI constraint, not an implementation accident.
-
-### Media
-
-<CardGrid>
-<SchemaCard title="MediaCreation" description="Adds a new media item to the library.">
-  <Field name="media_id" type="MediaUuid" />
-  <Field name="filename_original" type="String" />
-  <Field name="date" type="DateTime<Utc>" note="Capture date (EXIF DateTimeOriginal / PHAsset.creationDate)." />
-  <Field name="storage_date" type="StorageDate" note="StorageDate { year: u16, month: u8 } determines the storage path. Usually matches date but can differ." />
-  <Field name="size_bytes" type="u64" />
-  <Field name="content_hash" type="[u8; 32]" note="BLAKE3 hash of the unencrypted file bytes, stored as raw bytes." />
-  <Field name="modified_at" type="Option<DateTime<Utc>>" note="Last modification date (PHAsset.modificationDate or file mtime). None if unknown." />
-  <Field name="gps" type="Option<GpsCoords>" note="GPS position at capture time. GpsCoords { latitude: f64, longitude: f64 } in WGS84 decimal degrees." />
-  <Field name="apple_aae_media_id" type="Option<MediaUuid>" note="Points at another MediaCreation's media_id, the Apple .AAE edit sidecar for this media item. The referenced entry is never added to an album or group, so it never appears in listings on its own." />
-</SchemaCard>
-<SchemaCard title="MediaRename" description="Sets or clears the user-facing display name.">
-  <Field name="media_id" type="MediaUuid" />
-  <Field name="name" type="Option<MediaName>" />
-</SchemaCard>
-<SchemaCard title="MediaPropsUpdate" description="Attaches or updates a single key/value property.">
-  <Field name="media_id" type="MediaUuid" />
-  <Field name="key" type="String" />
-  <Field name="value" type="String (JSON)" />
-</SchemaCard>
-</CardGrid>
-
----
-
-### Albums
-
-<CardGrid>
-<SchemaCard title="AlbumCreation" description="Creates a new album with an optional parent.">
-  <Field name="album_id" type="AlbumUuid" />
-  <Field name="name" type="String" />
-  <Field name="album_id_parent" type="Option<AlbumUuid>" />
-</SchemaCard>
-<SchemaCard title="AlbumMediaAdd" description="Adds a media item to an album.">
-  <Field name="album_id" type="AlbumUuid" />
-  <Field name="media_id" type="MediaUuid" />
-</SchemaCard>
-<SchemaCard title="AlbumMediaRemove" description="Removes a media item from an album.">
-  <Field name="album_id" type="AlbumUuid" />
-  <Field name="media_id" type="MediaUuid" />
-  <Field name="observed" type="Set<Dot>" note="The membership add tags observed and cancelled by this remove." />
-</SchemaCard>
-<SchemaCard title="AlbumDeletion" description="Soft-deletes an album.">
-  <Field name="album_id" type="AlbumUuid" />
-</SchemaCard>
-<SchemaCard title="AlbumRename" description="Renames an album.">
-  <Field name="album_id" type="AlbumUuid" />
-  <Field name="name" type="String" />
-</SchemaCard>
-<SchemaCard title="AlbumReparent" description="Moves an album to a new parent.">
-  <Field name="album_id" type="AlbumUuid" />
-  <Field name="new_parent_id" type="Option<AlbumUuid>" />
-</SchemaCard>
-<SchemaCard title="AlbumThumbnailSet" description="Sets or removes the thumbnail for an album.">
-  <Field name="album_id" type="AlbumUuid" />
-  <Field name="media_id" type="Option<MediaUuid>" />
-</SchemaCard>
-</CardGrid>
-
----
-
-### Groups
-
-Groups are leaf collections. They hold media items directly, cannot have child albums, and each belongs to exactly one parent album set at creation.
-
-<CardGrid>
-<SchemaCard title="GroupCreation" description="Creates a new group inside an album. Parent is permanent.">
-  <Field name="group_id" type="GroupUuid" />
-  <Field name="album_id_parent" type="AlbumUuid" />
-</SchemaCard>
-<SchemaCard title="GroupMediaAdd" description="Adds a media item to a group. Idempotent.">
-  <Field name="group_id" type="GroupUuid" />
-  <Field name="media_id" type="MediaUuid" />
-</SchemaCard>
-<SchemaCard title="GroupMediaRemove" description="Removes a media item from a group.">
-  <Field name="group_id" type="GroupUuid" />
-  <Field name="media_id" type="MediaUuid" />
-  <Field name="observed" type="Set<Dot>" note="The membership add tags observed and cancelled by this remove." />
-</SchemaCard>
-<SchemaCard title="GroupDeletion" description="Soft-deletes a group. No cascade ops are emitted.">
-  <Field name="group_id" type="GroupUuid" />
-</SchemaCard>
-</CardGrid>
-
----
-
-## File Format
-
-Every operation transport file is serialized as CBOR and encrypted before being written to the
-remote. Transport may batch operations for efficiency, but batches have no semantic identity and do
-not affect merge results. The exact replacement for the existing remote compaction layout is
-intentionally out of scope for this CRDT refactor and will be specified separately.
-
-The remaining compaction and local-log sections below describe the **legacy implementation**.
-They will be removed when the new operation transport and persisted CRDT state are implemented; they
-are not part of the target CRDT format.
-
-### Legacy compaction format
-
-Each legacy op file is named by a UUID with a tier-dependent extension:
-
-- A **compaction file** (`.op{N}_{count}`) holds many op groups. Its name is a fresh random UUID assigned to the file itself, `N` is the tier, and `count` is the total number of operations inside, summed across every op group in the file. The count is readable from the filename without decrypting the file.
-
-## Compaction
-
-Even if the operation group set as a whole is growing, and each group immutable, the way they are stored in remotes can sometimes change.
-We do this to bound the total number of operation files, and the number of files we have to touch to add new groups. To do this we use a Log-Structured Merge-trees (LSM) inspired algorithm.
-
-### Local vs Remote
-
-Compaction never happens locally. The two sides store ops differently:
-
-- **Local** keeps a single append file, `local_state/operations.log`, that accumulates op groups as you make changes. It is never compacted. There is also a `pending.op` file that accumulates groups waiting to be pushed, until it is flushed or grows too large.
-- **Remote** stores ops as tiered files and compacts them in the background. The advantage of this is that all compacted states are independent for all remotes, so any change to the procedure can be implemented without problems.
-
-
-### Compaction File Format
-
-Compaction is built on op group identity: every group has a unique `op_id`, and a compaction file is just the full op groups it covers, each tagged by its `op_id`.
-
-<SchemaCard title="Compaction file (.op{N}_{count})" description="A remote-only file packing op groups together, {count} being their total operation count. Immutable and self-contained.">
-  <Field name="tier" type="u8" />
-  <Field name="contents" type="Vec<{ op_id: OpUuid, group: OperationGroup }>" />
-</SchemaCard>
-
-
-### Compaction Tiers
-
-Files are organized into tiers. Tier 0 holds raw op groups; higher tiers hold compaction files that pack more and more groups together.
-
-Two limits govern the files at each tier: how many operations a single file at that tier may hold (summed across every op group packed into it), and how many files may exist at that tier before compaction is triggered. Because each compaction file encodes its total operation count in its filename, clients can evaluate both limits from the directory listing alone.
-
-| Tier | File extension | Ops limit | Tier files limit |
-|------|---------------|--------------|------------------|
-| 1 | `.op1_{count}` | 20 | 10 |
-| 2 | `.op2_{count}` | 200 | 10 |
-| N | `.opN_{count}` | 20×10^(N-1) | 10 |
-
-With this scheme, the maximum number of operations storable with tier i or less:
-
-| Max tier | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
-|----------|---|---|---|---|---|---|---|
-| Max total ops | 200 | 2,200 | 22,200 | 222,200 | 2,222,200 | 22,222,200 | 222,222,200 |
-| Max compacted op files | 10 | 20 | 30 | 40 | 50 | 60 | 70 |
-
-### Compaction Procedure
-
-When any tier has more files than its file limit, the client responsible for this must compact it. The goal is to completely evict that tier. All its files are merged into a single file at the next tier up, leaving no underpopulated file behind. For now this is done greedily in arbitrary order.
-
-1. The client acquires a global operations lock file on the remote, preventing concurrent compactions.
-2. It reads all files at tier N and merges their op-group lists into a single new compaction file at tier N+1. "All files at tier N" means all tier-N files recorded in the pushing client's own last known state for that remote (see [Sync](./sync)), not a fresh listing of the remote. A client never lists or reads remote op files outside of what it already knows about to decide what to compact.
-3. The tier-N source files are deleted, still under the same lock.
-4. If tier N+1 now exceeds its file limit, the procedure is applied again at that tier, cascading upward until no tier is over its limit, all while continuing to hold the same lock acquired in step 1.
-5. Once no tier is over its limit, the lock is released.
-
-### Uploading Operations
-
-When pushing, the client writes new operation groups directly as a single compaction file, at the lowest tier whose ops limit can hold the whole batch's total operation count. A push totaling 200 operations, for example, lands directly at tier 2 rather than as an oversized tier-1 file, regardless of how many op groups those operations are split across.
-
----
-
-## Local Log Format
-
-`operations.log` is an append-only binary file that lists all the operation groups. It is a sequence of frames like this:
-
-```
-blob_len   4 bytes   unsigned 32-bit integer
-blob      blob_len   CBOR-serialized OperationGroup, encrypted
+```text
+CrdtOperation {
+  dot: Dot,
+  author: LibraryUsername,
+  timestamp: RFC 3339 timestamp,
+  content: OperationContent,
+}
 ```
 
-Operation IDs are kept inside the encrypted CBOR payload, so every frame must be decrypted before it can be used. `blob_len` must be greater than zero and no larger than 64 MiB. Any malformed, incomplete, or unauthenticated frame, including the final frame, makes the log unreadable. Repair is intentionally not automatic.
+`author` and `timestamp` are audit metadata. Conflict resolution uses only the dot and the
+operation content. Receivers merge an operation only if its dot is absent from causal context.
 
-Safety properties:
+`OperationContent` includes media creation, rename and properties; album creation, membership,
+rename, reparent, thumbnail, and permanent deletion; and group creation, membership, and permanent
+deletion. Membership adds use their own dot. A remove carries the set of add dots it observed, so
+concurrent unseen adds win.
 
-- A bit flip in the encrypted blob causes authenticated decryption to fail. A changed length either produces an invalid frame or changes the bytes passed to decryption, which also fails.
-- The log is written in append mode. A process killed during an append can leave only an incomplete final frame; loading detects that frame and refuses to load rather than silently using a partial log.
-- Repair is not automatic.
-- The writer does not request that the operating system flush appended bytes to durable storage. These guarantees therefore cover process interruption and malformed on-disk data, not durability across a power loss or operating-system crash.
+## Local durable state
 
-Rolling out our own format is questionable, but it is the simplest way I found to append operations without rewriting everything each time. We may revisit it when we decide how to persist computed state and computed properties. I am not sure that using SQLite, for example, would be the best solution.
+`local_state/crdt-state.enc` is an atomically replaced, encrypted CBOR `CrdtStateReplica`:
+
+```text
+CrdtStateReplica {
+  state: CanonicalState,       // causal context, device clock, CRDT registers and sets
+  outgoing: Vec<CrdtOperation> // durable operations still requiring remote delivery
+}
+```
+
+`local_state/operations.log` is an append-only sequence of encrypted frames. Each frame is one
+`CrdtOperation`; it is not a second state representation. Reads authenticate every frame and
+deduplicate by dot. A local edit saves the snapshot/outbox, appends the operation frame, then
+rebuilds the derived browse state. Interruption can create a duplicate frame, which is harmless.
+
+The materialized browse state and computed views are derived caches. They are never persisted and
+are rebuilt after local merges and fetches.
+
+## Remote compaction files
+
+Remote files remain immutable and keep their existing names:
+
+```text
+operations/{compaction_uuid}.op{tier}_{operation_count}
+```
+
+The encrypted CBOR plaintext is:
+
+```text
+CompactionFile {
+  tier: u8,
+  operations: Vec<CrdtOperation>,
+}
+```
+
+`operation_count` is the number of individual operations. Tiered compaction concatenates source
+operations, deduplicates by dot, writes one immutable replacement at the next tier, updates the
+last-known-state cache, and only then deletes source files while holding `operations/LOCK.op`.
+
+## Fetch and push
+
+Fetch caches immutable remote files, verifies that all dots previously cached for that remote are
+still covered by the remote's current files, then merges unseen dots into canonical state and the
+local operation log. Each immutable file is marked merged only after its operations have been
+persisted. Fetch records confirmed `MediaCreation` objects in the positive-only media inventory.
+
+Push compares `CrdtStateReplica.outgoing` with dots covered by the target remote's cached files.
+It uploads uncovered operations in one compaction file and writes the same ciphertext into the
+target's last-known-state cache. The outbox is intentionally durable across remotes: an operation
+must remain available until each configured remote has covered it.
+
+## Debug UI
+
+Clients show an individual operation row with its dot, author, timestamp, kind, and content fields.
+They do not show grouping or parent-operation relationships.
