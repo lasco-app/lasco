@@ -6,7 +6,7 @@ use super::{CanonicalState, CrdtOperation, DeviceId};
 /// deliberately separate from causal context: it records delivery obligations,
 /// whereas causal context records operations already incorporated in state.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct PersistedReplica {
+pub struct CrdtStateReplica {
     pub state: CanonicalState,
     pub outgoing: Vec<CrdtOperation>,
 }
@@ -31,9 +31,9 @@ pub fn load_persisted(
     path: &std::path::Path,
     master_key: &crate::encryption::master_key::MasterKey,
     device_id: DeviceId,
-) -> Result<PersistedReplica, PersistenceError> {
+) -> Result<CrdtStateReplica, PersistenceError> {
     if !path.exists() {
-        return Ok(PersistedReplica {
+        return Ok(CrdtStateReplica {
             state: CanonicalState::new(device_id),
             outgoing: Vec::new(),
         });
@@ -49,7 +49,7 @@ pub fn load_persisted(
 pub fn save_persisted(
     path: &std::path::Path,
     master_key: &crate::encryption::master_key::MasterKey,
-    persisted: &PersistedReplica,
+    persisted: &CrdtStateReplica,
 ) -> Result<(), PersistenceError> {
     let mut bytes = Vec::new();
     ciborium::ser::into_writer(persisted, &mut bytes)

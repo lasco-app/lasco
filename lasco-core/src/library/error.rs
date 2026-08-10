@@ -2,8 +2,8 @@ use thiserror::Error;
 
 use crate::encryption::error::KeychainError;
 use crate::identifiers::{AlbumUuid, GroupUuid, MediaUuid};
-use crate::operations::error::OperationError;
 use crate::operations::AlbumName;
+use crate::operations::error::OperationError;
 
 #[derive(Error, Debug)]
 pub enum LibraryError {

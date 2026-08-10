@@ -350,7 +350,7 @@ fn persisted_state_keeps_causal_context_clock_and_outbox() {
         dot(7, 2),
         OperationContent::AlbumDeletion { album_id: album(1) },
     );
-    let mut persisted = PersistedReplica {
+    let mut persisted = CrdtStateReplica {
         state: CanonicalState::new(DeviceId(3)),
         outgoing: vec![operation.clone()],
     };
