@@ -790,7 +790,7 @@ mod tests {
     }
 
     #[tokio::test]
-    // album_get_path with deleted album still works (deleted flag doesn't affect path lookup)
+    // Deleted albums are absent from the derived CRDT projection.
     async fn album_get_path_deleted_album() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
@@ -804,9 +804,9 @@ mod tests {
         lib.album_delete(album_id).await.unwrap();
         lib.load_local_state().await.unwrap();
 
-        // Path should still be resolvable
+        // Deleted ancestors do not remain browse-visible.
         let path = lib.album_get_path(album_id);
-        assert_eq!(path, "Deletable");
+        assert_eq!(path, "");
     }
 
     #[tokio::test]

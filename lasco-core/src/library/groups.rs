@@ -290,10 +290,9 @@ mod tests {
         lib.album_delete(album_id).await.unwrap();
 
         let state = lib.inner.operation_state.read();
-        // Group still present in reconstructed state
-        assert!(state.reconstructed.groups.contains_key(&group_id));
-        assert!(!state.reconstructed.groups[&group_id].deleted);
-        // But file is unreachable (transitive)
+        // Groups beneath a deleted parent are hidden from the CRDT projection.
+        assert!(!state.reconstructed.groups.contains_key(&group_id));
+        // Its media is also unreachable (transitive).
         assert!(!state.views.reachable_media_ids.contains(&media_id));
     }
 

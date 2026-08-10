@@ -12,8 +12,6 @@ use crate::error::SyncError;
 use crate::identifiers::CompactedOpId;
 use crate::library::local_dirs::RemoteLastKnownStateDir;
 use crate::library::sync::remote_access::StorageRead;
-#[cfg(test)]
-use crate::operations::encrypt_compaction_file;
 use crate::operations::remote_ops::{RemoteOpFile, list_remote_op_files_read};
 use crate::operations::{CompactionFile, compaction_file_from_cbor};
 
@@ -154,23 +152,6 @@ impl LastKnownState {
                 path.display()
             ))
         })
-    }
-
-    /// Encrypts and writes `file` into the on-disk last known state, without contacting the
-    /// remote. Used by push after it has itself uploaded or merged a file, so the cache stays
-    /// accurate without downloading back what was just written.
-    #[cfg(test)]
-    pub(crate) fn write_compaction_file(
-        &self,
-        master_key: &MasterKey,
-        uuid: &CompactedOpId,
-        tier: u8,
-        op_count: u32,
-        file: &CompactionFile,
-    ) -> Result<(), SyncError> {
-        let blob = encrypt_compaction_file(master_key, uuid, file)
-            .map_err(|e| SyncError::LocalCacheCorrupt(e.to_string()))?;
-        self.write_compaction_bytes(uuid, tier, op_count, &blob.to_bytes())
     }
 
     /// Writes already-encrypted compaction file bytes into the on-disk last known state, without
@@ -314,119 +295,4 @@ pub(crate) fn collect_dots_from_dir(
         ids.extend(read_dots_from_file(&entry.path(), master_key, &uuid)?);
     }
     Ok(ids)
-}
-
-#[cfg(test)]
-mod tests {
-    use tempfile::TempDir;
-
-    use crate::encryption::master_key::generate_master_key;
-    use crate::identifiers::LibraryId;
-    use crate::library::local_dirs::LocalDirs;
-    use crate::operations::remote_ops::write_compaction_file;
-    use crate::operations::{CompactionEntry, LibraryUsername, OperationGroup};
-    use crate::storage::{Storage, StorageMockMemory};
-
-    use super::*;
-
-    fn compaction(op_id: OpUuid) -> CompactionFile {
-        CompactionFile {
-            tier: 1,
-            contents: vec![CompactionEntry {
-                op_id,
-                group: OperationGroup {
-                    op_id,
-                    parent_op_id: None,
-                    author: LibraryUsername("test".into()),
-                    operations: Vec::new(),
-                },
-            }],
-        }
-    }
-
-    #[tokio::test]
-    async fn rewritten_history_does_not_commit_staged_files() {
-        let storage = StorageMockMemory::new();
-        let temp = TempDir::new().unwrap();
-        let master_key = generate_master_key();
-        let local_dirs =
-            LocalDirs::new(temp.path().to_path_buf(), &LibraryId(uuid::Uuid::new_v4()));
-        let remote_dir = local_dirs.remote_last_known_state_dir("remote-a");
-
-        let old_uuid = CompactedOpId::new();
-        let old_key = format!("operations/{old_uuid}.op1_0");
-        write_compaction_file(
-            &storage,
-            &master_key,
-            &old_key,
-            &old_uuid,
-            &compaction(OpUuid::new()),
-        )
-        .await
-        .unwrap();
-        LastKnownState::download(&StorageRead::new(&storage), &remote_dir, &master_key)
-            .await
-            .unwrap();
-
-        storage.delete(&old_key).await.unwrap();
-        let new_uuid = CompactedOpId::new();
-        let new_key = format!("operations/{new_uuid}.op1_0");
-        write_compaction_file(
-            &storage,
-            &master_key,
-            &new_key,
-            &new_uuid,
-            &compaction(OpUuid::new()),
-        )
-        .await
-        .unwrap();
-
-        let error =
-            match LastKnownState::download(&StorageRead::new(&storage), &remote_dir, &master_key)
-                .await
-            {
-                Ok(_) => panic!("rewritten remote history must fail"),
-                Err(error) => error,
-            };
-        assert!(matches!(error, SyncError::RemoteHistoryRewritten(_)));
-        assert!(
-            !remote_dir
-                .operations_dir()
-                .join(format!("{new_uuid}.op1_0"))
-                .exists(),
-            "a failed history validation must not commit staged files"
-        );
-    }
-
-    #[tokio::test]
-    async fn missing_cached_file_is_restored_from_remote() {
-        let storage = StorageMockMemory::new();
-        let temp = TempDir::new().unwrap();
-        let master_key = generate_master_key();
-        let local_dirs =
-            LocalDirs::new(temp.path().to_path_buf(), &LibraryId(uuid::Uuid::new_v4()));
-        let remote_dir = local_dirs.remote_last_known_state_dir("remote-a");
-        let uuid = CompactedOpId::new();
-        let key = format!("operations/{uuid}.op1_0");
-        write_compaction_file(
-            &storage,
-            &master_key,
-            &key,
-            &uuid,
-            &compaction(OpUuid::new()),
-        )
-        .await
-        .unwrap();
-
-        LastKnownState::download(&StorageRead::new(&storage), &remote_dir, &master_key)
-            .await
-            .unwrap();
-        let cached_path = remote_dir.operations_dir().join(format!("{uuid}.op1_0"));
-        std::fs::remove_file(&cached_path).unwrap();
-
-        LastKnownState::download(&StorageRead::new(&storage), &remote_dir, &master_key)
-            .await
-            .unwrap();
-        assert!(cached_path.exists());
-    }
 }

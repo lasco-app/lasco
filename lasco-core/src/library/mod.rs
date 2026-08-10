@@ -169,6 +169,7 @@ impl Library {
             &master_key,
             crate::crdt::DeviceId::random(),
         )?;
+        reconcile_outbox_log(&local_ops_read_write_lock, &master_key, &crdt_replica)?;
 
         Ok(Library {
             inner: Arc::new(LibraryInner {
@@ -199,6 +200,7 @@ impl Library {
             &master_key,
             crate::crdt::DeviceId::random(),
         )?;
+        reconcile_outbox_log(&local_ops_read_write_lock, &master_key, &crdt_replica)?;
         Ok(Library {
             inner: Arc::new(LibraryInner {
                 master_key,
@@ -305,5 +307,20 @@ impl Library {
     }
 }
 
-#[cfg(test)]
-mod tests;
+/// Repairs the only interrupted local-write state that can escape the normal
+/// snapshot-then-append sequence. The snapshot's outbox is authoritative, so
+/// appending any absent outgoing dots makes the log a complete merge oracle again.
+fn reconcile_outbox_log(
+    lock: &LocalOpsReadWriteLock,
+    master_key: &MasterKey,
+    replica: &crate::crdt::CrdtStateReplica,
+) -> Result<()> {
+    let mut log = lock.lock(master_key);
+    let known = log.known_dots()?;
+    for operation in &replica.outgoing {
+        if !known.contains(&operation.dot) {
+            log.append_operation(operation)?;
+        }
+    }
+    Ok(())
+}

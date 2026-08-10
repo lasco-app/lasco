@@ -13,7 +13,8 @@ pub type Result<T> = std::result::Result<T, OperationError>;
 
 const BLOB_LEN_FIELD: usize = 4;
 const MAX_LOCAL_OP_BLOB_LEN: usize = 64 * 1024 * 1024;
-const LOCAL_OPS_KEY_ID: uuid::Uuid = uuid::Uuid::from_u128(0x6c6173636f5f6c6f63616c5f6f707302);
+const LOCAL_OPS_KEY_ID: uuid::Uuid =
+    uuid::Uuid::from_u128(0x6c61_7363_6f5f_6c6f_6361_6c5f_6f70_7302);
 
 pub fn append_crdt_operation(
     log_path: &std::path::Path,

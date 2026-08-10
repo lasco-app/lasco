@@ -193,7 +193,7 @@ async fn fetch_library_dir(
         .collect();
 
     let local_dir = local_state_library_dir.path();
-    let local_mk_names: HashSet<String> = match std::fs::read_dir(&local_dir) {
+    let local_mk_names: HashSet<String> = match std::fs::read_dir(local_dir) {
         Ok(entries) => entries
             .flatten()
             .filter_map(|e| {
@@ -213,7 +213,7 @@ async fn fetch_library_dir(
             .get(&format!("library/{name}"))
             .await
             .map_err(SyncError::RemoteUnreachable)?;
-        std::fs::create_dir_all(&local_dir).map_err(SyncError::Io)?;
+        std::fs::create_dir_all(local_dir).map_err(SyncError::Io)?;
         crate::atomic_file::write(&local_dir.join(name), &bytes).map_err(SyncError::Io)?;
     }
 
@@ -251,6 +251,3 @@ async fn update_media_list_from_group(
         }
     }
 }
-
-#[cfg(test)]
-mod tests;

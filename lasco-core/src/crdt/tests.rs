@@ -360,3 +360,129 @@ fn persisted_state_keeps_causal_context_clock_and_outbox() {
     assert_eq!(loaded, persisted);
     assert_eq!(loaded.state.next_local_dot(), dot(8, 3));
 }
+
+#[test]
+fn materialization_hides_missing_or_deleted_ancestors_and_groups() {
+    let orphan = album(1);
+    let live_parent = album(2);
+    let deleted_parent = album(3);
+    let group = GroupUuid::from_uuid(Uuid::from_u128(4));
+    let mut state = CanonicalState::new(DeviceId(1));
+    let operations = [
+        op(
+            dot(1, 1),
+            OperationContent::AlbumCreation {
+                album_id: orphan,
+                name: "orphan".into(),
+                parent_id: Some(album(99)),
+            },
+        ),
+        op(
+            dot(2, 1),
+            OperationContent::AlbumCreation {
+                album_id: live_parent,
+                name: "live".into(),
+                parent_id: None,
+            },
+        ),
+        op(
+            dot(3, 1),
+            OperationContent::AlbumCreation {
+                album_id: deleted_parent,
+                name: "deleted".into(),
+                parent_id: None,
+            },
+        ),
+        op(
+            dot(4, 1),
+            OperationContent::AlbumDeletion {
+                album_id: deleted_parent,
+            },
+        ),
+        op(
+            dot(5, 1),
+            OperationContent::GroupCreation {
+                group_id: group,
+                parent_id: deleted_parent,
+            },
+        ),
+    ];
+    state.merge_all(operations.iter());
+    let materialized = state.materialize();
+    assert!(materialized.albums.contains_key(&live_parent));
+    assert!(!materialized.albums.contains_key(&orphan));
+    assert!(!materialized.albums.contains_key(&deleted_parent));
+    assert!(!materialized.groups.contains_key(&group));
+}
+
+#[test]
+fn encrypted_operation_log_is_a_merge_oracle_and_deduplicates_dots() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("operations.log");
+    let key = crate::encryption::master_key::generate_master_key();
+    let first = op(
+        dot(1, 10),
+        OperationContent::AlbumCreation {
+            album_id: album(1),
+            name: "A".into(),
+            parent_id: None,
+        },
+    );
+    let second = op(
+        dot(2, 10),
+        OperationContent::AlbumRename {
+            album_id: album(1),
+            name: Some("B".into()),
+        },
+    );
+    crate::operations::local_ops::append_crdt_operation(&path, &key, &first).unwrap();
+    crate::operations::local_ops::append_crdt_operation(&path, &key, &second).unwrap();
+    crate::operations::local_ops::append_crdt_operation(&path, &key, &first).unwrap();
+    let logged = crate::operations::local_ops::read_crdt_operations(&path, &key).unwrap();
+    assert_eq!(logged.len(), 2);
+    assert_eq!(
+        crate::operations::local_ops::read_known_dots(&path, &key)
+            .unwrap()
+            .len(),
+        2
+    );
+    let mut from_log = CanonicalState::new(DeviceId(10));
+    from_log.merge_all(logged.iter());
+    let mut expected = CanonicalState::new(DeviceId(10));
+    expected.merge_all([&first, &second]);
+    assert_eq!(from_log, expected);
+}
+
+#[test]
+fn merge_is_commutative_associative_and_idempotent() {
+    let a = op(
+        dot(1, 1),
+        OperationContent::AlbumCreation {
+            album_id: album(1),
+            name: "A".into(),
+            parent_id: None,
+        },
+    );
+    let b = op(
+        dot(2, 2),
+        OperationContent::AlbumRename {
+            album_id: album(1),
+            name: Some("B".into()),
+        },
+    );
+    let c = op(
+        dot(3, 3),
+        OperationContent::AlbumThumbnailSet {
+            album_id: album(1),
+            media_id: Some(media(1)),
+        },
+    );
+    let merge = |operations: &[&CrdtOperation]| {
+        let mut state = CanonicalState::new(DeviceId(99));
+        state.merge_all(operations.iter().copied());
+        state
+    };
+    assert_eq!(merge(&[&a, &b]), merge(&[&b, &a]));
+    assert_eq!(merge(&[&a, &b, &c]), merge(&[&a, &b, &c]));
+    assert_eq!(merge(&[&a, &a]), merge(&[&a]));
+}

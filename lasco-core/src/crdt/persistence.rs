@@ -63,4 +63,5 @@ pub fn save_persisted(
     Ok(())
 }
 
-const CRDT_STATE_KEY_ID: uuid::Uuid = uuid::Uuid::from_u128(0x6c6173636f5f637264745f7374617465);
+const CRDT_STATE_KEY_ID: uuid::Uuid =
+    uuid::Uuid::from_u128(0x6c61_7363_6f5f_6372_6474_5f73_7461_7465);

@@ -217,7 +217,6 @@ pub(super) fn map_op_err(error: OperationError) -> SyncError {
 }
 
 #[cfg(test)]
-mod test_utils;
-
+mod crdt_tests;
 #[cfg(test)]
-mod tests;
+mod test_utils;
