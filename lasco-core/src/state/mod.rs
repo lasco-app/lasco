@@ -19,12 +19,16 @@ pub struct OperationState {
 }
 
 impl OperationState {
-    pub fn build(sorted_ops: &[OperationGroup]) -> Self {
-        let reconstructed = reconstruct_state(sorted_ops);
+    pub fn from_reconstructed(reconstructed: ReconstructedState) -> Self {
         let views = build_computed_views(&reconstructed);
-        OperationState {
+        Self {
             reconstructed,
             views,
         }
+    }
+
+    pub fn build(sorted_ops: &[OperationGroup]) -> Self {
+        let reconstructed = reconstruct_state(sorted_ops);
+        Self::from_reconstructed(reconstructed)
     }
 }

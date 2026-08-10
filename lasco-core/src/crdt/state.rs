@@ -15,6 +15,7 @@ use crate::library::media::MediaHash;
 use crate::operations::{
     AlbumName, GpsCoords, LibraryUsername, MediaFilename, MediaName, StorageDate,
 };
+use crate::state::{AlbumEntry, GroupEntry, MediaEntry, ReconstructedState};
 
 /// A device-stable random identifier. Generate it once and persist it with the
 /// canonical state; creating it per operation would defeat Lamport ordering.
@@ -211,6 +212,7 @@ impl Default for ReplicaClock {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct MediaCrdt {
     pub creation: Option<LastWriteWin<MediaCreation>>,
+    pub author: Option<LastWriteWin<LibraryUsername>>,
     pub name: Option<LastWriteWin<Option<MediaName>>>,
     pub properties: HashMap<String, LastWriteWin<String>>,
 }
@@ -268,6 +270,7 @@ impl CanonicalState {
             OperationContent::MediaCreation(creation) => {
                 let media = self.media.entry(creation.media_id).or_default();
                 write_optional(&mut media.creation, operation.dot, creation.clone());
+                write_optional(&mut media.author, operation.dot, operation.author.clone());
             }
             OperationContent::MediaRename { media_id, name } => {
                 let media = self.media.entry(*media_id).or_default();
@@ -479,6 +482,107 @@ impl CanonicalState {
             effective_parents: parents,
             visible,
         }
+    }
+
+    /// Produces the compatibility projection consumed by browse/query code.
+    /// It is derived data only; the CRDT structures above remain canonical.
+    pub fn materialize(&self) -> ReconstructedState {
+        let projection = self.album_projection();
+        let mut result = ReconstructedState::default();
+        for media in self.media.values() {
+            let Some(creation) = &media.creation else {
+                continue;
+            };
+            let value = &creation.value;
+            result.media.insert(
+                value.media_id,
+                MediaEntry {
+                    media_id: value.media_id,
+                    filename_original: value.filename_original.clone(),
+                    name: media
+                        .name
+                        .as_ref()
+                        .and_then(|register| register.value.clone()),
+                    date: value.date,
+                    storage_date: value.storage_date,
+                    size_bytes: value.size_bytes,
+                    properties: media
+                        .properties
+                        .iter()
+                        .map(|(key, register)| (key.clone(), register.value.clone()))
+                        .collect(),
+                    content_hash: value.content_hash,
+                    author: media
+                        .author
+                        .as_ref()
+                        .map(|register| register.value.clone())
+                        .unwrap_or_else(|| LibraryUsername("unknown".into())),
+                    modified_at: value.modified_at,
+                    gps: value.gps,
+                    apple_aae_media_id: value.apple_aae_media_id,
+                    apple_live_photo_media_id: value.apple_live_photo_media_id,
+                },
+            );
+        }
+        for (album_id, album) in &self.albums {
+            if !projection.visible.contains(album_id) {
+                continue;
+            }
+            let Some(creation) = &album.creation else {
+                continue;
+            };
+            let media_ids = self
+                .album_memberships
+                .iter()
+                .filter_map(|((id, media_id), set)| {
+                    (*id == *album_id && set.contains()).then_some(*media_id)
+                })
+                .collect();
+            result.albums.insert(
+                *album_id,
+                AlbumEntry {
+                    album_id: *album_id,
+                    name: album
+                        .name
+                        .as_ref()
+                        .and_then(|register| register.value.clone())
+                        .unwrap_or_else(|| creation.value.name.clone()),
+                    album_id_parent: projection.effective_parents[album_id],
+                    media_ids,
+                    deleted: false,
+                    thumbnail_media_id: album
+                        .thumbnail
+                        .as_ref()
+                        .and_then(|register| register.value),
+                },
+            );
+        }
+        for (group_id, group) in &self.groups {
+            let Some(creation) = &group.creation else {
+                continue;
+            };
+            if group.tombstone.is_some() || !projection.visible.contains(&creation.value.parent_id)
+            {
+                continue;
+            }
+            let media_ids = self
+                .group_memberships
+                .iter()
+                .filter_map(|((id, media_id), set)| {
+                    (*id == *group_id && set.contains()).then_some(*media_id)
+                })
+                .collect();
+            result.groups.insert(
+                *group_id,
+                GroupEntry {
+                    group_id: *group_id,
+                    album_id_parent: creation.value.parent_id,
+                    media_ids,
+                    deleted: false,
+                },
+            );
+        }
+        result
     }
 }
 

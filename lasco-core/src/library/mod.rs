@@ -396,15 +396,8 @@ impl Library {
     }
 
     pub async fn load_local_state(&self) -> Result<()> {
-        let groups = {
-            let local_ops = self.local_ops_read_write();
-            let mut groups = local_ops.read_log_groups()?;
-            if let Some(pending) = local_ops.read_pending()? {
-                groups.push(pending);
-            }
-            groups
-        };
-        let state = OperationState::build(&groups);
+        let replica = self.inner.crdt_replica_state.read();
+        let state = OperationState::from_reconstructed(replica.state.materialize());
         *self.inner.operation_state.write() = state;
         Ok(())
     }

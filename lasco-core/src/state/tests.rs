@@ -78,8 +78,17 @@ fn album_creation_and_media_add_appears_in_by_album() {
     let date = t(2024, 6, 15);
     let groups = vec![op_group(vec![
         media_creation(mid, date),
-        Operation::AlbumCreation { timestamp: Utc::now(), album_id: aid, name: "Vacation".into(), album_id_parent: None },
-        Operation::AlbumMediaAdd { timestamp: Utc::now(), album_id: aid, media_id: mid },
+        Operation::AlbumCreation {
+            timestamp: Utc::now(),
+            album_id: aid,
+            name: "Vacation".into(),
+            album_id_parent: None,
+        },
+        Operation::AlbumMediaAdd {
+            timestamp: Utc::now(),
+            album_id: aid,
+            media_id: mid,
+        },
     ])];
     let state = reconstruct_state(&groups);
     let views = build_computed_views(&state);
@@ -95,9 +104,22 @@ fn album_media_remove_makes_media_unreachable_but_stays_in_media() {
     let date = t(2024, 3, 10);
     let groups = vec![op_group(vec![
         media_creation(mid, date),
-        Operation::AlbumCreation { timestamp: Utc::now(), album_id: aid, name: "A".into(), album_id_parent: None },
-        Operation::AlbumMediaAdd { timestamp: Utc::now(), album_id: aid, media_id: mid },
-        Operation::AlbumMediaRemove { timestamp: Utc::now(), album_id: aid, media_id: mid },
+        Operation::AlbumCreation {
+            timestamp: Utc::now(),
+            album_id: aid,
+            name: "A".into(),
+            album_id_parent: None,
+        },
+        Operation::AlbumMediaAdd {
+            timestamp: Utc::now(),
+            album_id: aid,
+            media_id: mid,
+        },
+        Operation::AlbumMediaRemove {
+            timestamp: Utc::now(),
+            album_id: aid,
+            media_id: mid,
+        },
     ])];
     let state = reconstruct_state(&groups);
     let views = build_computed_views(&state);
@@ -112,8 +134,17 @@ fn group_creation_with_album_parent() {
     let aid = album_id();
     let gid = group_id();
     let groups = vec![op_group(vec![
-        Operation::AlbumCreation { timestamp: Utc::now(), album_id: aid, name: "A".into(), album_id_parent: None },
-        Operation::GroupCreation { timestamp: Utc::now(), group_id: gid, album_id_parent: aid },
+        Operation::AlbumCreation {
+            timestamp: Utc::now(),
+            album_id: aid,
+            name: "A".into(),
+            album_id_parent: None,
+        },
+        Operation::GroupCreation {
+            timestamp: Utc::now(),
+            group_id: gid,
+            album_id_parent: aid,
+        },
     ])];
     let state = reconstruct_state(&groups);
     let views = build_computed_views(&state);
@@ -133,11 +164,33 @@ fn multiple_interleaved_ops_produce_correct_state() {
     let groups = vec![op_group(vec![
         media_creation(mid1, date),
         media_creation(mid2, date),
-        Operation::AlbumCreation { timestamp: Utc::now(), album_id: aid1, name: "A1".into(), album_id_parent: None },
-        Operation::AlbumCreation { timestamp: Utc::now(), album_id: aid2, name: "A2".into(), album_id_parent: Some(aid1) },
-        Operation::AlbumMediaAdd { timestamp: Utc::now(), album_id: aid1, media_id: mid1 },
-        Operation::AlbumMediaAdd { timestamp: Utc::now(), album_id: aid2, media_id: mid2 },
-        Operation::AlbumMediaRemove { timestamp: Utc::now(), album_id: aid1, media_id: mid1 },
+        Operation::AlbumCreation {
+            timestamp: Utc::now(),
+            album_id: aid1,
+            name: "A1".into(),
+            album_id_parent: None,
+        },
+        Operation::AlbumCreation {
+            timestamp: Utc::now(),
+            album_id: aid2,
+            name: "A2".into(),
+            album_id_parent: Some(aid1),
+        },
+        Operation::AlbumMediaAdd {
+            timestamp: Utc::now(),
+            album_id: aid1,
+            media_id: mid1,
+        },
+        Operation::AlbumMediaAdd {
+            timestamp: Utc::now(),
+            album_id: aid2,
+            media_id: mid2,
+        },
+        Operation::AlbumMediaRemove {
+            timestamp: Utc::now(),
+            album_id: aid1,
+            media_id: mid1,
+        },
     ])];
     let state = reconstruct_state(&groups);
     let views = build_computed_views(&state);
@@ -155,9 +208,22 @@ fn duplicate_album_media_add_does_not_duplicate() {
     let date = t(2024, 1, 1);
     let groups = vec![op_group(vec![
         media_creation(mid, date),
-        Operation::AlbumCreation { timestamp: Utc::now(), album_id: aid, name: "A".into(), album_id_parent: None },
-        Operation::AlbumMediaAdd { timestamp: Utc::now(), album_id: aid, media_id: mid },
-        Operation::AlbumMediaAdd { timestamp: Utc::now(), album_id: aid, media_id: mid },
+        Operation::AlbumCreation {
+            timestamp: Utc::now(),
+            album_id: aid,
+            name: "A".into(),
+            album_id_parent: None,
+        },
+        Operation::AlbumMediaAdd {
+            timestamp: Utc::now(),
+            album_id: aid,
+            media_id: mid,
+        },
+        Operation::AlbumMediaAdd {
+            timestamp: Utc::now(),
+            album_id: aid,
+            media_id: mid,
+        },
     ])];
     let state = reconstruct_state(&groups);
 
@@ -173,9 +239,23 @@ fn by_date_correct_and_album_children_nested() {
 
     let groups = vec![op_group(vec![
         media_creation(mid, date),
-        Operation::AlbumCreation { timestamp: Utc::now(), album_id: aid_parent, name: "P".into(), album_id_parent: None },
-        Operation::AlbumCreation { timestamp: Utc::now(), album_id: aid_child, name: "C".into(), album_id_parent: Some(aid_parent) },
-        Operation::AlbumMediaAdd { timestamp: Utc::now(), album_id: aid_child, media_id: mid },
+        Operation::AlbumCreation {
+            timestamp: Utc::now(),
+            album_id: aid_parent,
+            name: "P".into(),
+            album_id_parent: None,
+        },
+        Operation::AlbumCreation {
+            timestamp: Utc::now(),
+            album_id: aid_child,
+            name: "C".into(),
+            album_id_parent: Some(aid_parent),
+        },
+        Operation::AlbumMediaAdd {
+            timestamp: Utc::now(),
+            album_id: aid_child,
+            media_id: mid,
+        },
     ])];
     let state = reconstruct_state(&groups);
     let views = build_computed_views(&state);
@@ -194,9 +274,22 @@ fn group_creation_media_add_reachable_and_in_by_group() {
 
     let groups = vec![op_group(vec![
         media_creation(mid, date),
-        Operation::AlbumCreation { timestamp: Utc::now(), album_id: aid, name: "A".into(), album_id_parent: None },
-        Operation::GroupCreation { timestamp: Utc::now(), group_id: gid, album_id_parent: aid },
-        Operation::GroupMediaAdd { timestamp: Utc::now(), group_id: gid, media_id: mid },
+        Operation::AlbumCreation {
+            timestamp: Utc::now(),
+            album_id: aid,
+            name: "A".into(),
+            album_id_parent: None,
+        },
+        Operation::GroupCreation {
+            timestamp: Utc::now(),
+            group_id: gid,
+            album_id_parent: aid,
+        },
+        Operation::GroupMediaAdd {
+            timestamp: Utc::now(),
+            group_id: gid,
+            media_id: mid,
+        },
     ])];
     let state = reconstruct_state(&groups);
     let views = build_computed_views(&state);
@@ -214,10 +307,27 @@ fn group_media_remove_makes_media_unreachable() {
 
     let groups = vec![op_group(vec![
         media_creation(mid, date),
-        Operation::AlbumCreation { timestamp: Utc::now(), album_id: aid, name: "A".into(), album_id_parent: None },
-        Operation::GroupCreation { timestamp: Utc::now(), group_id: gid, album_id_parent: aid },
-        Operation::GroupMediaAdd { timestamp: Utc::now(), group_id: gid, media_id: mid },
-        Operation::GroupMediaRemove { timestamp: Utc::now(), group_id: gid, media_id: mid },
+        Operation::AlbumCreation {
+            timestamp: Utc::now(),
+            album_id: aid,
+            name: "A".into(),
+            album_id_parent: None,
+        },
+        Operation::GroupCreation {
+            timestamp: Utc::now(),
+            group_id: gid,
+            album_id_parent: aid,
+        },
+        Operation::GroupMediaAdd {
+            timestamp: Utc::now(),
+            group_id: gid,
+            media_id: mid,
+        },
+        Operation::GroupMediaRemove {
+            timestamp: Utc::now(),
+            group_id: gid,
+            media_id: mid,
+        },
     ])];
     let state = reconstruct_state(&groups);
     let views = build_computed_views(&state);
@@ -236,10 +346,26 @@ fn group_deletion_media_become_unreachable() {
 
     let groups = vec![op_group(vec![
         media_creation(mid, date),
-        Operation::AlbumCreation { timestamp: Utc::now(), album_id: aid, name: "A".into(), album_id_parent: None },
-        Operation::GroupCreation { timestamp: Utc::now(), group_id: gid, album_id_parent: aid },
-        Operation::GroupMediaAdd { timestamp: Utc::now(), group_id: gid, media_id: mid },
-        Operation::GroupDeletion { timestamp: Utc::now(), group_id: gid },
+        Operation::AlbumCreation {
+            timestamp: Utc::now(),
+            album_id: aid,
+            name: "A".into(),
+            album_id_parent: None,
+        },
+        Operation::GroupCreation {
+            timestamp: Utc::now(),
+            group_id: gid,
+            album_id_parent: aid,
+        },
+        Operation::GroupMediaAdd {
+            timestamp: Utc::now(),
+            group_id: gid,
+            media_id: mid,
+        },
+        Operation::GroupDeletion {
+            timestamp: Utc::now(),
+            group_id: gid,
+        },
     ])];
     let state = reconstruct_state(&groups);
     let views = build_computed_views(&state);
@@ -257,10 +383,26 @@ fn parent_album_deleted_group_media_unreachable() {
 
     let groups = vec![op_group(vec![
         media_creation(mid, date),
-        Operation::AlbumCreation { timestamp: Utc::now(), album_id: aid, name: "A".into(), album_id_parent: None },
-        Operation::GroupCreation { timestamp: Utc::now(), group_id: gid, album_id_parent: aid },
-        Operation::GroupMediaAdd { timestamp: Utc::now(), group_id: gid, media_id: mid },
-        Operation::AlbumDeletion { timestamp: Utc::now(), album_id: aid },
+        Operation::AlbumCreation {
+            timestamp: Utc::now(),
+            album_id: aid,
+            name: "A".into(),
+            album_id_parent: None,
+        },
+        Operation::GroupCreation {
+            timestamp: Utc::now(),
+            group_id: gid,
+            album_id_parent: aid,
+        },
+        Operation::GroupMediaAdd {
+            timestamp: Utc::now(),
+            group_id: gid,
+            media_id: mid,
+        },
+        Operation::AlbumDeletion {
+            timestamp: Utc::now(),
+            album_id: aid,
+        },
     ])];
     let state = reconstruct_state(&groups);
     let views = build_computed_views(&state);
@@ -282,11 +424,32 @@ fn media_group_membership_reverse_index() {
 
     let groups = vec![op_group(vec![
         media_creation(mid, date),
-        Operation::AlbumCreation { timestamp: Utc::now(), album_id: aid, name: "A".into(), album_id_parent: None },
-        Operation::GroupCreation { timestamp: Utc::now(), group_id: gid1, album_id_parent: aid },
-        Operation::GroupCreation { timestamp: Utc::now(), group_id: gid2, album_id_parent: aid },
-        Operation::GroupMediaAdd { timestamp: Utc::now(), group_id: gid1, media_id: mid },
-        Operation::GroupMediaAdd { timestamp: Utc::now(), group_id: gid2, media_id: mid },
+        Operation::AlbumCreation {
+            timestamp: Utc::now(),
+            album_id: aid,
+            name: "A".into(),
+            album_id_parent: None,
+        },
+        Operation::GroupCreation {
+            timestamp: Utc::now(),
+            group_id: gid1,
+            album_id_parent: aid,
+        },
+        Operation::GroupCreation {
+            timestamp: Utc::now(),
+            group_id: gid2,
+            album_id_parent: aid,
+        },
+        Operation::GroupMediaAdd {
+            timestamp: Utc::now(),
+            group_id: gid1,
+            media_id: mid,
+        },
+        Operation::GroupMediaAdd {
+            timestamp: Utc::now(),
+            group_id: gid2,
+            media_id: mid,
+        },
     ])];
     let state = reconstruct_state(&groups);
     let views = build_computed_views(&state);
@@ -298,12 +461,37 @@ fn media_group_membership_reverse_index() {
     // After removing from gid1
     let groups2 = vec![op_group(vec![
         media_creation(mid, date),
-        Operation::AlbumCreation { timestamp: Utc::now(), album_id: aid, name: "A".into(), album_id_parent: None },
-        Operation::GroupCreation { timestamp: Utc::now(), group_id: gid1, album_id_parent: aid },
-        Operation::GroupCreation { timestamp: Utc::now(), group_id: gid2, album_id_parent: aid },
-        Operation::GroupMediaAdd { timestamp: Utc::now(), group_id: gid1, media_id: mid },
-        Operation::GroupMediaAdd { timestamp: Utc::now(), group_id: gid2, media_id: mid },
-        Operation::GroupMediaRemove { timestamp: Utc::now(), group_id: gid1, media_id: mid },
+        Operation::AlbumCreation {
+            timestamp: Utc::now(),
+            album_id: aid,
+            name: "A".into(),
+            album_id_parent: None,
+        },
+        Operation::GroupCreation {
+            timestamp: Utc::now(),
+            group_id: gid1,
+            album_id_parent: aid,
+        },
+        Operation::GroupCreation {
+            timestamp: Utc::now(),
+            group_id: gid2,
+            album_id_parent: aid,
+        },
+        Operation::GroupMediaAdd {
+            timestamp: Utc::now(),
+            group_id: gid1,
+            media_id: mid,
+        },
+        Operation::GroupMediaAdd {
+            timestamp: Utc::now(),
+            group_id: gid2,
+            media_id: mid,
+        },
+        Operation::GroupMediaRemove {
+            timestamp: Utc::now(),
+            group_id: gid1,
+            media_id: mid,
+        },
     ])];
     let state2 = reconstruct_state(&groups2);
     let views2 = build_computed_views(&state2);
@@ -315,12 +503,36 @@ fn media_group_membership_reverse_index() {
     // After group deletion
     let groups3 = vec![op_group(vec![
         media_creation(mid, date),
-        Operation::AlbumCreation { timestamp: Utc::now(), album_id: aid, name: "A".into(), album_id_parent: None },
-        Operation::GroupCreation { timestamp: Utc::now(), group_id: gid1, album_id_parent: aid },
-        Operation::GroupCreation { timestamp: Utc::now(), group_id: gid2, album_id_parent: aid },
-        Operation::GroupMediaAdd { timestamp: Utc::now(), group_id: gid1, media_id: mid },
-        Operation::GroupMediaAdd { timestamp: Utc::now(), group_id: gid2, media_id: mid },
-        Operation::GroupDeletion { timestamp: Utc::now(), group_id: gid1 },
+        Operation::AlbumCreation {
+            timestamp: Utc::now(),
+            album_id: aid,
+            name: "A".into(),
+            album_id_parent: None,
+        },
+        Operation::GroupCreation {
+            timestamp: Utc::now(),
+            group_id: gid1,
+            album_id_parent: aid,
+        },
+        Operation::GroupCreation {
+            timestamp: Utc::now(),
+            group_id: gid2,
+            album_id_parent: aid,
+        },
+        Operation::GroupMediaAdd {
+            timestamp: Utc::now(),
+            group_id: gid1,
+            media_id: mid,
+        },
+        Operation::GroupMediaAdd {
+            timestamp: Utc::now(),
+            group_id: gid2,
+            media_id: mid,
+        },
+        Operation::GroupDeletion {
+            timestamp: Utc::now(),
+            group_id: gid1,
+        },
     ])];
     let state3 = reconstruct_state(&groups3);
     let views3 = build_computed_views(&state3);
@@ -339,10 +551,27 @@ fn duplicate_group_media_add_does_not_duplicate() {
 
     let groups = vec![op_group(vec![
         media_creation(mid, date),
-        Operation::AlbumCreation { timestamp: Utc::now(), album_id: aid, name: "A".into(), album_id_parent: None },
-        Operation::GroupCreation { timestamp: Utc::now(), group_id: gid, album_id_parent: aid },
-        Operation::GroupMediaAdd { timestamp: Utc::now(), group_id: gid, media_id: mid },
-        Operation::GroupMediaAdd { timestamp: Utc::now(), group_id: gid, media_id: mid },
+        Operation::AlbumCreation {
+            timestamp: Utc::now(),
+            album_id: aid,
+            name: "A".into(),
+            album_id_parent: None,
+        },
+        Operation::GroupCreation {
+            timestamp: Utc::now(),
+            group_id: gid,
+            album_id_parent: aid,
+        },
+        Operation::GroupMediaAdd {
+            timestamp: Utc::now(),
+            group_id: gid,
+            media_id: mid,
+        },
+        Operation::GroupMediaAdd {
+            timestamp: Utc::now(),
+            group_id: gid,
+            media_id: mid,
+        },
     ])];
     let state = reconstruct_state(&groups);
 
@@ -359,11 +588,32 @@ fn media_in_album_and_group_remains_reachable_after_removal_from_one() {
     // Media in both album and group. Remove from album only.
     let groups = vec![op_group(vec![
         media_creation(mid, date),
-        Operation::AlbumCreation { timestamp: Utc::now(), album_id: aid, name: "A".into(), album_id_parent: None },
-        Operation::AlbumMediaAdd { timestamp: Utc::now(), album_id: aid, media_id: mid },
-        Operation::GroupCreation { timestamp: Utc::now(), group_id: gid, album_id_parent: aid },
-        Operation::GroupMediaAdd { timestamp: Utc::now(), group_id: gid, media_id: mid },
-        Operation::AlbumMediaRemove { timestamp: Utc::now(), album_id: aid, media_id: mid },
+        Operation::AlbumCreation {
+            timestamp: Utc::now(),
+            album_id: aid,
+            name: "A".into(),
+            album_id_parent: None,
+        },
+        Operation::AlbumMediaAdd {
+            timestamp: Utc::now(),
+            album_id: aid,
+            media_id: mid,
+        },
+        Operation::GroupCreation {
+            timestamp: Utc::now(),
+            group_id: gid,
+            album_id_parent: aid,
+        },
+        Operation::GroupMediaAdd {
+            timestamp: Utc::now(),
+            group_id: gid,
+            media_id: mid,
+        },
+        Operation::AlbumMediaRemove {
+            timestamp: Utc::now(),
+            album_id: aid,
+            media_id: mid,
+        },
     ])];
     let state = reconstruct_state(&groups);
     let views = build_computed_views(&state);
@@ -374,12 +624,37 @@ fn media_in_album_and_group_remains_reachable_after_removal_from_one() {
     // Remove from group too
     let groups2 = vec![op_group(vec![
         media_creation(mid, date),
-        Operation::AlbumCreation { timestamp: Utc::now(), album_id: aid, name: "A".into(), album_id_parent: None },
-        Operation::AlbumMediaAdd { timestamp: Utc::now(), album_id: aid, media_id: mid },
-        Operation::GroupCreation { timestamp: Utc::now(), group_id: gid, album_id_parent: aid },
-        Operation::GroupMediaAdd { timestamp: Utc::now(), group_id: gid, media_id: mid },
-        Operation::AlbumMediaRemove { timestamp: Utc::now(), album_id: aid, media_id: mid },
-        Operation::GroupMediaRemove { timestamp: Utc::now(), group_id: gid, media_id: mid },
+        Operation::AlbumCreation {
+            timestamp: Utc::now(),
+            album_id: aid,
+            name: "A".into(),
+            album_id_parent: None,
+        },
+        Operation::AlbumMediaAdd {
+            timestamp: Utc::now(),
+            album_id: aid,
+            media_id: mid,
+        },
+        Operation::GroupCreation {
+            timestamp: Utc::now(),
+            group_id: gid,
+            album_id_parent: aid,
+        },
+        Operation::GroupMediaAdd {
+            timestamp: Utc::now(),
+            group_id: gid,
+            media_id: mid,
+        },
+        Operation::AlbumMediaRemove {
+            timestamp: Utc::now(),
+            album_id: aid,
+            media_id: mid,
+        },
+        Operation::GroupMediaRemove {
+            timestamp: Utc::now(),
+            group_id: gid,
+            media_id: mid,
+        },
     ])];
     let state2 = reconstruct_state(&groups2);
     let views2 = build_computed_views(&state2);
