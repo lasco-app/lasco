@@ -653,7 +653,7 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     
     func listMedia() throws  -> [FfiMediaItem]
     
-    func listOperationGroups() throws  -> [FfiOperationGroup]
+    func listOperations() throws  -> [FfiCrdtOperation]
     
     func listRemotes()  -> [FfiRemote]
     
@@ -1203,9 +1203,9 @@ nonisolated open func listMedia()throws  -> [FfiMediaItem]  {
 })
 }
     
-nonisolated open func listOperationGroups()throws  -> [FfiOperationGroup]  {
-    return try  FfiConverterSequenceTypeFfiOperationGroup.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
-    uniffi_lasco_ffi_fn_method_ffilibrary_list_operation_groups(self.uniffiClonePointer(),$0
+nonisolated open func listOperations()throws  -> [FfiCrdtOperation]  {
+    return try  FfiConverterSequenceTypeFfiCrdtOperation.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_list_operations(self.uniffiClonePointer(),$0
     )
 })
 }
@@ -1840,6 +1840,84 @@ nonisolated public func FfiConverterTypeFfiAlbumUuid_lower(_ value: FfiAlbumUuid
 }
 
 
+nonisolated public struct FfiCrdtOperation {
+    public var dot: FfiDot
+    public var author: String
+    public var operation: FfiOperation
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(dot: FfiDot, author: String, operation: FfiOperation) {
+        self.dot = dot
+        self.author = author
+        self.operation = operation
+    }
+}
+
+#if compiler(>=6)
+nonisolated extension FfiCrdtOperation: Sendable {}
+#endif
+
+
+nonisolated extension FfiCrdtOperation: Equatable, Hashable {
+    public static func ==(lhs: FfiCrdtOperation, rhs: FfiCrdtOperation) -> Bool {
+        if lhs.dot != rhs.dot {
+            return false
+        }
+        if lhs.author != rhs.author {
+            return false
+        }
+        if lhs.operation != rhs.operation {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(dot)
+        hasher.combine(author)
+        hasher.combine(operation)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public struct FfiConverterTypeFfiCrdtOperation: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiCrdtOperation {
+        return
+            try FfiCrdtOperation(
+                dot: FfiConverterTypeFfiDot.read(from: &buf), 
+                author: FfiConverterString.read(from: &buf), 
+                operation: FfiConverterTypeFfiOperation.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiCrdtOperation, into buf: inout [UInt8]) {
+        FfiConverterTypeFfiDot.write(value.dot, into: &buf)
+        FfiConverterString.write(value.author, into: &buf)
+        FfiConverterTypeFfiOperation.write(value.operation, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public func FfiConverterTypeFfiCrdtOperation_lift(_ buf: RustBuffer) throws -> FfiCrdtOperation {
+    return try FfiConverterTypeFfiCrdtOperation.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public func FfiConverterTypeFfiCrdtOperation_lower(_ value: FfiCrdtOperation) -> RustBuffer {
+    return FfiConverterTypeFfiCrdtOperation.lower(value)
+}
+
+
 nonisolated public struct FfiCreateLibraryResult {
     public var libraryId: FfiLibraryId
     public var masterKeyHex: String
@@ -1907,6 +1985,76 @@ nonisolated public func FfiConverterTypeFfiCreateLibraryResult_lift(_ buf: RustB
 #endif
 nonisolated public func FfiConverterTypeFfiCreateLibraryResult_lower(_ value: FfiCreateLibraryResult) -> RustBuffer {
     return FfiConverterTypeFfiCreateLibraryResult.lower(value)
+}
+
+
+nonisolated public struct FfiDot {
+    public var lamportCounter: UInt64
+    public var deviceId: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(lamportCounter: UInt64, deviceId: String) {
+        self.lamportCounter = lamportCounter
+        self.deviceId = deviceId
+    }
+}
+
+#if compiler(>=6)
+nonisolated extension FfiDot: Sendable {}
+#endif
+
+
+nonisolated extension FfiDot: Equatable, Hashable {
+    public static func ==(lhs: FfiDot, rhs: FfiDot) -> Bool {
+        if lhs.lamportCounter != rhs.lamportCounter {
+            return false
+        }
+        if lhs.deviceId != rhs.deviceId {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(lamportCounter)
+        hasher.combine(deviceId)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public struct FfiConverterTypeFfiDot: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiDot {
+        return
+            try FfiDot(
+                lamportCounter: FfiConverterUInt64.read(from: &buf), 
+                deviceId: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiDot, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.lamportCounter, into: &buf)
+        FfiConverterString.write(value.deviceId, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public func FfiConverterTypeFfiDot_lift(_ buf: RustBuffer) throws -> FfiDot {
+    return try FfiConverterTypeFfiDot.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public func FfiConverterTypeFfiDot_lower(_ value: FfiDot) -> RustBuffer {
+    return FfiConverterTypeFfiDot.lower(value)
 }
 
 
@@ -2856,68 +3004,6 @@ nonisolated public func FfiConverterTypeFfiMediaUuid_lower(_ value: FfiMediaUuid
 }
 
 
-nonisolated public struct FfiOpUuid {
-    public var value: String
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(value: String) {
-        self.value = value
-    }
-}
-
-#if compiler(>=6)
-nonisolated extension FfiOpUuid: Sendable {}
-#endif
-
-
-nonisolated extension FfiOpUuid: Equatable, Hashable {
-    public static func ==(lhs: FfiOpUuid, rhs: FfiOpUuid) -> Bool {
-        if lhs.value != rhs.value {
-            return false
-        }
-        return true
-    }
-
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(value)
-    }
-}
-
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-nonisolated public struct FfiConverterTypeFfiOpUuid: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiOpUuid {
-        return
-            try FfiOpUuid(
-                value: FfiConverterString.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: FfiOpUuid, into buf: inout [UInt8]) {
-        FfiConverterString.write(value.value, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-nonisolated public func FfiConverterTypeFfiOpUuid_lift(_ buf: RustBuffer) throws -> FfiOpUuid {
-    return try FfiConverterTypeFfiOpUuid.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-nonisolated public func FfiConverterTypeFfiOpUuid_lower(_ value: FfiOpUuid) -> RustBuffer {
-    return FfiConverterTypeFfiOpUuid.lower(value)
-}
-
-
 nonisolated public struct FfiOperation {
     public var kind: String
     public var timestamp: String
@@ -2993,92 +3079,6 @@ nonisolated public func FfiConverterTypeFfiOperation_lift(_ buf: RustBuffer) thr
 #endif
 nonisolated public func FfiConverterTypeFfiOperation_lower(_ value: FfiOperation) -> RustBuffer {
     return FfiConverterTypeFfiOperation.lower(value)
-}
-
-
-nonisolated public struct FfiOperationGroup {
-    public var opId: FfiOpUuid
-    public var parentOpId: FfiOpUuid?
-    public var operations: [FfiOperation]
-    public var author: String
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(opId: FfiOpUuid, parentOpId: FfiOpUuid?, operations: [FfiOperation], author: String) {
-        self.opId = opId
-        self.parentOpId = parentOpId
-        self.operations = operations
-        self.author = author
-    }
-}
-
-#if compiler(>=6)
-nonisolated extension FfiOperationGroup: Sendable {}
-#endif
-
-
-nonisolated extension FfiOperationGroup: Equatable, Hashable {
-    public static func ==(lhs: FfiOperationGroup, rhs: FfiOperationGroup) -> Bool {
-        if lhs.opId != rhs.opId {
-            return false
-        }
-        if lhs.parentOpId != rhs.parentOpId {
-            return false
-        }
-        if lhs.operations != rhs.operations {
-            return false
-        }
-        if lhs.author != rhs.author {
-            return false
-        }
-        return true
-    }
-
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(opId)
-        hasher.combine(parentOpId)
-        hasher.combine(operations)
-        hasher.combine(author)
-    }
-}
-
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-nonisolated public struct FfiConverterTypeFfiOperationGroup: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiOperationGroup {
-        return
-            try FfiOperationGroup(
-                opId: FfiConverterTypeFfiOpUuid.read(from: &buf), 
-                parentOpId: FfiConverterOptionTypeFfiOpUuid.read(from: &buf), 
-                operations: FfiConverterSequenceTypeFfiOperation.read(from: &buf), 
-                author: FfiConverterString.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: FfiOperationGroup, into buf: inout [UInt8]) {
-        FfiConverterTypeFfiOpUuid.write(value.opId, into: &buf)
-        FfiConverterOptionTypeFfiOpUuid.write(value.parentOpId, into: &buf)
-        FfiConverterSequenceTypeFfiOperation.write(value.operations, into: &buf)
-        FfiConverterString.write(value.author, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-nonisolated public func FfiConverterTypeFfiOperationGroup_lift(_ buf: RustBuffer) throws -> FfiOperationGroup {
-    return try FfiConverterTypeFfiOperationGroup.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-nonisolated public func FfiConverterTypeFfiOperationGroup_lower(_ value: FfiOperationGroup) -> RustBuffer {
-    return FfiConverterTypeFfiOperationGroup.lower(value)
 }
 
 
@@ -3562,30 +3562,6 @@ nonisolated fileprivate struct FfiConverterOptionTypeFfiMediaUuid: FfiConverterR
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated fileprivate struct FfiConverterOptionTypeFfiOpUuid: FfiConverterRustBuffer {
-    typealias SwiftType = FfiOpUuid?
-
-    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
-        guard let value = value else {
-            writeInt(&buf, Int8(0))
-            return
-        }
-        writeInt(&buf, Int8(1))
-        FfiConverterTypeFfiOpUuid.write(value, into: &buf)
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
-        switch try readInt(&buf) as Int8 {
-        case 0: return nil
-        case 1: return try FfiConverterTypeFfiOpUuid.read(from: &buf)
-        default: throw UniffiInternalError.unexpectedOptionalTag
-        }
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
 nonisolated fileprivate struct FfiConverterOptionTypeFfiRemoteUuid: FfiConverterRustBuffer {
     typealias SwiftType = FfiRemoteUuid?
 
@@ -3702,6 +3678,31 @@ nonisolated fileprivate struct FfiConverterSequenceTypeFfiAlbumUuid: FfiConverte
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeFfiAlbumUuid.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated fileprivate struct FfiConverterSequenceTypeFfiCrdtOperation: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiCrdtOperation]
+
+    public static func write(_ value: [FfiCrdtOperation], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiCrdtOperation.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiCrdtOperation] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiCrdtOperation]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiCrdtOperation.read(from: &buf))
         }
         return seq
     }
@@ -3852,56 +3853,6 @@ nonisolated fileprivate struct FfiConverterSequenceTypeFfiMediaUuid: FfiConverte
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeFfiMediaUuid.read(from: &buf))
-        }
-        return seq
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-nonisolated fileprivate struct FfiConverterSequenceTypeFfiOperation: FfiConverterRustBuffer {
-    typealias SwiftType = [FfiOperation]
-
-    public static func write(_ value: [FfiOperation], into buf: inout [UInt8]) {
-        let len = Int32(value.count)
-        writeInt(&buf, len)
-        for item in value {
-            FfiConverterTypeFfiOperation.write(item, into: &buf)
-        }
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiOperation] {
-        let len: Int32 = try readInt(&buf)
-        var seq = [FfiOperation]()
-        seq.reserveCapacity(Int(len))
-        for _ in 0 ..< len {
-            seq.append(try FfiConverterTypeFfiOperation.read(from: &buf))
-        }
-        return seq
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-nonisolated fileprivate struct FfiConverterSequenceTypeFfiOperationGroup: FfiConverterRustBuffer {
-    typealias SwiftType = [FfiOperationGroup]
-
-    public static func write(_ value: [FfiOperationGroup], into buf: inout [UInt8]) {
-        let len = Int32(value.count)
-        writeInt(&buf, len)
-        for item in value {
-            FfiConverterTypeFfiOperationGroup.write(item, into: &buf)
-        }
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiOperationGroup] {
-        let len: Int32 = try readInt(&buf)
-        var seq = [FfiOperationGroup]()
-        seq.reserveCapacity(Int(len))
-        for _ in 0 ..< len {
-            seq.append(try FfiConverterTypeFfiOperationGroup.read(from: &buf))
         }
         return seq
     }
@@ -4222,7 +4173,7 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_list_media() != 48443) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_list_operation_groups() != 12991) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_list_operations() != 224) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_list_remotes() != 6196) {

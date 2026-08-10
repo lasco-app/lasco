@@ -1,32 +1,25 @@
+use lasco_core::crdt::{CrdtOperation, OperationContent};
 use lasco_core::identifiers::RemoteUuid;
 use lasco_core::library::sync::{PushMediaSource, remote_access::StorageRead};
 use lasco_core::library_json::{
     DebugLocalAndroidConfig, DebugLocalAppleConfig, FixedPathConfig, LibraryJson, RemoteConfig,
     RemoteKind, UsbAndroidConfig, UsbAppleConfig, save_library,
 };
-use lasco_core::operations::{LibraryPassword, LibraryUsername, Operation};
+use lasco_core::operations::{LibraryPassword, LibraryUsername};
 use std::path::PathBuf;
 
-use super::{FfiKv, FfiLibrary, FfiMediaItem, FfiOperation, FfiOperationGroup, FfiRemote};
+use super::{FfiCrdtOperation, FfiDot, FfiKv, FfiLibrary, FfiMediaItem, FfiOperation, FfiRemote};
 use crate::error::LascoError;
 use crate::ids::FfiRemoteUuid;
 
 #[uniffi::export]
 impl FfiLibrary {
-    pub fn list_operation_groups(&self) -> Result<Vec<FfiOperationGroup>, LascoError> {
-        let groups = self.inner.list_operation_groups()?;
-        Ok(groups
+    pub fn list_operations(&self) -> Result<Vec<FfiCrdtOperation>, LascoError> {
+        Ok(self
+            .inner
+            .list_operations()?
             .into_iter()
-            .map(|g| {
-                let ops: Vec<FfiOperation> =
-                    g.operations.into_iter().map(operation_to_ffi).collect();
-                FfiOperationGroup {
-                    op_id: g.op_id.into(),
-                    parent_op_id: g.parent_op_id.map(Into::into),
-                    operations: ops,
-                    author: g.author.0,
-                }
-            })
+            .map(crdt_operation_to_ffi)
             .collect())
     }
 
@@ -664,166 +657,116 @@ fn opt_kv(key: &str, value: Option<impl ToString>) -> FfiKv {
     }
 }
 
-pub(super) fn operation_to_ffi(op: Operation) -> FfiOperation {
+pub(super) fn crdt_operation_to_ffi(op: CrdtOperation) -> FfiCrdtOperation {
+    FfiCrdtOperation {
+        dot: FfiDot {
+            lamport_counter: op.dot.lamport_counter,
+            device_id: format!("{:032x}", op.dot.device_id.0),
+        },
+        author: op.author.0,
+        operation: operation_to_ffi(op.content, op.timestamp.to_rfc3339()),
+    }
+}
+
+fn operation_to_ffi(op: OperationContent, timestamp: String) -> FfiOperation {
     match op {
-        Operation::MediaCreation {
-            timestamp,
-            media_id,
-            filename_original,
-            date,
-            storage_date,
-            size_bytes,
-            ..
-        } => FfiOperation {
+        OperationContent::MediaCreation(creation) => FfiOperation {
             kind: "MediaCreation".to_string(),
-            timestamp: timestamp.to_rfc3339(),
+            timestamp: timestamp.clone(),
             args: vec![
-                kv("media_id", media_id),
-                kv("filename_original", filename_original),
-                kv("date", date.to_rfc3339()),
-                kv("year", storage_date.year),
-                kv("month", storage_date.month),
-                kv("size_bytes", size_bytes),
+                kv("media_id", creation.media_id),
+                kv("filename_original", creation.filename_original),
+                kv("date", creation.date.to_rfc3339()),
+                kv("year", creation.storage_date.year),
+                kv("month", creation.storage_date.month),
+                kv("size_bytes", creation.size_bytes),
             ],
         },
-        Operation::MediaRename {
-            timestamp,
-            media_id,
-            name,
-            ..
-        } => FfiOperation {
+        OperationContent::MediaRename { media_id, name } => FfiOperation {
             kind: "MediaRename".to_string(),
-            timestamp: timestamp.to_rfc3339(),
+            timestamp: timestamp.clone(),
             args: vec![kv("media_id", media_id), opt_kv("name", name)],
         },
-        Operation::MediaPropsUpdate {
-            timestamp,
+        OperationContent::MediaPropsUpdate {
             media_id,
             key,
             value,
-            ..
         } => FfiOperation {
             kind: "MediaPropsUpdate".to_string(),
-            timestamp: timestamp.to_rfc3339(),
+            timestamp: timestamp.clone(),
             args: vec![kv("media_id", media_id), kv("key", key), kv("value", value)],
         },
-        Operation::AlbumCreation {
-            timestamp,
+        OperationContent::AlbumCreation {
             album_id,
             name,
-            album_id_parent,
-            ..
+            parent_id,
         } => FfiOperation {
             kind: "AlbumCreation".to_string(),
-            timestamp: timestamp.to_rfc3339(),
+            timestamp: timestamp.clone(),
             args: vec![
                 kv("album_id", album_id),
                 kv("name", name),
-                opt_kv("parent_id", album_id_parent),
+                opt_kv("parent_id", parent_id),
             ],
         },
-        Operation::AlbumMediaAdd {
-            timestamp,
-            album_id,
-            media_id,
-            ..
-        } => FfiOperation {
+        OperationContent::AlbumMediaAdd { album_id, media_id } => FfiOperation {
             kind: "AlbumMediaAdd".to_string(),
-            timestamp: timestamp.to_rfc3339(),
+            timestamp: timestamp.clone(),
             args: vec![kv("album_id", album_id), kv("media_id", media_id)],
         },
-        Operation::AlbumMediaRemove {
-            timestamp,
-            album_id,
-            media_id,
-            ..
+        OperationContent::AlbumMediaRemove {
+            album_id, media_id, ..
         } => FfiOperation {
             kind: "AlbumMediaRemove".to_string(),
-            timestamp: timestamp.to_rfc3339(),
+            timestamp: timestamp.clone(),
             args: vec![kv("album_id", album_id), kv("media_id", media_id)],
         },
-        Operation::AlbumDeletion {
-            timestamp,
-            album_id,
-            ..
-        } => FfiOperation {
+        OperationContent::AlbumDeletion { album_id } => FfiOperation {
             kind: "AlbumDeletion".to_string(),
-            timestamp: timestamp.to_rfc3339(),
+            timestamp: timestamp.clone(),
             args: vec![kv("album_id", album_id)],
         },
-        Operation::AlbumRename {
-            timestamp,
-            album_id,
-            name,
-            ..
-        } => FfiOperation {
+        OperationContent::AlbumRename { album_id, name } => FfiOperation {
             kind: "AlbumRename".to_string(),
-            timestamp: timestamp.to_rfc3339(),
-            args: vec![kv("album_id", album_id), kv("name", name)],
+            timestamp: timestamp.clone(),
+            args: vec![kv("album_id", album_id), opt_kv("name", name)],
         },
-        Operation::AlbumReparent {
-            timestamp,
+        OperationContent::AlbumReparent {
             album_id,
-            new_parent_id,
-            ..
+            parent_id,
         } => FfiOperation {
             kind: "AlbumReparent".to_string(),
-            timestamp: timestamp.to_rfc3339(),
-            args: vec![
-                kv("album_id", album_id),
-                opt_kv("new_parent_id", new_parent_id),
-            ],
+            timestamp: timestamp.clone(),
+            args: vec![kv("album_id", album_id), opt_kv("new_parent_id", parent_id)],
         },
-        Operation::AlbumThumbnailSet {
-            timestamp,
-            album_id,
-            media_id,
-            ..
-        } => FfiOperation {
+        OperationContent::AlbumThumbnailSet { album_id, media_id } => FfiOperation {
             kind: "AlbumThumbnailSet".to_string(),
-            timestamp: timestamp.to_rfc3339(),
+            timestamp: timestamp.clone(),
             args: vec![kv("album_id", album_id), opt_kv("media_id", media_id)],
         },
-        Operation::GroupCreation {
-            timestamp,
+        OperationContent::GroupCreation {
             group_id,
-            album_id_parent,
-            ..
+            parent_id,
         } => FfiOperation {
             kind: "GroupCreation".to_string(),
-            timestamp: timestamp.to_rfc3339(),
-            args: vec![
-                kv("group_id", group_id),
-                kv("album_id_parent", album_id_parent),
-            ],
+            timestamp: timestamp.clone(),
+            args: vec![kv("group_id", group_id), kv("album_id_parent", parent_id)],
         },
-        Operation::GroupMediaAdd {
-            timestamp,
-            group_id,
-            media_id,
-            ..
-        } => FfiOperation {
+        OperationContent::GroupMediaAdd { group_id, media_id } => FfiOperation {
             kind: "GroupMediaAdd".to_string(),
-            timestamp: timestamp.to_rfc3339(),
+            timestamp: timestamp.clone(),
             args: vec![kv("group_id", group_id), kv("media_id", media_id)],
         },
-        Operation::GroupMediaRemove {
-            timestamp,
-            group_id,
-            media_id,
-            ..
+        OperationContent::GroupMediaRemove {
+            group_id, media_id, ..
         } => FfiOperation {
             kind: "GroupMediaRemove".to_string(),
-            timestamp: timestamp.to_rfc3339(),
+            timestamp: timestamp.clone(),
             args: vec![kv("group_id", group_id), kv("media_id", media_id)],
         },
-        Operation::GroupDeletion {
-            timestamp,
-            group_id,
-            ..
-        } => FfiOperation {
+        OperationContent::GroupDeletion { group_id } => FfiOperation {
             kind: "GroupDeletion".to_string(),
-            timestamp: timestamp.to_rfc3339(),
+            timestamp,
             args: vec![kv("group_id", group_id)],
         },
     }

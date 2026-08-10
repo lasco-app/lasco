@@ -582,7 +582,7 @@ final class StatusModel {
 @MainActor
 @Observable
 final class OperationsModel {
-    private(set) var operationGroups: [FfiOperationGroup] = []
+    private(set) var operations: [FfiCrdtOperation] = []
     private let repository: any LibraryRepositoryProtocol
 
     init(repository: any LibraryRepositoryProtocol) {
@@ -599,6 +599,6 @@ final class OperationsModel {
     }
 
     func load() async {
-        operationGroups = (try? await repository.listOperationGroups()) ?? []
+        operations = (try? await repository.listOperations()) ?? []
     }
 }

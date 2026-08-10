@@ -1,4 +1,4 @@
-use lasco_core::identifiers::{AlbumUuid, GroupUuid, LibraryId, MediaUuid, OpUuid, RemoteUuid};
+use lasco_core::identifiers::{AlbumUuid, GroupUuid, LibraryId, MediaUuid, RemoteUuid};
 
 use crate::error::LascoError;
 
@@ -45,4 +45,3 @@ ffi_id!(FfiAlbumUuid, AlbumUuid, "album id");
 ffi_id!(FfiGroupUuid, GroupUuid, "group id");
 ffi_id!(FfiRemoteUuid, RemoteUuid, "remote id");
 ffi_id!(FfiLibraryId, LibraryId, "library id");
-ffi_id!(FfiOpUuid, OpUuid, "operation id");

@@ -40,7 +40,10 @@ impl FfiLibrary {
             .map_err(LascoError::from)
     }
 
-    pub fn group_list_media(&self, group_id: FfiGroupUuid) -> Result<Vec<FfiMediaItem>, LascoError> {
+    pub fn group_list_media(
+        &self,
+        group_id: FfiGroupUuid,
+    ) -> Result<Vec<FfiMediaItem>, LascoError> {
         let group_uuid = group_id.try_into()?;
         let entries = self
             .inner
