@@ -31,7 +31,7 @@ impl LocalStateLibraryDir {
     }
 }
 
-/// `local_state/operations.log` and `local_state/pending.op`.
+/// `local_state/operations.log`: append-only encrypted individual CRDT operations.
 #[derive(Clone, Debug)]
 pub struct LocalStateOperations {
     local_state_dir: PathBuf,
@@ -53,10 +53,6 @@ impl LocalStateCrdt {
 impl LocalStateOperations {
     pub fn operations_log_path(&self) -> PathBuf {
         self.local_state_dir.join("operations.log")
-    }
-
-    pub fn pending_op_path(&self) -> PathBuf {
-        self.local_state_dir.join("pending.op")
     }
 }
 

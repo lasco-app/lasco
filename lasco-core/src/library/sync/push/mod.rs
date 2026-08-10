@@ -7,8 +7,8 @@ use crate::library::local_dirs::{
     LocalStateLibraryDir, LocalStateMediaDir, RemoteLastKnownStateDir, RemoteMediaList,
 };
 use crate::operations::remote_ops::{self as op_io, RemoteOpFile};
-use crate::operations::{CompactionEntry, CompactionFile, StorageDate};
-use crate::remote::last_known_state::collect_group_ids_from_dir;
+use crate::operations::{CompactionFile, StorageDate};
+use crate::remote::last_known_state::collect_dots_from_dir;
 use crate::remote::{LastKnownState, MediaList};
 
 use super::compaction::{
@@ -124,8 +124,8 @@ impl Library {
         // an implicit fetch.
         let ops_dir = remote_last_known_state_dir.operations_dir();
         let mut last_known_state = LastKnownState::open(remote_last_known_state_dir)?;
-        let remote_covered = collect_group_ids_from_dir(&ops_dir, master_key)
-            .map_err(SyncError::LocalCacheCorrupt)?;
+        let remote_covered =
+            collect_dots_from_dir(&ops_dir, master_key).map_err(SyncError::LocalCacheCorrupt)?;
 
         // Only the snapshot read is locked. Network storage awaits below must remain unlocked.
         let media_list = self.inner.remote_media_list_lock.with_lock(
@@ -161,51 +161,30 @@ impl Library {
             }
         }
 
-        // Flush any pending (unpushed) op group into the main log before uploading.
-        let flushed_pending = {
-            let mut local_ops = self.local_ops_read_write();
-            if let Some(pending) = local_ops.read_pending()? {
-                local_ops.append_log(&pending)?;
-                // Deleting only after the append makes an interruption safe: it can
-                // leave a duplicate group, but the log reader deduplicates by op_id.
-                local_ops.remove_pending()?;
-                true
-            } else {
-                false
-            }
-        };
-        if flushed_pending {
-            self.load_local_state().await?;
-        }
-
-        // Read all local op groups from the log.
-        let local_groups = self.local_ops_read_write().read_log_groups()?;
-        let ops_to_upload: Vec<_> = local_groups
-            .into_iter()
-            .filter(|g| !remote_covered.contains(&g.op_id))
+        let ops_to_upload: Vec<_> = self
+            .inner
+            .crdt_replica_state
+            .read()
+            .outgoing
+            .iter()
+            .filter(|operation| !remote_covered.contains(&operation.dot))
+            .cloned()
             .collect();
 
         let ops_uploaded = ops_to_upload.len();
         let mut compactions_run = 0usize;
 
         if !ops_to_upload.is_empty() {
-            let op_count: u32 = ops_to_upload
-                .iter()
-                .map(|g| g.operations.len() as u32)
-                .sum();
+            let op_count = ops_to_upload.len() as u32;
             let tier = appropriate_tier(op_count as usize);
             {
                 // Upload as a single compaction file at the tier that fits this batch.
                 let file_uuid = CompactedOpId::new();
-                let contents: Vec<CompactionEntry> = ops_to_upload
-                    .iter()
-                    .map(|g| CompactionEntry {
-                        op_id: g.op_id,
-                        group: g.clone(),
-                    })
-                    .collect();
                 let key = format!("operations/{file_uuid}.op{tier}_{op_count}");
-                let comp_file = CompactionFile { tier, contents };
+                let comp_file = CompactionFile {
+                    tier,
+                    operations: ops_to_upload.clone(),
+                };
                 let blob =
                     crate::operations::encrypt_compaction_file(master_key, &file_uuid, &comp_file)
                         .map_err(map_op_err)?;

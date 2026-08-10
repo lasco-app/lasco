@@ -3,18 +3,18 @@ use std::path::{Path, PathBuf};
 
 use aes_gcm::aead::generic_array::typenum::Unsigned;
 use aes_gcm::{
-    aead::{Aead, AeadCore},
     Aes256Gcm, Key as AesKey, KeyInit,
+    aead::{Aead, AeadCore},
 };
 use chacha20poly1305::Key as XChaChaKey;
-use rand::rngs::OsRng;
 use rand::RngCore;
+use rand::rngs::OsRng;
 use uuid::Uuid;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::encryption::error::KeychainError;
-use crate::encryption::kek::{derive_kek, KEK_SIZE};
-use crate::encryption::library_salt::{read_salt_file, LibrarySalt};
+use crate::encryption::kek::{KEK_SIZE, derive_kek};
+use crate::encryption::library_salt::{LibrarySalt, read_salt_file};
 use crate::library::PROTOCOL_VERSION;
 
 pub type Result<T> = std::result::Result<T, KeychainError>;
@@ -73,10 +73,7 @@ fn aes_gcm_encrypt(key_bytes: &[u8; KEK_SIZE], plaintext: &[u8]) -> Vec<u8> {
     out
 }
 
-fn aes_gcm_decrypt(
-    key_bytes: &[u8; KEK_SIZE],
-    bytes: &[u8],
-) -> Result<Vec<u8>> {
+fn aes_gcm_decrypt(key_bytes: &[u8; KEK_SIZE], bytes: &[u8]) -> Result<Vec<u8>> {
     if bytes.len() < FILE_HEADER_LEN {
         return Err(KeychainError::TooShort);
     }
@@ -152,8 +149,9 @@ pub fn read_mk_file(
     password: &str,
 ) -> Result<MasterKey> {
     let path = mk_path(lib_dir, username, password_uuid);
-    let bytes = std::fs::read(&path)
-        .map_err(|_| KeychainError::NotFound(format!("mk_{username}_{password_uuid}.enc not found")))?;
+    let bytes = std::fs::read(&path).map_err(|_| {
+        KeychainError::NotFound(format!("mk_{username}_{password_uuid}.enc not found"))
+    })?;
     let kek = derive_kek(password, salt);
     let plaintext = aes_gcm_decrypt(kek.as_ref(), &bytes)?;
     deserialize_mk(&plaintext)
@@ -169,8 +167,7 @@ pub fn find_master_key(
     let salt = read_salt_file(lib_dir)?;
     let kek = derive_kek(password, salt);
 
-    let entries = std::fs::read_dir(lib_dir)
-        .map_err(|e| KeychainError::Io(e.to_string()))?;
+    let entries = std::fs::read_dir(lib_dir).map_err(|e| KeychainError::Io(e.to_string()))?;
 
     for entry in entries.flatten() {
         let name = entry.file_name();
@@ -195,7 +192,12 @@ pub fn find_master_key(
 }
 
 /// Open with a known password UUID (fast path, avoids iterating all mk files).
-pub fn open_master_key(lib_dir: &Path, username: &str, password_uuid: Uuid, password: &str) -> Result<MasterKey> {
+pub fn open_master_key(
+    lib_dir: &Path,
+    username: &str,
+    password_uuid: Uuid,
+    password: &str,
+) -> Result<MasterKey> {
     let salt = read_salt_file(lib_dir)?;
     read_mk_file(lib_dir, username, password_uuid, salt, password)
 }

@@ -74,7 +74,9 @@ fn build_usb_android_storage(_tree_uri: &str) -> Result<Box<dyn Storage + Send +
 
 #[cfg(target_vendor = "apple")]
 fn build_usb_apple_storage(bookmark_base64: &str) -> Result<Box<dyn Storage + Send + Sync>> {
-    Ok(Box::new(crate::storage::StorageUsbApple::new(bookmark_base64)?))
+    Ok(Box::new(crate::storage::StorageUsbApple::new(
+        bookmark_base64,
+    )?))
 }
 
 #[cfg(not(target_vendor = "apple"))]

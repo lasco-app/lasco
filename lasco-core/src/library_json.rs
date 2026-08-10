@@ -1,10 +1,10 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
-use crate::config_json::{library_data_dir, ConfigJson, LibraryNickname};
+use crate::config_json::{ConfigJson, LibraryNickname, library_data_dir};
 use crate::identifiers::{LibraryId, RemoteUuid};
 use crate::operations::LibraryUsername;
 
@@ -202,7 +202,11 @@ pub fn get_remote_kind(library: &LibraryJson, remote_uuid: &str) -> Option<Remot
 
 /// Validate that a remote UUID (as a string) exists in the library config.
 pub fn validate_remote_exists(library: &LibraryJson, remote_uuid: &str) -> Result<()> {
-    if library.remotes.iter().any(|r| r.remote_uuid.to_string() == remote_uuid) {
+    if library
+        .remotes
+        .iter()
+        .any(|r| r.remote_uuid.to_string() == remote_uuid)
+    {
         return Ok(());
     }
     anyhow::bail!(
@@ -214,7 +218,11 @@ pub fn validate_remote_exists(library: &LibraryJson, remote_uuid: &str) -> Resul
 
 /// List all remote UUIDs (as strings) from the library config.
 pub fn list_remote_ids(library: &LibraryJson) -> Vec<String> {
-    library.remotes.iter().map(|r| r.remote_uuid.to_string()).collect()
+    library
+        .remotes
+        .iter()
+        .map(|r| r.remote_uuid.to_string())
+        .collect()
 }
 
 /// Find the single remote with the given human-readable name.
@@ -225,7 +233,12 @@ pub fn find_remote_by_name<'a>(library: &'a LibraryJson, name: &str) -> Result<&
         0 => anyhow::bail!(
             "Remote '{}' not found. Available remotes: {}",
             name,
-            library.remotes.iter().map(|r| r.name.as_str()).collect::<Vec<_>>().join(", ")
+            library
+                .remotes
+                .iter()
+                .map(|r| r.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
         ),
         1 => Ok(matches[0]),
         _ => anyhow::bail!(
@@ -237,7 +250,10 @@ pub fn find_remote_by_name<'a>(library: &'a LibraryJson, name: &str) -> Result<&
 }
 
 /// Find a remote by its UUID.
-pub fn find_remote_by_uuid<'a>(library: &'a LibraryJson, uuid: &RemoteUuid) -> Option<&'a RemoteConfig> {
+pub fn find_remote_by_uuid<'a>(
+    library: &'a LibraryJson,
+    uuid: &RemoteUuid,
+) -> Option<&'a RemoteConfig> {
     library.remotes.iter().find(|r| &r.remote_uuid == uuid)
 }
 

@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
@@ -175,7 +175,11 @@ impl ConfigJson {
 
     /// Set the default library by nickname
     pub fn set_default_library(&mut self, nickname: &str) -> Result<()> {
-        if !self.libraries.values().any(|lib| lib.nickname.0 == nickname) {
+        if !self
+            .libraries
+            .values()
+            .any(|lib| lib.nickname.0 == nickname)
+        {
             anyhow::bail!("Library with nickname '{nickname}' not found");
         }
         self.default_library = Some(LibraryNickname(nickname.to_string()));

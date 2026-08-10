@@ -1,7 +1,7 @@
 use std::path::Path;
 
-use rand::rngs::OsRng;
 use rand::RngCore;
+use rand::rngs::OsRng;
 
 use crate::encryption::error::KeychainError;
 

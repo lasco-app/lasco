@@ -25,8 +25,13 @@ pub enum SessionError {
     Io(#[from] std::io::Error),
 }
 
-fn session_file(dir: &Path, library_id: LibraryId, username: &LibraryUsername) -> std::path::PathBuf {
-    dir.join(library_id.to_string()).join(format!("{}.bin", username.0))
+fn session_file(
+    dir: &Path,
+    library_id: LibraryId,
+    username: &LibraryUsername,
+) -> std::path::PathBuf {
+    dir.join(library_id.to_string())
+        .join(format!("{}.bin", username.0))
 }
 
 /// Store the MasterKey for a user.
@@ -60,7 +65,8 @@ pub fn session_load_master_key(
         let path = session_file(dir, library_id, username);
         match std::fs::read(&path) {
             Ok(bytes) => {
-                let arr: [u8; MASTER_KEY_SIZE] = bytes.try_into().map_err(|_| SessionError::InvalidLength)?;
+                let arr: [u8; MASTER_KEY_SIZE] =
+                    bytes.try_into().map_err(|_| SessionError::InvalidLength)?;
                 return Ok(Some(MasterKey::from_raw(arr)));
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),

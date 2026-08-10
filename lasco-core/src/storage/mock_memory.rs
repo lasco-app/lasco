@@ -1,6 +1,6 @@
 use rustc_hash::FxHashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use async_trait::async_trait;
 use parking_lot::Mutex;
@@ -123,7 +123,10 @@ mod tests {
     #[tokio::test]
     async fn get_missing_key_returns_not_found() {
         let s = StorageMockMemory::new();
-        assert!(matches!(s.get("missing").await, Err(StorageError::NotFound)));
+        assert!(matches!(
+            s.get("missing").await,
+            Err(StorageError::NotFound)
+        ));
     }
 
     #[tokio::test]

@@ -42,16 +42,18 @@ impl StorageS3 {
         let access_key = access_key.trim();
         let secret_key = secret_key.trim();
 
-        let credentials =
-            S3Credentials::new(Some(access_key), Some(secret_key), None, None, None)
-                .map_err(|e| StorageError::Other(Box::new(e)))?;
+        let credentials = S3Credentials::new(Some(access_key), Some(secret_key), None, None, None)
+            .map_err(|e| StorageError::Other(Box::new(e)))?;
 
         // Path style is needed for MinIO and other S3-compatible services.
         let bucket = Bucket::new(&bucket_name, region, credentials)
             .map_err(|e| StorageError::Other(Box::new(e)))?
             .with_path_style();
 
-        Ok(Self { bucket, path_prefix })
+        Ok(Self {
+            bucket,
+            path_prefix,
+        })
     }
 
     fn prefixed_key(&self, key: &str) -> String {
@@ -121,7 +123,11 @@ impl Storage for StorageS3 {
         for result in results {
             for obj in result.contents {
                 let key = match &self.path_prefix {
-                    Some(prefix) => obj.key.strip_prefix(prefix).map(|k| k.to_string()).unwrap_or(obj.key),
+                    Some(prefix) => obj
+                        .key
+                        .strip_prefix(prefix)
+                        .map(|k| k.to_string())
+                        .unwrap_or(obj.key),
                     None => obj.key,
                 };
                 keys.push(key);
@@ -198,8 +204,14 @@ mod tests {
     #[test]
     fn normalize_path_prefix_adds_trailing_slash() {
         assert_eq!(normalize_path_prefix("photos"), Some("photos/".to_string()));
-        assert_eq!(normalize_path_prefix("photos/"), Some("photos/".to_string()));
-        assert_eq!(normalize_path_prefix("/photos/"), Some("photos/".to_string()));
+        assert_eq!(
+            normalize_path_prefix("photos/"),
+            Some("photos/".to_string())
+        );
+        assert_eq!(
+            normalize_path_prefix("/photos/"),
+            Some("photos/".to_string())
+        );
         assert_eq!(normalize_path_prefix(""), None);
         assert_eq!(normalize_path_prefix("  "), None);
     }
@@ -217,7 +229,15 @@ mod tests {
 
     fn make_storage() -> Option<StorageS3> {
         let (endpoint, bucket, region, path_prefix, access_key, secret_key) = get_test_config()?;
-        StorageS3::new(endpoint, bucket, region, path_prefix, access_key, secret_key).ok()
+        StorageS3::new(
+            endpoint,
+            bucket,
+            region,
+            path_prefix,
+            access_key,
+            secret_key,
+        )
+        .ok()
     }
 
     #[tokio::test]

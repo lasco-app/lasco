@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -152,8 +152,9 @@ pub(super) async fn compact_tier(
         .cloned()
         .collect();
 
-    // Read all op groups from every source file, from the local cache.
-    let mut all_entries: Vec<crate::operations::CompactionEntry> = Vec::new();
+    // Read all individual operations from every source file, deduplicated by dot.
+    let mut operations = Vec::new();
+    let mut known_dots = HashSet::new();
     for source in &sources {
         let RemoteOpFile::Compaction {
             uuid,
@@ -162,21 +163,22 @@ pub(super) async fn compact_tier(
         } = source;
         let file =
             last_known_state.read_compaction_file(master_key, uuid, *file_tier, *op_count)?;
-        all_entries.extend(file.contents);
+        operations.extend(
+            file.operations
+                .into_iter()
+                .filter(|operation| known_dots.insert(operation.dot)),
+        );
     }
 
     // Write the new compaction file at tier+1. Encrypted once, so the same ciphertext is
     // written to both the remote and the local cache below.
     let new_uuid = CompactedOpId::new();
     let new_tier = tier + 1;
-    let new_op_count: u32 = all_entries
-        .iter()
-        .map(|e| e.group.operations.len() as u32)
-        .sum();
+    let new_op_count = operations.len() as u32;
     let new_key = format!("operations/{new_uuid}.op{new_tier}_{new_op_count}");
     let new_file = crate::operations::CompactionFile {
         tier: new_tier,
-        contents: all_entries,
+        operations,
     };
     let blob = crate::operations::encrypt_compaction_file(master_key, &new_uuid, &new_file)
         .map_err(map_op_err)?;

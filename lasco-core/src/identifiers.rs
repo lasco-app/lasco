@@ -63,33 +63,6 @@ impl UserUuid {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct OpUuid(pub Uuid);
-
-impl OpUuid {
-    // Not impl From<Uuid>.
-    pub fn from_uuid(id: Uuid) -> Self {
-        Self(id)
-    }
-
-    pub fn new() -> Self {
-        Self(Uuid::now_v7())
-    }
-}
-
-impl Default for OpUuid {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl std::fmt::Display for OpUuid {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct LibraryId(pub Uuid);
 

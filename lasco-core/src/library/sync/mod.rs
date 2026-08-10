@@ -142,6 +142,8 @@ impl Library {
                 &self.inner.local_ops_read_write_lock,
                 &self.inner.remote_media_list_lock,
                 &self.inner.master_key,
+                &self.inner.crdt_replica_state,
+                &self.inner.local_dirs.local_state_crdt(),
             )
             .await?;
             if report.local_state_rebuild_required {

@@ -19,12 +19,11 @@ use crate::encryption::master_key::{
     MasterKey, find_master_key, generate_master_key, write_mk_file,
 };
 use crate::error::LibraryError;
-use crate::identifiers::OpUuid;
 use crate::library::local_dirs::LocalDirs;
 use crate::library::local_ops_read_write::LocalOpsReadWriteLock;
 use crate::library::remote_media_list_lock::RemoteMediaListLock;
 use crate::library::sync_policy::{FetchSlotGuard, RemoteSyncGuard, SyncPolicy};
-use crate::operations::{LibraryPassword, LibraryUsername, Operation, OperationGroup};
+use crate::operations::{LibraryPassword, LibraryUsername};
 use crate::state::OperationState;
 
 pub use crate::identifiers::LibraryId;
@@ -56,7 +55,7 @@ pub(crate) struct LibraryInner {
     pub(crate) crdt_replica_state: parking_lot::RwLock<crate::crdt::CrdtStateReplica>,
     pub(crate) sync_policy: SyncPolicy,
     pub(crate) username: LibraryUsername,
-    /// The sole lock that grants access to `pending.op` and `operations.log`.
+    /// The sole lock that grants access to `operations.log`.
     pub(crate) local_ops_read_write_lock: LocalOpsReadWriteLock,
     /// Per-remote locks for synchronous `media_list.json` read-modify-write access.
     pub(crate) remote_media_list_lock: RemoteMediaListLock,
@@ -138,7 +137,7 @@ impl Library {
                 library_id,
                 local_dirs,
                 username: credentials.username,
-                operation_state: parking_lot::RwLock::new(OperationState::build(&[])),
+                operation_state: parking_lot::RwLock::new(OperationState::default()),
                 crdt_replica_state: parking_lot::RwLock::new(crdt_replica),
                 sync_policy: SyncPolicy::new(),
                 local_ops_read_write_lock,
@@ -177,7 +176,7 @@ impl Library {
                 master_key,
                 local_dirs,
                 username: credentials.username,
-                operation_state: parking_lot::RwLock::new(OperationState::build(&[])),
+                operation_state: parking_lot::RwLock::new(OperationState::default()),
                 crdt_replica_state: parking_lot::RwLock::new(crdt_replica),
                 sync_policy: SyncPolicy::new(),
                 local_ops_read_write_lock,
@@ -206,7 +205,7 @@ impl Library {
                 library_id,
                 local_dirs,
                 username,
-                operation_state: parking_lot::RwLock::new(OperationState::build(&[])),
+                operation_state: parking_lot::RwLock::new(OperationState::default()),
                 crdt_replica_state: parking_lot::RwLock::new(crdt_replica),
                 sync_policy: SyncPolicy::new(),
                 local_ops_read_write_lock,
@@ -231,167 +230,30 @@ impl Library {
         PROTOCOL_VERSION
     }
 
-    /// Append a single operation to the pending group, creating it if needed.
-    /// All local mutations go through this instead of writing directly to the main log.
-    pub(crate) fn append_to_pending(&self, op: Operation) -> Result<()> {
-        self.record_local_crdt_operation(&op)?;
-        let mut local_ops = self.local_ops_read_write();
-        let mut group = local_ops.read_pending()?.unwrap_or_else(|| OperationGroup {
-            op_id: OpUuid::new(),
-            parent_op_id: None,
-            author: self.inner.username.clone(),
-            operations: vec![],
-        });
-
-        group.operations.push(op);
-        local_ops.write_pending(&group)
-    }
-
-    /// Temporary mutation bridge: the legacy log remains available to the
-    /// current sync implementation, while every new local change is already
-    /// represented as one dot-tagged operation in the CRDT outbox.
-    fn record_local_crdt_operation(&self, operation: &Operation) -> Result<()> {
-        use crate::crdt::{CrdtOperation, MediaCreation, OperationContent};
-
+    /// Atomically records a local CRDT operation in canonical state/outbox and the durable log.
+    pub(crate) fn record_local_operation(
+        &self,
+        timestamp: chrono::DateTime<chrono::Utc>,
+        content: crate::crdt::OperationContent,
+    ) -> Result<()> {
         let mut replica = self.inner.crdt_replica_state.write();
-        let dot = replica.state.next_local_dot();
-        let content = match operation {
-            Operation::MediaCreation {
-                media_id,
-                filename_original,
-                date,
-                storage_date,
-                size_bytes,
-                content_hash,
-                modified_at,
-                gps,
-                apple_aae_media_id,
-                apple_live_photo_media_id,
-                ..
-            } => OperationContent::MediaCreation(MediaCreation {
-                media_id: *media_id,
-                filename_original: filename_original.clone(),
-                date: *date,
-                storage_date: *storage_date,
-                size_bytes: *size_bytes,
-                content_hash: *content_hash,
-                modified_at: *modified_at,
-                gps: *gps,
-                apple_aae_media_id: *apple_aae_media_id,
-                apple_live_photo_media_id: *apple_live_photo_media_id,
-            }),
-            Operation::MediaRename { media_id, name, .. } => OperationContent::MediaRename {
-                media_id: *media_id,
-                name: name.clone(),
-            },
-            Operation::MediaPropsUpdate {
-                media_id,
-                key,
-                value,
-                ..
-            } => OperationContent::MediaPropsUpdate {
-                media_id: *media_id,
-                key: key.clone(),
-                value: value.clone(),
-            },
-            Operation::AlbumCreation {
-                album_id,
-                name,
-                album_id_parent,
-                ..
-            } => OperationContent::AlbumCreation {
-                album_id: *album_id,
-                name: name.clone(),
-                parent_id: *album_id_parent,
-            },
-            Operation::AlbumMediaAdd {
-                album_id, media_id, ..
-            } => OperationContent::AlbumMediaAdd {
-                album_id: *album_id,
-                media_id: *media_id,
-            },
-            Operation::AlbumMediaRemove {
-                album_id, media_id, ..
-            } => OperationContent::AlbumMediaRemove {
-                album_id: *album_id,
-                media_id: *media_id,
-                observed: replica.state.album_member_dots(*album_id, *media_id),
-            },
-            Operation::AlbumDeletion { album_id, .. } => OperationContent::AlbumDeletion {
-                album_id: *album_id,
-            },
-            Operation::AlbumRename { album_id, name, .. } => OperationContent::AlbumRename {
-                album_id: *album_id,
-                name: Some(name.clone()),
-            },
-            Operation::AlbumReparent {
-                album_id,
-                new_parent_id,
-                ..
-            } => OperationContent::AlbumReparent {
-                album_id: *album_id,
-                parent_id: *new_parent_id,
-            },
-            Operation::AlbumThumbnailSet {
-                album_id, media_id, ..
-            } => OperationContent::AlbumThumbnailSet {
-                album_id: *album_id,
-                media_id: *media_id,
-            },
-            Operation::GroupCreation {
-                group_id,
-                album_id_parent,
-                ..
-            } => OperationContent::GroupCreation {
-                group_id: *group_id,
-                parent_id: *album_id_parent,
-            },
-            Operation::GroupMediaAdd {
-                group_id, media_id, ..
-            } => OperationContent::GroupMediaAdd {
-                group_id: *group_id,
-                media_id: *media_id,
-            },
-            Operation::GroupMediaRemove {
-                group_id, media_id, ..
-            } => OperationContent::GroupMediaRemove {
-                group_id: *group_id,
-                media_id: *media_id,
-                observed: replica.state.group_member_dots(*group_id, *media_id),
-            },
-            Operation::GroupDeletion { group_id, .. } => OperationContent::GroupDeletion {
-                group_id: *group_id,
-            },
-        };
-        let timestamp = match operation {
-            Operation::MediaCreation { timestamp, .. }
-            | Operation::MediaRename { timestamp, .. }
-            | Operation::MediaPropsUpdate { timestamp, .. }
-            | Operation::AlbumCreation { timestamp, .. }
-            | Operation::AlbumMediaAdd { timestamp, .. }
-            | Operation::AlbumMediaRemove { timestamp, .. }
-            | Operation::AlbumDeletion { timestamp, .. }
-            | Operation::AlbumRename { timestamp, .. }
-            | Operation::AlbumReparent { timestamp, .. }
-            | Operation::AlbumThumbnailSet { timestamp, .. }
-            | Operation::GroupCreation { timestamp, .. }
-            | Operation::GroupMediaAdd { timestamp, .. }
-            | Operation::GroupMediaRemove { timestamp, .. }
-            | Operation::GroupDeletion { timestamp, .. } => *timestamp,
-        };
-        let crdt_operation = CrdtOperation {
-            dot,
+        let crdt_operation = crate::crdt::CrdtOperation {
+            dot: replica.state.next_local_dot(),
             author: self.inner.username.clone(),
             timestamp,
             content,
         };
         replica.state.apply(&crdt_operation);
-        replica.outgoing.push(crdt_operation);
+        replica.outgoing.push(crdt_operation.clone());
         crate::crdt::save_persisted(
             &self.inner.local_dirs.local_state_crdt().snapshot_path(),
             &self.inner.master_key,
             &replica,
         )?;
+        // A crash after the snapshot save can leave this operation absent from the log;
+        // recovery appends it from the durable outbox on the next local mutation/push.
+        self.local_ops_read_write()
+            .append_operation(&crdt_operation)?;
         Ok(())
     }
 
@@ -403,14 +265,18 @@ impl Library {
     }
 
     pub fn pending_media_count(&self) -> Result<u32> {
-        let group = self.local_ops_read_write().read_pending()?;
-        let Some(group) = group else {
-            return Ok(0);
-        };
-        let count = group
-            .operations
+        let count = self
+            .inner
+            .crdt_replica_state
+            .read()
+            .outgoing
             .iter()
-            .filter(|op| matches!(op, Operation::MediaCreation { .. }))
+            .filter(|operation| {
+                matches!(
+                    operation.content,
+                    crate::crdt::OperationContent::MediaCreation(_)
+                )
+            })
             .count();
         Ok(count as u32)
     }
@@ -419,24 +285,13 @@ impl Library {
         let remote_last_known_state_dir =
             self.inner.local_dirs.remote_last_known_state_dir(remote_id);
         let master_key = &self.inner.master_key;
-        let local_ids = {
-            let local_ops = self.local_ops_read_write();
-            let mut local_ids: std::collections::HashSet<_> = local_ops
-                .read_log_groups()?
-                .into_iter()
-                .map(|group| group.op_id)
-                .collect();
-            if let Some(pending) = local_ops.read_pending()? {
-                local_ids.insert(pending.op_id);
-            }
-            local_ids
-        };
+        let local_ids = self.local_ops_read_write().known_dots()?;
 
         if local_ids.is_empty() {
             return Ok(false);
         }
 
-        let remote_ids = crate::remote::last_known_state::collect_group_ids_from_dir(
+        let remote_ids = crate::remote::last_known_state::collect_dots_from_dir(
             &remote_last_known_state_dir.operations_dir(),
             master_key,
         )
@@ -445,13 +300,8 @@ impl Library {
         Ok(!local_ids.is_subset(&remote_ids))
     }
 
-    pub fn list_operation_groups(&self) -> Result<Vec<OperationGroup>> {
-        let local_ops = self.local_ops_read_write();
-        let mut groups = local_ops.read_log_groups()?;
-        if let Some(pending) = local_ops.read_pending()? {
-            groups.push(pending);
-        }
-        Ok(groups)
+    pub fn list_operations(&self) -> Result<Vec<crate::crdt::CrdtOperation>> {
+        self.local_ops_read_write().read_operations()
     }
 }
 

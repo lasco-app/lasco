@@ -1,8 +1,8 @@
 use aes_gcm::{
-    aead::{Aead, AeadCore},
     Aes256Gcm, KeyInit,
+    aead::{Aead, AeadCore},
 };
-use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use rand::rngs::OsRng;
 
 use crate::encryption::master_key::MasterKey;
