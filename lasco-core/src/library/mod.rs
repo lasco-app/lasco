@@ -79,6 +79,26 @@ const _: () = {
 };
 
 impl Library {
+    /// Loads the canonical CRDT replica snapshot for the next-generation local
+    /// mutation and sync paths. No legacy operation-log migration is attempted.
+    pub(crate) fn load_crdt_replica(&self) -> Result<crate::crdt::PersistedReplica> {
+        crate::crdt::load_persisted(
+            &self.inner.local_dirs.local_state_crdt().snapshot_path(),
+            &self.inner.master_key,
+            crate::crdt::DeviceId::random(),
+        )
+        .map_err(Into::into)
+    }
+
+    pub(crate) fn save_crdt_replica(&self, replica: &crate::crdt::PersistedReplica) -> Result<()> {
+        crate::crdt::save_persisted(
+            &self.inner.local_dirs.local_state_crdt().snapshot_path(),
+            &self.inner.master_key,
+            replica,
+        )
+        .map_err(Into::into)
+    }
+
     pub(crate) fn try_acquire_remote_sync(&self, remote_id: &str) -> Option<RemoteSyncGuard<'_>> {
         self.inner.sync_policy.try_acquire_remote(remote_id)
     }

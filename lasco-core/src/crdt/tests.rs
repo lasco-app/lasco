@@ -344,7 +344,7 @@ fn reordered_and_duplicated_operations_converge_to_the_same_canonical_state() {
 #[test]
 fn persisted_state_keeps_causal_context_clock_and_outbox() {
     let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("canonical-state.crdt");
+    let path = directory.path().join("crdt-state.enc");
     let master_key = crate::encryption::master_key::generate_master_key();
     let operation = op(
         dot(7, 2),

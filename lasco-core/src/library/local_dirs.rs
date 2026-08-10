@@ -37,6 +37,19 @@ pub struct LocalStateOperations {
     local_state_dir: PathBuf,
 }
 
+/// `local_state/crdt-state.enc`: encrypted canonical CRDT state and durable
+/// outgoing-operation outbox. This replaces replay logs in format version 2.
+#[derive(Clone, Debug)]
+pub struct LocalStateCrdt {
+    local_state_dir: PathBuf,
+}
+
+impl LocalStateCrdt {
+    pub fn snapshot_path(&self) -> PathBuf {
+        self.local_state_dir.join("crdt-state.enc")
+    }
+}
+
 impl LocalStateOperations {
     pub fn operations_log_path(&self) -> PathBuf {
         self.local_state_dir.join("operations.log")
@@ -141,6 +154,12 @@ impl LocalDirs {
 
     pub fn local_state_operations(&self) -> LocalStateOperations {
         LocalStateOperations {
+            local_state_dir: self.root.join("local_state"),
+        }
+    }
+
+    pub fn local_state_crdt(&self) -> LocalStateCrdt {
+        LocalStateCrdt {
             local_state_dir: self.root.join("local_state"),
         }
     }

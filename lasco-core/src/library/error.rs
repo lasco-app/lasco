@@ -2,8 +2,8 @@ use thiserror::Error;
 
 use crate::encryption::error::KeychainError;
 use crate::identifiers::{AlbumUuid, GroupUuid, MediaUuid};
-use crate::operations::AlbumName;
 use crate::operations::error::OperationError;
+use crate::operations::AlbumName;
 
 #[derive(Error, Debug)]
 pub enum LibraryError {
@@ -13,6 +13,8 @@ pub enum LibraryError {
     UnsupportedFormatVersion { found: String, expected: String },
     #[error(transparent)]
     Operation(#[from] OperationError),
+    #[error(transparent)]
+    CrdtPersistence(#[from] crate::crdt::PersistenceError),
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
     #[error("cannot remove the last user")]
