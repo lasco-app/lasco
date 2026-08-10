@@ -71,6 +71,23 @@ CompactionFile {
 operations, deduplicates by dot, writes one immutable replacement at the next tier, updates the
 last-known-state cache, and only then deletes source files while holding `operations/LOCK.op`.
 
+### Tier constraints
+
+The existing compaction limits are unchanged; only their unit has changed. Both limits count
+individual `CrdtOperation` values, never batches or any higher-level container.
+
+| Tier | Maximum operations in one file | Maximum files before compaction |
+| --- | ---: | ---: |
+| 1 | 20 | 10 |
+| 2 | 200 | 10 |
+| 3 | 2,000 | 10 |
+| _N_ | `20 × 10^(N - 1)` | 10 |
+
+Push selects the lowest tier that can hold the uploaded operation count. When a tier reaches ten
+files, the lock-protected cascade compacts every file in that tier into one next-tier file. The
+replacement filename's `operation_count` remains the number of individual CRDT operations after
+dot deduplication.
+
 ## Fetch and push
 
 Fetch caches immutable remote files, verifies that all dots previously cached for that remote are
