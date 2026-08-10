@@ -939,16 +939,13 @@ async fn push_relays_selected_source_without_caching_media_locally() {
             .exists()
     );
     assert!(
-        std::fs::read_dir(
-            lib.inner
-                .local_dirs
-                .local_state_media_dir()
-                .path()
-                .join(".push-staging")
-        )
-        .unwrap()
-        .next()
-        .is_none()
+        !lib.inner
+            .local_dirs
+            .local_state_media_dir()
+            .path()
+            .join(".push-staging")
+            .exists(),
+        "relay staging must not be stored in library media state"
     );
 }
 

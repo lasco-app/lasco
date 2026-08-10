@@ -114,13 +114,9 @@ impl Library {
                 .map_err(SyncError::RemoteUnreachable)?;
         }
 
-        let staging_dir = local_state_media_dir.path().join(".push-staging");
-        // Staging files are never part of normal media state. A prior interrupted Push may
-        // leave them behind; they are safe to discard before beginning a new one.
-        if staging_dir.exists() {
-            std::fs::remove_dir_all(&staging_dir)?;
-        }
-        std::fs::create_dir_all(&staging_dir)?;
+        // Relay blobs never belong in normal library state. A unique OS temporary directory
+        // keeps them outside the local media cache and removes them when this Push returns.
+        let staging_dir = tempfile::tempdir()?;
 
         // Push only ever acts on op files recorded in its own last known state for this
         // remote, plus whatever it uploads or merges in this call. It never lists or reads
@@ -322,7 +318,7 @@ impl Library {
                     .await
                     .map_err(SyncError::RemoteUnreachable)?;
                 let bytes = stage_and_validate_media(
-                    &staging_dir,
+                    staging_dir.path(),
                     &downloaded,
                     item.media_id,
                     &self.inner.master_key,
@@ -352,7 +348,7 @@ impl Library {
             } else if let Some((_, source)) = relay_source.as_ref() {
                 match source.get(&thumb_key).await {
                     Ok(downloaded) => match stage_and_validate_media(
-                        &staging_dir,
+                        staging_dir.path(),
                         &downloaded,
                         item.media_id,
                         &self.inner.master_key,

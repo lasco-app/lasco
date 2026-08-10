@@ -33,6 +33,7 @@ walkdir = "2"
 blake3 = "1"
 http = "0.2"
 directories = "5"
+tempfile = "3"
 
 # On Android rust-s3 uses native-tls which links OpenSSL, and there is no system
 # OpenSSL for the android targets. Build OpenSSL from source there via the vendored
@@ -47,5 +48,4 @@ objc2 = "0.6"
 objc2-foundation = "0.3"
 
 [dev-dependencies]
-tempfile = "3"
 uuid = { version = "1", features = ["v4"] }
