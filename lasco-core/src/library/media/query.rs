@@ -373,7 +373,7 @@ impl Library {
             .map_err(|_| LibraryError::MediaNotFound(media_id))
     }
 
-    fn record_remote_media_presence(&self, remote_id: &str, media_id: MediaUuid) {
+    pub(crate) fn record_remote_media_presence(&self, remote_id: &str, media_id: MediaUuid) {
         let remote_media_list = self.inner.local_dirs.remote_media_list(remote_id);
         self.inner.remote_media_list_lock.with_lock(
             remote_id,

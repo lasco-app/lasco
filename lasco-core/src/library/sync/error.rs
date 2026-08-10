@@ -1,5 +1,6 @@
 use thiserror::Error;
 
+use crate::identifiers::MediaUuid;
 use crate::operations::error::OperationError;
 
 #[derive(Error, Debug)]
@@ -20,4 +21,6 @@ pub enum SyncError {
     LibraryIdMismatch(String),
     #[error("remote id does not match configured remote: {0}")]
     RemoteIdMismatch(String),
+    #[error("media missing from local cache: {0:?}")]
+    MissingLocalMedia(Vec<MediaUuid>),
 }
