@@ -18,18 +18,18 @@ impl StorageS3 {
     ///
     /// Returns an error if the supplied S3 credentials or bucket configuration cannot be constructed.
     pub fn new(
-        endpoint: String,
-        bucket_name: String,
-        region: String,
-        path_prefix: Option<String>,
-        access_key: String,
-        secret_key: String,
+        endpoint: &str,
+        bucket_name: &str,
+        region: &str,
+        path_prefix: Option<&str>,
+        access_key: &str,
+        secret_key: &str,
     ) -> Result<Self> {
-        let path_prefix = normalize_path_prefix(path_prefix.as_deref().unwrap_or(""));
+        let path_prefix = normalize_path_prefix(path_prefix.unwrap_or(""));
         // For S3-compatible providers the connection host
         // comes from the region endpoint, not from a host header. Use a custom
         // region pairing the region name with the provider endpoint.
-        let endpoint = normalize_endpoint(&endpoint);
+        let endpoint = normalize_endpoint(endpoint);
         // The region is part of the SigV4 signing key and must match the
         // endpoint location (e.g. Hetzner nbg1). When left blank, derive it from
         // the endpoint host so providers like Hetzner work without guessing.
@@ -49,7 +49,7 @@ impl StorageS3 {
             .map_err(|e| StorageError::Other(Box::new(e)))?;
 
         // Path style is needed for MinIO and other S3-compatible services.
-        let bucket = Bucket::new(&bucket_name, region, credentials)
+        let bucket = Bucket::new(bucket_name, region, credentials)
             .map_err(|e| StorageError::Other(Box::new(e)))?
             .with_path_style();
 
@@ -233,12 +233,12 @@ mod tests {
     fn make_storage() -> Option<StorageS3> {
         let (endpoint, bucket, region, path_prefix, access_key, secret_key) = get_test_config()?;
         StorageS3::new(
-            endpoint,
-            bucket,
-            region,
-            path_prefix,
-            access_key,
-            secret_key,
+            &endpoint,
+            &bucket,
+            &region,
+            path_prefix.as_deref(),
+            &access_key,
+            &secret_key,
         )
         .ok()
     }
@@ -305,12 +305,12 @@ mod tests {
         let base_prefix = base_prefix.unwrap_or_default();
         let prefixed_dir = format!("{}pfx-test", base_prefix.trim_end_matches('/'));
         let storage = StorageS3::new(
-            endpoint,
-            bucket,
-            region,
-            Some(prefixed_dir),
-            access_key,
-            secret_key,
+            &endpoint,
+            &bucket,
+            &region,
+            Some(&prefixed_dir),
+            &access_key,
+            &secret_key,
         )
         .unwrap();
 

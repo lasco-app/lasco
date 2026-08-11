@@ -644,7 +644,7 @@ async fn batched_push_survives_close_and_reopen() {
 
     drop(lib);
 
-    let local_dirs = LocalDirs::new(tmp.path().to_path_buf(), &library_id);
+    let local_dirs = LocalDirs::new(tmp.path(), &library_id);
     let reopened = Library::open(
         local_dirs,
         Credentials {

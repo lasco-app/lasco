@@ -597,7 +597,7 @@ impl FfiLibrary {
 
     pub fn local_state_stats(&self) -> FfiLocalStateStats {
         let local_dirs = lasco_core::library::local_dirs::LocalDirs::new(
-            self.app_dir.clone(),
+            &self.app_dir,
             &self.inner.library_id(),
         );
         let media_dir = local_dirs.local_state_media_dir();

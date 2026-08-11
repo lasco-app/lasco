@@ -56,12 +56,12 @@ pub fn build_storage(
             let (access_key, secret_key) = resolve_s3_credentials(s3_cfg, master_key)
                 .map_err(|e| anyhow::anyhow!("failed to resolve S3 credentials: {e}"))?;
             Ok(Box::new(StorageS3::new(
-                s3_cfg.endpoint.clone(),
-                s3_cfg.bucket.clone(),
-                s3_cfg.region.clone(),
-                s3_cfg.path_prefix.clone(),
-                access_key,
-                secret_key,
+                &s3_cfg.endpoint,
+                &s3_cfg.bucket,
+                &s3_cfg.region,
+                s3_cfg.path_prefix.as_deref(),
+                &access_key,
+                &secret_key,
             )?))
         }
     }
@@ -112,7 +112,7 @@ pub async fn open_library(
         .get_library_id_by_nickname(&library_nickname.0)
         .ok_or_else(|| anyhow::anyhow!("library '{}' not found", library_nickname.0))?;
 
-    let local_dirs = LocalDirs::new(app_dir.to_path_buf(), library_id);
+    let local_dirs = LocalDirs::new(app_dir, library_id);
 
     if let Some(master_key) = session_load_master_key(*library_id, &username, session_dir)? {
         let library = Library::open_with_master_key(local_dirs, master_key, *library_id, username)
@@ -157,7 +157,7 @@ pub async fn create_library(
 ) -> Result<(LibraryId, MasterKey)> {
     let library_id = LibraryId::new();
 
-    let local_dirs = LocalDirs::new(app_dir.to_path_buf(), &library_id);
+    let local_dirs = LocalDirs::new(app_dir, &library_id);
     local_dirs
         .ensure_state_dirs()
         .context("failed to create local state directories")?;
@@ -226,12 +226,12 @@ pub async fn add_existing_library_s3(
     session_dir: Option<&Path>,
 ) -> Result<(LibraryId, Library)> {
     let storage = StorageS3::new(
-        endpoint.clone(),
-        bucket.clone(),
-        region.clone(),
-        path_prefix.clone(),
-        access_key.clone(),
-        secret_key.clone(),
+        &endpoint,
+        &bucket,
+        &region,
+        path_prefix.as_deref(),
+        &access_key,
+        &secret_key,
     )?;
 
     // Listing the crypto dir doubles as a connectivity and credential check.
@@ -254,7 +254,7 @@ pub async fn add_existing_library_s3(
         .ok_or_else(|| anyhow::anyhow!("remote is missing library_id_{{uuid}} file"))?;
     let library_id = LibraryId(remote_library_uuid);
 
-    let local_dirs = LocalDirs::new(app_dir.to_path_buf(), &library_id);
+    let local_dirs = LocalDirs::new(app_dir, &library_id);
     local_dirs
         .ensure_state_dirs()
         .context("failed to create local state directories")?;

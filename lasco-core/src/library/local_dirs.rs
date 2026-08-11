@@ -1,5 +1,5 @@
 use std::fmt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::identifiers::{LibraryId, MediaUuid};
 
@@ -138,7 +138,7 @@ impl RemoteMergedRemoteFiles {
 
 impl LocalDirs {
     #[must_use]
-    pub fn new(path_base: PathBuf, library_id: &LibraryId) -> LocalDirs {
+    pub fn new(path_base: &Path, library_id: &LibraryId) -> LocalDirs {
         LocalDirs {
             root: path_base.join("libraries").join(library_id.0.to_string()),
             library_id: *library_id,

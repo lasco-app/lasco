@@ -59,9 +59,9 @@ impl Library {
     #[allow(dead_code, reason = "Retained for the user password-change flow.")]
     fn user_change_password(
         &self,
-        username: LibraryUsername,
-        password_old: LibraryPassword,
-        password_new: LibraryPassword,
+        username: &LibraryUsername,
+        password_old: &LibraryPassword,
+        password_new: &LibraryPassword,
     ) -> Result<Uuid> {
         let lib_dir = self.inner.local_dirs.local_state_library_dir();
 
@@ -94,7 +94,7 @@ mod tests {
     use crate::operations::{LibraryPassword, LibraryUsername};
 
     fn make_local_dirs(tmp: &TempDir, library_id: &LibraryId) -> LocalDirs {
-        LocalDirs::new(tmp.path().to_path_buf(), library_id)
+        LocalDirs::new(tmp.path(), library_id)
     }
 
     fn init_fresh(tmp: &TempDir, username: &str, password: &str) -> (Library, LibraryId) {
@@ -177,20 +177,18 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let (lib, library_id) = init_fresh(&tmp, "alice", "old_pass");
 
-        let lib_dir =
-            LocalDirs::new(tmp.path().to_path_buf(), &library_id).local_state_library_dir();
+        let lib_dir = LocalDirs::new(tmp.path(), &library_id).local_state_library_dir();
         let mk_count_before = std::fs::read_dir(lib_dir.path())
             .unwrap()
             .flatten()
             .filter(|e| e.file_name().to_string_lossy().starts_with("mk_alice_"))
             .count();
 
-        lib.user_change_password(
-            LibraryUsername("alice".to_string()),
-            LibraryPassword("old_pass".to_string()),
-            LibraryPassword("new_pass".to_string()),
-        )
-        .unwrap();
+        let username = LibraryUsername("alice".to_string());
+        let password_old = LibraryPassword("old_pass".to_string());
+        let password_new = LibraryPassword("new_pass".to_string());
+        lib.user_change_password(&username, &password_old, &password_new)
+            .unwrap();
 
         let mk_count_after = std::fs::read_dir(lib_dir.path())
             .unwrap()

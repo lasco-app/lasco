@@ -531,7 +531,7 @@ mod tests {
     fn make_library(tmp: &TempDir) -> (Library, LocalDirs) {
         use crate::operations::{LibraryPassword, LibraryUsername};
         let library_id = LibraryId(Uuid::new_v4());
-        let local_dirs = LocalDirs::new(tmp.path().to_path_buf(), &library_id);
+        let local_dirs = LocalDirs::new(tmp.path(), &library_id);
         local_dirs.ensure_state_dirs().unwrap();
         let (lib, _password_uuid) = Library::init(
             local_dirs.clone(),

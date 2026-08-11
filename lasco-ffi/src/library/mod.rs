@@ -125,6 +125,10 @@ pub fn list_libraries(app_dir: Option<String>) -> Result<Vec<FfiLibraryEntry>, L
 ///
 /// Returns an error if the S3 client or runtime cannot be created, or the bucket cannot be listed.
 #[uniffi::export]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+)]
 pub fn ffi_test_s3_remote(
     endpoint: String,
     bucket: String,
@@ -139,12 +143,12 @@ pub fn ffi_test_s3_remote(
         Some(path_prefix)
     };
     let storage = lasco_core::storage::StorageS3::new(
-        endpoint,
-        bucket,
-        region,
-        path_prefix,
-        access_key,
-        secret_key,
+        &endpoint,
+        &bucket,
+        &region,
+        path_prefix.as_deref(),
+        &access_key,
+        &secret_key,
     )
     .map_err(|e| LascoError::Other { msg: e.to_string() })?;
     let rt =

@@ -1,3 +1,4 @@
+use std::fmt::Write as _;
 use std::path::Path;
 
 use keyring::Entry;
@@ -177,4 +178,3 @@ mod tests {
         assert!(result.is_none());
     }
 }
-use std::fmt::Write as _;
