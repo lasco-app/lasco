@@ -73,6 +73,10 @@ impl FfiLibrary {
     ///
     /// Panics if another thread panicked while holding the cached remote-list mutex during the
     /// in-memory update after configuration is saved.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
     pub fn add_remote_fixed_path(
         &self,
         name: String,
@@ -254,6 +258,10 @@ impl FfiLibrary {
     ///
     /// Panics if another thread panicked while holding the cached remote-list mutex during the
     /// in-memory update after configuration is saved.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
     pub fn add_remote_s3(
         &self,
         name: String,
@@ -322,6 +330,10 @@ impl FfiLibrary {
     ///
     /// Panics if another thread panicked while holding the cached remote-list mutex during the
     /// in-memory removal after configuration is saved.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
     pub fn remove_remote(&self, remote_id: FfiRemoteUuid) -> Result<(), LascoError> {
         let library_id = self.inner.library_id();
         let mut lib_config = self.load_library_json()?;
@@ -357,6 +369,10 @@ impl FfiLibrary {
     ///
     /// Panics if another thread panicked while holding the cached remote-list mutex during the
     /// in-memory auto-push update after configuration is saved.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
     pub fn set_remote_auto_push(
         &self,
         remote_id: FfiRemoteUuid,
@@ -397,6 +413,10 @@ impl FfiLibrary {
     ///
     /// Panics if another thread panicked while holding the cached remote-list mutex during the
     /// in-memory priority update after configuration is saved.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
     pub fn set_remote_media_fetch_priority(
         &self,
         remote_id: FfiRemoteUuid,
@@ -430,6 +450,10 @@ impl FfiLibrary {
     /// # Errors
     ///
     /// Returns an error if the ID/configuration is invalid, storage cannot be built, or remote push fails.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
     pub fn push_remote(
         &self,
         remote_id: FfiRemoteUuid,
@@ -452,6 +476,10 @@ impl FfiLibrary {
     /// # Errors
     ///
     /// Returns an error for invalid IDs, unavailable remote storage, failed validation, or failed relay/upload.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
     pub fn push_remote_from_remote(
         &self,
         target_remote_id: FfiRemoteUuid,
@@ -483,6 +511,10 @@ impl FfiLibrary {
     /// # Errors
     ///
     /// Returns an error if the ID/configuration is invalid, storage cannot be built, or remote fetch fails.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
     pub fn fetch_remote(
         &self,
         remote_id: FfiRemoteUuid,
@@ -501,6 +533,10 @@ impl FfiLibrary {
     /// # Errors
     ///
     /// Returns an error if the ID/configuration is invalid, storage cannot be built, the task fails, or remote push fails.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
     pub async fn push_remote_async(
         &self,
         remote_id: FfiRemoteUuid,
@@ -522,6 +558,10 @@ impl FfiLibrary {
     /// # Errors
     ///
     /// Returns an error for invalid IDs, unavailable storage, task failure, failed validation, or failed relay/upload.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
     pub async fn push_remote_from_remote_async(
         &self,
         target_remote_id: FfiRemoteUuid,
@@ -560,6 +600,10 @@ impl FfiLibrary {
     /// # Errors
     ///
     /// Returns an error if the ID/configuration is invalid, storage cannot be built, the task fails, or remote fetch fails.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
     pub async fn fetch_remote_async(
         &self,
         remote_id: FfiRemoteUuid,
@@ -581,6 +625,10 @@ impl FfiLibrary {
     /// # Errors
     ///
     /// Returns an error if the ID/configuration is invalid, storage cannot be built, or remote identity cannot be verified.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
     pub fn connect_remote(
         &self,
         remote_id: FfiRemoteUuid,
@@ -603,6 +651,10 @@ impl FfiLibrary {
     /// # Errors
     ///
     /// Returns an error if the ID is invalid or unknown, storage cannot be built, or remote initialization fails.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
     pub fn initialize_remote(
         &self,
         remote_id: FfiRemoteUuid,

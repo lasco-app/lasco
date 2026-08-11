@@ -91,6 +91,10 @@ impl FfiLibrary {
     /// # Errors
     ///
     /// Returns an error if `media_id` is invalid or the local thumbnail cannot be written.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
     pub fn set_media_thumbnail(
         &self,
         media_id: FfiMediaUuid,
@@ -120,6 +124,10 @@ impl FfiLibrary {
     /// # Errors
     ///
     /// Returns an error if the ID is invalid, no local or configured remote copy is available, or reading, decrypting, or caching it fails.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
     pub fn get_media_thumbnail(
         &self,
         media_id: FfiMediaUuid,
@@ -160,6 +168,10 @@ impl FfiLibrary {
     /// # Errors
     ///
     /// Returns an error if the ID is invalid, no local or configured remote copy is available, or reading, decrypting, or caching it fails.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
     pub fn get_media_bytes(
         &self,
         media_id: FfiMediaUuid,
@@ -338,6 +350,10 @@ impl FfiLibrary {
         ffi_count(self.inner.pending_media_count().unwrap_or(0))
     }
 
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
     pub fn has_unpushed_changes(&self, remote_id: FfiRemoteUuid) -> bool {
         self.inner
             .has_unpushed_changes(&remote_id.value.clone())

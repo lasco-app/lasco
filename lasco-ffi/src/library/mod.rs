@@ -235,6 +235,10 @@ pub fn ffi_open_cached(
     clippy::too_many_arguments,
     reason = "The FFI contract exposes S3 connection settings as explicit scalar parameters."
 )]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+)]
 pub fn ffi_add_existing_library_s3(
     nickname: String,
     username: String,
