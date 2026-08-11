@@ -2,6 +2,12 @@
 name = "lasco-ffi"
 version = "0.1.0"
 edition = "2024"
+description = "UniFFI bindings for Lasco's encrypted photo backup core"
+license = "GPL-3.0-only"
+repository = "https://github.com/lasco-app/lasco"
+readme = "../README.md"
+keywords = []
+categories = []
 
 [lints]
 workspace = true

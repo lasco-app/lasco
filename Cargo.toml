@@ -32,11 +32,6 @@ unused_result_ok                = "warn"
 redundant_type_annotations      = "warn"
 empty_structs_with_brackets     = "warn"
 
-# The workspace is an application/library hybrid, not a crates.io package. These
-# checks depend on publish metadata and the fully resolved third-party graph.
-cargo_common_metadata               = "allow"
-multiple_crate_versions             = "allow"
-
 # These APIs deliberately preserve ownership and async shapes across the FFI and
 # storage boundaries. The remaining occurrences are intentional trade-offs rather
 # than correctness defects.

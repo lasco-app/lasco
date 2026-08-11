@@ -2,6 +2,12 @@
 name = "lasco-core"
 version = "0.1.0"
 edition = "2024"
+description = "Core library for Lasco, an end-to-end encrypted photo backup application"
+license = "GPL-3.0-only"
+repository = "https://github.com/lasco-app/lasco"
+readme = "../README.md"
+keywords = []
+categories = []
 
 [lints]
 workspace = true
@@ -27,11 +33,10 @@ zeroize = { version = "1", features = ["derive"] }
 tracing = "0.1"
 rustc-hash = "2"
 keyring = "3"
-rust-s3 = "0.35"
-base64 = "0.21"
+rust-s3 = "0.37.2"
+base64 = "0.22"
 walkdir = "2"
 blake3 = "1"
-http = "0.2"
 directories = "5"
 tempfile = "3"
 
