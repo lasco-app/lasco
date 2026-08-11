@@ -58,8 +58,9 @@ impl Library {
         let lib_dir = self.inner.local_dirs.local_state_library_dir();
 
         // Verify old password before writing a new mk file.
-        find_master_key(lib_dir.path(), &username.0, &password_old.0)
-            .map_err(|_| LibraryError::Keychain(KeychainError::AuthenticationFailed))?;
+        find_master_key(lib_dir.path(), &username.0, &password_old.0).map_err(
+            |_authentication_error| LibraryError::Keychain(KeychainError::AuthenticationFailed),
+        )?;
 
         let salt = read_salt_file(lib_dir.path())?;
         let new_uuid = Uuid::new_v4();

@@ -90,7 +90,7 @@ fn encode_frame(master_key: &MasterKey, operation: &CrdtOperation) -> Result<Vec
             maximum: MAX_LOCAL_OP_BLOB_LEN,
         });
     }
-    let len = u32::try_from(bytes.len()).map_err(|_| OperationError::BlobTooLarge {
+    let len = u32::try_from(bytes.len()).map_err(|_length_error| OperationError::BlobTooLarge {
         declared: bytes.len(),
         maximum: MAX_LOCAL_OP_BLOB_LEN,
     })?;

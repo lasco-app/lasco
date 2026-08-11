@@ -300,7 +300,7 @@ impl Library {
                 let bytes = storage
                     .get(&key)
                     .await
-                    .map_err(|_| LibraryError::MediaNotFound(media_id))?;
+                    .map_err(|_remote_media_error| LibraryError::MediaNotFound(media_id))?;
                 if let Some(parent) = thumb_path.parent() {
                     std::fs::create_dir_all(parent)?;
                 }
@@ -358,7 +358,7 @@ impl Library {
         storage
             .get(&key)
             .await
-            .map_err(|_| LibraryError::MediaNotFound(media_id))
+            .map_err(|_remote_media_error| LibraryError::MediaNotFound(media_id))
     }
 
     pub(crate) fn record_remote_media_presence(&self, remote_id: &str, media_id: MediaUuid) {

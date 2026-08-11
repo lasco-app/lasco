@@ -30,7 +30,7 @@ pub(crate) fn write_salt_file(lib_dir: &Path, salt: LibrarySalt) -> Result<()> {
 
 pub(crate) fn read_salt_file(lib_dir: &Path) -> Result<LibrarySalt> {
     let bytes = std::fs::read(lib_dir.join(LIBRARY_SALT_FILE))
-        .map_err(|_| KeychainError::NotFound("library_salt not found".to_string()))?;
+        .map_err(|_read_error| KeychainError::NotFound("library_salt not found".to_string()))?;
     if bytes.len() != LIBRARY_SALT_SIZE {
         return Err(KeychainError::InvalidLength {
             expected: LIBRARY_SALT_SIZE,

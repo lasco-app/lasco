@@ -90,7 +90,7 @@ fn aes_gcm_decrypt(key_bytes: &[u8; KEK_SIZE], bytes: &[u8]) -> Result<Vec<u8>> 
     let nonce = aes_gcm::Nonce::<_>::from_slice(nonce_bytes);
     cipher
         .decrypt(nonce, ciphertext)
-        .map_err(|_| KeychainError::AuthenticationFailed)
+        .map_err(|_authentication_error| KeychainError::AuthenticationFailed)
 }
 
 fn serialize_mk(master_key: &MasterKey) -> [u8; MASTER_KEY_SIZE] {
@@ -156,7 +156,7 @@ pub(crate) fn read_mk_file(
     password: &str,
 ) -> Result<MasterKey> {
     let path = mk_path(lib_dir, username, password_uuid);
-    let bytes = std::fs::read(&path).map_err(|_| {
+    let bytes = std::fs::read(&path).map_err(|_read_error| {
         KeychainError::NotFound(format!("mk_{username}_{password_uuid}.enc not found"))
     })?;
     let kek = derive_kek(password, salt);

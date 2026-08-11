@@ -277,8 +277,11 @@ pub async fn add_existing_library_s3(
 
     // Discover the active password UUID by trying all mk files for this user.
     let (master_key, active_password_uuid) =
-        find_master_key(lib_dir.path(), &username.0, &password.0)
-            .map_err(|_| anyhow::anyhow!("failed to open library — wrong username or password"))?;
+        find_master_key(lib_dir.path(), &username.0, &password.0).map_err(
+            |_authentication_error| {
+                anyhow::anyhow!("failed to open library — wrong username or password")
+            },
+        )?;
 
     let library = Library::open_with_master_key(
         local_dirs.clone(),

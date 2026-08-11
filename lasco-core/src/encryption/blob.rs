@@ -84,7 +84,7 @@ pub(crate) fn decrypt_blob(
     let xnonce = XNonce::from_slice(&blob.nonce.0);
     cipher
         .decrypt(xnonce, blob.ciphertext.as_ref())
-        .map_err(|_| CryptoError::AuthenticationFailed)
+        .map_err(|_authentication_error| CryptoError::AuthenticationFailed)
 }
 
 #[cfg(test)]
