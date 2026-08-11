@@ -42,7 +42,7 @@ impl Library {
         Ok(seen.into_iter().map(LibraryUsername).collect())
     }
 
-    pub async fn user_change_password(
+    async fn user_change_password(
         &self,
         username: LibraryUsername,
         password_old: LibraryPassword,

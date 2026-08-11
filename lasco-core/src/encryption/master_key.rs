@@ -126,7 +126,7 @@ pub fn parse_mk_filename(name: &str) -> Option<(String, Uuid)> {
     Some((username.to_string(), uuid))
 }
 
-pub fn write_mk_file(
+pub(crate) fn write_mk_file(
     lib_dir: &Path,
     username: &str,
     password_uuid: Uuid,
@@ -141,7 +141,7 @@ pub fn write_mk_file(
         .map_err(|e| KeychainError::Io(e.to_string()))
 }
 
-pub fn read_mk_file(
+pub(crate) fn read_mk_file(
     lib_dir: &Path,
     username: &str,
     password_uuid: Uuid,
@@ -159,7 +159,7 @@ pub fn read_mk_file(
 
 /// Try all `mk_{username}_*.enc` files in `lib_dir` until one decrypts successfully.
 /// Returns the master key and the UUID of the file that matched.
-pub fn find_master_key(
+pub(crate) fn find_master_key(
     lib_dir: &Path,
     username: &str,
     password: &str,
@@ -191,7 +191,7 @@ pub fn find_master_key(
 }
 
 /// Open with a known password UUID (fast path, avoids iterating all mk files).
-pub fn open_master_key(
+pub(crate) fn open_master_key(
     lib_dir: &Path,
     username: &str,
     password_uuid: Uuid,

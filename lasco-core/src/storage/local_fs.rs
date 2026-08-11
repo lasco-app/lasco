@@ -13,7 +13,7 @@ pub struct StorageLocalFs {
 }
 
 impl StorageLocalFs {
-    pub fn new(root: impl Into<PathBuf>) -> Result<Self> {
+    pub(crate) fn new(root: impl Into<PathBuf>) -> Result<Self> {
         let root = root.into();
         Ok(Self { root })
     }

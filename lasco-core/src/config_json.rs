@@ -116,7 +116,7 @@ impl ConfigJson {
     }
 
     /// Save the application config to disk
-    pub fn save(&self, app_dir: &Path) -> Result<()> {
+    pub(crate) fn save(&self, app_dir: &Path) -> Result<()> {
         let path = app_config_path(app_dir);
         fs::create_dir_all(app_dir)
             .with_context(|| format!("Failed to create app directory {}", app_dir.display()))?;
@@ -152,7 +152,7 @@ impl ConfigJson {
     }
 
     /// Remove a library by its ID
-    pub fn remove_library(&mut self, library_id: &LibraryId) -> Result<()> {
+    pub(crate) fn remove_library(&mut self, library_id: &LibraryId) -> Result<()> {
         let nickname = self
             .libraries
             .get(library_id)
@@ -174,7 +174,7 @@ impl ConfigJson {
     }
 
     /// Set the default library by nickname
-    pub fn set_default_library(&mut self, nickname: &str) -> Result<()> {
+    fn set_default_library(&mut self, nickname: &str) -> Result<()> {
         if !self
             .libraries
             .values()

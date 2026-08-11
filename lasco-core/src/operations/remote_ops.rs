@@ -27,7 +27,7 @@ pub enum RemoteOpFile {
 
 /// Lists and classifies all operation files under `operations/` on the remote.
 /// Skips any key whose filename starts with `LOCK`.
-pub async fn list_remote_op_files(storage: &dyn Storage) -> Result<Vec<RemoteOpFile>> {
+pub(crate) async fn list_remote_op_files(storage: &dyn Storage) -> Result<Vec<RemoteOpFile>> {
     let remote = StorageRead::new(storage);
     list_remote_op_files_read(&remote).await
 }
@@ -71,7 +71,7 @@ pub(crate) async fn list_remote_op_files_read(
 }
 
 /// Reads and decrypts a compaction file at `key`. The `file_uuid` drives key derivation.
-pub async fn read_compaction_file(
+pub(crate) async fn read_compaction_file(
     storage: &dyn Storage,
     master_key: &MasterKey,
     key: &str,
@@ -96,7 +96,7 @@ pub(crate) async fn read_compaction_file_read(
 }
 
 /// Encrypts and writes a compaction file to `key`. The `file_uuid` drives key derivation.
-pub async fn write_compaction_file(
+pub(crate) async fn write_compaction_file(
     storage: &dyn Storage,
     master_key: &MasterKey,
     key: &str,

@@ -16,7 +16,7 @@ const MAX_LOCAL_OP_BLOB_LEN: usize = 64 * 1024 * 1024;
 const LOCAL_OPS_KEY_ID: uuid::Uuid =
     uuid::Uuid::from_u128(0x6c61_7363_6f5f_6c6f_6361_6c5f_6f70_7302);
 
-pub fn append_crdt_operation(
+pub(crate) fn append_crdt_operation(
     log_path: &std::path::Path,
     master_key: &MasterKey,
     operation: &CrdtOperation,
@@ -34,7 +34,7 @@ pub fn append_crdt_operation(
 }
 
 /// Reads valid operations once, deduplicated by immutable dot identity.
-pub fn read_crdt_operations(
+pub(crate) fn read_crdt_operations(
     log_path: &std::path::Path,
     master_key: &MasterKey,
 ) -> Result<Vec<CrdtOperation>> {
@@ -55,7 +55,10 @@ pub fn read_crdt_operations(
     Ok(operations)
 }
 
-pub fn read_known_dots(log_path: &std::path::Path, master_key: &MasterKey) -> Result<HashSet<Dot>> {
+pub(crate) fn read_known_dots(
+    log_path: &std::path::Path,
+    master_key: &MasterKey,
+) -> Result<HashSet<Dot>> {
     Ok(read_crdt_operations(log_path, master_key)?
         .into_iter()
         .map(|operation| operation.dot)

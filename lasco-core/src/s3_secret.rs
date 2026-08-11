@@ -34,7 +34,7 @@ pub fn encrypt_s3_secret_key(
 }
 
 /// Decrypt an S3 secret key using the `MasterKey` (AES-256-GCM).
-pub fn decrypt_s3_secret_key(
+fn decrypt_s3_secret_key(
     master_key: &MasterKey,
     encrypted: &str,
     description: &str,
@@ -59,7 +59,7 @@ pub fn decrypt_s3_secret_key(
 }
 
 /// Resolve S3 credentials from an `S3Config`, decrypting the secret key with the master key.
-pub fn resolve_s3_credentials(
+pub(crate) fn resolve_s3_credentials(
     s3_config: &S3Config,
     master_key: &MasterKey,
 ) -> Result<(String, String), CryptoError> {

@@ -200,13 +200,13 @@ impl LocalDirs {
         }
     }
 
-    pub fn ensure_state_dirs(&self) -> std::io::Result<()> {
+    pub(crate) fn ensure_state_dirs(&self) -> std::io::Result<()> {
         std::fs::create_dir_all(self.local_state_library_dir().path())?;
         std::fs::create_dir_all(self.local_state_media_dir().path())?;
         Ok(())
     }
 
-    pub fn ensure_sync_dirs(&self) -> std::io::Result<()> {
+    pub(crate) fn ensure_sync_dirs(&self) -> std::io::Result<()> {
         std::fs::create_dir_all(self.root.join("remotes"))
     }
 }

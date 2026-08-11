@@ -167,7 +167,9 @@ impl Library {
 }
 
 /// Reads the remote's `remote_id_{uuid}` marker file and returns the UUID it holds.
-pub async fn discover_remote_uuid(storage: &StorageRead<'_>) -> Result<RemoteUuid, SyncError> {
+pub(crate) async fn discover_remote_uuid(
+    storage: &StorageRead<'_>,
+) -> Result<RemoteUuid, SyncError> {
     let remote_files = storage
         .list("")
         .await

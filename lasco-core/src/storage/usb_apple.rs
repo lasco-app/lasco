@@ -25,7 +25,7 @@ pub struct StorageUsbApple {
 }
 
 impl StorageUsbApple {
-    pub fn new(bookmark_base64: &str) -> Result<Self> {
+    pub(crate) fn new(bookmark_base64: &str) -> Result<Self> {
         let bookmark = base64::engine::general_purpose::STANDARD
             .decode(bookmark_base64)
             .map_err(|e| StorageError::Unavailable(format!("invalid USB bookmark: {e}")))?;

@@ -22,15 +22,15 @@ impl<'a> StorageRead<'a> {
         Self { storage }
     }
 
-    pub async fn get(&self, key: &str) -> Result<Vec<u8>> {
+    pub(crate) async fn get(&self, key: &str) -> Result<Vec<u8>> {
         self.storage.get(key).await
     }
 
-    pub async fn list(&self, prefix: &str) -> Result<Vec<String>> {
+    pub(crate) async fn list(&self, prefix: &str) -> Result<Vec<String>> {
         self.storage.list(prefix).await
     }
 
-    pub async fn exists(&self, key: &str) -> Result<bool> {
+    pub(crate) async fn exists(&self, key: &str) -> Result<bool> {
         self.storage.exists(key).await
     }
 }
@@ -58,15 +58,23 @@ impl<'a> StorageReadWrite<'a> {
         }
     }
 
-    pub async fn get(&self, key: &str) -> Result<Vec<u8>> {
+    #[allow(
+        dead_code,
+        reason = "Retained to keep the read/write capability surface aligned with StorageRead."
+    )]
+    pub(crate) async fn get(&self, key: &str) -> Result<Vec<u8>> {
         self.storage.get(key).await
     }
 
-    pub async fn list(&self, prefix: &str) -> Result<Vec<String>> {
+    pub(crate) async fn list(&self, prefix: &str) -> Result<Vec<String>> {
         self.storage.list(prefix).await
     }
 
-    pub async fn exists(&self, key: &str) -> Result<bool> {
+    #[allow(
+        dead_code,
+        reason = "Retained to keep the read/write capability surface aligned with StorageRead."
+    )]
+    pub(crate) async fn exists(&self, key: &str) -> Result<bool> {
         self.storage.exists(key).await
     }
 
@@ -75,19 +83,23 @@ impl<'a> StorageReadWrite<'a> {
         deprecated,
         reason = "Required by the current remote access compatibility layer."
     )]
-    pub async fn put(&self, key: &str, data: &[u8]) -> Result<()> {
+    #[allow(
+        dead_code,
+        reason = "Retained for compatibility; current push uses put_atomic to avoid partial writes."
+    )]
+    pub(crate) async fn put(&self, key: &str, data: &[u8]) -> Result<()> {
         self.storage.put(key, data).await
     }
 
-    pub async fn put_atomic(&self, key: &str, data: &[u8]) -> Result<()> {
+    pub(crate) async fn put_atomic(&self, key: &str, data: &[u8]) -> Result<()> {
         self.storage.put_atomic(key, data).await
     }
 
-    pub async fn put_if_absent(&self, key: &str, data: &[u8]) -> Result<bool> {
+    pub(crate) async fn put_if_absent(&self, key: &str, data: &[u8]) -> Result<bool> {
         self.storage.put_if_absent(key, data).await
     }
 
-    pub async fn delete(&self, key: &str) -> Result<()> {
+    pub(crate) async fn delete(&self, key: &str) -> Result<()> {
         self.storage.delete(key).await
     }
 }

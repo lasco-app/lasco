@@ -92,7 +92,7 @@ impl Library {
     ///
     /// Writes crypto metadata (salt, sentinel, master-key file) to `local_state/library/`
     /// on the local filesystem. No remote storage is touched.
-    pub async fn init(
+    pub(crate) async fn init(
         local_dirs: LocalDirs,
         library_id: LibraryId,
         credentials: Credentials,
@@ -147,7 +147,7 @@ impl Library {
         Ok((library, password_uuid))
     }
 
-    pub async fn open(local_dirs: LocalDirs, credentials: Credentials) -> Result<Library> {
+    pub(crate) async fn open(local_dirs: LocalDirs, credentials: Credentials) -> Result<Library> {
         let lib_dir = local_dirs.local_state_library_dir();
         let sentinel_path = lib_dir.path().join(LIBRARY_FORMAT_SENTINEL);
         if !sentinel_path.exists() {
@@ -187,7 +187,7 @@ impl Library {
     }
 
     /// Open with a pre-loaded `MasterKey` (session cache path).
-    pub async fn open_with_master_key(
+    pub(crate) async fn open_with_master_key(
         local_dirs: LocalDirs,
         master_key: MasterKey,
         library_id: LibraryId,

@@ -36,7 +36,7 @@ fn session_file(
 
 /// Store the `MasterKey` for a user.
 /// Writes to a file when `session_dir` is `Some`, and to the OS keychain otherwise.
-pub fn session_store_master_key(
+pub(crate) fn session_store_master_key(
     library_id: LibraryId,
     username: &LibraryUsername,
     master_key: &MasterKey,

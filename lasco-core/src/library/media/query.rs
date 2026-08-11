@@ -232,7 +232,7 @@ impl Library {
 
     /// Downloads a media blob from a known remote and records that positive observation in the
     /// remote's media inventory after the encrypted blob has been validated and cached locally.
-    pub async fn media_get_bytes_from_remote(
+    async fn media_get_bytes_from_remote(
         &self,
         media_id: MediaUuid,
         remote_id: &str,
@@ -265,7 +265,7 @@ impl Library {
     ///
     /// If the blob is not locally cached, `storage` is used to download it. Pass `None`
     /// to skip remote download (returns `MediaNotFound` when not cached locally).
-    pub async fn media_get(
+    async fn media_get(
         &self,
         media_id: MediaUuid,
         path_dest: &Path,

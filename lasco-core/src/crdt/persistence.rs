@@ -27,7 +27,7 @@ pub enum PersistenceError {
 
 /// Reads a complete canonical-state snapshot. There is intentionally no reader
 /// for the pre-CRDT operation log; this format is an explicit local-data reset.
-pub fn load_persisted(
+pub(crate) fn load_persisted(
     path: &std::path::Path,
     master_key: &crate::encryption::master_key::MasterKey,
     device_id: DeviceId,
@@ -46,7 +46,7 @@ pub fn load_persisted(
 }
 
 /// Atomically encrypts and replaces the canonical state and durable outbox.
-pub fn save_persisted(
+pub(crate) fn save_persisted(
     path: &std::path::Path,
     master_key: &crate::encryption::master_key::MasterKey,
     persisted: &CrdtStateReplica,
