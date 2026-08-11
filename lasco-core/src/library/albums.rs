@@ -31,6 +31,10 @@ pub struct AlbumSummary {
 
 /// A media or group entry as displayed in an album's date-ordered item list.
 #[derive(Debug, Clone)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "Media is the dominant album item; boxing it would add allocation and indirection on the common path."
+)]
 pub enum AlbumItem {
     Media(MediaEntry),
     Group(GroupEntry),

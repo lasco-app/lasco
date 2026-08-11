@@ -15,6 +15,7 @@ impl fmt::Debug for LocalDirs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("LocalDirs")
             .field("root", &self.root)
+            .field("library_id", &self.library_id)
             .finish()
     }
 }

@@ -121,7 +121,11 @@ impl Library {
             let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
                 continue;
             };
-            if !path.is_file() || !name.starts_with("mk_") || !name.ends_with(".enc") {
+            let is_master_key_file = name
+                .strip_prefix("mk_")
+                .and_then(|name| name.strip_suffix(".enc"))
+                .is_some();
+            if !path.is_file() || !is_master_key_file {
                 continue;
             }
             let data = std::fs::read(&path)?;

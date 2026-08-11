@@ -32,14 +32,6 @@ empty_structs_with_brackets     = "warn"
 
 too_many_lines                      = "warn"
 
-# These are deliberate implementation details: compact domain enums, redacted
-# debug output, shared-pointer cloning, platform-neutral extension matching, and
-# local test imports.
-large_enum_variant                  = "allow"
-missing_fields_in_debug             = "allow"
-case_sensitive_file_extension_comparisons = "allow"
-items_after_statements              = "allow"
-
 [profile.release]
 strip = true
 opt-level = "z"
