@@ -216,18 +216,22 @@ impl Library {
         })
     }
 
+    #[must_use]
     pub fn library_id(&self) -> LibraryId {
         self.inner.library_id
     }
 
+    #[must_use]
     pub fn username(&self) -> &LibraryUsername {
         &self.inner.username
     }
 
+    #[must_use]
     pub fn master_key(&self) -> &MasterKey {
         &self.inner.master_key
     }
 
+    #[must_use]
     pub fn protocol_version(&self) -> u32 {
         PROTOCOL_VERSION
     }

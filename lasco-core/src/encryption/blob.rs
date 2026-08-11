@@ -25,6 +25,7 @@ pub struct BlobEncrypted {
 
 impl BlobEncrypted {
     /// Serializes the blob to `[version | nonce | ciphertext]` bytes.
+    #[must_use]
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut out = Vec::with_capacity(HEADER_LEN + self.ciphertext.len());
         out.push(self.format_version);
@@ -56,6 +57,7 @@ impl BlobEncrypted {
 }
 
 /// Encrypt `plaintext` with XChaCha20-Poly1305 using a random 24-byte nonce sourced from the OS RNG.
+#[must_use]
 pub fn encrypt_blob(file_key: &BlobKey, plaintext: &[u8]) -> BlobEncrypted {
     let key = chacha20poly1305::Key::from_slice(file_key.as_ref());
     let cipher = XChaCha20Poly1305::new(key);

@@ -30,6 +30,7 @@ pub enum MediaAddResult {
 }
 
 impl MediaAddResult {
+    #[must_use]
     pub fn id(&self) -> MediaUuid {
         match self {
             MediaAddResult::Added(id) | MediaAddResult::AlreadyExists(id) => *id,

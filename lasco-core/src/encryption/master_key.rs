@@ -35,6 +35,7 @@ const FILE_HEADER_LEN: usize = VERSION_SIZE + AES_GCM_NONCE_SIZE;
 pub struct MasterKey([u8; MASTER_KEY_SIZE]);
 
 impl MasterKey {
+    #[must_use]
     pub fn from_raw(bytes: [u8; MASTER_KEY_SIZE]) -> Self {
         Self(bytes)
     }
@@ -53,6 +54,7 @@ impl AsRef<[u8; MASTER_KEY_SIZE]> for MasterKey {
 }
 
 /// Generate a fresh random `MasterKey`.
+#[must_use]
 pub fn generate_master_key() -> MasterKey {
     let mut key_bytes = [0; MASTER_KEY_SIZE];
     OsRng.fill_bytes(&mut key_bytes);
@@ -115,6 +117,7 @@ fn mk_path(lib_dir: &Path, username: &str, password_uuid: Uuid) -> PathBuf {
 const UUID_STR_LEN: usize = 36;
 
 /// Parse `mk_{username}_{uuid}.enc` filenames. Returns `(username, uuid)` on success.
+#[must_use]
 pub fn parse_mk_filename(name: &str) -> Option<(String, Uuid)> {
     let rest = name.strip_prefix("mk_")?.strip_suffix(".enc")?;
     if rest.len() < UUID_STR_LEN + 2 {

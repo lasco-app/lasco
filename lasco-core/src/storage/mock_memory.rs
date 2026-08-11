@@ -21,16 +21,19 @@ impl StorageMockMemory {
         self.offline.store(offline, Ordering::SeqCst);
     }
 
+    #[must_use]
     pub fn list_call_count(&self) -> usize {
         self.list_call_count.load(Ordering::SeqCst)
     }
 
+    #[must_use]
     pub fn get_call_count(&self) -> usize {
         self.get_call_count.load(Ordering::SeqCst)
     }
 }
 
 impl StorageMockMemory {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }

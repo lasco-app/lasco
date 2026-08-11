@@ -13,6 +13,7 @@ pub struct OperationState {
 }
 
 impl OperationState {
+    #[must_use]
     pub fn from_reconstructed(reconstructed: ReconstructedState) -> Self {
         let views = build_computed_views(&reconstructed);
         Self {

@@ -45,6 +45,7 @@ pub struct DatedAlbumItem {
 impl Library {
     /// Returns direct, non-deleted albums under `parent_album_id`, ordered by
     /// name and then ID. `None` denotes the root album level.
+    #[must_use]
     pub fn album_albums(&self, parent_album_id: Option<AlbumUuid>) -> Vec<AlbumSummary> {
         let state = self.inner.operation_state.read();
         state
@@ -73,6 +74,7 @@ impl Library {
             .map_or(0, Vec::len)
     }
 
+    #[must_use]
     pub fn album_albums_range(
         &self,
         parent_album_id: Option<AlbumUuid>,
@@ -281,6 +283,7 @@ impl Library {
             .collect())
     }
 
+    #[must_use]
     pub fn album_list(&self) -> Vec<AlbumSummary> {
         let state = self.inner.operation_state.read();
         state
@@ -301,6 +304,7 @@ impl Library {
 
     /// Reconstruct the path from an album to its root (or as far as available).
     /// Uses a visited set so it is safe even if reparent ops created cycles.
+    #[must_use]
     pub fn album_get_path(&self, album_id: AlbumUuid) -> String {
         let state = self.inner.operation_state.read();
         let mut current = album_id;
@@ -392,6 +396,7 @@ impl Library {
 
     /// Returns all non-deleted album IDs not reachable from root.
     /// These arise from concurrent reparent ops that created cycles.
+    #[must_use]
     pub fn album_disconnected_ids(&self) -> Vec<AlbumUuid> {
         let state = self.inner.operation_state.read();
         let mut reachable: HashSet<AlbumUuid> = HashSet::new();
@@ -425,6 +430,7 @@ impl Library {
     }
 
     /// Return (name, `parent_id`, `media_count`, `thumbnail_media_id`) for a non-deleted album, or None.
+    #[must_use]
     pub fn album_node_by_id(
         &self,
         album_id: AlbumUuid,

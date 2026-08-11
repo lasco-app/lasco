@@ -52,6 +52,7 @@ impl<'a> StorageReadWrite<'a> {
         Self { storage }
     }
 
+    #[must_use]
     pub fn as_read(&self) -> StorageRead<'_> {
         StorageRead {
             storage: self.storage,

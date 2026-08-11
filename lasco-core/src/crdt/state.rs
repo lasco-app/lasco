@@ -26,6 +26,7 @@ use crate::state::{AlbumEntry, GroupEntry, MediaEntry, ReconstructedState};
 pub struct DeviceId(pub u128);
 
 impl DeviceId {
+    #[must_use]
     pub fn random() -> Self {
         Self(rand::thread_rng().r#gen())
     }
@@ -47,6 +48,7 @@ pub struct ReplicaClock {
 }
 
 impl ReplicaClock {
+    #[must_use]
     pub fn new(device_id: DeviceId) -> Self {
         Self {
             device_id,
@@ -174,10 +176,12 @@ pub struct ObservedRemoveSet {
 }
 
 impl ObservedRemoveSet {
+    #[must_use]
     pub fn contains(&self) -> bool {
         self.adds.iter().any(|dot| !self.removed.contains(dot))
     }
 
+    #[must_use]
     pub fn live_dots(&self) -> HashSet<Dot> {
         self.adds.difference(&self.removed).copied().collect()
     }
@@ -248,6 +252,7 @@ pub struct GroupCreation {
 }
 
 impl CanonicalState {
+    #[must_use]
     pub fn new(device_id: DeviceId) -> Self {
         Self {
             clock: ReplicaClock::new(device_id),
@@ -414,6 +419,7 @@ impl CanonicalState {
             .map_or_else(HashSet::new, ObservedRemoveSet::live_dots)
     }
 
+    #[must_use]
     pub fn is_album_created_and_live(&self, id: AlbumUuid) -> bool {
         self.albums
             .get(&id)
@@ -421,6 +427,7 @@ impl CanonicalState {
     }
 
     /// Resolves parents, cycles, and visibility without mutating canonical data.
+    #[must_use]
     pub fn album_projection(&self) -> AlbumProjection {
         let mut parents: HashMap<AlbumUuid, Option<AlbumUuid>> = self
             .albums
@@ -482,6 +489,7 @@ impl CanonicalState {
 
     /// Produces the compatibility projection consumed by browse/query code.
     /// It is derived data only; the CRDT structures above remain canonical.
+    #[must_use]
     pub fn materialize(&self) -> ReconstructedState {
         let projection = self.album_projection();
         let mut result = ReconstructedState::default();

@@ -16,6 +16,7 @@ const LIBRARY_SALT_FILE: &str = "library_salt";
 #[derive(Debug, Clone, Copy)]
 pub struct LibrarySalt(pub [u8; LIBRARY_SALT_SIZE]);
 
+#[must_use]
 pub fn generate_salt() -> LibrarySalt {
     let mut bytes = [0; LIBRARY_SALT_SIZE];
     OsRng.fill_bytes(&mut bytes);

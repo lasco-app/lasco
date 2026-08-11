@@ -48,6 +48,7 @@ pub enum MediaListScope {
 
 impl Library {
     /// Returns primary visible media ordered by date descending, then ID descending.
+    #[must_use]
     pub fn media_by_date_count(&self, orphaned: bool) -> usize {
         let state = self.inner.operation_state.read();
         if orphaned {
@@ -58,6 +59,7 @@ impl Library {
     }
 
     /// Returns the inclusive position range from the canonical home-media order.
+    #[must_use]
     pub fn media_by_date_range(
         &self,
         orphaned: bool,
@@ -92,6 +94,7 @@ impl Library {
     }
 
     /// Returns media entries matching `scope`.
+    #[must_use]
     pub fn media_list(&self, scope: MediaListScope) -> Vec<MediaEntry> {
         let state = self.inner.operation_state.read();
         match scope {
@@ -376,6 +379,7 @@ impl Library {
     }
 
     /// Returns IDs of all non-deleted albums that directly contain `media_id`.
+    #[must_use]
     pub fn media_album_ids(&self, media_id: MediaUuid) -> Vec<AlbumUuid> {
         let state = self.inner.operation_state.read();
         state
@@ -389,6 +393,7 @@ impl Library {
 
     /// Returns IDs of albums containing `media_id`, directly or (when `include_via_groups`
     /// is true) through a non-deleted group whose parent album is non-deleted.
+    #[must_use]
     pub fn media_containing_album_ids(
         &self,
         media_id: MediaUuid,
@@ -433,6 +438,7 @@ impl Library {
 
     /// Returns the ids of local media not confirmed by the positive media inventory of any of
     /// `remote_ids`. If `remote_ids` is empty, returns all local media.
+    #[must_use]
     pub fn media_ids_without_remote_backup(&self, remote_ids: &[String]) -> Vec<MediaUuid> {
         let mut backed_up = std::collections::HashSet::new();
         for remote_id in remote_ids {

@@ -51,11 +51,13 @@ pub fn default_app_dir() -> Result<PathBuf> {
 }
 
 /// Path to the application configuration file
+#[must_use]
 pub fn app_config_path(app_dir: &Path) -> PathBuf {
     app_dir.join("config.json")
 }
 
 /// Path to the library data directory
+#[must_use]
 pub fn library_data_dir(app_dir: &Path, library_id: &LibraryId) -> PathBuf {
     app_dir.join("libraries").join(library_id.to_string())
 }
@@ -135,6 +137,7 @@ impl ConfigJson {
     }
 
     /// Get a library id by its nickname
+    #[must_use]
     pub fn get_library_id_by_nickname(&self, nickname: &str) -> Option<&LibraryId> {
         self.libraries
             .iter()
@@ -143,6 +146,7 @@ impl ConfigJson {
     }
 
     /// Get the default library id
+    #[must_use]
     pub fn get_default_library_id(&self) -> Option<&LibraryId> {
         self.default_library
             .as_ref()
@@ -199,6 +203,7 @@ impl ConfigJson {
     }
 
     /// Get all library IDs
+    #[must_use]
     pub fn library_ids(&self) -> Vec<&LibraryId> {
         self.libraries.keys().collect()
     }

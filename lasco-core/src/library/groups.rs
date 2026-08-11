@@ -70,6 +70,7 @@ impl Library {
         Ok(())
     }
 
+    #[must_use]
     pub fn group_list(&self) -> Vec<GroupEntry> {
         let state = self.inner.operation_state.read();
         state

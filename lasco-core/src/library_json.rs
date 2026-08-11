@@ -117,6 +117,7 @@ fn default_library_version() -> u32 {
 }
 
 /// Path to a library's `library.json`
+#[must_use]
 pub fn library_json_path(app_dir: &Path, library_id: &LibraryId) -> PathBuf {
     library_data_dir(app_dir, library_id).join("library.json")
 }
@@ -217,6 +218,7 @@ fn load_default_library(app_dir: &Path) -> Result<(LibraryId, LibraryJson)> {
 }
 
 /// Get the remote kind for a given remote UUID (as a string).
+#[must_use]
 pub fn get_remote_kind(library: &LibraryJson, remote_uuid: &str) -> Option<RemoteKind> {
     library
         .remotes
@@ -250,6 +252,7 @@ fn validate_remote_exists(library: &LibraryJson, remote_uuid: &str) -> Result<()
 }
 
 /// List all remote UUIDs (as strings) from the library config.
+#[must_use]
 pub fn list_remote_ids(library: &LibraryJson) -> Vec<String> {
     library
         .remotes
@@ -287,6 +290,7 @@ fn find_remote_by_name<'a>(library: &'a LibraryJson, name: &str) -> Result<&'a R
 }
 
 /// Find a remote by its UUID.
+#[must_use]
 pub fn find_remote_by_uuid<'a>(
     library: &'a LibraryJson,
     uuid: &RemoteUuid,

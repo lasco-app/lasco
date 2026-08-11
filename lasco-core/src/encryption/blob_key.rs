@@ -19,6 +19,7 @@ const _: () = assert!(BLOB_KEY_SIZE == 32); // XChaCha20-Poly1305 key is fixed a
 pub struct BlobKey([u8; BLOB_KEY_SIZE]);
 
 impl BlobKey {
+    #[must_use]
     pub fn from_raw(bytes: [u8; BLOB_KEY_SIZE]) -> Self {
         Self(bytes)
     }
@@ -37,6 +38,7 @@ impl AsRef<[u8; BLOB_KEY_SIZE]> for BlobKey {
 }
 
 /// Derive a `BlobKey` from `master_key` and `uuid` using HKDF-SHA256.
+#[must_use]
 pub fn derive_blob_key(master_key: &MasterKey, uuid: &Uuid) -> BlobKey {
     let hk = Hkdf::<Sha256>::new(None, master_key.as_ref());
     let mut fk_bytes = [0; BLOB_KEY_SIZE];
