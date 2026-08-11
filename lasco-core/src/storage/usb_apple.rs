@@ -15,7 +15,7 @@ use objc2::rc::Retained;
 use objc2::runtime::Bool;
 use objc2_foundation::{NSData, NSURL, NSURLBookmarkResolutionOptions};
 
-use super::{Result, Storage, StorageError, StorageLocalFs};
+use super::{AtomicWriteMode, Result, Storage, StorageError, StorageLocalFs};
 
 #[derive(Debug)]
 pub struct StorageUsbApple {
@@ -85,15 +85,14 @@ impl Drop for StorageUsbApple {
 #[async_trait]
 impl Storage for StorageUsbApple {
     async fn put(&self, key: &str, data: &[u8]) -> Result<()> {
-        self.storage.put_atomic(key, data).await
+        self.storage
+            .put_atomic(key, data, AtomicWriteMode::Replace)
+            .await?;
+        Ok(())
     }
 
-    async fn put_atomic(&self, key: &str, data: &[u8]) -> Result<()> {
-        self.storage.put_atomic(key, data).await
-    }
-
-    async fn put_if_absent(&self, key: &str, data: &[u8]) -> Result<bool> {
-        self.storage.put_if_absent(key, data).await
+    async fn put_atomic(&self, key: &str, data: &[u8], mode: AtomicWriteMode) -> Result<bool> {
+        self.storage.put_atomic(key, data, mode).await
     }
 
     async fn get(&self, key: &str) -> Result<Vec<u8>> {

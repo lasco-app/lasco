@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use async_trait::async_trait;
 use parking_lot::Mutex;
 
-use super::{Result, Storage, StorageError};
+use super::{AtomicWriteMode, Result, Storage, StorageError};
 
 #[derive(Clone, Debug, Default)]
 pub struct StorageMockMemory {
@@ -59,21 +59,21 @@ impl Storage for StorageMockMemory {
         Ok(())
     }
 
-    async fn put_atomic(&self, key: &str, data: &[u8]) -> Result<()> {
-        self.check_online()?;
-        self.data.lock().insert(key.to_owned(), data.to_vec());
-        Ok(())
-    }
-
-    async fn put_if_absent(&self, key: &str, data: &[u8]) -> Result<bool> {
+    async fn put_atomic(&self, key: &str, data: &[u8], mode: AtomicWriteMode) -> Result<bool> {
         self.check_online()?;
         let mut guard = self.data.lock();
-        match guard.entry(key.to_owned()) {
-            Entry::Vacant(e) => {
-                e.insert(data.to_vec());
+        match mode {
+            AtomicWriteMode::Replace => {
+                guard.insert(key.to_owned(), data.to_vec());
                 Ok(true)
             }
-            Entry::Occupied(_) => Ok(false),
+            AtomicWriteMode::CreateIfAbsent => match guard.entry(key.to_owned()) {
+                Entry::Vacant(e) => {
+                    e.insert(data.to_vec());
+                    Ok(true)
+                }
+                Entry::Occupied(_) => Ok(false),
+            },
         }
     }
 
@@ -119,7 +119,9 @@ mod tests {
     #[tokio::test]
     async fn put_then_get_returns_identical_bytes() {
         let s = StorageMockMemory::new();
-        s.put_atomic("k", b"hello").await.unwrap();
+        s.put_atomic("k", b"hello", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
         assert_eq!(s.get("k").await.unwrap(), b"hello");
     }
 
@@ -135,7 +137,9 @@ mod tests {
     #[tokio::test]
     async fn delete_removes_key() {
         let s = StorageMockMemory::new();
-        s.put_atomic("k", b"v").await.unwrap();
+        s.put_atomic("k", b"v", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
         s.delete("k").await.unwrap();
         assert!(matches!(s.get("k").await, Err(StorageError::NotFound)));
     }
@@ -143,9 +147,15 @@ mod tests {
     #[tokio::test]
     async fn list_returns_only_matching_prefix() {
         let s = StorageMockMemory::new();
-        s.put_atomic("files/a", b"1").await.unwrap();
-        s.put_atomic("files/b", b"2").await.unwrap();
-        s.put_atomic("other/c", b"3").await.unwrap();
+        s.put_atomic("files/a", b"1", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
+        s.put_atomic("files/b", b"2", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
+        s.put_atomic("other/c", b"3", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
         let mut keys = s.list("files/").await.unwrap();
         keys.sort();
         assert_eq!(keys, vec!["files/a", "files/b"]);
@@ -155,15 +165,25 @@ mod tests {
     async fn exists_after_put_and_missing() {
         let s = StorageMockMemory::new();
         assert!(!s.exists("k").await.unwrap());
-        s.put_atomic("k", b"v").await.unwrap();
+        s.put_atomic("k", b"v", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
         assert!(s.exists("k").await.unwrap());
     }
 
     #[tokio::test]
-    async fn put_if_absent_new_key_returns_true_existing_returns_false() {
+    async fn create_if_absent_new_key_returns_true_existing_returns_false() {
         let s = StorageMockMemory::new();
-        assert!(s.put_if_absent("k", b"original").await.unwrap());
-        assert!(!s.put_if_absent("k", b"overwrite").await.unwrap());
+        assert!(
+            s.put_atomic("k", b"original", AtomicWriteMode::CreateIfAbsent)
+                .await
+                .unwrap()
+        );
+        assert!(
+            !s.put_atomic("k", b"overwrite", AtomicWriteMode::CreateIfAbsent)
+                .await
+                .unwrap()
+        );
         assert_eq!(s.get("k").await.unwrap(), b"original");
     }
 }

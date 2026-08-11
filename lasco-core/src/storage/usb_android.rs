@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use jni::objects::{GlobalRef, JObject, JString, JValue};
 use jni::{JNIEnv, JavaVM};
 
-use super::{Result, Storage, StorageError};
+use super::{AtomicWriteMode, Result, Storage, StorageError};
 
 const DIRECTORY_MIME: &str = "vnd.android.document/directory";
 const FILE_MIME: &str = "application/octet-stream";
@@ -282,18 +282,10 @@ impl Storage for StorageUsbAndroid {
         })
     }
 
-    async fn put_atomic(&self, _key: &str, _data: &[u8]) -> Result<()> {
+    async fn put_atomic(&self, _key: &str, _data: &[u8], _mode: AtomicWriteMode) -> Result<bool> {
         Err(StorageError::Unavailable(
-            "Android USB storage does not support atomic replacement".to_string(),
+            "Android USB storage does not support atomic writes".to_string(),
         ))
-    }
-
-    async fn put_if_absent(&self, key: &str, data: &[u8]) -> Result<bool> {
-        if self.exists(key).await? {
-            return Ok(false);
-        }
-        self.put(key, data).await?;
-        Ok(true)
     }
 
     async fn get(&self, key: &str) -> Result<Vec<u8>> {

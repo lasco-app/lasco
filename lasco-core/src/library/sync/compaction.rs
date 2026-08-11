@@ -8,6 +8,7 @@ use crate::error::SyncError;
 use crate::identifiers::CompactedOpId;
 use crate::operations::remote_ops::{self as op_io, RemoteOpFile};
 use crate::remote::LastKnownState;
+use crate::storage::AtomicWriteMode;
 
 use super::map_op_err;
 use super::remote_access::StorageReadWrite;
@@ -92,7 +93,7 @@ pub(super) async fn try_acquire_lock(
     .expect("CompactionLock is always serializable");
 
     let acquired = storage
-        .put_if_absent(key, &payload)
+        .put_atomic(key, &payload, AtomicWriteMode::CreateIfAbsent)
         .await
         .map_err(SyncError::RemoteUnreachable)?;
 

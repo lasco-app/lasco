@@ -13,13 +13,25 @@ pub enum StorageError {
 
 pub type Result<T> = std::result::Result<T, StorageError>;
 
+/// Publication policy for [`Storage::put_atomic`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AtomicWriteMode {
+    /// Atomically replace any existing value.
+    Replace,
+    /// Atomically create the value only when the key is absent.
+    CreateIfAbsent,
+}
+
 #[async_trait]
 pub trait Storage: Send + Sync {
     #[deprecated(note = "Use put_atomic for remote writes.")]
     async fn put(&self, key: &str, data: &[u8]) -> Result<()>;
-    /// Replaces a key without exposing a partially-written value to readers.
-    async fn put_atomic(&self, key: &str, data: &[u8]) -> Result<()>;
-    async fn put_if_absent(&self, key: &str, data: &[u8]) -> Result<bool>;
+    /// Atomically publishes `data` according to `mode`, without exposing a partial value.
+    ///
+    /// Returns whether this invocation published the value. `Replace` always returns `true`;
+    /// `CreateIfAbsent` returns `false` and leaves the existing value untouched when the key
+    /// already exists. Backends must implement the existence check and publication as one action.
+    async fn put_atomic(&self, key: &str, data: &[u8], mode: AtomicWriteMode) -> Result<bool>;
     async fn get(&self, key: &str) -> Result<Vec<u8>>;
     async fn delete(&self, key: &str) -> Result<()>;
     async fn list(&self, prefix: &str) -> Result<Vec<String>>;

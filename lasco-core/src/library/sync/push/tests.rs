@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use crate::identifiers::{AlbumUuid, MediaUuid, OpUuid};
 use crate::operations::{LibraryUsername, Operation, OperationGroup};
-use crate::storage::{Storage, StorageMockMemory};
+use crate::storage::{AtomicWriteMode, Storage, StorageMockMemory};
 
 use super::super::remote_access::{StorageRead, StorageReadWrite};
 use super::super::test_utils::{REMOTE_ID, make_library, stamp_remote_id, write_file};
@@ -14,7 +14,11 @@ const SOURCE_REMOTE_ID: &str = "22222222-2222-2222-2222-222222222222";
 
 async fn stamp_source_remote(storage: &dyn Storage) {
     storage
-        .put_if_absent(&format!("remote_id_{SOURCE_REMOTE_ID}"), b"")
+        .put_atomic(
+            &format!("remote_id_{SOURCE_REMOTE_ID}"),
+            b"",
+            AtomicWriteMode::CreateIfAbsent,
+        )
         .await
         .unwrap();
 }
@@ -733,7 +737,7 @@ async fn push_skips_cascade_when_lock_held() {
 
     // Manually place a lock as if another client is mid-compaction.
     storage
-        .put_atomic("operations/LOCK.op", b"lock")
+        .put_atomic("operations/LOCK.op", b"lock", AtomicWriteMode::Replace)
         .await
         .unwrap();
 
@@ -990,7 +994,10 @@ async fn corrupt_relay_media_is_not_uploaded_to_target() {
         "media/{}/{:02}/{media_id}.data",
         entry.storage_date.year, entry.storage_date.month
     );
-    source.put_atomic(&key, b"corrupt").await.unwrap();
+    source
+        .put_atomic(&key, b"corrupt", AtomicWriteMode::Replace)
+        .await
+        .unwrap();
     remove_local_media(&lib, media_id);
 
     assert!(
@@ -1023,7 +1030,11 @@ async fn push_propagates_master_key_files_without_overwriting() {
         .unwrap();
     let local = std::fs::read(library_dir.path().join(&name)).unwrap();
     target
-        .put_atomic(&format!("library/{name}"), b"existing")
+        .put_atomic(
+            &format!("library/{name}"),
+            b"existing",
+            AtomicWriteMode::Replace,
+        )
         .await
         .unwrap();
 

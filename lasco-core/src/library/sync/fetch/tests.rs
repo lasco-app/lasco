@@ -2,7 +2,7 @@ use tempfile::TempDir;
 use uuid::Uuid;
 
 use crate::identifiers::AlbumUuid;
-use crate::storage::{Storage, StorageMockMemory};
+use crate::storage::{AtomicWriteMode, Storage, StorageMockMemory};
 
 use super::super::remote_access::StorageReadWrite;
 use super::super::test_utils::{
@@ -420,7 +420,11 @@ async fn fetch_downloads_new_user_mk_file() {
     )
     .unwrap();
     storage
-        .put_atomic(&format!("library/{mk_name}"), &mk_bytes)
+        .put_atomic(
+            &format!("library/{mk_name}"),
+            &mk_bytes,
+            AtomicWriteMode::Replace,
+        )
         .await
         .unwrap();
 
@@ -471,7 +475,11 @@ async fn fetch_does_not_redownload_existing_mk_file() {
     )
     .unwrap();
     storage
-        .put_atomic(&format!("library/{mk_name}"), &mk_bytes)
+        .put_atomic(
+            &format!("library/{mk_name}"),
+            &mk_bytes,
+            AtomicWriteMode::Replace,
+        )
         .await
         .unwrap();
 
@@ -505,7 +513,10 @@ async fn fetch_errors_on_library_id_mismatch() {
         .delete(&format!("library/library_id_{}", lib_a.library_id().0))
         .await
         .unwrap();
-    storage.put_atomic(&wrong_marker, b"").await.unwrap();
+    storage
+        .put_atomic(&wrong_marker, b"", AtomicWriteMode::Replace)
+        .await
+        .unwrap();
 
     let err = lib_a.fetch(&storage, REMOTE_ID).await.unwrap_err();
     assert!(
@@ -536,7 +547,10 @@ async fn fetch_errors_on_remote_id_mismatch() {
         .delete(&format!("remote_id_{}", REMOTE_ID))
         .await
         .unwrap();
-    storage.put_atomic(&wrong_marker, b"").await.unwrap();
+    storage
+        .put_atomic(&wrong_marker, b"", AtomicWriteMode::Replace)
+        .await
+        .unwrap();
 
     let err = lib_a.fetch(&storage, REMOTE_ID).await.unwrap_err();
     assert!(

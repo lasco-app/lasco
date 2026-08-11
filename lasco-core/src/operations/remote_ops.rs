@@ -7,6 +7,7 @@ use crate::encryption::master_key::MasterKey;
 use crate::identifiers::CompactedOpId;
 use crate::library::sync::remote_access::{StorageRead, StorageReadWrite};
 use crate::operations::error::OperationError;
+use crate::storage::AtomicWriteMode;
 
 use super::{CompactionFile, compaction_file_from_cbor};
 
@@ -105,6 +106,8 @@ pub(crate) async fn write_compaction_bytes(
     key: &str,
     bytes: &[u8],
 ) -> Result<()> {
-    storage.put_atomic(key, bytes).await?;
+    storage
+        .put_atomic(key, bytes, AtomicWriteMode::Replace)
+        .await?;
     Ok(())
 }

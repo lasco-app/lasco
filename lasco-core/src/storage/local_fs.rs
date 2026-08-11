@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use async_trait::async_trait;
 use walkdir::WalkDir;
 
-use super::{Result, Storage, StorageError};
+use super::{AtomicWriteMode, Result, Storage, StorageError};
 
 #[derive(Debug)]
 pub struct StorageLocalFs {
@@ -30,30 +30,37 @@ impl Storage for StorageLocalFs {
         fs::write(path, data).map_err(|e| StorageError::Other(Box::new(e)))
     }
 
-    async fn put_atomic(&self, key: &str, data: &[u8]) -> Result<()> {
+    async fn put_atomic(&self, key: &str, data: &[u8], mode: AtomicWriteMode) -> Result<bool> {
         let path = self.root.join(key);
         let temp_path = path.with_file_name(format!(
-            "{}.temp",
-            path.file_name().unwrap_or_default().to_string_lossy()
+            ".{}.{}.temp",
+            path.file_name().unwrap_or_default().to_string_lossy(),
+            uuid::Uuid::new_v4()
         ));
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|e| StorageError::Other(Box::new(e)))?;
         }
         fs::write(&temp_path, data).map_err(|e| StorageError::Other(Box::new(e)))?;
-        fs::rename(temp_path, path).map_err(|e| StorageError::Other(Box::new(e)))
-    }
-
-    /// Not atomic across processes — acceptable for single-client testing.
-    async fn put_if_absent(&self, key: &str, data: &[u8]) -> Result<bool> {
-        let path = self.root.join(key);
-        if path.exists() {
-            return Ok(false);
+        match mode {
+            AtomicWriteMode::Replace => {
+                fs::rename(&temp_path, &path).map_err(|e| StorageError::Other(Box::new(e)))?;
+                Ok(true)
+            }
+            AtomicWriteMode::CreateIfAbsent => match fs::hard_link(&temp_path, &path) {
+                Ok(()) => {
+                    fs::remove_file(&temp_path).map_err(|e| StorageError::Other(Box::new(e)))?;
+                    Ok(true)
+                }
+                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+                    let _ = fs::remove_file(&temp_path);
+                    Ok(false)
+                }
+                Err(e) => {
+                    let _ = fs::remove_file(&temp_path);
+                    Err(StorageError::Other(Box::new(e)))
+                }
+            },
         }
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(|e| StorageError::Other(Box::new(e)))?;
-        }
-        fs::write(path, data).map_err(|e| StorageError::Other(Box::new(e)))?;
-        Ok(true)
     }
 
     async fn get(&self, key: &str) -> Result<Vec<u8>> {
@@ -115,15 +122,21 @@ mod tests {
     #[tokio::test]
     async fn put_then_get_returns_identical_bytes() {
         let (s, _dir) = store();
-        s.put_atomic("k", b"hello").await.unwrap();
+        s.put_atomic("k", b"hello", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
         assert_eq!(s.get("k").await.unwrap(), b"hello");
     }
 
     #[tokio::test]
     async fn put_atomic_replaces_file_and_removes_temp_file() {
         let (s, dir) = store();
-        s.put_atomic("nested/file", b"old").await.unwrap();
-        s.put_atomic("nested/file", b"new").await.unwrap();
+        s.put_atomic("nested/file", b"old", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
+        s.put_atomic("nested/file", b"new", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
 
         assert_eq!(s.get("nested/file").await.unwrap(), b"new");
         assert!(!dir.path().join("nested/file.temp").exists());
@@ -141,7 +154,9 @@ mod tests {
     #[tokio::test]
     async fn delete_removes_key() {
         let (s, _dir) = store();
-        s.put_atomic("k", b"v").await.unwrap();
+        s.put_atomic("k", b"v", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
         s.delete("k").await.unwrap();
         assert!(matches!(s.get("k").await, Err(StorageError::NotFound)));
     }
@@ -155,9 +170,15 @@ mod tests {
     #[tokio::test]
     async fn list_returns_only_matching_prefix() {
         let (s, _dir) = store();
-        s.put_atomic("operations/a", b"1").await.unwrap();
-        s.put_atomic("operations/b", b"2").await.unwrap();
-        s.put_atomic("other/c", b"3").await.unwrap();
+        s.put_atomic("operations/a", b"1", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
+        s.put_atomic("operations/b", b"2", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
+        s.put_atomic("other/c", b"3", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
         let mut keys = s.list("operations/").await.unwrap();
         keys.sort();
         assert_eq!(keys, vec!["operations/a", "operations/b"]);
@@ -182,22 +203,34 @@ mod tests {
     async fn exists_after_put_and_missing() {
         let (s, _dir) = store();
         assert!(!s.exists("k").await.unwrap());
-        s.put_atomic("k", b"v").await.unwrap();
+        s.put_atomic("k", b"v", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
         assert!(s.exists("k").await.unwrap());
     }
 
     #[tokio::test]
-    async fn put_if_absent_new_key_returns_true_existing_returns_false() {
+    async fn create_if_absent_new_key_returns_true_existing_returns_false() {
         let (s, _dir) = store();
-        assert!(s.put_if_absent("k", b"original").await.unwrap());
-        assert!(!s.put_if_absent("k", b"overwrite").await.unwrap());
+        assert!(
+            s.put_atomic("k", b"original", AtomicWriteMode::CreateIfAbsent)
+                .await
+                .unwrap()
+        );
+        assert!(
+            !s.put_atomic("k", b"overwrite", AtomicWriteMode::CreateIfAbsent)
+                .await
+                .unwrap()
+        );
         assert_eq!(s.get("k").await.unwrap(), b"original");
     }
 
     #[tokio::test]
     async fn nested_key_paths_created_and_retrieved() {
         let (s, _dir) = store();
-        s.put_atomic("a/b/c.bin", b"deep").await.unwrap();
+        s.put_atomic("a/b/c.bin", b"deep", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
         assert_eq!(s.get("a/b/c.bin").await.unwrap(), b"deep");
     }
 }

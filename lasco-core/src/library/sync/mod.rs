@@ -10,7 +10,7 @@ pub(super) mod push;
 use crate::error::{LibraryError, OperationError, SyncError};
 use crate::identifiers::RemoteUuid;
 use crate::library::Library;
-use crate::storage::StorageError;
+use crate::storage::{AtomicWriteMode, StorageError};
 use fetch::{FetchAccess, fetch_impl};
 use push::PushAccess;
 use remote_access::{StorageRead, StorageReadWrite};
@@ -79,7 +79,7 @@ impl Library {
         let remote = StorageReadWrite::new(storage);
         let marker_key = format!("remote_id_{remote_uuid}");
         remote
-            .put_if_absent(&marker_key, b"")
+            .put_atomic(&marker_key, b"", AtomicWriteMode::CreateIfAbsent)
             .await
             .map_err(|e| LibraryError::Io(std::io::Error::other(e.to_string())))?;
 
@@ -105,7 +105,7 @@ impl Library {
             let data = std::fs::read(&path)?;
             let key = format!("library/{filename}");
             remote
-                .put_atomic(&key, &data)
+                .put_atomic(&key, &data, AtomicWriteMode::Replace)
                 .await
                 .map_err(|e| LibraryError::Io(std::io::Error::other(e.to_string())))?;
         }

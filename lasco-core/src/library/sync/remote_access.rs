@@ -3,7 +3,7 @@
 //! Keep the underlying [`Storage`] private: a procedure which receives
 //! [`StorageRead`] cannot upload or delete remote data.
 
-use crate::storage::{Result, Storage};
+use crate::storage::{AtomicWriteMode, Result, Storage};
 
 pub struct StorageRead<'a> {
     storage: &'a dyn Storage,
@@ -92,12 +92,13 @@ impl<'a> StorageReadWrite<'a> {
         self.storage.put(key, data).await
     }
 
-    pub(crate) async fn put_atomic(&self, key: &str, data: &[u8]) -> Result<()> {
-        self.storage.put_atomic(key, data).await
-    }
-
-    pub(crate) async fn put_if_absent(&self, key: &str, data: &[u8]) -> Result<bool> {
-        self.storage.put_if_absent(key, data).await
+    pub(crate) async fn put_atomic(
+        &self,
+        key: &str,
+        data: &[u8],
+        mode: AtomicWriteMode,
+    ) -> Result<bool> {
+        self.storage.put_atomic(key, data, mode).await
     }
 
     pub(crate) async fn delete(&self, key: &str) -> Result<()> {

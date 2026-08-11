@@ -10,6 +10,7 @@ use crate::operations::remote_ops::{self as op_io, RemoteOpFile};
 use crate::operations::{CompactionFile, StorageDate};
 use crate::remote::last_known_state::collect_dots_from_dir;
 use crate::remote::{LastKnownState, MediaList};
+use crate::storage::AtomicWriteMode;
 
 use super::compaction::{
     self, appropriate_tier, count_tier_files, release_lock, tier_needs_compaction, try_acquire_lock,
@@ -131,7 +132,11 @@ impl Library {
             let data = std::fs::read(&path)?;
             access
                 .storage
-                .put_if_absent(&format!("library/{name}"), &data)
+                .put_atomic(
+                    &format!("library/{name}"),
+                    &data,
+                    AtomicWriteMode::CreateIfAbsent,
+                )
                 .await
                 .map_err(SyncError::RemoteUnreachable)?;
         }
@@ -331,7 +336,7 @@ impl Library {
             };
             let data_uploaded = access
                 .storage
-                .put_if_absent(&data_key, &bytes)
+                .put_atomic(&data_key, &bytes, AtomicWriteMode::CreateIfAbsent)
                 .await
                 .map_err(SyncError::RemoteUnreachable)?;
             if let Some(path) = staged_data {
@@ -347,7 +352,7 @@ impl Library {
                 let bytes = std::fs::read(&thumb_path)?;
                 access
                     .storage
-                    .put_if_absent(&thumb_key, &bytes)
+                    .put_atomic(&thumb_key, &bytes, AtomicWriteMode::CreateIfAbsent)
                     .await
                     .map_err(SyncError::RemoteUnreachable)?;
             } else if let Some((_, source)) = relay_source.as_ref() {
@@ -361,7 +366,7 @@ impl Library {
                         Ok((bytes, path)) => {
                             access
                                 .storage
-                                .put_if_absent(&thumb_key, &bytes)
+                                .put_atomic(&thumb_key, &bytes, AtomicWriteMode::CreateIfAbsent)
                                 .await
                                 .map_err(SyncError::RemoteUnreachable)?;
                             std::fs::remove_file(path)?;

@@ -4,7 +4,7 @@ use s3::creds::Credentials as S3Credentials;
 use s3::error::S3Error;
 use s3::region::Region;
 
-use super::{Result, Storage, StorageError};
+use super::{AtomicWriteMode, Result, Storage, StorageError};
 
 /// S3-compatible object storage backend.
 #[derive(Debug, Clone)]
@@ -83,16 +83,25 @@ impl Storage for StorageS3 {
 
     /// S3 object replacement is atomic: readers observe either the old object
     /// or the complete replacement object.
-    async fn put_atomic(&self, key: &str, data: &[u8]) -> Result<()> {
-        self.put_object(key, data).await
-    }
-
-    async fn put_if_absent(&self, key: &str, data: &[u8]) -> Result<bool> {
-        if self.exists(key).await? {
-            return Ok(false);
+    async fn put_atomic(&self, key: &str, data: &[u8], mode: AtomicWriteMode) -> Result<bool> {
+        match mode {
+            AtomicWriteMode::Replace => {
+                self.put_object(key, data).await?;
+                Ok(true)
+            }
+            AtomicWriteMode::CreateIfAbsent => match self
+                .bucket
+                .put_object_builder(self.prefixed_key(key), data)
+                .with_header("if-none-match", "*")
+                .map_err(|e| StorageError::Other(Box::new(e)))?
+                .execute()
+                .await
+            {
+                Ok(_) => Ok(true),
+                Err(S3Error::HttpFailWithBody(412, _)) => Ok(false),
+                Err(e) => Err(StorageError::Other(Box::new(e))),
+            },
         }
-        self.put_object(key, data).await?;
-        Ok(true)
     }
 
     async fn get(&self, key: &str) -> Result<Vec<u8>> {
@@ -247,7 +256,10 @@ mod tests {
     #[ignore = "Requires S3 test environment"]
     async fn put_then_get_returns_identical_bytes() {
         let storage = make_storage().expect("S3 test config not set");
-        storage.put_atomic("test/put_get", b"hello").await.unwrap();
+        storage
+            .put_atomic("test/put_get", b"hello", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
         assert_eq!(storage.get("test/put_get").await.unwrap(), b"hello");
         storage.delete("test/put_get").await.unwrap();
     }
@@ -266,7 +278,10 @@ mod tests {
     #[ignore = "Requires S3 test environment"]
     async fn delete_removes_key() {
         let storage = make_storage().expect("S3 test config not set");
-        storage.put_atomic("test/del", b"v").await.unwrap();
+        storage
+            .put_atomic("test/del", b"v", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
         storage.delete("test/del").await.unwrap();
         assert!(matches!(
             storage.get("test/del").await,
@@ -285,9 +300,18 @@ mod tests {
     #[ignore = "Requires S3 test environment"]
     async fn list_with_prefix() {
         let storage = make_storage().expect("S3 test config not set");
-        storage.put_atomic("list/a", b"1").await.unwrap();
-        storage.put_atomic("list/b", b"2").await.unwrap();
-        storage.put_atomic("other/c", b"3").await.unwrap();
+        storage
+            .put_atomic("list/a", b"1", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
+        storage
+            .put_atomic("list/b", b"2", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
+        storage
+            .put_atomic("other/c", b"3", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
         let keys = storage.list("list/").await.unwrap();
         assert!(keys.iter().any(|k| k == "list/a"));
         assert!(keys.iter().any(|k| k == "list/b"));
@@ -314,7 +338,10 @@ mod tests {
         )
         .unwrap();
 
-        storage.put_atomic("nested/a", b"1").await.unwrap();
+        storage
+            .put_atomic("nested/a", b"1", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
         let keys = storage.list("nested/").await.unwrap();
         assert!(keys.iter().any(|k| k == "nested/a"));
         assert_eq!(storage.get("nested/a").await.unwrap(), b"1");
@@ -330,18 +357,31 @@ mod tests {
     async fn exists_behavior() {
         let storage = make_storage().expect("S3 test config not set");
         assert!(!storage.exists("test/ex").await.unwrap());
-        storage.put_atomic("test/ex", b"v").await.unwrap();
+        storage
+            .put_atomic("test/ex", b"v", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
         assert!(storage.exists("test/ex").await.unwrap());
         storage.delete("test/ex").await.unwrap();
     }
 
     #[tokio::test]
     #[ignore = "Requires S3 test environment"]
-    async fn put_if_absent_behavior() {
+    async fn create_if_absent_behavior() {
         let storage = make_storage().expect("S3 test config not set");
         storage.delete("test/absent").await.unwrap();
-        assert!(storage.put_if_absent("test/absent", b"orig").await.unwrap());
-        assert!(!storage.put_if_absent("test/absent", b"new").await.unwrap());
+        assert!(
+            storage
+                .put_atomic("test/absent", b"orig", AtomicWriteMode::CreateIfAbsent)
+                .await
+                .unwrap()
+        );
+        assert!(
+            !storage
+                .put_atomic("test/absent", b"new", AtomicWriteMode::CreateIfAbsent)
+                .await
+                .unwrap()
+        );
         assert_eq!(storage.get("test/absent").await.unwrap(), b"orig");
         storage.delete("test/absent").await.unwrap();
     }
