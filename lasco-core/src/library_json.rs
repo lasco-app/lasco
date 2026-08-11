@@ -81,8 +81,8 @@ pub struct DebugLocalAppleConfig {
 }
 
 /// Stores a name and resolves the path against the app's own data directory on
-/// every use. Android's app_dir is not sandboxed the same way iOS/macOS is, so
-/// unlike DebugLocalAppleConfig no separate app-support directory is needed.
+/// every use. Android's `app_dir` is not sandboxed the same way iOS/macOS is, so
+/// unlike `DebugLocalAppleConfig` no separate app-support directory is needed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DebugLocalAndroidConfig {
     pub local_dir_name: String,

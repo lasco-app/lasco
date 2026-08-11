@@ -23,7 +23,7 @@ pub fn generate_salt() -> LibrarySalt {
 }
 
 pub fn write_salt_file(lib_dir: &Path, salt: LibrarySalt) -> Result<()> {
-    std::fs::write(lib_dir.join(LIBRARY_SALT_FILE), &salt.0)
+    std::fs::write(lib_dir.join(LIBRARY_SALT_FILE), salt.0)
         .map_err(|e| KeychainError::Io(e.to_string()))
 }
 

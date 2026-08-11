@@ -30,7 +30,7 @@ const FILE_HEADER_LEN: usize = VERSION_SIZE + AES_GCM_NONCE_SIZE;
 
 /// Random 256-bit root key for a library, stored encrypted inside `library/mk_{username}_{uuid}.enc`.
 ///
-/// Used to derive BlobKeys for each file via HKDF-SHA256. Never stored in plaintext on disk.
+/// Used to derive `BlobKeys` for each file via HKDF-SHA256. Never stored in plaintext on disk.
 #[derive(Clone, Zeroize, ZeroizeOnDrop)]
 pub struct MasterKey([u8; MASTER_KEY_SIZE]);
 
@@ -176,12 +176,11 @@ pub fn find_master_key(
             if file_username != username {
                 continue;
             }
-            if let Ok(bytes) = std::fs::read(entry.path()) {
-                if let Ok(plaintext) = aes_gcm_decrypt(kek.as_ref(), &bytes) {
-                    if let Ok(mk) = deserialize_mk(&plaintext) {
-                        return Ok((mk, uuid));
-                    }
-                }
+            if let Ok(bytes) = std::fs::read(entry.path())
+                && let Ok(plaintext) = aes_gcm_decrypt(kek.as_ref(), &bytes)
+                && let Ok(mk) = deserialize_mk(&plaintext)
+            {
+                return Ok((mk, uuid));
             }
         }
     }

@@ -34,7 +34,7 @@ fn session_file(
         .join(format!("{}.bin", username.0))
 }
 
-/// Store the MasterKey for a user.
+/// Store the `MasterKey` for a user.
 /// Writes to a file when `session_dir` is `Some`, and to the OS keychain otherwise.
 pub fn session_store_master_key(
     library_id: LibraryId,
@@ -55,7 +55,7 @@ pub fn session_store_master_key(
     Ok(())
 }
 
-/// Load the cached MasterKey for a user. Returns `None` if not present.
+/// Load the cached `MasterKey` for a user. Returns `None` if not present.
 pub fn session_load_master_key(
     library_id: LibraryId,
     username: &LibraryUsername,
@@ -84,7 +84,7 @@ pub fn session_load_master_key(
     }
 }
 
-/// Clear the cached MasterKey for a library.
+/// Clear the cached `MasterKey` for a library.
 pub fn session_clear(
     library_id: LibraryId,
     username: &LibraryUsername,
@@ -93,7 +93,7 @@ pub fn session_clear(
     if let Some(dir) = session_dir {
         let lib_dir = dir.join(library_id.to_string());
         if lib_dir.exists() {
-            std::fs::remove_dir_all(&lib_dir).ok();
+            let _ = std::fs::remove_dir_all(&lib_dir);
         }
         return Ok(());
     }

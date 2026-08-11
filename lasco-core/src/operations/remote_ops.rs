@@ -50,22 +50,20 @@ pub(crate) async fn list_remote_op_files_read(
         if let Some(dot) = name.rfind('.') {
             let stem = &name[..dot];
             let ext = &name[dot + 1..];
-            if let Some(rest) = ext.strip_prefix("op") {
-                if let Some((tier_str, count_str)) = rest.split_once('_') {
-                    if let (Ok(tier), Ok(op_count), Ok(uuid)) = (
-                        tier_str.parse::<u8>(),
-                        count_str.parse::<u32>(),
-                        stem.parse::<Uuid>(),
-                    ) {
-                        if tier >= 1 {
-                            files.push(RemoteOpFile::Compaction {
-                                uuid: CompactedOpId::from_uuid(uuid),
-                                tier,
-                                op_count,
-                            });
-                        }
-                    }
-                }
+            if let Some(rest) = ext.strip_prefix("op")
+                && let Some((tier_str, count_str)) = rest.split_once('_')
+                && let (Ok(tier), Ok(op_count), Ok(uuid)) = (
+                    tier_str.parse::<u8>(),
+                    count_str.parse::<u32>(),
+                    stem.parse::<Uuid>(),
+                )
+                && tier >= 1
+            {
+                files.push(RemoteOpFile::Compaction {
+                    uuid: CompactedOpId::from_uuid(uuid),
+                    tier,
+                    op_count,
+                });
             }
         }
     }

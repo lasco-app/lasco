@@ -4,7 +4,10 @@
 //! storage object is dropped, which is after the Rust sync operation releases
 //! its `Box<dyn Storage>`.
 
-#![allow(unsafe_code)] // Objective-C security-scope selectors are unsafe in objc2.
+#![allow(
+    unsafe_code,
+    reason = "Objective-C security-scope selectors are unsafe in objc2."
+)]
 
 use async_trait::async_trait;
 use base64::Engine;
@@ -36,7 +39,7 @@ impl StorageUsbApple {
                 &bookmark,
                 NSURLBookmarkResolutionOptions::WithSecurityScope,
                 None,
-                &mut is_stale,
+                &raw mut is_stale,
             )
         }
         .map_err(|e| StorageError::Unavailable(format!("could not resolve USB bookmark: {e}")))?;
@@ -74,7 +77,7 @@ impl Drop for StorageUsbApple {
         // retained URL remains valid for the entire lifetime of this object.
         unsafe {
             self.security_scoped_url
-                .stopAccessingSecurityScopedResource()
+                .stopAccessingSecurityScopedResource();
         };
     }
 }

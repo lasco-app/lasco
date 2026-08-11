@@ -14,7 +14,7 @@ pub const S3_SECRET_ENCRYPTION_DESCRIPTION: &str = "AES-256-GCM v1";
 
 const S3_SECRET_NONCE_SIZE: usize = 12;
 
-/// Encrypt an S3 secret key using the MasterKey (AES-256-GCM).
+/// Encrypt an S3 secret key using the `MasterKey` (AES-256-GCM).
 /// Returns the base64 ciphertext and its encryption description.
 pub fn encrypt_s3_secret_key(
     master_key: &MasterKey,
@@ -33,7 +33,7 @@ pub fn encrypt_s3_secret_key(
     Ok((encoded, S3_SECRET_ENCRYPTION_DESCRIPTION.to_string()))
 }
 
-/// Decrypt an S3 secret key using the MasterKey (AES-256-GCM).
+/// Decrypt an S3 secret key using the `MasterKey` (AES-256-GCM).
 pub fn decrypt_s3_secret_key(
     master_key: &MasterKey,
     encrypted: &str,

@@ -55,7 +55,7 @@ impl FfiLibrary {
 
         if lib_config.remotes.iter().any(|r| r.name == name) {
             return Err(LascoError::Other {
-                msg: format!("remote '{}' already exists", name),
+                msg: format!("remote '{name}' already exists"),
             });
         }
 
@@ -123,7 +123,7 @@ impl FfiLibrary {
 
         if lib_config.remotes.iter().any(|r| r.name == name) {
             return Err(LascoError::Other {
-                msg: format!("remote '{}' already exists", name),
+                msg: format!("remote '{name}' already exists"),
             });
         }
 
@@ -161,7 +161,7 @@ impl FfiLibrary {
 
         if lib_config.remotes.iter().any(|r| r.name == name) {
             return Err(LascoError::Other {
-                msg: format!("remote '{}' already exists", name),
+                msg: format!("remote '{name}' already exists"),
             });
         }
 
@@ -190,7 +190,10 @@ impl FfiLibrary {
         Ok(remote_uuid.into())
     }
 
-    #[allow(clippy::too_many_arguments)]
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "The FFI contract exposes S3 connection settings as explicit scalar parameters."
+    )]
     pub fn add_remote_s3(
         &self,
         name: String,
@@ -206,7 +209,7 @@ impl FfiLibrary {
 
         if lib_config.remotes.iter().any(|r| r.name == name) {
             return Err(LascoError::Other {
-                msg: format!("remote '{}' already exists", name),
+                msg: format!("remote '{name}' already exists"),
             });
         }
 
@@ -298,12 +301,15 @@ impl FfiLibrary {
         save_library(&self.app_dir, &library_id, &lib_config)
             .map_err(|e| LascoError::Other { msg: e.to_string() })?;
 
-        self.remotes
+        if let Some(remote) = self
+            .remotes
             .lock()
             .unwrap()
             .iter_mut()
             .find(|r| r.remote_id == remote_id)
-            .map(|r| r.auto_push = enabled);
+        {
+            remote.auto_push = enabled;
+        }
         Ok(())
     }
 
@@ -524,7 +530,7 @@ impl FfiLibrary {
 
         if lib_config.remotes.iter().any(|r| r.name == name) {
             return Err(LascoError::Other {
-                msg: format!("remote '{}' already exists", name),
+                msg: format!("remote '{name}' already exists"),
             });
         }
 
@@ -567,7 +573,7 @@ impl FfiLibrary {
             .iter()
             .find(|remote| remote.remote_uuid == *remote_id)
             .ok_or_else(|| LascoError::Other {
-                msg: format!("remote '{}' not found", remote_id),
+                msg: format!("remote '{remote_id}' not found"),
             })?;
 
         lasco_core::client::build_storage(

@@ -126,7 +126,7 @@ impl Storage for StorageS3 {
                     Some(prefix) => obj
                         .key
                         .strip_prefix(prefix)
-                        .map(|k| k.to_string())
+                        .map(std::string::ToString::to_string)
                         .unwrap_or(obj.key),
                     None => obj.key,
                 };
@@ -177,7 +177,7 @@ fn derive_region_from_endpoint(endpoint: &str) -> String {
 }
 
 fn is_not_found_error(e: &S3Error) -> bool {
-    let error_string = format!("{:?}", e);
+    let error_string = format!("{e:?}");
     error_string.contains("NoSuchKey") || error_string.contains("404")
 }
 

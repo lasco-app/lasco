@@ -339,7 +339,7 @@ impl Library {
                                 .map_err(SyncError::RemoteUnreachable)?;
                             std::fs::remove_file(path)?;
                         }
-                        Err(error) => return Err(error.into()),
+                        Err(error) => return Err(error),
                     },
                     Err(crate::storage::StorageError::NotFound) => {}
                     Err(error) => return Err(SyncError::RemoteUnreachable(error).into()),
@@ -385,10 +385,9 @@ fn stage_and_validate_media(
     let path = staging_dir.join(format!("{}.stage", uuid::Uuid::new_v4()));
     std::fs::write(&path, bytes)?;
     let staged = std::fs::read(&path)?;
-    let blob =
-        BlobEncrypted::from_bytes(&staged).map_err(|e| crate::error::OperationError::Blob(e))?;
+    let blob = BlobEncrypted::from_bytes(&staged).map_err(crate::error::OperationError::Blob)?;
     let file_key = derive_blob_key(master_key, &media_id.0);
     crate::encryption::blob::decrypt_blob(&file_key, &blob)
-        .map_err(|e| crate::error::OperationError::Crypto(e))?;
+        .map_err(crate::error::OperationError::Crypto)?;
     Ok((staged, path))
 }

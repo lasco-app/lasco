@@ -54,7 +54,7 @@ impl FfiLibrary {
                 .any(|remote| remote.remote_uuid == remote_uuid)
         {
             return Err(LascoError::Other {
-                msg: format!("remote '{}' not found", remote_uuid),
+                msg: format!("remote '{remote_uuid}' not found"),
             });
         }
         lib_config.default_fetch_remote = remote_uuid;
@@ -67,8 +67,7 @@ impl FfiLibrary {
         LibraryJson::load(&self.app_dir, &library_id)
             .ok()
             .flatten()
-            .map(|c| c.auto_import_device_media)
-            .unwrap_or(false)
+            .is_some_and(|c| c.auto_import_device_media)
     }
 
     pub fn set_auto_import_device_media(&self, enabled: bool) -> Result<(), LascoError> {
@@ -212,7 +211,7 @@ impl FfiLibrary {
                         Err(error) => {
                             last_error = Some(LascoError::Other {
                                 msg: error.to_string(),
-                            })
+                            });
                         }
                     }
                 }
@@ -257,7 +256,7 @@ impl FfiLibrary {
                         Err(error) => {
                             last_error = Some(LascoError::Other {
                                 msg: error.to_string(),
-                            })
+                            });
                         }
                     }
                 }
@@ -568,7 +567,7 @@ fn count_files_with_ext(dir: &std::path::Path, ext: &str) -> (u32, u64) {
             bytes += b;
         } else if path.extension().and_then(|e| e.to_str()) == Some(ext) {
             count += 1;
-            bytes += entry.metadata().map(|m| m.len()).unwrap_or(0);
+            bytes += entry.metadata().map_or(0, |m| m.len());
         }
     }
     (count, bytes)

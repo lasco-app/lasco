@@ -397,7 +397,7 @@ impl Library {
             .collect()
     }
 
-    /// Return (name, parent_id, media_count, thumbnail_media_id) for a non-deleted album, or None.
+    /// Return (name, `parent_id`, `media_count`, `thumbnail_media_id`) for a non-deleted album, or None.
     pub fn album_node_by_id(
         &self,
         album_id: AlbumUuid,
@@ -642,7 +642,7 @@ mod tests {
         assert!(
             by_album
                 .get(&album_id)
-                .map_or(false, |ids| ids.contains(&media_id))
+                .is_some_and(|ids| ids.contains(&media_id))
         );
     }
 

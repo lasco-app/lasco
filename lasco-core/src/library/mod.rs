@@ -186,7 +186,7 @@ impl Library {
         })
     }
 
-    /// Open with a pre-loaded MasterKey (session cache path).
+    /// Open with a pre-loaded `MasterKey` (session cache path).
     pub async fn open_with_master_key(
         local_dirs: LocalDirs,
         master_key: MasterKey,

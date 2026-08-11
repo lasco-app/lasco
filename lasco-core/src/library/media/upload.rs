@@ -53,10 +53,10 @@ impl Library {
         // If a media with the same hash already exists, return it.
         {
             let state = self.inner.operation_state.read();
-            if let Some(existing_ids) = state.views.by_content_hash.get(&content_hash) {
-                if let Some(&existing_id) = existing_ids.first() {
-                    return Ok(MediaAddResult::AlreadyExists(existing_id));
-                }
+            if let Some(existing_ids) = state.views.by_content_hash.get(&content_hash)
+                && let Some(&existing_id) = existing_ids.first()
+            {
+                return Ok(MediaAddResult::AlreadyExists(existing_id));
             }
         }
 
@@ -97,7 +97,7 @@ impl Library {
                 date: datetime,
                 storage_date,
                 size_bytes,
-                content_hash: content_hash.clone(),
+                content_hash,
                 modified_at: None,
                 gps: None,
                 apple_aae_media_id,

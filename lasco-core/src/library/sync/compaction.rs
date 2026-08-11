@@ -23,7 +23,7 @@ pub(super) const TIER_FILE_LIMIT: usize = 10;
 /// compaction file that stays within its tier's ops limit.
 ///
 /// Tier N's ops limit is 20*10^(N-1), so the smallest tier holding `op_count`
-/// is the smallest N with 10^(N-1) >= ceil(op_count / 20). Writing q for that
+/// is the smallest N with 10^(N-1) >= `ceil(op_count` / 20). Writing q for that
 /// ceiling, N-1 is the number of digits of q-1, which `ilog10` gives directly.
 pub(super) fn appropriate_tier(op_count: usize) -> u8 {
     let q = (op_count as u64).div_ceil(20);
@@ -67,8 +67,7 @@ const LOCK_KEY: &str = "operations/LOCK.op";
 /// [`release_lock`]. [`compact_tier`] requires a reference to one, so the type system rules out
 /// calling it without the lock held.
 pub(super) struct CompactionLockToken {
-    #[allow(dead_code)]
-    private: (),
+    _private: (),
 }
 
 /// Tries to acquire the compaction lock.
@@ -93,11 +92,11 @@ pub(super) async fn try_acquire_lock(
     .expect("CompactionLock is always serializable");
 
     let acquired = storage
-        .put_if_absent(&key, &payload)
+        .put_if_absent(key, &payload)
         .await
         .map_err(SyncError::RemoteUnreachable)?;
 
-    Ok(acquired.then_some(CompactionLockToken { private: () }))
+    Ok(acquired.then_some(CompactionLockToken { _private: () }))
 }
 
 /// Releases the compaction lock.
@@ -117,7 +116,7 @@ pub(super) async fn release_lock(
 
 /// Metadata produced by a successful [`compact_tier`] call, so the caller can update its
 /// in-memory view of known files. The on-disk last known state is already up to date by the
-/// time this is returned, compact_tier writes it incrementally as each remote op succeeds.
+/// time this is returned, `compact_tier` writes it incrementally as each remote op succeeds.
 pub(super) struct CompactionResult {
     pub(super) sources: Vec<RemoteOpFile>,
     pub(super) new_file: RemoteOpFile,

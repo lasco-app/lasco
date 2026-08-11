@@ -150,9 +150,9 @@ mod tests {
         let fk = derive_blob_key(&mk, &uuid);
         let blob = encrypt_blob(&fk, b"secret data");
         let wrong_mk = generate_master_key();
-        let wrong_fk = derive_blob_key(&wrong_mk, &uuid);
+        let wrong_file_key = derive_blob_key(&wrong_mk, &uuid);
         assert!(matches!(
-            decrypt_blob(&wrong_fk, &blob),
+            decrypt_blob(&wrong_file_key, &blob),
             Err(CryptoError::AuthenticationFailed)
         ));
     }

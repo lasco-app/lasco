@@ -33,8 +33,10 @@ pub struct SyncReportPush {
 ///
 /// The default intentionally does not download from another remote. This keeps Push from
 /// becoming an implicit fetch and lets callers ask the user to select a source explicitly.
+#[derive(Default)]
 pub enum PushMediaSource<'a> {
     /// Upload only locally cached media. Missing files cause Push to return their IDs.
+    #[default]
     LocalOnly,
     /// Relay missing media from exactly one verified, read-only remote.
     FromRemote {
@@ -52,12 +54,6 @@ impl std::fmt::Debug for PushMediaSource<'_> {
                 .field("remote_id", remote_id)
                 .finish_non_exhaustive(),
         }
-    }
-}
-
-impl Default for PushMediaSource<'_> {
-    fn default() -> Self {
-        Self::LocalOnly
     }
 }
 

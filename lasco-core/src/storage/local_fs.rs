@@ -85,12 +85,11 @@ impl Storage for StorageLocalFs {
             .into_iter()
             .filter_map(std::result::Result::ok)
         {
-            if entry.file_type().is_file() {
-                if let Ok(rel) = entry.path().strip_prefix(&self.root) {
-                    if let Some(s) = rel.to_str() {
-                        keys.push(s.to_owned());
-                    }
-                }
+            if entry.file_type().is_file()
+                && let Ok(rel) = entry.path().strip_prefix(&self.root)
+                && let Some(s) = rel.to_str()
+            {
+                keys.push(s.to_owned());
             }
         }
         Ok(keys)

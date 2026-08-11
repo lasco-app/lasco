@@ -429,11 +429,7 @@ impl CanonicalState {
             .map(|(id, album)| {
                 (
                     *id,
-                    album
-                        .parent
-                        .as_ref()
-                        .map(|register| register.value)
-                        .unwrap_or(None),
+                    album.parent.as_ref().and_then(|register| register.value),
                 )
             })
             .collect();
@@ -512,11 +508,10 @@ impl CanonicalState {
                         .map(|(key, register)| (key.clone(), register.value.clone()))
                         .collect(),
                     content_hash: value.content_hash,
-                    author: media
-                        .author
-                        .as_ref()
-                        .map(|register| register.value.clone())
-                        .unwrap_or_else(|| LibraryUsername("unknown".into())),
+                    author: media.author.as_ref().map_or_else(
+                        || LibraryUsername("unknown".into()),
+                        |register| register.value.clone(),
+                    ),
                     modified_at: value.modified_at,
                     gps: value.gps,
                     apple_aae_media_id: value.apple_aae_media_id,

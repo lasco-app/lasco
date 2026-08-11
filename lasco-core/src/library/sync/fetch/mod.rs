@@ -220,7 +220,7 @@ async fn fetch_library_dir(
     Ok(())
 }
 
-/// For each MediaCreation operation, checks if the file exists on the remote and
+/// For each `MediaCreation` operation, checks if the file exists on the remote and
 /// records it in `media_list` if so. Inventory errors are intentionally ignored.
 async fn update_media_list_from_group(
     storage: &StorageRead<'_>,
