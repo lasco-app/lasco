@@ -54,7 +54,7 @@ rust-s3 = "0.37.2"
 base64 = "0.22"
 walkdir = "2"
 blake3 = "1"
-directories = "5"
+directories = "6"
 tempfile = "3"
 
 # On Android rust-s3 uses native-tls which links OpenSSL, and there is no system
