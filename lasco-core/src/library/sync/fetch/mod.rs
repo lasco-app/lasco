@@ -17,6 +17,16 @@ use crate::remote::{LastKnownState, MediaList, MergedRemoteFiles};
 use super::remote_access::StorageRead;
 use super::{SyncReportFetch, verify_remote_identity};
 
+pub(super) struct FetchAccess<'a> {
+    pub storage: &'a StorageRead<'a>,
+    pub local_state_library_dir: &'a LocalStateLibraryDir,
+    pub remote_last_known_state_dir: &'a RemoteLastKnownStateDir,
+    pub remote_media_list: &'a RemoteMediaList,
+    pub remote_merged_remote_files: &'a RemoteMergedRemoteFiles,
+    pub local_ops_read_write_lock: &'a LocalOpsReadWriteLock,
+    pub remote_media_list_lock: &'a RemoteMediaListLock,
+}
+
 impl Library {
     /// # Errors
     ///
@@ -39,19 +49,22 @@ impl Library {
         let remote_media_list = self.inner.local_dirs.remote_media_list(remote_id);
         let remote_merged_remote_files =
             self.inner.local_dirs.remote_merged_remote_files(remote_id);
+        let local_state_crdt = self.inner.local_dirs.local_state_crdt();
         let report = fetch_impl(
-            &remote,
+            FetchAccess {
+                storage: &remote,
+                local_state_library_dir: &local_state_library_dir,
+                remote_last_known_state_dir: &remote_last_known_state_dir,
+                remote_media_list: &remote_media_list,
+                remote_merged_remote_files: &remote_merged_remote_files,
+                local_ops_read_write_lock: &self.inner.local_ops_read_write_lock,
+                remote_media_list_lock: &self.inner.remote_media_list_lock,
+            },
             remote_id,
             self.inner.library_id,
-            &local_state_library_dir,
-            &remote_last_known_state_dir,
-            &remote_media_list,
-            &remote_merged_remote_files,
-            &self.inner.local_ops_read_write_lock,
-            &self.inner.remote_media_list_lock,
             &self.inner.master_key,
             &self.inner.crdt_replica_state,
-            &self.inner.local_dirs.local_state_crdt(),
+            &local_state_crdt,
         )
         .await?;
         if report.local_state_rebuild_required {
@@ -62,15 +75,9 @@ impl Library {
 }
 
 pub(super) async fn fetch_impl(
-    storage: &StorageRead<'_>,
+    access: FetchAccess<'_>,
     remote_id: &str,
     library_id: LibraryId,
-    local_state_library_dir: &LocalStateLibraryDir,
-    remote_last_known_state_dir: &RemoteLastKnownStateDir,
-    remote_media_list: &RemoteMediaList,
-    remote_merged_remote_files: &RemoteMergedRemoteFiles,
-    local_ops_read_write_lock: &LocalOpsReadWriteLock,
-    remote_media_list_lock: &RemoteMediaListLock,
     master_key: &MasterKey,
     replica_state: &parking_lot::RwLock<CrdtStateReplica>,
     local_state_crdt: &LocalStateCrdt,
@@ -81,19 +88,23 @@ pub(super) async fn fetch_impl(
         .map_err(|e| {
             SyncError::RemoteIdMismatch(format!("invalid remote id '{remote_id}': {e}"))
         })?;
-    verify_remote_identity(storage, remote_uuid).await?;
+    verify_remote_identity(access.storage, remote_uuid).await?;
 
     // Step 1: pull any mk_*.enc files present on the remote but missing locally,
     // so users added from another device become available on this one.
-    fetch_library_dir(storage, local_state_library_dir, library_id).await?;
+    fetch_library_dir(access.storage, access.local_state_library_dir, library_id).await?;
 
     // Load merge progress for immutable remote operation files. It controls only whether a file
     // must be merged again; cache presence is determined independently by LastKnownState.
-    let merged_files_path = remote_merged_remote_files.merged_remote_files_path();
+    let merged_files_path = access.remote_merged_remote_files.merged_remote_files_path();
     let mut merged_files = MergedRemoteFiles::load_or_default(&merged_files_path)?;
 
-    let last_known_state =
-        LastKnownState::download(storage, remote_last_known_state_dir, master_key).await?;
+    let last_known_state = LastKnownState::download(
+        access.storage,
+        access.remote_last_known_state_dir,
+        master_key,
+    )
+    .await?;
 
     let mut ops_downloaded = 0usize;
     let mut merged_files_changed = false;
@@ -116,7 +127,8 @@ pub(super) async fn fetch_impl(
                         .read_compaction_file(master_key, uuid, *tier, *op_count)?;
                     for operation in &compaction.operations {
                         if !replica.state.causal_context.contains(&operation.dot) {
-                            local_ops_read_write_lock
+                            access
+                                .local_ops_read_write_lock
                                 .lock(master_key)
                                 .append_operation(operation)?;
                             replica.state.apply(operation);
@@ -141,11 +153,11 @@ pub(super) async fn fetch_impl(
     };
     for operation in &inventory_operations {
         update_media_list_from_group(
-            storage,
+            access.storage,
             operation,
             remote_id,
-            remote_media_list,
-            remote_media_list_lock,
+            access.remote_media_list,
+            access.remote_media_list_lock,
         )
         .await;
     }

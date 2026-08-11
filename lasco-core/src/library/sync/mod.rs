@@ -11,7 +11,7 @@ use crate::error::{LibraryError, OperationError, SyncError};
 use crate::identifiers::RemoteUuid;
 use crate::library::Library;
 use crate::storage::StorageError;
-use fetch::fetch_impl;
+use fetch::{FetchAccess, fetch_impl};
 use remote_access::{StorageRead, StorageReadWrite};
 
 #[derive(Debug)]
@@ -129,24 +129,27 @@ impl Library {
         let remote_media_list = self.inner.local_dirs.remote_media_list(remote_id);
         let remote_merged_remote_files =
             self.inner.local_dirs.remote_merged_remote_files(remote_id);
+        let local_state_crdt = self.inner.local_dirs.local_state_crdt();
         let fetch_report = {
             let _fetch_guard = self
                 .try_acquire_fetch_slot()
                 .ok_or(SyncError::AlreadyRunning)?;
             let remote = StorageRead::new(storage);
             let report = fetch_impl(
-                &remote,
+                FetchAccess {
+                    storage: &remote,
+                    local_state_library_dir: &local_state_library_dir,
+                    remote_last_known_state_dir: &remote_last_known_state_dir,
+                    remote_media_list: &remote_media_list,
+                    remote_merged_remote_files: &remote_merged_remote_files,
+                    local_ops_read_write_lock: &self.inner.local_ops_read_write_lock,
+                    remote_media_list_lock: &self.inner.remote_media_list_lock,
+                },
                 remote_id,
                 self.inner.library_id,
-                &local_state_library_dir,
-                &remote_last_known_state_dir,
-                &remote_media_list,
-                &remote_merged_remote_files,
-                &self.inner.local_ops_read_write_lock,
-                &self.inner.remote_media_list_lock,
                 &self.inner.master_key,
                 &self.inner.crdt_replica_state,
-                &self.inner.local_dirs.local_state_crdt(),
+                &local_state_crdt,
             )
             .await?;
             if report.local_state_rebuild_required {
