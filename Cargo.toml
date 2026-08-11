@@ -32,13 +32,6 @@ empty_structs_with_brackets     = "warn"
 
 too_many_lines                      = "warn"
 
-# Error mapping intentionally does not reveal cryptographic authentication
-# details. The conversion and formatting instances are bounded by domain inputs.
-missing_panics_doc                  = "allow"
-cast_possible_truncation            = "allow"
-cast_sign_loss                      = "allow"
-format_collect                      = "allow"
-
 # These are deliberate implementation details: compact domain enums, redacted
 # debug output, shared-pointer cloning, platform-neutral extension matching, and
 # local test imports.

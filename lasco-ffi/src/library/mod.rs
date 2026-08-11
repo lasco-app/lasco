@@ -6,6 +6,7 @@ mod types;
 
 pub use types::*;
 
+use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -45,11 +46,10 @@ pub fn ffi_create_library(
                 lasco_core::operations::LibraryPassword(password),
                 Some(&sessions),
             ))?;
-    let master_key_hex = master_key
-        .as_ref()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect::<String>();
+    let mut master_key_hex = String::with_capacity(master_key.as_ref().len() * 2);
+    for byte in master_key.as_ref() {
+        write!(master_key_hex, "{byte:02x}").expect("writing to a String cannot fail");
+    }
     Ok(FfiCreateLibraryResult {
         library_id: library_id.into(),
         master_key_hex,

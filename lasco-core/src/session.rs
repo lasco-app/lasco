@@ -114,7 +114,11 @@ pub fn session_clear(
 }
 
 fn hex_encode(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+    let mut hex = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        write!(hex, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    hex
 }
 
 fn hex_decode(s: &str) -> Result<[u8; MASTER_KEY_SIZE], ()> {
@@ -173,3 +177,4 @@ mod tests {
         assert!(result.is_none());
     }
 }
+use std::fmt::Write as _;
