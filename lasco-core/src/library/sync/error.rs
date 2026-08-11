@@ -15,6 +15,8 @@ pub enum SyncError {
     AlreadyRunning,
     #[error("remote history was rewritten: {0}")]
     RemoteHistoryRewritten(String),
+    #[error("remote operation file is invalid: {0}")]
+    RemoteOperationInvalid(String),
     #[error("local remote-state cache is unreadable: {0}")]
     LocalCacheCorrupt(String),
     #[error("remote library id does not match local library: {0}")]

@@ -54,8 +54,8 @@ impl LastKnownState {
                     .get(&remote_key)
                     .await
                     .map_err(SyncError::RemoteUnreachable)?;
-                let dots = read_dots_from_bytes(&bytes, master_key, &Self::file_uuid(file))
-                    .map_err(SyncError::LocalCacheCorrupt)?;
+                let dots = read_dots_from_bytes(&bytes, master_key, file)
+                    .map_err(SyncError::RemoteOperationInvalid)?;
                 staged_files.push((file.clone(), bytes, dots));
             }
         }
@@ -68,12 +68,8 @@ impl LastKnownState {
                     remote_dots.extend(ids.iter().copied());
                 } else {
                     let (_, local_name) = Self::file_paths(f);
-                    let ids = read_dots_from_file(
-                        &ops_dir.join(local_name),
-                        master_key,
-                        &Self::file_uuid(f),
-                    )
-                    .map_err(SyncError::LocalCacheCorrupt)?;
+                    let ids = read_dots_from_file(&ops_dir.join(local_name), master_key, f)
+                        .map_err(SyncError::LocalCacheCorrupt)?;
                     remote_dots.extend(ids);
                 }
             }
@@ -146,12 +142,14 @@ impl LastKnownState {
         let plaintext = decrypt_blob(&file_key, &blob).map_err(|e| {
             SyncError::LocalCacheCorrupt(format!("failed to decrypt {}: {e}", path.display()))
         })?;
-        compaction_file_from_cbor(&plaintext).map_err(|e| {
+        let file = compaction_file_from_cbor(&plaintext).map_err(|e| {
             SyncError::LocalCacheCorrupt(format!(
                 "failed to parse compaction file {}: {e}",
                 path.display()
             ))
-        })
+        })?;
+        validate_compaction_file(&file, tier, op_count).map_err(SyncError::LocalCacheCorrupt)?;
+        Ok(file)
     }
 
     /// Writes already-encrypted compaction file bytes into the on-disk last known state, without
@@ -230,29 +228,32 @@ impl LastKnownState {
 fn read_dots_from_file(
     path: &Path,
     master_key: &MasterKey,
-    file_uuid: &CompactedOpId,
+    file: &RemoteOpFile,
 ) -> Result<Vec<Dot>, String> {
     let bytes = match std::fs::read(path) {
         Ok(bytes) => bytes,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
         Err(e) => return Err(format!("failed to read {}: {e}", path.display())),
     };
-    read_dots_from_bytes(&bytes, master_key, file_uuid)
+    read_dots_from_bytes(&bytes, master_key, file)
         .map_err(|error| format!("{} ({})", error, path.display()))
 }
 
 fn read_dots_from_bytes(
     bytes: &[u8],
     master_key: &MasterKey,
-    file_uuid: &CompactedOpId,
+    remote_file: &RemoteOpFile,
 ) -> Result<Vec<Dot>, String> {
     let blob =
         BlobEncrypted::from_bytes(bytes).map_err(|e| format!("failed to parse blob: {e}"))?;
+    let file_uuid = LastKnownState::file_uuid(remote_file);
     let file_key = derive_blob_key(master_key, &file_uuid.0);
     let plaintext =
         decrypt_blob(&file_key, &blob).map_err(|e| format!("failed to decrypt: {e}"))?;
     let file = compaction_file_from_cbor(&plaintext)
         .map_err(|e| format!("failed to parse compaction file: {e}"))?;
+    let RemoteOpFile::Compaction { tier, op_count, .. } = remote_file;
+    validate_compaction_file(&file, *tier, *op_count)?;
     Ok(file
         .operations
         .into_iter()
@@ -288,11 +289,68 @@ pub(crate) fn collect_dots_from_dir(
         let entry = entry.map_err(|e| format!("failed to read entry in {}: {e}", dir.display()))?;
         let name = entry.file_name();
         let s = name.to_string_lossy();
-        let Some(uuid) = s.split('.').next().and_then(|s| s.parse::<Uuid>().ok()) else {
+        let Some(file) = parse_cached_filename(&s) else {
             continue;
         };
-        let uuid = CompactedOpId::from_uuid(uuid);
-        ids.extend(read_dots_from_file(&entry.path(), master_key, &uuid)?);
+        ids.extend(read_dots_from_file(&entry.path(), master_key, &file)?);
     }
     Ok(ids)
+}
+
+fn validate_compaction_file(file: &CompactionFile, tier: u8, op_count: u32) -> Result<(), String> {
+    if tier == 0 {
+        return Err("filename tier must be at least 1".to_string());
+    }
+    if file.tier != tier {
+        return Err(format!(
+            "filename tier {tier} does not match payload tier {}",
+            file.tier
+        ));
+    }
+    if u32::try_from(file.operations.len()).ok() != Some(op_count) {
+        return Err(format!(
+            "filename operation count {op_count} does not match payload count {}",
+            file.operations.len()
+        ));
+    }
+    let capacity = 20_u64.checked_mul(10_u64.checked_pow(u32::from(tier - 1)).unwrap_or(u64::MAX));
+    if capacity.is_some_and(|limit| u64::from(op_count) > limit) {
+        return Err(format!(
+            "operation count {op_count} exceeds tier {tier} capacity"
+        ));
+    }
+    let mut dots = HashSet::new();
+    if file
+        .operations
+        .iter()
+        .any(|operation| !dots.insert(operation.dot))
+    {
+        return Err("payload contains duplicate operation dots".to_string());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CompactionFile, validate_compaction_file};
+
+    #[test]
+    fn compaction_metadata_must_match_payload() {
+        let file = CompactionFile {
+            tier: 1,
+            operations: Vec::new(),
+        };
+
+        assert!(validate_compaction_file(&file, 1, 0).is_ok());
+        assert!(
+            validate_compaction_file(&file, 2, 0)
+                .unwrap_err()
+                .contains("tier")
+        );
+        assert!(
+            validate_compaction_file(&file, 1, 1)
+                .unwrap_err()
+                .contains("count")
+        );
+    }
 }
