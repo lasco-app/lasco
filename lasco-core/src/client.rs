@@ -33,7 +33,7 @@ pub fn build_storage(
     app_support_dir: Option<&Path>,
 ) -> Result<Box<dyn Storage + Send + Sync>> {
     match &remote.kind {
-        RemoteKind::FixedPath(cfg) => Ok(Box::new(StorageLocalFs::new(&cfg.root_dir)?)),
+        RemoteKind::FixedPath(cfg) => Ok(Box::new(StorageLocalFs::new(&cfg.root_dir))),
         RemoteKind::UsbAndroid(cfg) => build_usb_android_storage(&cfg.tree_uri),
         RemoteKind::UsbApple(cfg) => build_usb_apple_storage(&cfg.bookmark_base64),
         RemoteKind::DebugLocalApple(cfg) => {
@@ -44,11 +44,11 @@ pub fn build_storage(
                 .join("lasco")
                 .join("local_fs_test")
                 .join(&cfg.local_dir_name);
-            Ok(Box::new(StorageLocalFs::new(&path)?))
+            Ok(Box::new(StorageLocalFs::new(&path)))
         }
         RemoteKind::DebugLocalAndroid(cfg) => {
             let path = app_dir.join("local_fs_test").join(&cfg.local_dir_name);
-            Ok(Box::new(StorageLocalFs::new(&path)?))
+            Ok(Box::new(StorageLocalFs::new(&path)))
         }
         RemoteKind::S3(s3_cfg) => {
             let master_key = master_key

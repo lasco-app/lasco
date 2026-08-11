@@ -13,9 +13,10 @@ pub struct StorageLocalFs {
 }
 
 impl StorageLocalFs {
-    pub(crate) fn new(root: impl Into<PathBuf>) -> Result<Self> {
+    #[must_use]
+    pub(crate) fn new(root: impl Into<PathBuf>) -> Self {
         let root = root.into();
-        Ok(Self { root })
+        Self { root }
     }
 }
 
@@ -107,7 +108,7 @@ mod tests {
 
     fn store() -> (StorageLocalFs, TempDir) {
         let dir = TempDir::new().unwrap();
-        let s = StorageLocalFs::new(dir.path()).unwrap();
+        let s = StorageLocalFs::new(dir.path());
         (s, dir)
     }
 
@@ -172,7 +173,7 @@ mod tests {
     async fn new_does_not_create_root_dir() {
         let dir = TempDir::new().unwrap();
         let root = dir.path().join("does_not_exist_yet");
-        let s = StorageLocalFs::new(&root).unwrap();
+        let s = StorageLocalFs::new(&root);
         assert!(!root.exists());
         assert!(matches!(s.list("").await, Err(StorageError::NotFound)));
     }

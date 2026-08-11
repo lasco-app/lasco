@@ -65,7 +65,7 @@ impl StorageUsbApple {
         })?;
 
         Ok(Self {
-            storage: StorageLocalFs::new(path.to_string())?,
+            storage: StorageLocalFs::new(path.to_string()),
             security_scoped_url: url,
         })
     }
