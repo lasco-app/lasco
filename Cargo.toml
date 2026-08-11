@@ -30,13 +30,7 @@ unused_result_ok                = "warn"
 redundant_type_annotations      = "warn"
 empty_structs_with_brackets     = "warn"
 
-# These APIs deliberately preserve ownership and async shapes across the FFI and
-# storage boundaries. The remaining occurrences are intentional trade-offs rather
-# than correctness defects.
-needless_pass_by_value              = "allow"
-unused_async                        = "allow"
-too_many_arguments                  = "allow"
-too_many_lines                      = "allow"
+too_many_lines                      = "warn"
 
 # Error mapping intentionally does not reveal cryptographic authentication
 # details. The conversion and formatting instances are bounded by domain inputs.

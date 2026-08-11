@@ -712,7 +712,7 @@ pub(super) fn media_entry_to_ffi(e: lasco_core::library::media::MediaEntry) -> F
     }
 }
 
-fn kv(key: &str, value: impl ToString) -> FfiKv {
+fn kv(key: &str, value: &impl ToString) -> FfiKv {
     FfiKv {
         key: key.to_string(),
         value: value.to_string(),
@@ -743,18 +743,18 @@ fn operation_to_ffi(op: OperationContent, timestamp: String) -> FfiOperation {
             kind: "MediaCreation".to_string(),
             timestamp: timestamp.clone(),
             args: vec![
-                kv("media_id", creation.media_id),
-                kv("filename_original", creation.filename_original),
-                kv("date", creation.date.to_rfc3339()),
-                kv("year", creation.storage_date.year),
-                kv("month", creation.storage_date.month),
-                kv("size_bytes", creation.size_bytes),
+                kv("media_id", &creation.media_id),
+                kv("filename_original", &creation.filename_original),
+                kv("date", &creation.date.to_rfc3339()),
+                kv("year", &creation.storage_date.year),
+                kv("month", &creation.storage_date.month),
+                kv("size_bytes", &creation.size_bytes),
             ],
         },
         OperationContent::MediaRename { media_id, name } => FfiOperation {
             kind: "MediaRename".to_string(),
             timestamp: timestamp.clone(),
-            args: vec![kv("media_id", media_id), opt_kv("name", name)],
+            args: vec![kv("media_id", &media_id), opt_kv("name", name)],
         },
         OperationContent::MediaPropsUpdate {
             media_id,
@@ -763,7 +763,11 @@ fn operation_to_ffi(op: OperationContent, timestamp: String) -> FfiOperation {
         } => FfiOperation {
             kind: "MediaPropsUpdate".to_string(),
             timestamp: timestamp.clone(),
-            args: vec![kv("media_id", media_id), kv("key", key), kv("value", value)],
+            args: vec![
+                kv("media_id", &media_id),
+                kv("key", &key),
+                kv("value", &value),
+            ],
         },
         OperationContent::AlbumCreation {
             album_id,
@@ -773,32 +777,32 @@ fn operation_to_ffi(op: OperationContent, timestamp: String) -> FfiOperation {
             kind: "AlbumCreation".to_string(),
             timestamp: timestamp.clone(),
             args: vec![
-                kv("album_id", album_id),
-                kv("name", name),
+                kv("album_id", &album_id),
+                kv("name", &name),
                 opt_kv("parent_id", parent_id),
             ],
         },
         OperationContent::AlbumMediaAdd { album_id, media_id } => FfiOperation {
             kind: "AlbumMediaAdd".to_string(),
             timestamp: timestamp.clone(),
-            args: vec![kv("album_id", album_id), kv("media_id", media_id)],
+            args: vec![kv("album_id", &album_id), kv("media_id", &media_id)],
         },
         OperationContent::AlbumMediaRemove {
             album_id, media_id, ..
         } => FfiOperation {
             kind: "AlbumMediaRemove".to_string(),
             timestamp: timestamp.clone(),
-            args: vec![kv("album_id", album_id), kv("media_id", media_id)],
+            args: vec![kv("album_id", &album_id), kv("media_id", &media_id)],
         },
         OperationContent::AlbumDeletion { album_id } => FfiOperation {
             kind: "AlbumDeletion".to_string(),
             timestamp: timestamp.clone(),
-            args: vec![kv("album_id", album_id)],
+            args: vec![kv("album_id", &album_id)],
         },
         OperationContent::AlbumRename { album_id, name } => FfiOperation {
             kind: "AlbumRename".to_string(),
             timestamp: timestamp.clone(),
-            args: vec![kv("album_id", album_id), opt_kv("name", name)],
+            args: vec![kv("album_id", &album_id), opt_kv("name", name)],
         },
         OperationContent::AlbumReparent {
             album_id,
@@ -806,12 +810,15 @@ fn operation_to_ffi(op: OperationContent, timestamp: String) -> FfiOperation {
         } => FfiOperation {
             kind: "AlbumReparent".to_string(),
             timestamp: timestamp.clone(),
-            args: vec![kv("album_id", album_id), opt_kv("new_parent_id", parent_id)],
+            args: vec![
+                kv("album_id", &album_id),
+                opt_kv("new_parent_id", parent_id),
+            ],
         },
         OperationContent::AlbumThumbnailSet { album_id, media_id } => FfiOperation {
             kind: "AlbumThumbnailSet".to_string(),
             timestamp: timestamp.clone(),
-            args: vec![kv("album_id", album_id), opt_kv("media_id", media_id)],
+            args: vec![kv("album_id", &album_id), opt_kv("media_id", media_id)],
         },
         OperationContent::GroupCreation {
             group_id,
@@ -819,24 +826,24 @@ fn operation_to_ffi(op: OperationContent, timestamp: String) -> FfiOperation {
         } => FfiOperation {
             kind: "GroupCreation".to_string(),
             timestamp: timestamp.clone(),
-            args: vec![kv("group_id", group_id), kv("album_id_parent", parent_id)],
+            args: vec![kv("group_id", &group_id), kv("album_id_parent", &parent_id)],
         },
         OperationContent::GroupMediaAdd { group_id, media_id } => FfiOperation {
             kind: "GroupMediaAdd".to_string(),
             timestamp: timestamp.clone(),
-            args: vec![kv("group_id", group_id), kv("media_id", media_id)],
+            args: vec![kv("group_id", &group_id), kv("media_id", &media_id)],
         },
         OperationContent::GroupMediaRemove {
             group_id, media_id, ..
         } => FfiOperation {
             kind: "GroupMediaRemove".to_string(),
             timestamp: timestamp.clone(),
-            args: vec![kv("group_id", group_id), kv("media_id", media_id)],
+            args: vec![kv("group_id", &group_id), kv("media_id", &media_id)],
         },
         OperationContent::GroupDeletion { group_id } => FfiOperation {
             kind: "GroupDeletion".to_string(),
             timestamp,
-            args: vec![kv("group_id", group_id)],
+            args: vec![kv("group_id", &group_id)],
         },
     }
 }
