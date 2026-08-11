@@ -510,7 +510,7 @@ mod tests {
     use crate::library::media::upload::MediaAddSource;
     use crate::library::{Credentials, Library};
 
-    async fn make_library(tmp: &TempDir) -> (Library, LocalDirs) {
+    fn make_library(tmp: &TempDir) -> (Library, LocalDirs) {
         use crate::operations::{LibraryPassword, LibraryUsername};
         let library_id = LibraryId(Uuid::new_v4());
         let local_dirs = LocalDirs::new(tmp.path().to_path_buf(), &library_id);
@@ -523,7 +523,6 @@ mod tests {
                 password: LibraryPassword("pass".into()),
             },
         )
-        .await
         .unwrap();
         (lib, local_dirs)
     }
@@ -539,7 +538,7 @@ mod tests {
     async fn album_list_reports_parent_child_relationship() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
         let parent_id = lib
             .album_create(AlbumName("Parent".into()), None)
@@ -562,7 +561,7 @@ mod tests {
     async fn album_albums_range_returns_only_direct_albums_in_name_order() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
         let zulu = lib
             .album_create(AlbumName("Zulu".into()), None)
             .await
@@ -589,7 +588,7 @@ mod tests {
     async fn add_file_then_list_shows_file() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
         let album_id = lib.album_create(AlbumName("A".into()), None).await.unwrap();
         let src = write_file(tmp.path(), "photo.jpg", b"data");
@@ -615,7 +614,7 @@ mod tests {
     async fn remove_file_then_list_is_empty() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
         let album_id = lib.album_create(AlbumName("A".into()), None).await.unwrap();
         let src = write_file(tmp.path(), "photo.jpg", b"data");
@@ -641,7 +640,7 @@ mod tests {
     async fn deleted_album_absent_from_list() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
         let album_id = lib
             .album_create(AlbumName("Deletable".into()), None)
@@ -658,7 +657,7 @@ mod tests {
     async fn file_add_auto_inserts_into_album() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
         let album_id = lib
             .album_create(AlbumName("Upload".into()), None)
@@ -691,7 +690,7 @@ mod tests {
     async fn manual_album_add_media_works() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
         let album_a = lib.album_create(AlbumName("A".into()), None).await.unwrap();
         let album_b = lib.album_create(AlbumName("B".into()), None).await.unwrap();
@@ -719,7 +718,7 @@ mod tests {
     async fn album_get_path_root_album() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
         let album_id = lib
             .album_create(AlbumName("Root Album".into()), None)
@@ -736,7 +735,7 @@ mod tests {
     async fn album_get_path_nested_album() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
         let root = lib
             .album_create(AlbumName("Root".into()), None)
@@ -761,7 +760,7 @@ mod tests {
     async fn album_resolve_name_unique() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
         let album_name = AlbumName("Unique Album".into());
         let album_id = lib.album_create(album_name.clone(), None).await.unwrap();
@@ -776,7 +775,7 @@ mod tests {
     async fn album_resolve_name_not_found() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
         let album_name = AlbumName("Nonexistent".into());
         let result = lib.album_resolve_name(&album_name);
@@ -789,7 +788,7 @@ mod tests {
     async fn album_resolve_name_ambiguous() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
         let album_name = AlbumName("Duplicate".into());
         let _album1 = lib.album_create(album_name.clone(), None).await.unwrap();
@@ -814,7 +813,7 @@ mod tests {
     async fn album_resolve_name_excludes_deleted() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
         let album_name = AlbumName("Deletable".into());
         let album_id = lib.album_create(album_name.clone(), None).await.unwrap();
@@ -834,7 +833,7 @@ mod tests {
     async fn album_get_path_deleted_album() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
         let album_name = AlbumName("Deletable".into());
         let album_id = lib.album_create(album_name.clone(), None).await.unwrap();
@@ -854,7 +853,7 @@ mod tests {
     async fn album_rename_changes_name() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
         let album_id = lib
             .album_create(AlbumName("Before".into()), None)
@@ -882,7 +881,7 @@ mod tests {
         use crate::identifiers::AlbumUuid;
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
         let fake_id = AlbumUuid::from_uuid(uuid::Uuid::new_v4());
         let err = lib
@@ -897,7 +896,7 @@ mod tests {
     async fn album_reparent_moves_album() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
         let root_a = lib.album_create(AlbumName("A".into()), None).await.unwrap();
         let root_b = lib.album_create(AlbumName("B".into()), None).await.unwrap();
@@ -919,7 +918,7 @@ mod tests {
     async fn album_reparent_self_is_cycle() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
         let album_id = lib.album_create(AlbumName("A".into()), None).await.unwrap();
         let err = lib
@@ -934,7 +933,7 @@ mod tests {
     async fn album_reparent_descendant_is_cycle() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
         let parent = lib.album_create(AlbumName("P".into()), None).await.unwrap();
         let child = lib
@@ -951,7 +950,7 @@ mod tests {
     async fn album_disconnected_ids_empty_without_cycles() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
         lib.album_create(AlbumName("A".into()), None).await.unwrap();
         let parent = lib.album_create(AlbumName("B".into()), None).await.unwrap();

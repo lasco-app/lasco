@@ -528,7 +528,7 @@ mod tests {
     use super::super::upload::MediaAddSource;
     use super::*;
 
-    async fn make_library(tmp: &TempDir) -> (Library, LocalDirs) {
+    fn make_library(tmp: &TempDir) -> (Library, LocalDirs) {
         use crate::operations::{LibraryPassword, LibraryUsername};
         let library_id = LibraryId(Uuid::new_v4());
         let local_dirs = LocalDirs::new(tmp.path().to_path_buf(), &library_id);
@@ -541,7 +541,6 @@ mod tests {
                 password: LibraryPassword("pass".into()),
             },
         )
-        .await
         .unwrap();
         (lib, local_dirs)
     }
@@ -576,7 +575,7 @@ mod tests {
     #[tokio::test]
     async fn media_list_includes_added_media() {
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
         let (media_id, _) = add_media_to_album(&lib, &tmp, "photo.jpg", b"data").await;
 
         let list = lib.media_list(MediaListScope::Reachable);
@@ -586,7 +585,7 @@ mod tests {
     #[tokio::test]
     async fn media_by_date_range_is_counted_and_non_overlapping() {
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
         let (first_id, _) = add_media_to_album(&lib, &tmp, "first.jpg", b"first").await;
         let (second_id, _) = add_media_to_album(&lib, &tmp, "second.jpg", b"second").await;
 
@@ -604,7 +603,7 @@ mod tests {
     #[tokio::test]
     async fn media_list_excludes_removed_media_but_media_show_succeeds() {
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
         let (media_id, album_id) = add_media_to_album(&lib, &tmp, "photo.jpg", b"data").await;
 
         lib.album_remove_media(album_id, media_id).await.unwrap();
@@ -625,7 +624,7 @@ mod tests {
     #[tokio::test]
     async fn orphaned_media_list_includes_only_primary_unreachable_media() {
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
         let (reachable_id, album_id) =
             add_media_to_album(&lib, &tmp, "reachable.jpg", b"reachable").await;
         let orphan_source = tmp.path().join("orphan.jpg");
@@ -699,7 +698,7 @@ mod tests {
     #[tokio::test]
     async fn media_get_cache_hit_decrypts_correctly() {
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
         let content = b"original photo content";
         let (media_id, _) = add_media_to_album(&lib, &tmp, "img.jpg", content).await;
 
@@ -711,7 +710,7 @@ mod tests {
     #[tokio::test]
     async fn media_get_thumbnail_decrypts_correctly() {
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
         let (media_id, _) = add_media_to_album(&lib, &tmp, "img.jpg", b"photo data").await;
 
         let thumb_data = vec![0u8; 64];
@@ -724,7 +723,7 @@ mod tests {
     #[tokio::test]
     async fn media_show_works_on_unreachable_media() {
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
         let (media_id, album_id) = add_media_to_album(&lib, &tmp, "img.jpg", b"data").await;
 
         lib.album_remove_media(album_id, media_id).await.unwrap();
@@ -742,7 +741,7 @@ mod tests {
     #[tokio::test]
     async fn media_rename_sets_and_clears_name() {
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
         let (media_id, _) = add_media_to_album(&lib, &tmp, "img.jpg", b"data").await;
 
         let before = lib.media_show(media_id).unwrap();
@@ -762,7 +761,7 @@ mod tests {
     #[tokio::test]
     async fn media_get_works_on_unreachable_media() {
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
         let content = b"secret bytes";
         let (media_id, album_id) = add_media_to_album(&lib, &tmp, "img.jpg", content).await;
 

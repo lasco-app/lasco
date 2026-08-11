@@ -25,7 +25,6 @@ pub async fn make_library(tmp: &TempDir) -> Library {
             password: "secret".into(),
         },
     )
-    .await
     .unwrap()
     .0
 }
@@ -47,6 +46,5 @@ pub async fn make_library_with_same_keys(tmp: &TempDir, source: &Library) -> Lib
         library_id,
         source.username().clone(),
     )
-    .await
     .unwrap()
 }

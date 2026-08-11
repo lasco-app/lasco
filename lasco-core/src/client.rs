@@ -116,7 +116,6 @@ pub async fn open_library(
 
     if let Some(master_key) = session_load_master_key(*library_id, &username, session_dir)? {
         let library = Library::open_with_master_key(local_dirs, master_key, *library_id, username)
-            .await
             .map_err(|e| anyhow::anyhow!("failed to open library: {e}"))?;
         library.load_local_state().await?;
         return Ok(library);
@@ -132,7 +131,6 @@ pub async fn open_library(
             password,
         },
     )
-    .await
     .map_err(|e| anyhow::anyhow!("failed to open library: {e}"))?;
 
     session_store_master_key(*library_id, &username, library.master_key(), session_dir)?;
@@ -146,6 +144,10 @@ pub async fn open_library(
 ///
 /// Returns an error if local state directories, crypto material, library configuration, or the
 /// cached session key cannot be created or written.
+#[allow(
+    clippy::unused_async,
+    reason = "Retains the public asynchronous client API used by FFI bindings."
+)]
 pub async fn create_library(
     app_dir: &Path,
     nickname: String,
@@ -168,7 +170,6 @@ pub async fn create_library(
             password,
         },
     )
-    .await
     .context("failed to initialise library")?;
 
     let library_config = LibraryJson {
@@ -289,7 +290,6 @@ pub async fn add_existing_library_s3(
         library_id,
         username.clone(),
     )
-    .await
     .map_err(|e| anyhow::anyhow!("failed to open library: {e}"))?;
 
     // Optionally register and switch to a new user on this device.
@@ -316,7 +316,6 @@ pub async fn add_existing_library_s3(
                 library_id,
                 new_username.clone(),
             )
-            .await
             .map_err(|e| anyhow::anyhow!("failed to reopen library as new user: {e}"))?;
             (new_username, new_uuid, library)
         }

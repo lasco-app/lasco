@@ -91,7 +91,6 @@ async fn reopening_repairs_a_log_missing_an_outbox_operation() {
             password: "secret".into(),
         },
     )
-    .await
     .unwrap();
     assert_eq!(reopened.list_operations().unwrap().len(), 1);
 }

@@ -92,7 +92,7 @@ impl Library {
     ///
     /// Writes crypto metadata (salt, sentinel, master-key file) to `local_state/library/`
     /// on the local filesystem. No remote storage is touched.
-    pub(crate) async fn init(
+    pub(crate) fn init(
         local_dirs: LocalDirs,
         library_id: LibraryId,
         credentials: Credentials,
@@ -147,7 +147,7 @@ impl Library {
         Ok((library, password_uuid))
     }
 
-    pub(crate) async fn open(local_dirs: LocalDirs, credentials: Credentials) -> Result<Library> {
+    pub(crate) fn open(local_dirs: LocalDirs, credentials: Credentials) -> Result<Library> {
         let lib_dir = local_dirs.local_state_library_dir();
         let sentinel_path = lib_dir.path().join(LIBRARY_FORMAT_SENTINEL);
         if !sentinel_path.exists() {
@@ -187,7 +187,7 @@ impl Library {
     }
 
     /// Open with a pre-loaded `MasterKey` (session cache path).
-    pub(crate) async fn open_with_master_key(
+    pub(crate) fn open_with_master_key(
         local_dirs: LocalDirs,
         master_key: MasterKey,
         library_id: LibraryId,
@@ -266,6 +266,10 @@ impl Library {
     /// # Errors
     ///
     /// Returns an error if persisted operations cannot be read, decrypted, decoded, or reconstructed.
+    #[allow(
+        clippy::unused_async,
+        reason = "Retains the public asynchronous library API used by FFI bindings."
+    )]
     pub async fn load_local_state(&self) -> Result<()> {
         let replica = self.inner.crdt_replica_state.read();
         let state = OperationState::from_reconstructed(replica.state.materialize());

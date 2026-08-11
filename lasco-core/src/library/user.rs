@@ -12,6 +12,10 @@ impl Library {
     /// # Errors
     ///
     /// Returns an error if the user key cannot be created or the user-add operation cannot be persisted.
+    #[allow(
+        clippy::unused_async,
+        reason = "Retains the public asynchronous library API used by FFI bindings."
+    )]
     pub async fn user_add(
         &self,
         username_new: LibraryUsername,
@@ -34,6 +38,10 @@ impl Library {
     /// # Errors
     ///
     /// Returns an error if the library user records cannot be read from local state.
+    #[allow(
+        clippy::unused_async,
+        reason = "Retains the public asynchronous library API used by FFI bindings."
+    )]
     pub async fn user_list(&self) -> Result<Vec<LibraryUsername>> {
         let lib_dir = self.inner.local_dirs.local_state_library_dir();
         let mut seen = std::collections::HashSet::new();
@@ -49,7 +57,7 @@ impl Library {
     }
 
     #[allow(dead_code, reason = "Retained for the user password-change flow.")]
-    async fn user_change_password(
+    fn user_change_password(
         &self,
         username: LibraryUsername,
         password_old: LibraryPassword,
@@ -89,7 +97,7 @@ mod tests {
         LocalDirs::new(tmp.path().to_path_buf(), library_id)
     }
 
-    async fn init_fresh(tmp: &TempDir, username: &str, password: &str) -> (Library, LibraryId) {
+    fn init_fresh(tmp: &TempDir, username: &str, password: &str) -> (Library, LibraryId) {
         let library_id = LibraryId(Uuid::new_v4());
         let local_dirs = make_local_dirs(tmp, &library_id);
         local_dirs.ensure_state_dirs().unwrap();
@@ -101,12 +109,11 @@ mod tests {
                 password: LibraryPassword(password.to_string()),
             },
         )
-        .await
         .unwrap();
         (lib, library_id)
     }
 
-    async fn open_with(
+    fn open_with(
         tmp: &TempDir,
         library_id: LibraryId,
         username: &str,
@@ -120,13 +127,12 @@ mod tests {
                 password: LibraryPassword(password.to_string()),
             },
         )
-        .await
     }
 
     #[tokio::test]
     async fn add_second_user_open_succeeds_same_library_id() {
         let tmp = TempDir::new().unwrap();
-        let (lib, library_id_a) = init_fresh(&tmp, "alice", "pass_a").await;
+        let (lib, library_id_a) = init_fresh(&tmp, "alice", "pass_a");
         let library_id = lib.library_id();
 
         lib.user_add(
@@ -136,16 +142,14 @@ mod tests {
         .await
         .unwrap();
 
-        let lib_bob = open_with(&tmp, library_id_a, "bob", "pass_b")
-            .await
-            .unwrap();
+        let lib_bob = open_with(&tmp, library_id_a, "bob", "pass_b").unwrap();
         assert_eq!(lib_bob.library_id(), library_id);
     }
 
     #[tokio::test]
     async fn user_list_correct_after_add() {
         let tmp = TempDir::new().unwrap();
-        let (lib, _library_id) = init_fresh(&tmp, "alice", "pass_a").await;
+        let (lib, _library_id) = init_fresh(&tmp, "alice", "pass_a");
 
         let mut users = lib.user_list().await.unwrap();
         users.sort();
@@ -171,7 +175,7 @@ mod tests {
     #[tokio::test]
     async fn change_password_old_and_new_both_work_mk_accumulates() {
         let tmp = TempDir::new().unwrap();
-        let (lib, library_id) = init_fresh(&tmp, "alice", "old_pass").await;
+        let (lib, library_id) = init_fresh(&tmp, "alice", "old_pass");
 
         let lib_dir =
             LocalDirs::new(tmp.path().to_path_buf(), &library_id).local_state_library_dir();
@@ -186,7 +190,6 @@ mod tests {
             LibraryPassword("old_pass".to_string()),
             LibraryPassword("new_pass".to_string()),
         )
-        .await
         .unwrap();
 
         let mk_count_after = std::fs::read_dir(lib_dir.path())
@@ -201,13 +204,13 @@ mod tests {
             "old mk file must be kept"
         );
 
-        let result_old = open_with(&tmp, library_id, "alice", "old_pass").await;
+        let result_old = open_with(&tmp, library_id, "alice", "old_pass");
         assert!(
             result_old.is_ok(),
             "old password still works, invalidation is not implemented yet"
         );
 
-        let result_new = open_with(&tmp, library_id, "alice", "new_pass").await;
+        let result_new = open_with(&tmp, library_id, "alice", "new_pass");
         assert!(result_new.is_ok(), "new password should work");
     }
 }

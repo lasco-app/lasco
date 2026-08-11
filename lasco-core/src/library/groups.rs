@@ -145,7 +145,7 @@ mod tests {
     use crate::library::media::upload::MediaAddSource;
     use crate::library::{Credentials, Library};
 
-    async fn make_library(tmp: &TempDir) -> Library {
+    fn make_library(tmp: &TempDir) -> Library {
         use crate::operations::{LibraryPassword, LibraryUsername};
         let library_id = LibraryId(Uuid::new_v4());
         let local_dirs = LocalDirs::new(tmp.path().to_path_buf(), &library_id);
@@ -158,7 +158,6 @@ mod tests {
                 password: LibraryPassword("pass".into()),
             },
         )
-        .await
         .unwrap()
         .0
     }
@@ -174,7 +173,7 @@ mod tests {
     async fn create_group_appears_in_list_and_album() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let lib = make_library(&tmp).await;
+        let lib = make_library(&tmp);
 
         let album_id = lib
             .album_create(AlbumName("Album".into()), None)
@@ -194,7 +193,7 @@ mod tests {
     async fn add_file_to_group_makes_it_reachable() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let lib = make_library(&tmp).await;
+        let lib = make_library(&tmp);
 
         let album_id = lib
             .album_create(AlbumName("Album".into()), None)
@@ -234,7 +233,7 @@ mod tests {
     async fn remove_file_from_group_becomes_unreachable() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let lib = make_library(&tmp).await;
+        let lib = make_library(&tmp);
 
         let album_id = lib.album_create(AlbumName("A".into()), None).await.unwrap();
         let group_id = lib.group_create(album_id).await.unwrap();
@@ -266,7 +265,7 @@ mod tests {
     async fn delete_group_absent_from_list_and_files_error() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let lib = make_library(&tmp).await;
+        let lib = make_library(&tmp);
 
         let album_id = lib.album_create(AlbumName("A".into()), None).await.unwrap();
         let group_id = lib.group_create(album_id).await.unwrap();
@@ -287,7 +286,7 @@ mod tests {
     async fn parent_album_deleted_group_files_unreachable() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let lib = make_library(&tmp).await;
+        let lib = make_library(&tmp);
 
         let album_id = lib.album_create(AlbumName("A".into()), None).await.unwrap();
         let group_id = lib.group_create(album_id).await.unwrap();
@@ -320,7 +319,7 @@ mod tests {
     async fn duplicate_group_add_media_no_duplicate() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let lib = make_library(&tmp).await;
+        let lib = make_library(&tmp);
 
         let album_id = lib.album_create(AlbumName("A".into()), None).await.unwrap();
         let group_id = lib.group_create(album_id).await.unwrap();
@@ -349,7 +348,7 @@ mod tests {
     async fn groups_and_albums_are_separate() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let lib = make_library(&tmp).await;
+        let lib = make_library(&tmp);
 
         let album_id = lib
             .album_create(AlbumName("Album".into()), None)
