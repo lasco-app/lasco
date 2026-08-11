@@ -1,4 +1,5 @@
 use rustc_hash::FxHashMap;
+use std::collections::hash_map::Entry;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -66,7 +67,6 @@ impl Storage for StorageMockMemory {
 
     async fn put_if_absent(&self, key: &str, data: &[u8]) -> Result<bool> {
         self.check_online()?;
-        use std::collections::hash_map::Entry;
         let mut guard = self.data.lock();
         match guard.entry(key.to_owned()) {
             Entry::Vacant(e) => {
