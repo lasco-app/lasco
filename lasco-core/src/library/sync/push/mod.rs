@@ -22,6 +22,14 @@ struct FileToPush {
     storage_date: StorageDate,
 }
 
+pub(super) struct PushAccess<'a> {
+    pub storage: &'a StorageReadWrite<'a>,
+    pub local_state_media_dir: &'a LocalStateMediaDir,
+    pub remote_last_known_state_dir: &'a RemoteLastKnownStateDir,
+    pub remote_media_list: &'a RemoteMediaList,
+    pub local_state_library_dir: &'a LocalStateLibraryDir,
+}
+
 impl Library {
     /// # Errors
     ///
@@ -56,12 +64,14 @@ impl Library {
             self.inner.local_dirs.remote_last_known_state_dir(remote_id);
         let remote_media_list = self.inner.local_dirs.remote_media_list(remote_id);
         self.push_impl(
-            &remote,
+            PushAccess {
+                storage: &remote,
+                local_state_media_dir: &local_state_media_dir,
+                remote_last_known_state_dir: &remote_last_known_state_dir,
+                remote_media_list: &remote_media_list,
+                local_state_library_dir: &local_state_library_dir,
+            },
             remote_id,
-            &local_state_media_dir,
-            &remote_last_known_state_dir,
-            &remote_media_list,
-            &local_state_library_dir,
             media_source,
         )
         .await
@@ -73,12 +83,8 @@ impl Library {
     )]
     pub(super) async fn push_impl(
         &self,
-        storage: &StorageReadWrite<'_>,
+        access: PushAccess<'_>,
         remote_id: &str,
-        local_state_media_dir: &LocalStateMediaDir,
-        remote_last_known_state_dir: &RemoteLastKnownStateDir,
-        remote_media_list: &RemoteMediaList,
-        local_state_library_dir: &LocalStateLibraryDir,
         media_source: PushMediaSource<'_>,
     ) -> Result<SyncReportPush, LibraryError> {
         let master_key = &self.inner.master_key;
@@ -89,7 +95,7 @@ impl Library {
             .map_err(|e| {
                 SyncError::RemoteIdMismatch(format!("invalid remote id '{remote_id}': {e}"))
             })?;
-        verify_remote_identity(&storage.as_read(), remote_uuid).await?;
+        verify_remote_identity(&access.storage.as_read(), remote_uuid).await?;
 
         let relay_source = match media_source {
             PushMediaSource::LocalOnly => None,
@@ -109,7 +115,7 @@ impl Library {
 
         // Master-key files are immutable credentials. Propagate every local one with a
         // non-overwriting write after identity verification; never delete or replace a remote key.
-        for entry in std::fs::read_dir(local_state_library_dir.path())? {
+        for entry in std::fs::read_dir(access.local_state_library_dir.path())? {
             let entry = entry?;
             let path = entry.path();
             let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
@@ -119,7 +125,8 @@ impl Library {
                 continue;
             }
             let data = std::fs::read(&path)?;
-            storage
+            access
+                .storage
                 .put_if_absent(&format!("library/{name}"), &data)
                 .await
                 .map_err(SyncError::RemoteUnreachable)?;
@@ -133,15 +140,15 @@ impl Library {
         // remote, plus whatever it uploads or merges in this call. It never lists or reads
         // arbitrary remote files to decide what to upload or compact, so it can't turn into
         // an implicit fetch.
-        let ops_dir = remote_last_known_state_dir.operations_dir();
-        let mut last_known_state = LastKnownState::open(remote_last_known_state_dir)?;
+        let ops_dir = access.remote_last_known_state_dir.operations_dir();
+        let mut last_known_state = LastKnownState::open(access.remote_last_known_state_dir)?;
         let remote_covered =
             collect_dots_from_dir(&ops_dir, master_key).map_err(SyncError::LocalCacheCorrupt)?;
 
         // Only the snapshot read is locked. Network storage awaits below must remain unlocked.
         let media_list = self.inner.remote_media_list_lock.with_lock(
             remote_id,
-            remote_media_list,
+            access.remote_media_list,
             |remote_media_list| MediaList::load_or_default(&remote_media_list.media_list_path()),
         )?;
 
@@ -156,7 +163,8 @@ impl Library {
                     .iter()
                     .filter(|(media_id, _)| !media_list.contains(media_id))
                     .filter_map(|(media_id, file_meta)| {
-                        (!local_state_media_dir
+                        (!access
+                            .local_state_media_dir
                             .data_path(
                                 file_meta.storage_date.year,
                                 file_meta.storage_date.month,
@@ -201,7 +209,7 @@ impl Library {
                     crate::operations::encrypt_compaction_file(master_key, &file_uuid, &comp_file)
                         .map_err(map_op_err)?;
                 let bytes = blob.to_bytes();
-                op_io::write_compaction_bytes(storage, &key, &bytes)
+                op_io::write_compaction_bytes(access.storage, &key, &bytes)
                     .await
                     .map_err(map_op_err)?;
                 last_known_state.write_compaction_bytes(&file_uuid, tier, op_count, &bytes)?;
@@ -222,7 +230,7 @@ impl Library {
             if !cascade_done {
                 // The lock spans the whole cascade below, not just a single tier's merge, so
                 // another client can never interleave a compaction between two of our tiers.
-                let lock_token = try_acquire_lock(storage).await?;
+                let lock_token = try_acquire_lock(access.storage).await?;
                 if let Some(lock_token) = lock_token {
                     let mut cascade_error = None;
                     for current_tier in tier..tier + 10 {
@@ -233,7 +241,7 @@ impl Library {
                             break;
                         }
                         match compaction::compact_tier(
-                            storage,
+                            access.storage,
                             master_key,
                             current_tier,
                             &last_known_state,
@@ -257,7 +265,7 @@ impl Library {
                             }
                         }
                     }
-                    release_lock(storage, lock_token).await?;
+                    release_lock(access.storage, lock_token).await?;
                     if let Some(error) = cascade_error {
                         return Err(error.into());
                     }
@@ -293,7 +301,7 @@ impl Library {
                 item.storage_date.year, item.storage_date.month, item.media_id
             );
 
-            let data_path = local_state_media_dir.data_path(
+            let data_path = access.local_state_media_dir.data_path(
                 item.storage_date.year,
                 item.storage_date.month,
                 &item.media_id,
@@ -317,7 +325,8 @@ impl Library {
                 self.record_remote_media_presence(source_id, item.media_id);
                 (bytes.0, Some(bytes.1))
             };
-            let data_uploaded = storage
+            let data_uploaded = access
+                .storage
                 .put_if_absent(&data_key, &bytes)
                 .await
                 .map_err(SyncError::RemoteUnreachable)?;
@@ -325,14 +334,15 @@ impl Library {
                 std::fs::remove_file(path)?;
             }
 
-            let thumb_path = local_state_media_dir.thumb_path(
+            let thumb_path = access.local_state_media_dir.thumb_path(
                 item.storage_date.year,
                 item.storage_date.month,
                 &item.media_id,
             );
             if thumb_path.exists() {
                 let bytes = std::fs::read(&thumb_path)?;
-                storage
+                access
+                    .storage
                     .put_if_absent(&thumb_key, &bytes)
                     .await
                     .map_err(SyncError::RemoteUnreachable)?;
@@ -345,7 +355,8 @@ impl Library {
                         &self.inner.master_key,
                     ) {
                         Ok((bytes, path)) => {
-                            storage
+                            access
+                                .storage
                                 .put_if_absent(&thumb_key, &bytes)
                                 .await
                                 .map_err(SyncError::RemoteUnreachable)?;
@@ -362,7 +373,7 @@ impl Library {
             // download observations made while the upload was in progress.
             self.inner.remote_media_list_lock.with_lock(
                 remote_id,
-                remote_media_list,
+                access.remote_media_list,
                 |remote_media_list| {
                     let path = remote_media_list.media_list_path();
                     let mut media_list = MediaList::load_or_default(&path)?;

@@ -12,6 +12,7 @@ use crate::identifiers::RemoteUuid;
 use crate::library::Library;
 use crate::storage::StorageError;
 use fetch::{FetchAccess, fetch_impl};
+use push::PushAccess;
 use remote_access::{StorageRead, StorageReadWrite};
 
 #[derive(Debug)]
@@ -160,12 +161,14 @@ impl Library {
         let remote = StorageReadWrite::new(storage);
         let push_report = self
             .push_impl(
-                &remote,
+                PushAccess {
+                    storage: &remote,
+                    local_state_media_dir: &local_state_media_dir,
+                    remote_last_known_state_dir: &remote_last_known_state_dir,
+                    remote_media_list: &remote_media_list,
+                    local_state_library_dir: &local_state_library_dir,
+                },
                 remote_id,
-                &local_state_media_dir,
-                &remote_last_known_state_dir,
-                &remote_media_list,
-                &local_state_library_dir,
                 PushMediaSource::LocalOnly,
             )
             .await?;
