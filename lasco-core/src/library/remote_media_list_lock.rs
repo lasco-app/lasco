@@ -24,12 +24,12 @@ impl RemoteMediaListLock {
         remote_media_list: &RemoteMediaList,
         action: impl FnOnce(&RemoteMediaList) -> T,
     ) -> T {
-        let mutex = self
-            .mutexes
-            .lock()
-            .entry(remote_id.to_string())
-            .or_default()
-            .clone();
+        let mutex = std::sync::Arc::clone(
+            self.mutexes
+                .lock()
+                .entry(remote_id.to_string())
+                .or_default(),
+        );
         let _guard = mutex.lock();
         action(remote_media_list)
     }
