@@ -7,7 +7,6 @@ use crate::encryption::master_key::MasterKey;
 use crate::identifiers::CompactedOpId;
 use crate::library::sync::remote_access::{StorageRead, StorageReadWrite};
 use crate::operations::error::OperationError;
-use crate::storage::Storage;
 
 use super::{CompactionFile, compaction_file_from_cbor};
 
@@ -27,15 +26,9 @@ pub enum RemoteOpFile {
 
 /// Lists and classifies all operation files under `operations/` on the remote.
 /// Skips any key whose filename starts with `LOCK`.
-pub(crate) async fn list_remote_op_files(storage: &dyn Storage) -> Result<Vec<RemoteOpFile>> {
-    let remote = StorageRead::new(storage);
-    list_remote_op_files_read(&remote).await
-}
-
-/// Read-only variant used by fetch, which must not receive raw storage access.
-pub(crate) async fn list_remote_op_files_read(
-    storage: &StorageRead<'_>,
-) -> Result<Vec<RemoteOpFile>> {
+///
+/// Fetch callers receive this read-only view rather than raw storage access.
+pub(crate) async fn list_remote_op_files(storage: &StorageRead<'_>) -> Result<Vec<RemoteOpFile>> {
     let keys = match storage.list("operations/").await {
         Ok(keys) => keys,
         Err(crate::storage::StorageError::NotFound) => Vec::new(),
@@ -71,18 +64,11 @@ pub(crate) async fn list_remote_op_files_read(
 }
 
 /// Reads and decrypts a compaction file at `key`. The `file_uuid` drives key derivation.
+#[allow(
+    dead_code,
+    reason = "Exercised by compaction fixtures in the sync test target."
+)]
 pub(crate) async fn read_compaction_file(
-    storage: &dyn Storage,
-    master_key: &MasterKey,
-    key: &str,
-    file_uuid: &CompactedOpId,
-) -> Result<CompactionFile> {
-    let remote = StorageRead::new(storage);
-    read_compaction_file_read(&remote, master_key, key, file_uuid).await
-}
-
-/// Read-only variant used by procedures with restricted remote access.
-pub(crate) async fn read_compaction_file_read(
     storage: &StorageRead<'_>,
     master_key: &MasterKey,
     key: &str,
@@ -96,19 +82,11 @@ pub(crate) async fn read_compaction_file_read(
 }
 
 /// Encrypts and writes a compaction file to `key`. The `file_uuid` drives key derivation.
+#[allow(
+    dead_code,
+    reason = "Exercised by compaction fixtures in the sync test target."
+)]
 pub(crate) async fn write_compaction_file(
-    storage: &dyn Storage,
-    master_key: &MasterKey,
-    key: &str,
-    file_uuid: &CompactedOpId,
-    file: &CompactionFile,
-) -> Result<()> {
-    let remote = StorageReadWrite::new(storage);
-    write_compaction_file_write(&remote, master_key, key, file_uuid, file).await
-}
-
-/// Read/write variant used by procedures with restricted remote access.
-pub(crate) async fn write_compaction_file_write(
     storage: &StorageReadWrite<'_>,
     master_key: &MasterKey,
     key: &str,

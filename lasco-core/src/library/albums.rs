@@ -436,6 +436,10 @@ impl Library {
 
     /// Resolve an album name to its UUID.
     /// Returns an error if the name is not found or if multiple albums match (ambiguous).
+    #[allow(
+        dead_code,
+        reason = "Retained for name-based album selection in the CLI."
+    )]
     fn album_resolve_name(&self, name: &AlbumName) -> Result<AlbumUuid> {
         let state = self.inner.operation_state.read();
         let matches: Vec<(AlbumUuid, String)> = state

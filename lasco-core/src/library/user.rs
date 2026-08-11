@@ -42,6 +42,7 @@ impl Library {
         Ok(seen.into_iter().map(LibraryUsername).collect())
     }
 
+    #[allow(dead_code, reason = "Retained for the user password-change flow.")]
     async fn user_change_password(
         &self,
         username: LibraryUsername,

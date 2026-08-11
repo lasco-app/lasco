@@ -6,7 +6,7 @@ use crate::identifiers::{AlbumUuid, MediaUuid, OpUuid};
 use crate::operations::{LibraryUsername, Operation, OperationGroup};
 use crate::storage::{Storage, StorageMockMemory};
 
-use super::super::remote_access::StorageRead;
+use super::super::remote_access::{StorageRead, StorageReadWrite};
 use super::super::test_utils::{REMOTE_ID, make_library, stamp_remote_id, write_file};
 use super::super::{PushMediaSource, SyncError};
 
@@ -127,7 +127,13 @@ async fn seed_tier1_files(
         let n = contents.len();
         let key = format!("operations/{comp_uuid}.op1_{n}");
         let comp_file = CompactionFile { tier: 1, contents };
-        write_compaction_file(storage, master_key, &key, &comp_uuid, &comp_file)
+        write_compaction_file(
+            &StorageReadWrite::new(storage),
+            master_key,
+            &key,
+            &comp_uuid,
+            &comp_file,
+        )
             .await
             .unwrap();
         LastKnownState::open(&lib.inner.local_dirs.remote_last_known_state_dir(REMOTE_ID))
@@ -276,7 +282,7 @@ async fn incremental_push_resilience_uploads_remaining_after_failure() {
             contents: partial,
         };
         write_compaction_file(
-            &storage,
+            &StorageReadWrite::new(&storage),
             master_key,
             &partial_key,
             &partial_uuid,
@@ -336,7 +342,7 @@ async fn push_skips_ops_already_covered_by_compaction() {
     };
     let comp_key = format!("operations/{comp_uuid}.op1_{}", comp_file.contents.len());
     write_compaction_file(
-        &storage,
+        &StorageReadWrite::new(&storage),
         &lib.inner.master_key,
         &comp_key,
         &comp_uuid,
@@ -413,7 +419,7 @@ async fn push_single_large_group_lands_at_tier_sized_for_its_op_count() {
         "a single group counts as one op group uploaded"
     );
 
-    let remote_files = crate::operations::remote_ops::list_remote_op_files(&storage)
+    let remote_files = crate::operations::remote_ops::list_remote_op_files(&StorageRead::new(&storage))
         .await
         .unwrap();
     let comp1_count = remote_files
@@ -458,7 +464,7 @@ async fn push_small_batch_writes_compaction_file() {
     assert_eq!(report.ops_uploaded, 5);
     assert_eq!(report.compactions_run, 0, "no compaction for small batch");
 
-    let remote_files = crate::operations::remote_ops::list_remote_op_files(&storage)
+    let remote_files = crate::operations::remote_ops::list_remote_op_files(&StorageRead::new(&storage))
         .await
         .unwrap();
     let comp1_count = remote_files
@@ -486,7 +492,7 @@ async fn push_large_batch_writes_single_compaction_file() {
     let report = lib.push(&storage, REMOTE_ID).await.unwrap();
     assert_eq!(report.ops_uploaded, 20);
 
-    let remote_files = crate::operations::remote_ops::list_remote_op_files(&storage)
+    let remote_files = crate::operations::remote_ops::list_remote_op_files(&StorageRead::new(&storage))
         .await
         .unwrap();
     let comp1_count = remote_files
@@ -515,7 +521,7 @@ async fn push_large_batch_writes_op2_file() {
     let report = lib.push(&storage, REMOTE_ID).await.unwrap();
     assert_eq!(report.ops_uploaded, 200);
 
-    let remote_files = crate::operations::remote_ops::list_remote_op_files(&storage)
+    let remote_files = crate::operations::remote_ops::list_remote_op_files(&StorageRead::new(&storage))
         .await
         .unwrap();
     let comp1_count = remote_files
@@ -595,7 +601,13 @@ async fn compaction_cascades_across_two_tiers() {
         let n = contents.len();
         let key = format!("operations/{comp_uuid}.op1_{n}");
         let comp_file = CompactionFile { tier: 1, contents };
-        write_compaction_file(&storage, master_key, &key, &comp_uuid, &comp_file)
+        write_compaction_file(
+            &StorageReadWrite::new(&storage),
+            master_key,
+            &key,
+            &comp_uuid,
+            &comp_file,
+        )
             .await
             .unwrap();
         LastKnownState::open(&lib.inner.local_dirs.remote_last_known_state_dir(REMOTE_ID))
@@ -614,7 +626,7 @@ async fn compaction_cascades_across_two_tiers() {
         "at least one compaction must run"
     );
 
-    let remote_files = crate::operations::remote_ops::list_remote_op_files(&storage)
+    let remote_files = crate::operations::remote_ops::list_remote_op_files(&StorageRead::new(&storage))
         .await
         .unwrap();
     let op1_count = remote_files
@@ -684,7 +696,7 @@ async fn push_records_uploaded_file_in_last_known_state() {
     inject_op_groups(&lib, 5);
     lib.push(&storage, REMOTE_ID).await.unwrap();
 
-    let remote_files = crate::operations::remote_ops::list_remote_op_files(&storage)
+    let remote_files = crate::operations::remote_ops::list_remote_op_files(&StorageRead::new(&storage))
         .await
         .unwrap();
     let mut cached_files = crate::remote::LastKnownState::list_cached_files(
@@ -738,7 +750,7 @@ async fn push_skips_cascade_when_lock_held() {
         "the other client's lock must still be present"
     );
 
-    let remote_files = crate::operations::remote_ops::list_remote_op_files(&storage)
+    let remote_files = crate::operations::remote_ops::list_remote_op_files(&StorageRead::new(&storage))
         .await
         .unwrap();
     let op1_count = remote_files

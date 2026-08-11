@@ -4,6 +4,7 @@ use uuid::Uuid;
 use crate::identifiers::AlbumUuid;
 use crate::storage::{Storage, StorageMockMemory};
 
+use super::super::remote_access::StorageReadWrite;
 use super::super::test_utils::{
     REMOTE_ID, make_library, make_library_with_same_keys, remote_uuid, write_file,
 };
@@ -181,7 +182,7 @@ async fn fetch_absorbs_op_from_compaction_file() {
     };
     let comp_key = format!("operations/{comp_uuid}.op1_{}", comp_file.contents.len());
     write_compaction_file(
-        &storage,
+        &StorageReadWrite::new(&storage),
         &lib_a.inner.master_key,
         &comp_key,
         &comp_uuid,
@@ -255,7 +256,7 @@ async fn fetch_does_not_double_append_op_in_two_compaction_files() {
         };
         let comp_key = format!("operations/{comp_uuid}.op1_{i}");
         write_compaction_file(
-            &storage,
+            &StorageReadWrite::new(&storage),
             &lib_a.inner.master_key,
             &comp_key,
             &comp_uuid,

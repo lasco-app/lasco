@@ -230,41 +230,14 @@ impl Library {
         Ok(plaintext)
     }
 
-    /// Downloads a media blob from a known remote and records that positive observation in the
-    /// remote's media inventory after the encrypted blob has been validated and cached locally.
-    async fn media_get_bytes_from_remote(
-        &self,
-        media_id: MediaUuid,
-        remote_id: &str,
-        storage: &dyn Storage,
-    ) -> Result<Vec<u8>> {
-        let (year, month) = self.media_year_month(media_id)?;
-        let local_state_media_dir = self.inner.local_dirs.local_state_media_dir();
-        let data_path = local_state_media_dir.data_path(year, month, &media_id);
-
-        if data_path.exists() {
-            let blob_bytes = std::fs::read(&data_path)?;
-            return self.decrypt_media_blob(media_id, &blob_bytes);
-        }
-
-        let blob_bytes = self
-            .download_media_blob(media_id, year, month, storage)
-            .await?;
-        let plaintext = self.decrypt_media_blob(media_id, &blob_bytes)?;
-
-        if let Some(parent) = data_path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        write_atomic(&data_path, &blob_bytes)?;
-        self.record_remote_media_presence(remote_id, media_id);
-
-        Ok(plaintext)
-    }
-
     /// Decrypts the media blob and writes plaintext to `path_dest`.
     ///
     /// If the blob is not locally cached, `storage` is used to download it. Pass `None`
     /// to skip remote download (returns `MediaNotFound` when not cached locally).
+    #[allow(
+        dead_code,
+        reason = "Retained for filesystem-destination media exports and unit tests."
+    )]
     async fn media_get(
         &self,
         media_id: MediaUuid,
@@ -508,6 +481,10 @@ fn inclusive_slice<T>(items: &[T], start: usize, end: usize) -> Option<&[T]> {
     items.get(start..=end.min(items.len() - 1))
 }
 
+#[allow(
+    dead_code,
+    reason = "Used by the retained filesystem-destination media export helper."
+)]
 fn write_dest(path: &Path, data: &[u8]) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;

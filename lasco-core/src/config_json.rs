@@ -174,6 +174,10 @@ impl ConfigJson {
     }
 
     /// Set the default library by nickname
+    #[allow(
+        dead_code,
+        reason = "Retained for the CLI command that sets the default library."
+    )]
     fn set_default_library(&mut self, nickname: &str) -> Result<()> {
         if !self
             .libraries

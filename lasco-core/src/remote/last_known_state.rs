@@ -12,7 +12,7 @@ use crate::error::SyncError;
 use crate::identifiers::CompactedOpId;
 use crate::library::local_dirs::RemoteLastKnownStateDir;
 use crate::library::sync::remote_access::StorageRead;
-use crate::operations::remote_ops::{RemoteOpFile, list_remote_op_files_read};
+use crate::operations::remote_ops::{RemoteOpFile, list_remote_op_files};
 use crate::operations::{CompactionFile, compaction_file_from_cbor};
 
 /// On-disk cache of all remote operation files for a single remote.
@@ -41,7 +41,7 @@ impl LastKnownState {
         let ops_dir = remote_last_known_state_dir.operations_dir();
         std::fs::create_dir_all(&ops_dir)?;
 
-        let remote_files = list_remote_op_files_read(storage).await?;
+        let remote_files = list_remote_op_files(storage).await?;
         let cached_dots =
             collect_dots_from_dir(&ops_dir, master_key).map_err(SyncError::LocalCacheCorrupt)?;
         let mut staged_files: Vec<(RemoteOpFile, Vec<u8>, Vec<Dot>)> = Vec::new();

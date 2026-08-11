@@ -165,6 +165,10 @@ pub fn save_library(app_dir: &Path, library_id: &LibraryId, library: &LibraryJso
 }
 
 /// Load the configuration for the library with the given nickname.
+#[allow(
+    dead_code,
+    reason = "Retained for nickname-based library selection in the CLI."
+)]
 fn load_library_by_nickname(app_dir: &Path, nickname: &str) -> Result<(LibraryId, LibraryJson)> {
     let config =
         ConfigJson::load(app_dir)?.ok_or_else(|| anyhow::anyhow!("no libraries configured"))?;
@@ -177,6 +181,10 @@ fn load_library_by_nickname(app_dir: &Path, nickname: &str) -> Result<(LibraryId
 }
 
 /// Load the configuration for the default library.
+#[allow(
+    dead_code,
+    reason = "Retained for default-library selection in the CLI."
+)]
 fn load_default_library(app_dir: &Path) -> Result<(LibraryId, LibraryJson)> {
     let config =
         ConfigJson::load(app_dir)?.ok_or_else(|| anyhow::anyhow!("no libraries configured"))?;
@@ -198,6 +206,10 @@ pub fn get_remote_kind(library: &LibraryJson, remote_uuid: &str) -> Option<Remot
 }
 
 /// Validate that a remote UUID (as a string) exists in the library config.
+#[allow(
+    dead_code,
+    reason = "Retained for CLI validation of remote UUID arguments."
+)]
 fn validate_remote_exists(library: &LibraryJson, remote_uuid: &str) -> Result<()> {
     if library
         .remotes
@@ -224,6 +236,10 @@ pub fn list_remote_ids(library: &LibraryJson) -> Vec<String> {
 
 /// Find the single remote with the given human-readable name.
 /// Errors if zero or more than one remote share that name.
+#[allow(
+    dead_code,
+    reason = "Retained for name-based remote selection in the CLI."
+)]
 fn find_remote_by_name<'a>(library: &'a LibraryJson, name: &str) -> Result<&'a RemoteConfig> {
     let matches: Vec<&RemoteConfig> = library.remotes.iter().filter(|r| r.name == name).collect();
     match matches.len() {

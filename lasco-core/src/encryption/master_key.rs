@@ -141,6 +141,10 @@ pub(crate) fn write_mk_file(
         .map_err(|e| KeychainError::Io(e.to_string()))
 }
 
+#[allow(
+    dead_code,
+    reason = "Retained for direct master-key file access and its unit tests."
+)]
 pub(crate) fn read_mk_file(
     lib_dir: &Path,
     username: &str,
@@ -191,6 +195,10 @@ pub(crate) fn find_master_key(
 }
 
 /// Open with a known password UUID (fast path, avoids iterating all mk files).
+#[allow(
+    dead_code,
+    reason = "Retained for the known-password-UUID master-key fast path."
+)]
 pub(crate) fn open_master_key(
     lib_dir: &Path,
     username: &str,
