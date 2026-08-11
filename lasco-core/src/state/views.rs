@@ -4,6 +4,10 @@ use super::types::{AlbumBrowseItem, ComputedViews, ReconstructedState};
     clippy::too_many_lines,
     reason = "The related derived indexes are built together from one reconstructed-state snapshot."
 )]
+/// # Panics
+///
+/// Panics if an album referenced by the reconstructed browse hierarchy is absent from its album
+/// map, violating the consistency invariant established while reconstructing state.
 pub fn build_computed_views(state: &ReconstructedState) -> ComputedViews {
     let mut views = ComputedViews::default();
 

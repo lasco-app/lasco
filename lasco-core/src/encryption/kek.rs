@@ -40,6 +40,11 @@ impl AsRef<[u8; KEK_SIZE]> for Kek {
 }
 
 /// Derive a `Kek` from `password` and `salt` using Argon2id.
+///
+/// # Panics
+///
+/// Panics if the hardcoded Argon2id parameters or fixed-size derivation output become invalid;
+/// both conditions indicate a programming error rather than invalid caller input.
 #[must_use]
 pub fn derive_kek(password: &str, salt: LibrarySalt) -> Kek {
     let params = Params::new(ARGON2_M_COST, ARGON2_T_COST, ARGON2_P_COST, Some(KEK_SIZE))

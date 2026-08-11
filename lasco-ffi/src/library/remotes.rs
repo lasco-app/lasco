@@ -50,6 +50,9 @@ impl FfiLibrary {
             .map_err(|e| LascoError::Other { msg: e.to_string() })
     }
 
+    /// # Panics
+    ///
+    /// Panics if another thread panicked while holding the cached remote-list mutex.
     pub fn list_remotes(&self) -> Vec<FfiRemote> {
         self.remotes.lock().unwrap().clone()
     }
@@ -57,6 +60,11 @@ impl FfiLibrary {
     /// # Errors
     ///
     /// Returns an error if the name already exists or library configuration cannot be read or saved.
+    ///
+    /// # Panics
+    ///
+    /// Panics if another thread panicked while holding the cached remote-list mutex during the
+    /// in-memory update after configuration is saved.
     pub fn add_remote_fixed_path(
         &self,
         name: String,
@@ -140,6 +148,11 @@ impl FfiLibrary {
     /// # Errors
     ///
     /// Returns an error for a duplicate name or failed library-configuration persistence.
+    ///
+    /// # Panics
+    ///
+    /// Panics if another thread panicked while holding the cached remote-list mutex during the
+    /// in-memory update after configuration is saved.
     pub fn add_remote_debug_local_apple(&self, name: String) -> Result<FfiRemoteUuid, LascoError> {
         let library_id = self.inner.library_id();
         let mut lib_config = self.load_library_json()?;
@@ -178,6 +191,11 @@ impl FfiLibrary {
     /// # Errors
     ///
     /// Returns an error for a duplicate name or failed library-configuration persistence.
+    ///
+    /// # Panics
+    ///
+    /// Panics if another thread panicked while holding the cached remote-list mutex during the
+    /// in-memory update after configuration is saved.
     pub fn add_remote_debug_local_android(
         &self,
         name: String,
@@ -223,6 +241,11 @@ impl FfiLibrary {
     /// # Errors
     ///
     /// Returns an error for a duplicate name, failed secret-key encryption, or failed configuration persistence.
+    ///
+    /// # Panics
+    ///
+    /// Panics if another thread panicked while holding the cached remote-list mutex during the
+    /// in-memory update after configuration is saved.
     pub fn add_remote_s3(
         &self,
         name: String,
@@ -286,6 +309,11 @@ impl FfiLibrary {
     /// # Errors
     ///
     /// Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
+    ///
+    /// # Panics
+    ///
+    /// Panics if another thread panicked while holding the cached remote-list mutex during the
+    /// in-memory removal after configuration is saved.
     pub fn remove_remote(&self, remote_id: FfiRemoteUuid) -> Result<(), LascoError> {
         let library_id = self.inner.library_id();
         let mut lib_config = self.load_library_json()?;
@@ -316,6 +344,11 @@ impl FfiLibrary {
     /// # Errors
     ///
     /// Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
+    ///
+    /// # Panics
+    ///
+    /// Panics if another thread panicked while holding the cached remote-list mutex during the
+    /// in-memory auto-push update after configuration is saved.
     pub fn set_remote_auto_push(
         &self,
         remote_id: FfiRemoteUuid,
@@ -351,6 +384,11 @@ impl FfiLibrary {
     /// # Errors
     ///
     /// Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
+    ///
+    /// # Panics
+    ///
+    /// Panics if another thread panicked while holding the cached remote-list mutex during the
+    /// in-memory priority update after configuration is saved.
     pub fn set_remote_media_fetch_priority(
         &self,
         remote_id: FfiRemoteUuid,

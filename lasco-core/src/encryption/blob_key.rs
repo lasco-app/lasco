@@ -38,6 +38,11 @@ impl AsRef<[u8; BLOB_KEY_SIZE]> for BlobKey {
 }
 
 /// Derive a `BlobKey` from `master_key` and `uuid` using HKDF-SHA256.
+///
+/// # Panics
+///
+/// Panics if HKDF cannot expand into the fixed `BLOB_KEY_SIZE` output buffer, which is impossible
+/// for the selected SHA-256 parameters.
 #[must_use]
 pub fn derive_blob_key(master_key: &MasterKey, uuid: &Uuid) -> BlobKey {
     let hk = Hkdf::<Sha256>::new(None, master_key.as_ref());

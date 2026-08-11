@@ -60,6 +60,9 @@ impl ReplicaClock {
         self.counter = self.counter.max(dot.lamport_counter);
     }
 
+    /// # Panics
+    ///
+    /// Panics if this replica has emitted `u64::MAX` dots and its Lamport counter cannot advance.
     pub fn next_dot(&mut self) -> Dot {
         self.counter = self
             .counter
@@ -431,6 +434,10 @@ impl CanonicalState {
     }
 
     /// Resolves parents, cycles, and visibility without mutating canonical data.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internally constructed cycle path is empty while resolving an album-parent cycle.
     #[must_use]
     pub fn album_projection(&self) -> AlbumProjection {
         let mut parents: HashMap<AlbumUuid, Option<AlbumUuid>> = self

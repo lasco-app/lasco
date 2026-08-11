@@ -57,6 +57,11 @@ impl BlobEncrypted {
 }
 
 /// Encrypt `plaintext` with XChaCha20-Poly1305 using a random 24-byte nonce sourced from the OS RNG.
+///
+/// # Panics
+///
+/// Panics if XChaCha20-Poly1305 rejects the fixed-size nonce or key, which would indicate an
+/// internal cryptographic invariant has been violated.
 #[must_use]
 pub fn encrypt_blob(file_key: &BlobKey, plaintext: &[u8]) -> BlobEncrypted {
     let key = chacha20poly1305::Key::from_slice(file_key.as_ref());

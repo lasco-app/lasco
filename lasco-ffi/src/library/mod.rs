@@ -28,6 +28,10 @@ fn sessions_dir(app_dir: &std::path::Path) -> std::path::PathBuf {
 /// # Errors
 ///
 /// Returns an error if the app directory/runtime cannot be created or library state, config, or session key cannot be initialized.
+///
+/// # Panics
+///
+/// Panics if Tokio cannot construct the runtime used to initialize the library.
 pub fn ffi_create_library(
     nickname: String,
     username: String,
