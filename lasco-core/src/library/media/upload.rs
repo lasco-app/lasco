@@ -77,8 +77,10 @@ impl Library {
         });
         let size_bytes = metadata.len();
         let storage_date = crate::operations::StorageDate {
-            year: datetime.year() as u16,
-            month: datetime.month() as u8,
+            year: u16::try_from(datetime.year())
+                .map_err(|_| LibraryError::UnsupportedStorageDate)?,
+            month: u8::try_from(datetime.month())
+                .map_err(|_| LibraryError::UnsupportedStorageDate)?,
         };
 
         let master_key = &self.inner.master_key;

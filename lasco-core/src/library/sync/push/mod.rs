@@ -186,8 +186,9 @@ impl Library {
         let mut compactions_run = 0usize;
 
         if !ops_to_upload.is_empty() {
-            let op_count = ops_to_upload.len() as u32;
-            let tier = appropriate_tier(op_count as usize);
+            let op_count = u32::try_from(ops_to_upload.len())
+                .expect("an in-memory upload batch cannot contain more than u32::MAX operations");
+            let tier = appropriate_tier(ops_to_upload.len());
             {
                 // Upload as a single compaction file at the tier that fits this batch.
                 let file_uuid = CompactedOpId::new();

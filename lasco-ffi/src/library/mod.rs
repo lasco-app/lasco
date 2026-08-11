@@ -20,6 +20,10 @@ use remotes::remote_config_to_ffi;
 use crate::error::LascoError;
 use crate::ids::FfiLibraryId;
 
+pub(super) fn ffi_count(value: usize) -> u64 {
+    u64::try_from(value).expect("usize fits in u64 on supported UniFFI targets")
+}
+
 fn sessions_dir(app_dir: &std::path::Path) -> std::path::PathBuf {
     app_dir.join("sessions")
 }

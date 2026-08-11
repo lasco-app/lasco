@@ -28,7 +28,7 @@ pub(super) const TIER_FILE_LIMIT: usize = 10;
 pub(super) fn appropriate_tier(op_count: usize) -> u8 {
     let q = (op_count as u64).div_ceil(20);
     let exponent = if q <= 1 { 0 } else { (q - 1).ilog10() + 1 };
-    (exponent + 1) as u8
+    u8::try_from(exponent + 1).expect("a usize operation count requires fewer than 256 tiers")
 }
 
 /// Returns the number of files at each tier.
@@ -173,7 +173,8 @@ pub(super) async fn compact_tier(
     // written to both the remote and the local cache below.
     let new_uuid = CompactedOpId::new();
     let new_tier = tier + 1;
-    let new_op_count = operations.len() as u32;
+    let new_op_count = u32::try_from(operations.len())
+        .expect("an in-memory compaction cannot contain more than u32::MAX operations");
     let new_key = format!("operations/{new_uuid}.op{new_tier}_{new_op_count}");
     let new_file = crate::operations::CompactionFile {
         tier: new_tier,

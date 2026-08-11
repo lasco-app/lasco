@@ -4,7 +4,7 @@ use lasco_core::library::media::upload::MediaAddResult;
 
 use super::remotes::media_entry_to_ffi;
 use super::types::{FfiLocalStateStats, FfiMediaAddResult, FfiMediaNeighbors};
-use super::{FfiLibrary, FfiMediaItem};
+use super::{FfiLibrary, FfiMediaItem, ffi_count};
 use crate::error::LascoError;
 use crate::ids::{FfiAlbumUuid, FfiLibraryId, FfiMediaUuid, FfiRemoteUuid};
 
@@ -334,8 +334,8 @@ impl FfiLibrary {
         })
     }
 
-    pub fn pending_media_count(&self) -> u32 {
-        self.inner.pending_media_count().unwrap_or(0)
+    pub fn pending_media_count(&self) -> u64 {
+        ffi_count(self.inner.pending_media_count().unwrap_or(0))
     }
 
     pub fn has_unpushed_changes(&self, remote_id: FfiRemoteUuid) -> bool {
@@ -381,8 +381,8 @@ impl FfiLibrary {
             .collect())
     }
 
-    pub fn media_by_date_count(&self) -> u32 {
-        self.inner.media_by_date_count(false) as u32
+    pub fn media_by_date_count(&self) -> u64 {
+        ffi_count(self.inner.media_by_date_count(false))
     }
 
     /// Returns the entries immediately surrounding a zero-based home position.
@@ -445,8 +445,8 @@ impl FfiLibrary {
             .collect())
     }
 
-    pub fn orphan_media_by_date_count(&self) -> u32 {
-        self.inner.media_by_date_count(true) as u32
+    pub fn orphan_media_by_date_count(&self) -> u64 {
+        ffi_count(self.inner.media_by_date_count(true))
     }
 
     /// Returns the entries immediately surrounding a zero-based orphan position.

@@ -4,7 +4,9 @@ use lasco_core::operations::AlbumName;
 
 use super::groups::group_entry_to_ffi;
 use super::remotes::media_entry_to_ffi;
-use super::{FfiAlbum, FfiAlbumItem, FfiLibrary, FfiMediaItem, FfiMediaOrGroupNeighbors};
+use super::{
+    FfiAlbum, FfiAlbumItem, FfiLibrary, FfiMediaItem, FfiMediaOrGroupNeighbors, ffi_count,
+};
 use crate::error::LascoError;
 use crate::ids::{FfiAlbumUuid, FfiMediaUuid};
 
@@ -15,7 +17,7 @@ fn album_summary_to_ffi(a: AlbumSummary) -> FfiAlbum {
         album_id: a.album_id.into(),
         name: a.name.0,
         parent_album_id: a.album_id_parent.map(Into::into),
-        media_count: a.media_count as u32,
+        media_count: ffi_count(a.media_count),
         deleted: false,
         is_disconnected: false,
         thumbnail_media_id: a.thumbnail_media_id.map(Into::into),
@@ -31,7 +33,7 @@ fn disconnected_album_to_ffi(library: &FfiLibrary, id: AlbumUuid) -> Option<FfiA
                 album_id: id.into(),
                 name: name.0,
                 parent_album_id: parent_id.map(Into::into),
-                media_count: media_count as u32,
+                media_count: ffi_count(media_count),
                 deleted: false,
                 is_disconnected: true,
                 thumbnail_media_id: thumbnail_media_id.map(Into::into),
@@ -71,7 +73,7 @@ impl FfiLibrary {
                 album_id: a.album_id.into(),
                 name: a.name.0,
                 parent_album_id: a.album_id_parent.map(Into::into),
-                media_count: a.media_count as u32,
+                media_count: ffi_count(a.media_count),
                 deleted: false,
                 is_disconnected: false,
                 thumbnail_media_id: a.thumbnail_media_id.map(Into::into),
@@ -92,9 +94,9 @@ impl FfiLibrary {
     pub fn album_albums_count(
         &self,
         parent_album_id: Option<FfiAlbumUuid>,
-    ) -> Result<u32, LascoError> {
+    ) -> Result<u64, LascoError> {
         let parent = parent_album_id.map(TryInto::try_into).transpose()?;
-        Ok(self.inner.album_albums_count(parent) as u32)
+        Ok(ffi_count(self.inner.album_albums_count(parent)))
     }
 
     /// Returns direct albums under `parent_album_id`; `None` means root albums.
@@ -119,8 +121,8 @@ impl FfiLibrary {
             .collect())
     }
 
-    pub fn disconnected_albums_count(&self) -> u32 {
-        self.inner.album_disconnected_ids().len() as u32
+    pub fn disconnected_albums_count(&self) -> u64 {
+        ffi_count(self.inner.album_disconnected_ids().len())
     }
 
     /// Returns disconnected albums in the same order as `list_albums`.
@@ -298,12 +300,13 @@ impl FfiLibrary {
     /// # Errors
     ///
     /// Returns an error if `album_id` is invalid or absent.
-    pub fn album_items_count(&self, album_id: FfiAlbumUuid) -> Result<u32, LascoError> {
+    pub fn album_items_count(&self, album_id: FfiAlbumUuid) -> Result<u64, LascoError> {
         let album_uuid = album_id.try_into()?;
-        Ok(self
-            .inner
-            .album_items_count(album_uuid)
-            .map_err(LascoError::from)? as u32)
+        Ok(ffi_count(
+            self.inner
+                .album_items_count(album_uuid)
+                .map_err(LascoError::from)?,
+        ))
     }
 
     /// Returns the entries immediately surrounding a zero-based album position.

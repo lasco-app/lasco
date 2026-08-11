@@ -280,7 +280,7 @@ impl Library {
     /// # Errors
     ///
     /// Returns an error if the local media cache directory cannot be read.
-    pub fn pending_media_count(&self) -> Result<u32> {
+    pub fn pending_media_count(&self) -> Result<usize> {
         let count = self
             .inner
             .crdt_replica_state
@@ -294,7 +294,7 @@ impl Library {
                 )
             })
             .count();
-        Ok(count as u32)
+        Ok(count)
     }
 
     /// # Errors

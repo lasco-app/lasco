@@ -35,4 +35,6 @@ pub enum LibraryError {
     AlbumNameAmbiguous(AlbumName, Vec<(AlbumUuid, String)>),
     #[error("reparenting album would create a cycle")]
     AlbumReparentWouldCycle,
+    #[error("media modification date is outside the supported storage-date range")]
+    UnsupportedStorageDate,
 }

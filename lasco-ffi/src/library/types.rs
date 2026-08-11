@@ -58,7 +58,7 @@ pub struct FfiAlbum {
     pub album_id: FfiAlbumUuid,
     pub name: String,
     pub parent_album_id: Option<FfiAlbumUuid>,
-    pub media_count: u32,
+    pub media_count: u64,
     pub deleted: bool,
     pub is_disconnected: bool,
     pub thumbnail_media_id: Option<FfiMediaUuid>,
