@@ -40,6 +40,10 @@ pub enum ConfigError {
 }
 
 /// Returns the platform-default application data directory for lasco.
+///
+/// # Errors
+///
+/// Returns an error when the platform does not provide a suitable project data directory.
 pub fn default_app_dir() -> Result<PathBuf> {
     directories::ProjectDirs::from("", "", "lasco")
         .map(|d| d.data_dir().to_path_buf())
@@ -96,6 +100,10 @@ fn default_version() -> u32 {
 
 impl ConfigJson {
     /// Load the application config from disk
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file cannot be read, is invalid JSON, or has an unsupported version.
     pub fn load(app_dir: &Path) -> Result<Option<Self>> {
         let path = app_config_path(app_dir);
         if !path.exists() {
@@ -197,6 +205,9 @@ impl ConfigJson {
 
     /// Resolve an optional nickname to a concrete one.
     /// Returns `nickname` if `Some`, otherwise returns the default library nickname.
+    /// # Errors
+    ///
+    /// Returns an error when no libraries are configured or no default nickname is set.
     pub fn resolve_nickname(
         &self,
         nickname: Option<LibraryNickname>,

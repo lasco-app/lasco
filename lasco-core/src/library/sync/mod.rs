@@ -66,6 +66,10 @@ pub struct SyncReport {
 impl Library {
     /// Copy local crypto files (`library/`) to the remote if not already present.
     /// Idempotent. Does nothing if `library/` already exists on the remote.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the remote or local crypto directory cannot be read, or setup files cannot be written.
     pub async fn initialize_remote(
         &self,
         storage: &dyn crate::storage::Storage,
@@ -107,6 +111,9 @@ impl Library {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if another sync is active, or remote fetch/push, media transfer, or local state rebuilding fails.
     pub async fn sync(
         &self,
         storage: &dyn crate::storage::Storage,
@@ -189,6 +196,10 @@ pub(crate) async fn discover_remote_uuid(
 }
 
 /// Verifies that the remote's `remote_id_{uuid}` marker file matches `expected`.
+///
+/// # Errors
+///
+/// Returns an error if the marker cannot be read, is missing, or names a different remote.
 pub async fn verify_remote_identity(
     storage: &StorageRead<'_>,
     expected: RemoteUuid,

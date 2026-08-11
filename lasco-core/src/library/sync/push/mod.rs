@@ -23,6 +23,9 @@ struct FileToPush {
 }
 
 impl Library {
+    /// # Errors
+    ///
+    /// Returns an error if remote identity verification, operation upload, or required media upload fails.
     pub async fn push(
         &self,
         storage: &dyn crate::storage::Storage,
@@ -33,6 +36,10 @@ impl Library {
     }
 
     /// Push with an explicit policy for media absent from the local cache.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if another push is active, remote validation/upload fails, or the selected media source cannot supply required blobs.
     pub async fn push_with_media_source(
         &self,
         storage: &dyn crate::storage::Storage,

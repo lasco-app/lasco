@@ -9,6 +9,9 @@ use crate::error::{KeychainError, LibraryError};
 use crate::operations::{LibraryPassword, LibraryUsername};
 
 impl Library {
+    /// # Errors
+    ///
+    /// Returns an error if the user key cannot be created or the user-add operation cannot be persisted.
     pub async fn user_add(
         &self,
         username_new: LibraryUsername,
@@ -28,6 +31,9 @@ impl Library {
         Ok(password_uuid)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the library user records cannot be read from local state.
     pub async fn user_list(&self) -> Result<Vec<LibraryUsername>> {
         let lib_dir = self.inner.local_dirs.local_state_library_dir();
         let mut seen = std::collections::HashSet::new();

@@ -14,6 +14,9 @@ use crate::ids::FfiRemoteUuid;
 
 #[uniffi::export]
 impl FfiLibrary {
+    /// # Errors
+    ///
+    /// Returns an error if persisted local operations cannot be read or decoded.
     pub fn list_operations(&self) -> Result<Vec<FfiCrdtOperation>, LascoError> {
         Ok(self
             .inner
@@ -23,6 +26,9 @@ impl FfiLibrary {
             .collect())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if user records cannot be read from local library state.
     pub fn user_list(&self) -> Result<Vec<String>, LascoError> {
         let users = self
             .rt
@@ -31,6 +37,9 @@ impl FfiLibrary {
         Ok(users.into_iter().map(|u| u.0).collect())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the user key or add-user operation cannot be persisted.
     pub fn user_add(&self, username: String, password: String) -> Result<(), LascoError> {
         self.rt
             .block_on(
@@ -45,6 +54,9 @@ impl FfiLibrary {
         self.remotes.lock().unwrap().clone()
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the name already exists or library configuration cannot be read or saved.
     pub fn add_remote_fixed_path(
         &self,
         name: String,
@@ -86,6 +98,10 @@ impl FfiLibrary {
 
     /// Add a wired USB drive selected through Android's Storage Access
     /// Framework. `tree_uri` is an opaque, persistable access grant.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for an empty URI, duplicate name, or failed configuration persistence.
     pub fn add_remote_usb_android(
         &self,
         name: String,
@@ -101,6 +117,10 @@ impl FfiLibrary {
 
     /// Add a wired USB drive selected through Apple's document picker.
     /// `bookmark_base64` is an opaque security-scoped bookmark.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for an empty bookmark, duplicate name, or failed configuration persistence.
     pub fn add_remote_usb_apple(
         &self,
         name: String,
@@ -117,6 +137,9 @@ impl FfiLibrary {
         )
     }
 
+    /// # Errors
+    ///
+    /// Returns an error for a duplicate name or failed library-configuration persistence.
     pub fn add_remote_debug_local_apple(&self, name: String) -> Result<FfiRemoteUuid, LascoError> {
         let library_id = self.inner.library_id();
         let mut lib_config = self.load_library_json()?;
@@ -152,6 +175,9 @@ impl FfiLibrary {
         Ok(remote_uuid.into())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error for a duplicate name or failed library-configuration persistence.
     pub fn add_remote_debug_local_android(
         &self,
         name: String,
@@ -194,6 +220,9 @@ impl FfiLibrary {
         clippy::too_many_arguments,
         reason = "The FFI contract exposes S3 connection settings as explicit scalar parameters."
     )]
+    /// # Errors
+    ///
+    /// Returns an error for a duplicate name, failed secret-key encryption, or failed configuration persistence.
     pub fn add_remote_s3(
         &self,
         name: String,
@@ -254,6 +283,9 @@ impl FfiLibrary {
         Ok(remote_uuid.into())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
     pub fn remove_remote(&self, remote_id: FfiRemoteUuid) -> Result<(), LascoError> {
         let library_id = self.inner.library_id();
         let mut lib_config = self.load_library_json()?;
@@ -281,6 +313,9 @@ impl FfiLibrary {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
     pub fn set_remote_auto_push(
         &self,
         remote_id: FfiRemoteUuid,
@@ -313,6 +348,9 @@ impl FfiLibrary {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
     pub fn set_remote_media_fetch_priority(
         &self,
         remote_id: FfiRemoteUuid,
@@ -343,6 +381,9 @@ impl FfiLibrary {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the ID/configuration is invalid, storage cannot be built, or remote push fails.
     pub fn push_remote(
         &self,
         remote_id: FfiRemoteUuid,
@@ -361,6 +402,10 @@ impl FfiLibrary {
     /// Push to `target_remote_id`, relaying absent local media from the selected
     /// configured source remote. Callers should only use this after an explicit
     /// user choice; ordinary and scheduled pushes remain local-only.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for invalid IDs, unavailable remote storage, failed validation, or failed relay/upload.
     pub fn push_remote_from_remote(
         &self,
         target_remote_id: FfiRemoteUuid,
@@ -389,6 +434,9 @@ impl FfiLibrary {
         Ok(report.ops_uploaded as u32)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the ID/configuration is invalid, storage cannot be built, or remote fetch fails.
     pub fn fetch_remote(
         &self,
         remote_id: FfiRemoteUuid,
@@ -404,6 +452,9 @@ impl FfiLibrary {
         Ok(report.ops_downloaded as u32)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the ID/configuration is invalid, storage cannot be built, the task fails, or remote push fails.
     pub async fn push_remote_async(
         &self,
         remote_id: FfiRemoteUuid,
@@ -422,6 +473,9 @@ impl FfiLibrary {
         Ok(report.ops_uploaded as u32)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error for invalid IDs, unavailable storage, task failure, failed validation, or failed relay/upload.
     pub async fn push_remote_from_remote_async(
         &self,
         target_remote_id: FfiRemoteUuid,
@@ -457,6 +511,9 @@ impl FfiLibrary {
         Ok(report.ops_uploaded as u32)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the ID/configuration is invalid, storage cannot be built, the task fails, or remote fetch fails.
     pub async fn fetch_remote_async(
         &self,
         remote_id: FfiRemoteUuid,
@@ -475,6 +532,9 @@ impl FfiLibrary {
         Ok(report.ops_downloaded as u32)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the ID/configuration is invalid, storage cannot be built, or remote identity cannot be verified.
     pub fn connect_remote(
         &self,
         remote_id: FfiRemoteUuid,
@@ -494,6 +554,9 @@ impl FfiLibrary {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the ID is invalid or unknown, storage cannot be built, or remote initialization fails.
     pub fn initialize_remote(
         &self,
         remote_id: FfiRemoteUuid,

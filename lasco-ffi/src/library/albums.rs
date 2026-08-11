@@ -59,6 +59,9 @@ fn dated_album_item_to_ffi(item: DatedAlbumItem) -> FfiAlbumItem {
 
 #[uniffi::export]
 impl FfiLibrary {
+    /// # Errors
+    ///
+    /// This method currently cannot fail; the `Result` preserves the FFI query API.
     pub fn list_albums(&self) -> Result<Vec<FfiAlbum>, LascoError> {
         let mut albums: Vec<FfiAlbum> = self
             .inner
@@ -83,6 +86,9 @@ impl FfiLibrary {
         Ok(albums)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if `parent_album_id` is not a valid UUID.
     pub fn album_albums_count(
         &self,
         parent_album_id: Option<FfiAlbumUuid>,
@@ -93,6 +99,10 @@ impl FfiLibrary {
 
     /// Returns direct albums under `parent_album_id`; `None` means root albums.
     /// Positions are zero-based and both ends of the range are inclusive.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for an invalid parent ID or an inverted position range.
     pub fn album_albums_range(
         &self,
         parent_album_id: Option<FfiAlbumUuid>,
@@ -115,6 +125,10 @@ impl FfiLibrary {
 
     /// Returns disconnected albums in the same order as `list_albums`.
     /// Positions are zero-based and both ends of the range are inclusive.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the start position exceeds the end position.
     pub fn disconnected_albums_range(
         &self,
         pos_start_inclusive: u32,
@@ -131,6 +145,9 @@ impl FfiLibrary {
             .collect())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the ID is invalid or absent, or the rename cannot be persisted.
     pub fn rename_album(&self, album_id: FfiAlbumUuid, name: String) -> Result<(), LascoError> {
         let album_uuid = album_id.try_into()?;
         self.rt
@@ -138,6 +155,9 @@ impl FfiLibrary {
             .map_err(LascoError::from)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error for invalid or absent IDs, a cyclic move, or an unpersistable operation.
     pub fn reparent_album(
         &self,
         album_id: FfiAlbumUuid,
@@ -150,6 +170,9 @@ impl FfiLibrary {
             .map_err(LascoError::from)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the optional parent ID is invalid or absent, or creation cannot be persisted.
     pub fn create_album(
         &self,
         name: String,
@@ -163,6 +186,9 @@ impl FfiLibrary {
         Ok(album_id.into())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if `album_id` is invalid or absent.
     pub fn media_in_album(&self, album_id: FfiAlbumUuid) -> Result<Vec<FfiMediaItem>, LascoError> {
         let album_uuid = album_id.try_into()?;
         let entries = self
@@ -172,12 +198,18 @@ impl FfiLibrary {
         Ok(entries.into_iter().map(media_entry_to_ffi).collect())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if `album_id` is invalid or absent, or deletion cannot be persisted.
     pub fn delete_album(&self, album_id: FfiAlbumUuid) -> Result<(), LascoError> {
         self.rt
             .block_on(self.inner.album_delete(album_id.try_into()?))
             .map_err(LascoError::from)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error for invalid or absent album/media IDs, or an unpersistable operation.
     pub fn set_album_thumbnail(
         &self,
         album_id: FfiAlbumUuid,
@@ -190,6 +222,9 @@ impl FfiLibrary {
             .map_err(LascoError::from)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error for invalid or absent IDs, missing membership, or an unpersistable operation.
     pub fn remove_media_from_album(
         &self,
         album_id: FfiAlbumUuid,
@@ -202,6 +237,9 @@ impl FfiLibrary {
             .map_err(LascoError::from)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error for invalid or absent IDs, or an unpersistable membership operation.
     pub fn add_media_to_album(
         &self,
         album_id: FfiAlbumUuid,
@@ -214,6 +252,9 @@ impl FfiLibrary {
             .map_err(LascoError::from)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error for invalid or absent IDs, missing source membership, or a failed remove/add operation.
     pub fn move_media_to_album(
         &self,
         media_id: FfiMediaUuid,
@@ -231,6 +272,9 @@ impl FfiLibrary {
             .map_err(LascoError::from)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if `album_id` is invalid or absent.
     pub fn album_list_items_sorted(
         &self,
         album_id: FfiAlbumUuid,
@@ -251,6 +295,9 @@ impl FfiLibrary {
             .collect())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if `album_id` is invalid or absent.
     pub fn album_items_count(&self, album_id: FfiAlbumUuid) -> Result<u32, LascoError> {
         let album_uuid = album_id.try_into()?;
         Ok(self
@@ -260,6 +307,10 @@ impl FfiLibrary {
     }
 
     /// Returns the entries immediately surrounding a zero-based album position.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the album ID is invalid or absent, or `position` is outside its item list.
     pub fn album_items_by_date_neighbors(
         &self,
         album_id: FfiAlbumUuid,
@@ -294,6 +345,10 @@ impl FfiLibrary {
     }
 
     /// Positions are zero-based and both ends of the range are inclusive.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for an invalid or absent album ID, or an inverted position range.
     pub fn album_items_by_date_range(
         &self,
         album_id: FfiAlbumUuid,

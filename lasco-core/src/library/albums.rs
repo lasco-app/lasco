@@ -100,6 +100,9 @@ impl Library {
             })
             .collect()
     }
+    /// # Errors
+    ///
+    /// Returns an error if the optional parent is absent or the creation operation cannot be persisted.
     pub async fn album_create(
         &self,
         name: AlbumName,
@@ -118,6 +121,9 @@ impl Library {
         Ok(album_id)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the album or media is absent, or the membership operation cannot be persisted.
     pub async fn album_add_media(&self, album_id: AlbumUuid, media_id: MediaUuid) -> Result<()> {
         self.record_local_operation(
             Utc::now(),
@@ -127,6 +133,9 @@ impl Library {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the album or membership is absent, or the removal operation cannot be persisted.
     pub async fn album_remove_media(&self, album_id: AlbumUuid, media_id: MediaUuid) -> Result<()> {
         let observed = self
             .inner
@@ -146,12 +155,18 @@ impl Library {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the album is absent or the delete operation cannot be persisted.
     pub async fn album_delete(&self, album_id: AlbumUuid) -> Result<()> {
         self.record_local_operation(Utc::now(), OperationContent::AlbumDeletion { album_id })?;
         self.load_local_state().await?;
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the album is absent.
     pub fn album_list_media(&self, album_id: AlbumUuid) -> Result<Vec<MediaEntry>> {
         let state = self.inner.operation_state.read();
         let media_ids = state
@@ -175,6 +190,9 @@ impl Library {
         Ok(entries)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the album is absent.
     pub fn album_items_count(&self, album_id: AlbumUuid) -> Result<usize> {
         let state = self.inner.operation_state.read();
         state
@@ -187,6 +205,9 @@ impl Library {
 
     /// Returns the inclusive range of media and groups in an album, ordered by
     /// effective date with a deterministic ID tie-breaker.
+    /// # Errors
+    ///
+    /// Returns an error if the album is absent.
     pub fn album_items_by_date_range(
         &self,
         album_id: AlbumUuid,
@@ -303,6 +324,9 @@ impl Library {
         names.join(" / ")
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the album is absent or the rename operation cannot be persisted.
     pub async fn album_rename(&self, album_id: AlbumUuid, name: AlbumName) -> Result<()> {
         {
             let state = self.inner.operation_state.read();
@@ -321,6 +345,9 @@ impl Library {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the album or new parent is absent, the move creates a cycle, or the operation cannot be persisted.
     pub async fn album_reparent(
         &self,
         album_id: AlbumUuid,
@@ -415,6 +442,9 @@ impl Library {
         ))
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the album or media is absent, or the thumbnail operation cannot be persisted.
     pub async fn album_set_thumbnail(
         &self,
         album_id: AlbumUuid,

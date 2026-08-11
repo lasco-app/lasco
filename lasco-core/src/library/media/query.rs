@@ -181,6 +181,9 @@ impl Library {
     }
 
     /// Returns metadata for `media_id`, whether reachable or not.
+    /// # Errors
+    ///
+    /// Returns an error if the media does not exist in the reconstructed state.
     pub fn media_show(&self, media_id: MediaUuid) -> Result<MediaEntry> {
         let state = self.inner.operation_state.read();
         let entry = state
@@ -201,6 +204,9 @@ impl Library {
     ///
     /// If the blob is not locally cached, `storage` is used to download and cache it. Pass `None`
     /// to skip remote download (returns `MediaNotFound` when not cached locally).
+    /// # Errors
+    ///
+    /// Returns an error if media is absent locally and from the optional remote, or if blob I/O, decryption, or cache writes fail.
     pub async fn media_get_bytes(
         &self,
         media_id: MediaUuid,
@@ -250,6 +256,9 @@ impl Library {
     }
 
     /// Sets or clears the user-facing display name for `media_id`.
+    /// # Errors
+    ///
+    /// Returns an error if media is absent or the rename operation cannot be persisted.
     pub async fn media_rename(&self, media_id: MediaUuid, name: Option<MediaName>) -> Result<()> {
         {
             let state = self.inner.operation_state.read();
@@ -266,6 +275,9 @@ impl Library {
     ///
     /// If the thumbnail is not cached locally and `storage` is provided, it is downloaded
     /// from the remote and cached for subsequent calls.
+    /// # Errors
+    ///
+    /// Returns an error if the thumbnail is unavailable locally and from the optional remote, or if blob I/O, decryption, or cache writes fail.
     pub async fn media_get_thumbnail(
         &self,
         media_id: MediaUuid,
@@ -299,6 +311,9 @@ impl Library {
 
     /// Returns the plaintext bytes of the full media file from the local cache only.
     /// Returns `MediaNotFound` if the file is not locally cached.
+    /// # Errors
+    ///
+    /// Returns an error if the local media blob is absent, unreadable, or fails authentication/decryption.
     pub fn media_get_bytes_local(&self, media_id: MediaUuid) -> Result<Vec<u8>> {
         let (year, month) = self.media_year_month(media_id)?;
         let local_state_media_dir = self.inner.local_dirs.local_state_media_dir();
@@ -442,6 +457,9 @@ impl Library {
 
     /// Removes `media_id` from every non-deleted album that contains it.
     /// After this call the media will no longer appear in `media_list(MediaListScope::Reachable)`.
+    /// # Errors
+    ///
+    /// Returns an error if media is absent or the delete operation cannot be persisted.
     pub async fn media_delete(&self, media_id: MediaUuid) -> Result<()> {
         let album_ids: Vec<AlbumUuid> = {
             let state = self.inner.operation_state.read();

@@ -11,6 +11,9 @@ use crate::state::GroupEntry;
 pub type Result<T> = std::result::Result<T, LibraryError>;
 
 impl Library {
+    /// # Errors
+    ///
+    /// Returns an error if the parent album is absent or the group-creation operation cannot be persisted.
     pub async fn group_create(&self, album_id_parent: AlbumUuid) -> Result<GroupUuid> {
         let group_id = GroupUuid::from_uuid(Uuid::new_v4());
         self.record_local_operation(
@@ -24,6 +27,9 @@ impl Library {
         Ok(group_id)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the group or media is absent, or the membership operation cannot be persisted.
     pub async fn group_add_media(&self, group_id: GroupUuid, media_id: MediaUuid) -> Result<()> {
         self.record_local_operation(
             Utc::now(),
@@ -33,6 +39,9 @@ impl Library {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the group or membership is absent, or the removal operation cannot be persisted.
     pub async fn group_remove_media(&self, group_id: GroupUuid, media_id: MediaUuid) -> Result<()> {
         let observed = self
             .inner
@@ -52,6 +61,9 @@ impl Library {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the group is absent or the delete operation cannot be persisted.
     pub async fn group_delete(&self, group_id: GroupUuid) -> Result<()> {
         self.record_local_operation(Utc::now(), OperationContent::GroupDeletion { group_id })?;
         self.load_local_state().await?;
@@ -69,6 +81,9 @@ impl Library {
             .collect()
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the group is absent.
     pub fn group_list_media(&self, group_id: GroupUuid) -> Result<Vec<MediaEntry>> {
         let state = self.inner.operation_state.read();
         let media_ids = state
@@ -92,6 +107,9 @@ impl Library {
         Ok(entries)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the album is absent.
     pub fn album_list_groups(&self, album_id: AlbumUuid) -> Result<Vec<GroupEntry>> {
         let state = self.inner.operation_state.read();
         // Return AlbumNotFound only if the album was never created.

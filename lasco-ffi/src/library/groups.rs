@@ -15,6 +15,9 @@ pub(super) fn group_entry_to_ffi(e: &GroupEntry) -> FfiGroup {
 
 #[uniffi::export]
 impl FfiLibrary {
+    /// # Errors
+    ///
+    /// Returns an error if `album_id` is invalid or absent.
     pub fn album_list_groups(&self, album_id: FfiAlbumUuid) -> Result<Vec<FfiGroup>, LascoError> {
         let album_uuid = album_id.try_into()?;
         let entries = self
@@ -24,6 +27,9 @@ impl FfiLibrary {
         Ok(entries.iter().map(group_entry_to_ffi).collect())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if `album_id` is invalid or absent, or creation cannot be persisted.
     pub fn create_group(&self, album_id: FfiAlbumUuid) -> Result<FfiGroupUuid, LascoError> {
         let album_uuid = album_id.try_into()?;
         let group_id = self
@@ -33,6 +39,9 @@ impl FfiLibrary {
         Ok(group_id.into())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if `group_id` is invalid or absent, or deletion cannot be persisted.
     pub fn delete_group(&self, group_id: FfiGroupUuid) -> Result<(), LascoError> {
         let group_uuid = group_id.try_into()?;
         self.rt
@@ -40,6 +49,9 @@ impl FfiLibrary {
             .map_err(LascoError::from)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if `group_id` is invalid or absent.
     pub fn group_list_media(
         &self,
         group_id: FfiGroupUuid,
@@ -52,6 +64,9 @@ impl FfiLibrary {
         Ok(entries.into_iter().map(media_entry_to_ffi).collect())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error for invalid or absent IDs, or an unpersistable membership operation.
     pub fn add_media_to_group(
         &self,
         group_id: FfiGroupUuid,
@@ -64,6 +79,9 @@ impl FfiLibrary {
             .map_err(LascoError::from)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error for invalid or absent IDs, missing membership, or an unpersistable operation.
     pub fn remove_media_from_group(
         &self,
         group_id: FfiGroupUuid,

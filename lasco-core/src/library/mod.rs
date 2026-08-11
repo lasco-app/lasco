@@ -259,6 +259,9 @@ impl Library {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if persisted operations cannot be read, decrypted, decoded, or reconstructed.
     pub async fn load_local_state(&self) -> Result<()> {
         let replica = self.inner.crdt_replica_state.read();
         let state = OperationState::from_reconstructed(replica.state.materialize());
@@ -266,6 +269,9 @@ impl Library {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the local media cache directory cannot be read.
     pub fn pending_media_count(&self) -> Result<u32> {
         let count = self
             .inner
@@ -283,6 +289,9 @@ impl Library {
         Ok(count as u32)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the remote's synchronization metadata cannot be read.
     pub fn has_unpushed_changes(&self, remote_id: &str) -> Result<bool> {
         let remote_last_known_state_dir =
             self.inner.local_dirs.remote_last_known_state_dir(remote_id);
@@ -302,6 +311,9 @@ impl Library {
         Ok(!local_ids.is_subset(&remote_ids))
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if locally persisted operations cannot be read or decoded.
     pub fn list_operations(&self) -> Result<Vec<crate::crdt::CrdtOperation>> {
         self.local_ops_read_write().read_operations()
     }

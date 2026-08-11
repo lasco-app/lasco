@@ -38,6 +38,9 @@ impl MediaAddResult {
 }
 
 impl Library {
+    /// # Errors
+    ///
+    /// Returns an error if the source cannot be read, media encryption/storage fails, an associated album is absent, or the creation operation cannot be persisted.
     pub async fn media_add(
         &self,
         source: MediaAddSource,
@@ -118,6 +121,9 @@ impl Library {
 
     /// Deletes the local `.data` file for each media ID, silently skipping IDs that have
     /// no local file (e.g. already evicted or never cached).
+    /// # Errors
+    ///
+    /// Returns an error if removing a cached media blob fails.
     pub fn evict_local_data(&self, media_ids: &[MediaUuid]) -> Result<()> {
         let local_state_media_dir = self.inner.local_dirs.local_state_media_dir();
 
@@ -134,6 +140,9 @@ impl Library {
 
     /// Deletes the local `.thumb` file for each media ID, silently skipping IDs that have
     /// no local thumbnail (e.g. already evicted or never cached).
+    /// # Errors
+    ///
+    /// Returns an error if removing a cached thumbnail fails.
     pub fn evict_local_thumbnails(&self, media_ids: &[MediaUuid]) -> Result<()> {
         let local_state_media_dir = self.inner.local_dirs.local_state_media_dir();
 
@@ -152,6 +161,9 @@ impl Library {
     ///
     /// `data` must be raw image bytes (e.g. JPEG) no larger than `THUMBNAIL_SIZE`×`THUMBNAIL_SIZE`.
     /// Year/month are resolved from the in-memory state.
+    /// # Errors
+    ///
+    /// Returns an error if the thumbnail cannot be encrypted or written to the local cache.
     pub fn media_set_thumbnail(&self, media_id: MediaUuid, data: &[u8]) -> Result<()> {
         let (year, month) = self.media_year_month(media_id)?;
         let file_key = derive_blob_key(&self.inner.master_key, &media_id.0);

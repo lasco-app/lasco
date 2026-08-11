@@ -21,6 +21,11 @@ use crate::storage::{Storage, StorageLocalFs, StorageS3};
 /// storage, or perform synchronization. Callers choose and validate the [`RemoteConfig`] first.
 /// `app_dir` is used by the debug Android backend, while `app_support_dir` is required by the
 /// debug Apple backend.
+///
+/// # Errors
+///
+/// Returns an error for an unsupported platform, missing required directory or master key,
+/// invalid encrypted S3 credentials, or failure to initialize the selected storage backend.
 pub fn build_storage(
     app_dir: &Path,
     remote: &RemoteConfig,
@@ -88,6 +93,11 @@ fn build_usb_apple_storage(_bookmark_base64: &str) -> Result<Box<dyn Storage + S
 ///
 /// If a cached master key exists in the session, `password` is not needed and may be `None`.
 /// If no cached key exists and `password` is `None`, returns an error.
+///
+/// # Errors
+///
+/// Returns an error if configuration, session, credentials, crypto files, or local state cannot
+/// be read; if the nickname is unknown; or if authentication fails without a cached key.
 pub async fn open_library(
     app_dir: &Path,
     library_nickname: LibraryNickname,
@@ -132,6 +142,10 @@ pub async fn open_library(
     Ok(library)
 }
 
+/// # Errors
+///
+/// Returns an error if local state directories, crypto material, library configuration, or the
+/// cached session key cannot be created or written.
 pub async fn create_library(
     app_dir: &Path,
     nickname: String,
@@ -185,6 +199,11 @@ pub async fn create_library(
 ///
 /// `new_user` optionally registers an additional user (same master key, encrypted
 /// under a new password) and makes that user the effective one for this device.
+///
+/// # Errors
+///
+/// Returns an error for invalid S3 credentials or remote layout, download/upload failures,
+/// failed authentication, local I/O, configuration persistence, or initial state synchronization.
 #[allow(
     clippy::too_many_arguments,
     reason = "S3 connection settings are kept explicit at this public entry point."
@@ -359,6 +378,11 @@ pub async fn add_existing_library_s3(
 /// session keys, and removing its entry from the app config. Idempotent with respect to
 /// missing files and dirs. Does not touch any configured remote storage and does
 /// not clear OS keychain entries.
+///
+/// # Errors
+///
+/// Returns an error if local library data cannot be removed or the application configuration
+/// cannot be read, updated, or saved.
 pub fn delete_library(
     app_dir: &Path,
     library_id: &LibraryId,

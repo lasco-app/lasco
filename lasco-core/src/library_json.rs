@@ -123,6 +123,10 @@ pub fn library_json_path(app_dir: &Path, library_id: &LibraryId) -> PathBuf {
 
 impl LibraryJson {
     /// Load a library's configuration from disk.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file cannot be read, is invalid JSON, or has an unsupported version.
     pub fn load(app_dir: &Path, library_id: &LibraryId) -> Result<Option<Self>> {
         let path = library_json_path(app_dir, library_id);
         if !path.exists() {
@@ -143,6 +147,10 @@ impl LibraryJson {
     }
 
     /// Save a library's configuration to disk.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if its directory cannot be created or its JSON cannot be serialized or written.
     pub fn save(&self, app_dir: &Path, library_id: &LibraryId) -> Result<()> {
         let dir = library_data_dir(app_dir, library_id);
         fs::create_dir_all(&dir)
@@ -156,6 +164,10 @@ impl LibraryJson {
 }
 
 /// Persist a library's configuration and register it in the global index.
+///
+/// # Errors
+///
+/// Returns an error if either library or global application configuration cannot be read or saved.
 pub fn save_library(app_dir: &Path, library_id: &LibraryId, library: &LibraryJson) -> Result<()> {
     library.save(app_dir, library_id)?;
     let mut config = ConfigJson::load(app_dir)?.unwrap_or_default();
@@ -165,6 +177,10 @@ pub fn save_library(app_dir: &Path, library_id: &LibraryId, library: &LibraryJso
 }
 
 /// Load the configuration for the library with the given nickname.
+///
+/// # Errors
+///
+/// Returns an error if configuration is unreadable, no library has that nickname, or its config is missing.
 #[allow(
     dead_code,
     reason = "Retained for nickname-based library selection in the CLI."
@@ -181,6 +197,10 @@ fn load_library_by_nickname(app_dir: &Path, nickname: &str) -> Result<(LibraryId
 }
 
 /// Load the configuration for the default library.
+///
+/// # Errors
+///
+/// Returns an error if configuration is unreadable, no default exists, or its config is missing.
 #[allow(
     dead_code,
     reason = "Retained for default-library selection in the CLI."
@@ -206,6 +226,10 @@ pub fn get_remote_kind(library: &LibraryJson, remote_uuid: &str) -> Option<Remot
 }
 
 /// Validate that a remote UUID (as a string) exists in the library config.
+///
+/// # Errors
+///
+/// Returns an error if no configured remote has `remote_uuid`.
 #[allow(
     dead_code,
     reason = "Retained for CLI validation of remote UUID arguments."

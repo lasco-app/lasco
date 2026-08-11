@@ -14,6 +14,9 @@ pub struct StorageS3 {
 }
 
 impl StorageS3 {
+    /// # Errors
+    ///
+    /// Returns an error if the supplied S3 credentials or bucket configuration cannot be constructed.
     pub fn new(
         endpoint: String,
         bucket_name: String,

@@ -56,6 +56,10 @@ pub(crate) fn session_store_master_key(
 }
 
 /// Load the cached `MasterKey` for a user. Returns `None` if not present.
+///
+/// # Errors
+///
+/// Returns an error for keychain or session-file access failures, or malformed cached key material.
 pub fn session_load_master_key(
     library_id: LibraryId,
     username: &LibraryUsername,
@@ -85,6 +89,10 @@ pub fn session_load_master_key(
 }
 
 /// Clear the cached `MasterKey` for a library.
+///
+/// # Errors
+///
+/// Returns an error if the session directory or OS keychain cannot be accessed.
 pub fn session_clear(
     library_id: LibraryId,
     username: &LibraryUsername,

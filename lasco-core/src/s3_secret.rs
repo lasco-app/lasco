@@ -16,6 +16,10 @@ const S3_SECRET_NONCE_SIZE: usize = 12;
 
 /// Encrypt an S3 secret key using the `MasterKey` (AES-256-GCM).
 /// Returns the base64 ciphertext and its encryption description.
+///
+/// # Errors
+///
+/// Returns an error if AES-GCM encryption fails.
 pub fn encrypt_s3_secret_key(
     master_key: &MasterKey,
     secret_key: &str,

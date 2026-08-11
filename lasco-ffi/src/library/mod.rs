@@ -24,6 +24,9 @@ fn sessions_dir(app_dir: &std::path::Path) -> std::path::PathBuf {
 }
 
 #[uniffi::export(default(app_dir = None))]
+/// # Errors
+///
+/// Returns an error if the app directory/runtime cannot be created or library state, config, or session key cannot be initialized.
 pub fn ffi_create_library(
     nickname: String,
     username: String,
@@ -54,6 +57,9 @@ pub fn ffi_create_library(
 }
 
 #[uniffi::export(default(app_dir = None))]
+/// # Errors
+///
+/// Returns an error if the library ID is invalid or local data, session state, or app configuration cannot be removed or updated.
 pub fn ffi_delete_library(
     library_id: FfiLibraryId,
     app_dir: Option<String>,
@@ -67,6 +73,9 @@ pub fn ffi_delete_library(
 }
 
 #[uniffi::export(default(app_dir = None))]
+/// # Errors
+///
+/// Returns an error if the application configuration cannot be read; per-library load failures are returned in each entry.
 pub fn list_libraries(app_dir: Option<String>) -> Result<Vec<FfiLibraryEntry>, LascoError> {
     let app_dir = crate::resolve_app_dir(app_dir)?;
     let Some(config) = ConfigJson::load(&app_dir)? else {
@@ -103,6 +112,10 @@ pub fn list_libraries(app_dir: Option<String>) -> Result<Vec<FfiLibraryEntry>, L
 
 /// Test connectivity to an S3 remote using the given credentials, without
 /// saving anything. Builds an ephemeral client and lists the bucket root.
+///
+/// # Errors
+///
+/// Returns an error if the S3 client or runtime cannot be created, or the bucket cannot be listed.
 #[uniffi::export]
 pub fn ffi_test_s3_remote(
     endpoint: String,
@@ -137,6 +150,10 @@ pub fn ffi_test_s3_remote(
 
 /// Try to open a library using a cached session (OS keychain), without a password.
 /// Returns `None` if no session is cached — the caller should then prompt for credentials.
+///
+/// # Errors
+///
+/// Returns an error if configuration or the session key cannot be read, or opening a cached library fails.
 #[uniffi::export(default(app_dir = None))]
 pub fn ffi_open_cached(
     nickname: Option<String>,
@@ -201,6 +218,10 @@ pub fn ffi_open_cached(
 /// metadata and operations and opening it locally. `username`/`password` must be
 /// an existing user on the remote. When `new_username`/`new_password` are both
 /// provided, a new user is registered and used as the effective device user.
+///
+/// # Errors
+///
+/// Returns an error if runtime/app setup, remote connection or authentication, local persistence, or initial synchronization fails.
 #[uniffi::export(default(app_dir = None))]
 #[allow(
     clippy::too_many_arguments,
@@ -284,6 +305,10 @@ pub struct FfiLibrary {
 impl FfiLibrary {
     /// Open a library by nickname. Delegates config loading, storage
     /// construction, and session/master-key handling to `lasco_core::client`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if setup/configuration fails, the nickname is unknown, or credentials cannot open the library.
     #[uniffi::constructor(default(app_dir = None))]
     pub fn open(
         nickname: Option<String>,

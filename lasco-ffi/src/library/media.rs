@@ -19,6 +19,9 @@ pub(super) fn inclusive_range(start: u32, end: u32) -> Result<(usize, usize), La
 
 #[uniffi::export]
 impl FfiLibrary {
+    /// # Errors
+    ///
+    /// Returns an error when rebuilding the local state from persisted operations fails.
     pub fn load_local_state(&self) -> Result<(), LascoError> {
         self.rt
             .block_on(self.inner.load_local_state())
@@ -39,6 +42,9 @@ impl FfiLibrary {
             .map(Into::into)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the library config cannot be read or saved, or `remote_id` is invalid or unconfigured.
     pub fn set_default_fetch_remote(
         &self,
         remote_id: Option<FfiRemoteUuid>,
@@ -70,6 +76,9 @@ impl FfiLibrary {
             .is_some_and(|c| c.auto_import_device_media)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the library configuration is missing, malformed, or cannot be saved.
     pub fn set_auto_import_device_media(&self, enabled: bool) -> Result<(), LascoError> {
         let library_id = self.inner.library_id();
         let mut lib_config =
@@ -79,6 +88,9 @@ impl FfiLibrary {
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if `media_id` is invalid or the local thumbnail cannot be written.
     pub fn set_media_thumbnail(
         &self,
         media_id: FfiMediaUuid,
@@ -90,6 +102,9 @@ impl FfiLibrary {
             .map_err(LascoError::from)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if `media_id` is invalid, absent, or the rename operation cannot be persisted.
     pub fn rename_media(
         &self,
         media_id: FfiMediaUuid,
@@ -102,6 +117,9 @@ impl FfiLibrary {
             .map_err(LascoError::from)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the ID is invalid, no local or configured remote copy is available, or reading, decrypting, or caching it fails.
     pub fn get_media_thumbnail(
         &self,
         media_id: FfiMediaUuid,
@@ -139,6 +157,9 @@ impl FfiLibrary {
         }
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the ID is invalid, no local or configured remote copy is available, or reading, decrypting, or caching it fails.
     pub fn get_media_bytes(
         &self,
         media_id: FfiMediaUuid,
@@ -176,6 +197,9 @@ impl FfiLibrary {
         }
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the ID is invalid, no local or configured remote thumbnail is available, or a remote read or cache write fails.
     pub async fn get_media_thumbnail_async(
         &self,
         media_id: FfiMediaUuid,
@@ -221,6 +245,9 @@ impl FfiLibrary {
         }
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the ID is invalid, no local or configured remote blob is available, or a remote read, decryption, or cache write fails.
     pub async fn get_media_bytes_async(
         &self,
         media_id: FfiMediaUuid,
@@ -266,6 +293,9 @@ impl FfiLibrary {
         }
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if an ID is invalid, the source cannot be read, media encryption/storage fails, or the creation operation cannot be persisted.
     pub fn import_media(
         &self,
         path: String,
@@ -314,6 +344,9 @@ impl FfiLibrary {
             .unwrap_or(false)
     }
 
+    /// # Errors
+    ///
+    /// This method currently cannot fail; the `Result` preserves the FFI query API.
     pub fn list_media(&self) -> Result<Vec<FfiMediaItem>, LascoError> {
         Ok(self
             .inner
@@ -323,6 +356,9 @@ impl FfiLibrary {
             .collect())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if `media_id` is invalid or does not identify media in the local state.
     pub fn show_media(&self, media_id: FfiMediaUuid) -> Result<FfiMediaItem, LascoError> {
         let media_uuid = media_id.try_into()?;
         let entry = self
@@ -332,6 +368,9 @@ impl FfiLibrary {
         Ok(media_entry_to_ffi(entry))
     }
 
+    /// # Errors
+    ///
+    /// This method currently cannot fail; the `Result` preserves the FFI query API.
     pub fn media_by_date(&self) -> Result<Vec<FfiMediaItem>, LascoError> {
         let count = self.inner.media_by_date_count(false);
         Ok(self
@@ -347,6 +386,10 @@ impl FfiLibrary {
     }
 
     /// Returns the entries immediately surrounding a zero-based home position.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `position` is outside the dated-media list.
     pub fn media_by_date_neighbors(&self, position: u32) -> Result<FfiMediaNeighbors, LascoError> {
         let count = self.inner.media_by_date_count(false);
         let position = position as usize;
@@ -371,6 +414,10 @@ impl FfiLibrary {
     }
 
     /// Positions are zero-based and both ends of the range are inclusive.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the start position exceeds the end position.
     pub fn media_by_date_range(
         &self,
         pos_start_inclusive: u32,
@@ -385,6 +432,9 @@ impl FfiLibrary {
             .collect())
     }
 
+    /// # Errors
+    ///
+    /// This method currently cannot fail; the `Result` preserves the FFI query API.
     pub fn orphan_media_by_date(&self) -> Result<Vec<FfiMediaItem>, LascoError> {
         let count = self.inner.media_by_date_count(true);
         Ok(self
@@ -400,6 +450,10 @@ impl FfiLibrary {
     }
 
     /// Returns the entries immediately surrounding a zero-based orphan position.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `position` is outside the dated orphan-media list.
     pub fn orphan_media_by_date_neighbors(
         &self,
         position: u32,
@@ -427,6 +481,10 @@ impl FfiLibrary {
     }
 
     /// Positions are zero-based and both ends of the range are inclusive.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the start position exceeds the end position.
     pub fn orphan_media_by_date_range(
         &self,
         pos_start_inclusive: u32,
@@ -441,6 +499,9 @@ impl FfiLibrary {
             .collect())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if `media_id` is not a valid UUID.
     pub fn media_album_ids(&self, media_id: FfiMediaUuid) -> Result<Vec<FfiAlbumUuid>, LascoError> {
         let media_uuid = media_id.try_into()?;
         Ok(self
@@ -451,6 +512,9 @@ impl FfiLibrary {
             .collect())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if `media_id` is not a valid UUID.
     pub fn media_containing_album_ids(
         &self,
         media_id: FfiMediaUuid,
@@ -465,6 +529,9 @@ impl FfiLibrary {
             .collect())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if an ID is invalid or removing a cached media file fails.
     pub fn evict_local_data(&self, media_ids: Vec<FfiMediaUuid>) -> Result<(), LascoError> {
         let uuids = media_ids
             .into_iter()
@@ -475,6 +542,9 @@ impl FfiLibrary {
             .map_err(LascoError::from)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if an ID is invalid or removing a cached thumbnail fails.
     pub fn evict_local_thumbnails(&self, media_ids: Vec<FfiMediaUuid>) -> Result<(), LascoError> {
         let uuids = media_ids
             .into_iter()
@@ -493,6 +563,9 @@ impl FfiLibrary {
             .collect()
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the library configuration cannot be read.
     pub fn media_ids_without_remote_backup(&self) -> Result<Vec<FfiMediaUuid>, LascoError> {
         let library_id = self.inner.library_id();
         let remote_ids = LibraryJson::load(&self.app_dir, &library_id)?
@@ -524,6 +597,9 @@ impl FfiLibrary {
         }
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if `media_id` is invalid, absent, or the delete operation cannot be persisted.
     pub fn delete_media(&self, media_id: FfiMediaUuid) -> Result<(), LascoError> {
         let media_uuid = media_id.try_into()?;
         self.rt

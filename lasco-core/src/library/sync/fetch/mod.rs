@@ -18,6 +18,9 @@ use super::remote_access::StorageRead;
 use super::{SyncReportFetch, verify_remote_identity};
 
 impl Library {
+    /// # Errors
+    ///
+    /// Returns an error if remote identity or operations cannot be read, decoded, stored, or used to rebuild local state.
     pub async fn fetch(
         &self,
         storage: &dyn crate::storage::Storage,

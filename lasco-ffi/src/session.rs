@@ -4,6 +4,9 @@ use crate::error::LascoError;
 use crate::ids::FfiLibraryId;
 
 #[uniffi::export(default(app_dir = None))]
+/// # Errors
+///
+/// Returns an error if the library ID is invalid or its file-based session cannot be cleared.
 pub fn session_clear(
     library_id: FfiLibraryId,
     username: String,
