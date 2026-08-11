@@ -67,6 +67,10 @@ impl Library {
         .await
     }
 
+    #[allow(
+        clippy::too_many_lines,
+        reason = "The ordered push workflow shares one report and transaction context across its phases."
+    )]
     pub(super) async fn push_impl(
         &self,
         storage: &StorageReadWrite<'_>,

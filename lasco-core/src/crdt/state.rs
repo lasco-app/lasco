@@ -265,6 +265,10 @@ impl CanonicalState {
     }
 
     /// Merges one operation. Duplicate dots are intentionally no-ops.
+    #[allow(
+        clippy::too_many_lines,
+        reason = "Keeping all CRDT operation mutations in one exhaustive match makes state transitions auditable."
+    )]
     pub fn apply(&mut self, operation: &CrdtOperation) {
         self.clock.observe(operation.dot);
         if !self.causal_context.insert(operation.dot) {

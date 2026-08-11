@@ -1,5 +1,9 @@
 use super::types::{AlbumBrowseItem, ComputedViews, ReconstructedState};
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "The related derived indexes are built together from one reconstructed-state snapshot."
+)]
 pub fn build_computed_views(state: &ReconstructedState) -> ComputedViews {
     let mut views = ComputedViews::default();
 

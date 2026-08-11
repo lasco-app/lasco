@@ -207,7 +207,8 @@ pub async fn create_library(
 /// failed authentication, local I/O, configuration persistence, or initial state synchronization.
 #[allow(
     clippy::too_many_arguments,
-    reason = "S3 connection settings are kept explicit at this public entry point."
+    clippy::too_many_lines,
+    reason = "This public S3 bootstrap entry point keeps connection settings explicit and its ordered setup steps together."
 )]
 pub async fn add_existing_library_s3(
     app_dir: &Path,

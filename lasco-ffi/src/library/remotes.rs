@@ -737,6 +737,10 @@ pub(super) fn crdt_operation_to_ffi(op: CrdtOperation) -> FfiCrdtOperation {
     }
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "One exhaustive conversion keeps the FFI representation aligned with every core operation variant."
+)]
 fn operation_to_ffi(op: OperationContent, timestamp: String) -> FfiOperation {
     match op {
         OperationContent::MediaCreation(creation) => FfiOperation {
