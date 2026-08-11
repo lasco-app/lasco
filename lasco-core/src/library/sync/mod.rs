@@ -33,8 +33,10 @@ pub struct SyncReportPush {
 ///
 /// The default intentionally does not download from another remote. This keeps Push from
 /// becoming an implicit fetch and lets callers ask the user to select a source explicitly.
+#[derive(Default)]
 pub enum PushMediaSource<'a> {
     /// Upload only locally cached media. Missing files cause Push to return their IDs.
+    #[default]
     LocalOnly,
     /// Relay missing media from exactly one verified, read-only remote.
     FromRemote {
@@ -52,12 +54,6 @@ impl std::fmt::Debug for PushMediaSource<'_> {
                 .field("remote_id", remote_id)
                 .finish_non_exhaustive(),
         }
-    }
-}
-
-impl Default for PushMediaSource<'_> {
-    fn default() -> Self {
-        Self::LocalOnly
     }
 }
 
@@ -142,6 +138,8 @@ impl Library {
                 &self.inner.local_ops_read_write_lock,
                 &self.inner.remote_media_list_lock,
                 &self.inner.master_key,
+                &self.inner.crdt_replica_state,
+                &self.inner.local_dirs.local_state_crdt(),
             )
             .await?;
             if report.local_state_rebuild_required {
@@ -169,7 +167,9 @@ impl Library {
 }
 
 /// Reads the remote's `remote_id_{uuid}` marker file and returns the UUID it holds.
-pub async fn discover_remote_uuid(storage: &StorageRead<'_>) -> Result<RemoteUuid, SyncError> {
+pub(crate) async fn discover_remote_uuid(
+    storage: &StorageRead<'_>,
+) -> Result<RemoteUuid, SyncError> {
     let remote_files = storage
         .list("")
         .await
@@ -215,7 +215,6 @@ pub(super) fn map_op_err(error: OperationError) -> SyncError {
 }
 
 #[cfg(test)]
-mod test_utils;
-
+mod crdt_tests;
 #[cfg(test)]
-mod tests;
+mod test_utils;

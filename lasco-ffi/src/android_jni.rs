@@ -2,8 +2,8 @@
 
 #![allow(unsafe_code)]
 
-use jni::objects::{JClass, JObject};
 use jni::JNIEnv;
+use jni::objects::{JClass, JObject};
 
 /// Called by `UsbRustRuntime.nativeInitialize(applicationContext)` once after
 /// the app process starts. Storage operations themselves never call Kotlin.
@@ -14,6 +14,8 @@ pub extern "system" fn Java_com_lasco_lasco_UsbRustRuntime_nativeInitialize(
     context: JObject<'_>,
 ) {
     let Ok(vm) = env.get_java_vm() else { return };
-    let Ok(context) = env.new_global_ref(context) else { return };
+    let Ok(context) = env.new_global_ref(context) else {
+        return;
+    };
     let _ = lasco_core::storage::initialize_android_runtime(vm, context);
 }

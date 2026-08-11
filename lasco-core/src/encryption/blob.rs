@@ -1,5 +1,5 @@
-use chacha20poly1305::{aead::Aead, KeyInit, XChaCha20Poly1305, XNonce};
-use rand::{rngs::OsRng, RngCore};
+use chacha20poly1305::{KeyInit, XChaCha20Poly1305, XNonce, aead::Aead};
+use rand::{RngCore, rngs::OsRng};
 
 use crate::encryption::blob_key::BlobKey;
 use crate::encryption::error::{BlobError, CryptoError};
@@ -34,7 +34,7 @@ impl BlobEncrypted {
     }
 
     /// Deserializes a blob from `[version | nonce | ciphertext]` bytes.
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, BlobError> {
+    pub(crate) fn from_bytes(bytes: &[u8]) -> Result<Self, BlobError> {
         if bytes.len() < HEADER_LEN {
             return Err(BlobError::Truncated {
                 expected: HEADER_LEN,
@@ -73,7 +73,10 @@ pub fn encrypt_blob(file_key: &BlobKey, plaintext: &[u8]) -> BlobEncrypted {
 }
 
 /// Decrypt a `BlobEncrypted` with XChaCha20-Poly1305. Returns an error on authentication failure.
-pub fn decrypt_blob(file_key: &BlobKey, blob: &BlobEncrypted) -> Result<Vec<u8>, CryptoError> {
+pub(crate) fn decrypt_blob(
+    file_key: &BlobKey,
+    blob: &BlobEncrypted,
+) -> Result<Vec<u8>, CryptoError> {
     let key = chacha20poly1305::Key::from_slice(file_key.as_ref());
     let cipher = XChaCha20Poly1305::new(key);
     let xnonce = XNonce::from_slice(&blob.nonce.0);
@@ -150,9 +153,9 @@ mod tests {
         let fk = derive_blob_key(&mk, &uuid);
         let blob = encrypt_blob(&fk, b"secret data");
         let wrong_mk = generate_master_key();
-        let wrong_fk = derive_blob_key(&wrong_mk, &uuid);
+        let wrong_file_key = derive_blob_key(&wrong_mk, &uuid);
         assert!(matches!(
-            decrypt_blob(&wrong_fk, &blob),
+            decrypt_blob(&wrong_file_key, &blob),
             Err(CryptoError::AuthenticationFailed)
         ));
     }

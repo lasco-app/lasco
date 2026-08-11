@@ -1004,7 +1004,7 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_list_albums(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_list_media(
 ): Short
-fun uniffi_lasco_ffi_checksum_method_ffilibrary_list_operation_groups(
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_list_operations(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_list_remotes(
 ): Short
@@ -1217,7 +1217,7 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_list_albums(`ptr`: Pointer,uniffi_out_
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_list_media(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-fun uniffi_lasco_ffi_fn_method_ffilibrary_list_operation_groups(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+fun uniffi_lasco_ffi_fn_method_ffilibrary_list_operations(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_list_remotes(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -1575,7 +1575,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_list_media() != 48443.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_list_operation_groups() != 12991.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_list_operations() != 224.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_list_remotes() != 6196.toShort()) {
@@ -2268,7 +2268,7 @@ public interface FfiLibraryInterface {
     
     fun `listMedia`(): List<FfiMediaItem>
     
-    fun `listOperationGroups`(): List<FfiOperationGroup>
+    fun `listOperations`(): List<FfiCrdtOperation>
     
     fun `listRemotes`(): List<FfiRemote>
     
@@ -3009,11 +3009,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
-    @Throws(LascoException::class)override fun `listOperationGroups`(): List<FfiOperationGroup> {
-            return FfiConverterSequenceTypeFfiOperationGroup.lift(
+    @Throws(LascoException::class)override fun `listOperations`(): List<FfiCrdtOperation> {
+            return FfiConverterSequenceTypeFfiCrdtOperation.lift(
     callWithPointer {
     uniffiRustCallWithError(LascoException) { _status ->
-    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_list_operation_groups(
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_list_operations(
         it, _status)
 }
     }
@@ -3676,6 +3676,42 @@ public object FfiConverterTypeFfiAlbumUuid: FfiConverterRustBuffer<FfiAlbumUuid>
 
 
 
+data class FfiCrdtOperation (
+    var `dot`: FfiDot, 
+    var `author`: kotlin.String, 
+    var `operation`: FfiOperation
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFfiCrdtOperation: FfiConverterRustBuffer<FfiCrdtOperation> {
+    override fun read(buf: ByteBuffer): FfiCrdtOperation {
+        return FfiCrdtOperation(
+            FfiConverterTypeFfiDot.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterTypeFfiOperation.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FfiCrdtOperation) = (
+            FfiConverterTypeFfiDot.allocationSize(value.`dot`) +
+            FfiConverterString.allocationSize(value.`author`) +
+            FfiConverterTypeFfiOperation.allocationSize(value.`operation`)
+    )
+
+    override fun write(value: FfiCrdtOperation, buf: ByteBuffer) {
+            FfiConverterTypeFfiDot.write(value.`dot`, buf)
+            FfiConverterString.write(value.`author`, buf)
+            FfiConverterTypeFfiOperation.write(value.`operation`, buf)
+    }
+}
+
+
+
 data class FfiCreateLibraryResult (
     var `libraryId`: FfiLibraryId, 
     var `masterKeyHex`: kotlin.String
@@ -3703,6 +3739,38 @@ public object FfiConverterTypeFfiCreateLibraryResult: FfiConverterRustBuffer<Ffi
     override fun write(value: FfiCreateLibraryResult, buf: ByteBuffer) {
             FfiConverterTypeFfiLibraryId.write(value.`libraryId`, buf)
             FfiConverterString.write(value.`masterKeyHex`, buf)
+    }
+}
+
+
+
+data class FfiDot (
+    var `lamportCounter`: kotlin.ULong, 
+    var `deviceId`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFfiDot: FfiConverterRustBuffer<FfiDot> {
+    override fun read(buf: ByteBuffer): FfiDot {
+        return FfiDot(
+            FfiConverterULong.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FfiDot) = (
+            FfiConverterULong.allocationSize(value.`lamportCounter`) +
+            FfiConverterString.allocationSize(value.`deviceId`)
+    )
+
+    override fun write(value: FfiDot, buf: ByteBuffer) {
+            FfiConverterULong.write(value.`lamportCounter`, buf)
+            FfiConverterString.write(value.`deviceId`, buf)
     }
 }
 
@@ -4150,34 +4218,6 @@ public object FfiConverterTypeFfiMediaUuid: FfiConverterRustBuffer<FfiMediaUuid>
 
 
 
-data class FfiOpUuid (
-    var `value`: kotlin.String
-) {
-    
-    companion object
-}
-
-/**
- * @suppress
- */
-public object FfiConverterTypeFfiOpUuid: FfiConverterRustBuffer<FfiOpUuid> {
-    override fun read(buf: ByteBuffer): FfiOpUuid {
-        return FfiOpUuid(
-            FfiConverterString.read(buf),
-        )
-    }
-
-    override fun allocationSize(value: FfiOpUuid) = (
-            FfiConverterString.allocationSize(value.`value`)
-    )
-
-    override fun write(value: FfiOpUuid, buf: ByteBuffer) {
-            FfiConverterString.write(value.`value`, buf)
-    }
-}
-
-
-
 data class FfiOperation (
     var `kind`: kotlin.String, 
     var `timestamp`: kotlin.String, 
@@ -4209,46 +4249,6 @@ public object FfiConverterTypeFfiOperation: FfiConverterRustBuffer<FfiOperation>
             FfiConverterString.write(value.`kind`, buf)
             FfiConverterString.write(value.`timestamp`, buf)
             FfiConverterSequenceTypeFfiKv.write(value.`args`, buf)
-    }
-}
-
-
-
-data class FfiOperationGroup (
-    var `opId`: FfiOpUuid, 
-    var `parentOpId`: FfiOpUuid?, 
-    var `operations`: List<FfiOperation>, 
-    var `author`: kotlin.String
-) {
-    
-    companion object
-}
-
-/**
- * @suppress
- */
-public object FfiConverterTypeFfiOperationGroup: FfiConverterRustBuffer<FfiOperationGroup> {
-    override fun read(buf: ByteBuffer): FfiOperationGroup {
-        return FfiOperationGroup(
-            FfiConverterTypeFfiOpUuid.read(buf),
-            FfiConverterOptionalTypeFfiOpUuid.read(buf),
-            FfiConverterSequenceTypeFfiOperation.read(buf),
-            FfiConverterString.read(buf),
-        )
-    }
-
-    override fun allocationSize(value: FfiOperationGroup) = (
-            FfiConverterTypeFfiOpUuid.allocationSize(value.`opId`) +
-            FfiConverterOptionalTypeFfiOpUuid.allocationSize(value.`parentOpId`) +
-            FfiConverterSequenceTypeFfiOperation.allocationSize(value.`operations`) +
-            FfiConverterString.allocationSize(value.`author`)
-    )
-
-    override fun write(value: FfiOperationGroup, buf: ByteBuffer) {
-            FfiConverterTypeFfiOpUuid.write(value.`opId`, buf)
-            FfiConverterOptionalTypeFfiOpUuid.write(value.`parentOpId`, buf)
-            FfiConverterSequenceTypeFfiOperation.write(value.`operations`, buf)
-            FfiConverterString.write(value.`author`, buf)
     }
 }
 
@@ -4720,38 +4720,6 @@ public object FfiConverterOptionalTypeFfiMediaUuid: FfiConverterRustBuffer<FfiMe
 /**
  * @suppress
  */
-public object FfiConverterOptionalTypeFfiOpUuid: FfiConverterRustBuffer<FfiOpUuid?> {
-    override fun read(buf: ByteBuffer): FfiOpUuid? {
-        if (buf.get().toInt() == 0) {
-            return null
-        }
-        return FfiConverterTypeFfiOpUuid.read(buf)
-    }
-
-    override fun allocationSize(value: FfiOpUuid?): ULong {
-        if (value == null) {
-            return 1UL
-        } else {
-            return 1UL + FfiConverterTypeFfiOpUuid.allocationSize(value)
-        }
-    }
-
-    override fun write(value: FfiOpUuid?, buf: ByteBuffer) {
-        if (value == null) {
-            buf.put(0)
-        } else {
-            buf.put(1)
-            FfiConverterTypeFfiOpUuid.write(value, buf)
-        }
-    }
-}
-
-
-
-
-/**
- * @suppress
- */
 public object FfiConverterOptionalTypeFfiRemoteUuid: FfiConverterRustBuffer<FfiRemoteUuid?> {
     override fun read(buf: ByteBuffer): FfiRemoteUuid? {
         if (buf.get().toInt() == 0) {
@@ -4886,6 +4854,34 @@ public object FfiConverterSequenceTypeFfiAlbumUuid: FfiConverterRustBuffer<List<
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeFfiAlbumUuid.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeFfiCrdtOperation: FfiConverterRustBuffer<List<FfiCrdtOperation>> {
+    override fun read(buf: ByteBuffer): List<FfiCrdtOperation> {
+        val len = buf.getInt()
+        return List<FfiCrdtOperation>(len) {
+            FfiConverterTypeFfiCrdtOperation.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<FfiCrdtOperation>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeFfiCrdtOperation.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<FfiCrdtOperation>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeFfiCrdtOperation.write(it, buf)
         }
     }
 }
@@ -5054,62 +5050,6 @@ public object FfiConverterSequenceTypeFfiMediaUuid: FfiConverterRustBuffer<List<
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeFfiMediaUuid.write(it, buf)
-        }
-    }
-}
-
-
-
-
-/**
- * @suppress
- */
-public object FfiConverterSequenceTypeFfiOperation: FfiConverterRustBuffer<List<FfiOperation>> {
-    override fun read(buf: ByteBuffer): List<FfiOperation> {
-        val len = buf.getInt()
-        return List<FfiOperation>(len) {
-            FfiConverterTypeFfiOperation.read(buf)
-        }
-    }
-
-    override fun allocationSize(value: List<FfiOperation>): ULong {
-        val sizeForLength = 4UL
-        val sizeForItems = value.map { FfiConverterTypeFfiOperation.allocationSize(it) }.sum()
-        return sizeForLength + sizeForItems
-    }
-
-    override fun write(value: List<FfiOperation>, buf: ByteBuffer) {
-        buf.putInt(value.size)
-        value.iterator().forEach {
-            FfiConverterTypeFfiOperation.write(it, buf)
-        }
-    }
-}
-
-
-
-
-/**
- * @suppress
- */
-public object FfiConverterSequenceTypeFfiOperationGroup: FfiConverterRustBuffer<List<FfiOperationGroup>> {
-    override fun read(buf: ByteBuffer): List<FfiOperationGroup> {
-        val len = buf.getInt()
-        return List<FfiOperationGroup>(len) {
-            FfiConverterTypeFfiOperationGroup.read(buf)
-        }
-    }
-
-    override fun allocationSize(value: List<FfiOperationGroup>): ULong {
-        val sizeForLength = 4UL
-        val sizeForItems = value.map { FfiConverterTypeFfiOperationGroup.allocationSize(it) }.sum()
-        return sizeForLength + sizeForItems
-    }
-
-    override fun write(value: List<FfiOperationGroup>, buf: ByteBuffer) {
-        buf.putInt(value.size)
-        value.iterator().forEach {
-            FfiConverterTypeFfiOperationGroup.write(it, buf)
         }
     }
 }

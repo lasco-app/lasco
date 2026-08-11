@@ -31,19 +31,28 @@ impl LocalStateLibraryDir {
     }
 }
 
-/// `local_state/operations.log` and `local_state/pending.op`.
+/// `local_state/operations.log`: append-only encrypted individual CRDT operations.
 #[derive(Clone, Debug)]
 pub struct LocalStateOperations {
     local_state_dir: PathBuf,
 }
 
+/// `local_state/crdt-state.enc`: encrypted canonical CRDT state and durable
+/// outgoing-operation outbox. This replaces replay logs in format version 2.
+#[derive(Clone, Debug)]
+pub struct LocalStateCrdt {
+    local_state_dir: PathBuf,
+}
+
+impl LocalStateCrdt {
+    pub fn snapshot_path(&self) -> PathBuf {
+        self.local_state_dir.join("crdt-state.enc")
+    }
+}
+
 impl LocalStateOperations {
     pub fn operations_log_path(&self) -> PathBuf {
         self.local_state_dir.join("operations.log")
-    }
-
-    pub fn pending_op_path(&self) -> PathBuf {
-        self.local_state_dir.join("pending.op")
     }
 }
 
@@ -145,6 +154,12 @@ impl LocalDirs {
         }
     }
 
+    pub fn local_state_crdt(&self) -> LocalStateCrdt {
+        LocalStateCrdt {
+            local_state_dir: self.root.join("local_state"),
+        }
+    }
+
     pub fn local_state_media_dir(&self) -> LocalStateMediaDir {
         LocalStateMediaDir {
             path: self.root.join("local_state").join("media"),
@@ -185,13 +200,13 @@ impl LocalDirs {
         }
     }
 
-    pub fn ensure_state_dirs(&self) -> std::io::Result<()> {
+    pub(crate) fn ensure_state_dirs(&self) -> std::io::Result<()> {
         std::fs::create_dir_all(self.local_state_library_dir().path())?;
         std::fs::create_dir_all(self.local_state_media_dir().path())?;
         Ok(())
     }
 
-    pub fn ensure_sync_dirs(&self) -> std::io::Result<()> {
+    pub(crate) fn ensure_sync_dirs(&self) -> std::io::Result<()> {
         std::fs::create_dir_all(self.root.join("remotes"))
     }
 }

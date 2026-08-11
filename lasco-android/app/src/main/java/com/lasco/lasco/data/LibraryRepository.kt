@@ -30,7 +30,7 @@ import uniffi.lasco_ffi.FfiMediaItem
 import uniffi.lasco_ffi.FfiMediaUuid
 import uniffi.lasco_ffi.FfiMediaNeighbors
 import uniffi.lasco_ffi.FfiMediaOrGroupNeighbors
-import uniffi.lasco_ffi.FfiOperationGroup
+import uniffi.lasco_ffi.FfiCrdtOperation
 import uniffi.lasco_ffi.FfiGroupUuid
 import uniffi.lasco_ffi.FfiRemoteUuid
 
@@ -363,7 +363,7 @@ class LibraryRepository(
 
     suspend fun groupMedia(groupId: FfiGroupUuid): List<FfiMediaItem> = lib.groupListMedia(groupId)
 
-    suspend fun listOperationGroups(): List<FfiOperationGroup> = lib.listOperationGroups()
+    suspend fun listOperations(): List<FfiCrdtOperation> = lib.listOperations()
 
     // Blocking and proportional to file size. Drop the wrap once the Rust side is async.
     suspend fun loadLocalState() {

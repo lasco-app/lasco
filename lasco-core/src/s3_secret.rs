@@ -1,8 +1,8 @@
 use aes_gcm::{
-    aead::{Aead, AeadCore},
     Aes256Gcm, KeyInit,
+    aead::{Aead, AeadCore},
 };
-use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use rand::rngs::OsRng;
 
 use crate::encryption::master_key::MasterKey;
@@ -14,7 +14,7 @@ pub const S3_SECRET_ENCRYPTION_DESCRIPTION: &str = "AES-256-GCM v1";
 
 const S3_SECRET_NONCE_SIZE: usize = 12;
 
-/// Encrypt an S3 secret key using the MasterKey (AES-256-GCM).
+/// Encrypt an S3 secret key using the `MasterKey` (AES-256-GCM).
 /// Returns the base64 ciphertext and its encryption description.
 pub fn encrypt_s3_secret_key(
     master_key: &MasterKey,
@@ -33,8 +33,8 @@ pub fn encrypt_s3_secret_key(
     Ok((encoded, S3_SECRET_ENCRYPTION_DESCRIPTION.to_string()))
 }
 
-/// Decrypt an S3 secret key using the MasterKey (AES-256-GCM).
-pub fn decrypt_s3_secret_key(
+/// Decrypt an S3 secret key using the `MasterKey` (AES-256-GCM).
+fn decrypt_s3_secret_key(
     master_key: &MasterKey,
     encrypted: &str,
     description: &str,
@@ -59,7 +59,7 @@ pub fn decrypt_s3_secret_key(
 }
 
 /// Resolve S3 credentials from an `S3Config`, decrypting the secret key with the master key.
-pub fn resolve_s3_credentials(
+pub(crate) fn resolve_s3_credentials(
     s3_config: &S3Config,
     master_key: &MasterKey,
 ) -> Result<(String, String), CryptoError> {

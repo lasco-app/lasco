@@ -1,11 +1,11 @@
 use chrono::Utc;
 use uuid::Uuid;
 
+use crate::crdt::OperationContent;
 use crate::error::LibraryError;
 use crate::identifiers::{AlbumUuid, GroupUuid, MediaUuid};
 use crate::library::Library;
 use crate::library::media::MediaEntry;
-use crate::operations::Operation;
 use crate::state::GroupEntry;
 
 pub type Result<T> = std::result::Result<T, LibraryError>;
@@ -13,40 +13,47 @@ pub type Result<T> = std::result::Result<T, LibraryError>;
 impl Library {
     pub async fn group_create(&self, album_id_parent: AlbumUuid) -> Result<GroupUuid> {
         let group_id = GroupUuid::from_uuid(Uuid::new_v4());
-        self.append_to_pending(Operation::GroupCreation {
-            timestamp: Utc::now(),
-            group_id,
-            album_id_parent,
-        })?;
+        self.record_local_operation(
+            Utc::now(),
+            OperationContent::GroupCreation {
+                group_id,
+                parent_id: album_id_parent,
+            },
+        )?;
         self.load_local_state().await?;
         Ok(group_id)
     }
 
     pub async fn group_add_media(&self, group_id: GroupUuid, media_id: MediaUuid) -> Result<()> {
-        self.append_to_pending(Operation::GroupMediaAdd {
-            timestamp: Utc::now(),
-            group_id,
-            media_id,
-        })?;
+        self.record_local_operation(
+            Utc::now(),
+            OperationContent::GroupMediaAdd { group_id, media_id },
+        )?;
         self.load_local_state().await?;
         Ok(())
     }
 
     pub async fn group_remove_media(&self, group_id: GroupUuid, media_id: MediaUuid) -> Result<()> {
-        self.append_to_pending(Operation::GroupMediaRemove {
-            timestamp: Utc::now(),
-            group_id,
-            media_id,
-        })?;
+        let observed = self
+            .inner
+            .crdt_replica_state
+            .read()
+            .state
+            .group_member_dots(group_id, media_id);
+        self.record_local_operation(
+            Utc::now(),
+            OperationContent::GroupMediaRemove {
+                group_id,
+                media_id,
+                observed,
+            },
+        )?;
         self.load_local_state().await?;
         Ok(())
     }
 
     pub async fn group_delete(&self, group_id: GroupUuid) -> Result<()> {
-        self.append_to_pending(Operation::GroupDeletion {
-            timestamp: Utc::now(),
-            group_id,
-        })?;
+        self.record_local_operation(Utc::now(), OperationContent::GroupDeletion { group_id })?;
         self.load_local_state().await?;
         Ok(())
     }
@@ -283,10 +290,9 @@ mod tests {
         lib.album_delete(album_id).await.unwrap();
 
         let state = lib.inner.operation_state.read();
-        // Group still present in reconstructed state
-        assert!(state.reconstructed.groups.contains_key(&group_id));
-        assert!(!state.reconstructed.groups[&group_id].deleted);
-        // But file is unreachable (transitive)
+        // Groups beneath a deleted parent are hidden from the CRDT projection.
+        assert!(!state.reconstructed.groups.contains_key(&group_id));
+        // Its media is also unreachable (transitive).
         assert!(!state.views.reachable_media_ids.contains(&media_id));
     }
 

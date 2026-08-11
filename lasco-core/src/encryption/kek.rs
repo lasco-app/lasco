@@ -16,7 +16,7 @@ const _: () = assert!(KEK_SIZE == 32); // AES-256 key is fixed at 256 bits by th
 
 /// Key-encryption key derived from the user's password and `LibrarySalt` via Argon2id.
 ///
-/// Decrypts `mk_{username}.enc` to recover the MasterKey. Never stored on disk.
+/// Decrypts `mk_{username}.enc` to recover the `MasterKey`. Never stored on disk.
 #[derive(Clone, Zeroize, ZeroizeOnDrop)]
 pub struct Kek([u8; KEK_SIZE]);
 

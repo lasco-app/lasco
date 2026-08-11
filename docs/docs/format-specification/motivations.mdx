@@ -48,4 +48,7 @@ Any combination of valid operations must yield a state the client can present to
 
 ### CRDT operation ordering
 
-To reconstruct the library state, operation groups are sorted into a total order and applied sequentially. The order is derived from a causal DAG: each group carries a `parent_op_id` pointing to the group the author had last seen when they wrote it. A topological sort of this DAG ensures a group is applied only after its parent. When multiple groups share the same parent (concurrent writes from different clients), they are ordered by `op_id` ascending. Operation IDs are UUIDv7, which embed a millisecond-precision timestamp, so this tie-break gives "earliest clock wins" on concurrent forks while remaining fully deterministic.
+The canonical state is a CRDT rather than a replay log. Each immutable operation has a Lamport dot,
+and duplicate dots are ignored. LWW registers use dots for deterministic conflict resolution,
+observed-remove sets preserve concurrent adds, and tombstones make deletions permanent. This makes
+merge order irrelevant while retaining an encrypted, append-only audit history.

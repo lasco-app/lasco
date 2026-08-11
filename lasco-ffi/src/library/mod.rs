@@ -69,9 +69,8 @@ pub fn ffi_delete_library(
 #[uniffi::export(default(app_dir = None))]
 pub fn list_libraries(app_dir: Option<String>) -> Result<Vec<FfiLibraryEntry>, LascoError> {
     let app_dir = crate::resolve_app_dir(app_dir)?;
-    let config = match ConfigJson::load(&app_dir)? {
-        Some(c) => c,
-        None => return Ok(vec![]),
+    let Some(config) = ConfigJson::load(&app_dir)? else {
+        return Ok(vec![]);
     };
     Ok(config
         .libraries
@@ -146,23 +145,20 @@ pub fn ffi_open_cached(
 ) -> Result<Option<Arc<FfiLibrary>>, LascoError> {
     let app_dir = crate::resolve_app_dir(app_dir)?;
 
-    let config = match ConfigJson::load(&app_dir)? {
-        Some(c) => c,
-        None => return Ok(None),
+    let Some(config) = ConfigJson::load(&app_dir)? else {
+        return Ok(None);
     };
 
-    let resolved = match config.resolve_nickname(nickname.map(LibraryNickname::from)) {
-        Ok(n) => n,
-        Err(_) => return Ok(None),
+    let Ok(resolved) = config.resolve_nickname(nickname.map(LibraryNickname::from)) else {
+        return Ok(None);
     };
 
     let library_id = match config.get_library_id_by_nickname(&resolved.0) {
         Some(id) => *id,
         None => return Ok(None),
     };
-    let library_config = match LibraryJson::load(&app_dir, &library_id)? {
-        Some(lc) => lc,
-        None => return Ok(None),
+    let Some(library_config) = LibraryJson::load(&app_dir, &library_id)? else {
+        return Ok(None);
     };
 
     let lib_username = LibraryUsername(username);
@@ -206,7 +202,10 @@ pub fn ffi_open_cached(
 /// an existing user on the remote. When `new_username`/`new_password` are both
 /// provided, a new user is registered and used as the effective device user.
 #[uniffi::export(default(app_dir = None))]
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The FFI contract exposes S3 connection settings as explicit scalar parameters."
+)]
 pub fn ffi_add_existing_library_s3(
     nickname: String,
     username: String,

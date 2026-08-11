@@ -1,6 +1,4 @@
-use crate::ids::{
-    FfiAlbumUuid, FfiGroupUuid, FfiLibraryId, FfiMediaUuid, FfiOpUuid, FfiRemoteUuid,
-};
+use crate::ids::{FfiAlbumUuid, FfiGroupUuid, FfiLibraryId, FfiMediaUuid, FfiRemoteUuid};
 
 #[derive(uniffi::Record, Debug)]
 pub struct FfiCreateLibraryResult {
@@ -132,9 +130,14 @@ pub struct FfiLocalStateStats {
 }
 
 #[derive(uniffi::Record, Debug)]
-pub struct FfiOperationGroup {
-    pub op_id: FfiOpUuid,
-    pub parent_op_id: Option<FfiOpUuid>,
-    pub operations: Vec<FfiOperation>,
+pub struct FfiDot {
+    pub lamport_counter: u64,
+    pub device_id: String,
+}
+
+#[derive(uniffi::Record, Debug)]
+pub struct FfiCrdtOperation {
+    pub dot: FfiDot,
     pub author: String,
+    pub operation: FfiOperation,
 }

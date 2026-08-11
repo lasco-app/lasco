@@ -13,15 +13,6 @@ pub fn remote_uuid() -> RemoteUuid {
     RemoteUuid::from_uuid(REMOTE_ID.parse().unwrap())
 }
 
-/// Creates storage with the `remote_id_{uuid}` marker already stamped, as
-/// `initialize_remote` would do, without also copying crypto files.
-pub async fn stamp_remote_id(storage: &dyn crate::storage::Storage) {
-    storage
-        .put_if_absent(&format!("remote_id_{}", REMOTE_ID), b"")
-        .await
-        .unwrap();
-}
-
 pub async fn make_library(tmp: &TempDir) -> Library {
     let library_id = LibraryId(Uuid::new_v4());
     let local_dirs = LocalDirs::new(tmp.path().to_path_buf(), &library_id);

@@ -23,7 +23,7 @@ All server-side data lives under a single path prefix (the library root). Data b
 │           ├── {UUID}.data            encrypted photo/video bytes
 │           └── {UUID}.thumb           encrypted thumbnail
 └── operations/
-    ├── {UUID}.op{N}_{count}           encrypted compacted operations (tier N, count groups)
+    ├── {UUID}.op{N}_{count}           encrypted compacted CRDT operations (tier N, count operations)
     └── LOCK.op                        compaction lock (JSON, transient)
 ```
 
@@ -53,8 +53,8 @@ The root can be overridden via the `--data-dir` CLI flag.
         │   │   ├── library_salt           random 32-byte salt
         │   │   ├── version_1              write format version
         │   │   └── mk_{username}_{uuid}.enc  master key encrypted with the user's KEK
-        │   ├── operations.log            append-only log of committed operation groups
-        │   ├── pending.op                in-progress operation group
+        │   ├── crdt-state.enc            encrypted canonical state, device clock, and durable outbox
+        │   ├── operations.log            append-only encrypted frames of individual CRDT operations
         │   └── media/
         │       └── YYYY/
         │           └── MM/

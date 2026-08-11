@@ -11,7 +11,7 @@ use super::master_key::MasterKey;
 const BLOB_KEY_SIZE: usize = size_of::<XChaChaKey>();
 const _: () = assert!(BLOB_KEY_SIZE == 32); // XChaCha20-Poly1305 key is fixed at 256 bits by the spec
 
-/// Per-file encryption key derived from the MasterKey and the file's UUID via HKDF-SHA256.
+/// Per-file encryption key derived from the `MasterKey` and the file's UUID via HKDF-SHA256.
 ///
 /// Encrypts and decrypts individual file blobs with XChaCha20-Poly1305.
 /// Never stored on disk. Rederived on every access.

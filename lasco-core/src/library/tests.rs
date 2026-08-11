@@ -159,3 +159,30 @@ async fn concurrent_append_to_pending_does_not_lose_operations() {
         "no operation should be lost to a racing read-modify-write on pending.op"
     );
 }
+
+#[tokio::test]
+async fn local_edit_is_merged_and_queued_in_the_crdt_state_replica() {
+    let tmp = TempDir::new().unwrap();
+    let (lib, _library_id) = make_library(&tmp).await;
+    let album_id = AlbumUuid::from_uuid(Uuid::new_v4());
+
+    lib.append_to_pending(Operation::AlbumCreation {
+        timestamp: Utc::now(),
+        album_id,
+        name: AlbumName("CRDT".to_string()),
+        album_id_parent: None,
+    })
+    .unwrap();
+
+    let replica = lib.inner.crdt_replica_state.read();
+    assert_eq!(replica.outgoing.len(), 1);
+    assert!(replica.state.is_album_created_and_live(album_id));
+    assert_eq!(
+        replica.outgoing[0].dot,
+        replica.state.albums[&album_id]
+            .creation
+            .as_ref()
+            .unwrap()
+            .dot
+    );
+}

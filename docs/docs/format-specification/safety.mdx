@@ -31,7 +31,7 @@ returns; a conflicting acquisition fails with `AlreadyRunning`.
 
 | Restriction | Protects | Effect |
 | --- | --- | --- |
-| Local operation-files mutex | `operations.log` and `pending.op` | Serializes one synchronous operation-file access at a time. The guard is released before an `await`. |
+| Local operation-log mutex | `operations.log` | Serializes one synchronous operation-log access at a time. The guard is released before an `await`. |
 | Per-remote media-inventory mutex | `remotes/{remote_id}/state/media/media_list.json` | Serializes synchronous inventory read-modify-write work. It is never held across a network await. |
 | In-memory operation-state `RwLock` | Reconstructed in-memory state | Multiple readers may coexist; rebuilding installs state under the exclusive write lock. |
 | Remote compaction lock file | `operations/LOCK.op` | Only the client that created the lock with `put_if_absent` may compact. A client that cannot create it skips compaction. A stale lock requires manual removal. |
@@ -69,7 +69,7 @@ instance.
 | `remotes/{remote_id}/state/merged_remote_files.json` | `RemoteMergedRemoteFiles` | Not used | Not used | Not used | <span className="tag tag-ok">Safe</span> Fetch-exclusive; corruption intentionally fails fetch |
 | `remotes/{remote_id}/state/media/media_list.json` | `RemoteMediaList` | `RemoteMediaList` | `RemoteMediaList` | Not used | <span className="tag tag-ok">Safe</span> Per-remote inventory mutex plus atomic writes |
 | `local_state/media/` | Not used | `LocalStateMediaDir` | `LocalStateMediaDir` (through `Library`) | `LocalStateMediaDir` (through `Library`) | <span className="tag tag-ok">Safe</span> Atomic write; immutable file with a 1-to-1 filename/content relation |
-| `operations.log`, `pending.op` | `LocalOpsReadWriteLock` | `LocalOpsReadWriteLock` (through `Library`) | Not used | `LocalOpsReadWriteLock` (through `Library`) | <span className="tag tag-ok">Safe</span> Mutex |
+| `operations.log` | `LocalOpsReadWriteLock` | `LocalOpsReadWriteLock` (through `Library`) | Not used | `LocalOpsReadWriteLock` (through `Library`) | <span className="tag tag-ok">Safe</span> Mutex |
 
 #### Remote media inventory
 

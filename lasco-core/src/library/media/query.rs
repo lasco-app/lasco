@@ -2,13 +2,14 @@ use std::path::Path;
 
 use chrono::Utc;
 
+use crate::crdt::OperationContent;
 use crate::encryption::blob::BlobEncrypted;
 use crate::encryption::blob::decrypt_blob;
 use crate::encryption::blob_key::derive_blob_key;
 use crate::error::{LibraryError, OperationError};
 use crate::identifiers::{AlbumUuid, GroupUuid, MediaUuid};
 use crate::library::Library;
-use crate::operations::{MediaName, Operation};
+use crate::operations::MediaName;
 use crate::remote::MediaList;
 use crate::storage::Storage;
 
@@ -231,7 +232,7 @@ impl Library {
 
     /// Downloads a media blob from a known remote and records that positive observation in the
     /// remote's media inventory after the encrypted blob has been validated and cached locally.
-    pub async fn media_get_bytes_from_remote(
+    async fn media_get_bytes_from_remote(
         &self,
         media_id: MediaUuid,
         remote_id: &str,
@@ -264,7 +265,7 @@ impl Library {
     ///
     /// If the blob is not locally cached, `storage` is used to download it. Pass `None`
     /// to skip remote download (returns `MediaNotFound` when not cached locally).
-    pub async fn media_get(
+    async fn media_get(
         &self,
         media_id: MediaUuid,
         path_dest: &Path,
@@ -283,11 +284,7 @@ impl Library {
                 return Err(LibraryError::MediaNotFound(media_id));
             }
         }
-        self.append_to_pending(Operation::MediaRename {
-            timestamp: Utc::now(),
-            media_id,
-            name,
-        })?;
+        self.record_local_operation(Utc::now(), OperationContent::MediaRename { media_id, name })?;
         self.load_local_state().await?;
         Ok(())
     }
@@ -484,11 +481,20 @@ impl Library {
                 .collect()
         };
         for album_id in album_ids {
-            self.append_to_pending(Operation::AlbumMediaRemove {
-                timestamp: chrono::Utc::now(),
-                album_id,
-                media_id,
-            })?;
+            let observed = self
+                .inner
+                .crdt_replica_state
+                .read()
+                .state
+                .album_member_dots(album_id, media_id);
+            self.record_local_operation(
+                chrono::Utc::now(),
+                OperationContent::AlbumMediaRemove {
+                    album_id,
+                    media_id,
+                    observed,
+                },
+            )?;
             self.load_local_state().await?;
         }
         Ok(())

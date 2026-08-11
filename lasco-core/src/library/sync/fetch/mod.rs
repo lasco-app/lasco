@@ -1,16 +1,17 @@
 use std::collections::HashSet;
 
+use crate::crdt::{CrdtOperation, CrdtStateReplica, OperationContent};
 use crate::encryption::master_key::{MasterKey, parse_mk_filename};
 use crate::error::{LibraryError, SyncError};
 use crate::identifiers::{LibraryId, RemoteUuid};
 use crate::library::Library;
 use crate::library::local_dirs::{
-    LocalStateLibraryDir, RemoteLastKnownStateDir, RemoteMediaList, RemoteMergedRemoteFiles,
+    LocalStateCrdt, LocalStateLibraryDir, RemoteLastKnownStateDir, RemoteMediaList,
+    RemoteMergedRemoteFiles,
 };
 use crate::library::local_ops_read_write::LocalOpsReadWriteLock;
 use crate::library::remote_media_list_lock::RemoteMediaListLock;
 use crate::operations::remote_ops::RemoteOpFile;
-use crate::operations::{Operation, OperationGroup};
 use crate::remote::{LastKnownState, MediaList, MergedRemoteFiles};
 
 use super::remote_access::StorageRead;
@@ -46,6 +47,8 @@ impl Library {
             &self.inner.local_ops_read_write_lock,
             &self.inner.remote_media_list_lock,
             &self.inner.master_key,
+            &self.inner.crdt_replica_state,
+            &self.inner.local_dirs.local_state_crdt(),
         )
         .await?;
         if report.local_state_rebuild_required {
@@ -66,6 +69,8 @@ pub(super) async fn fetch_impl(
     local_ops_read_write_lock: &LocalOpsReadWriteLock,
     remote_media_list_lock: &RemoteMediaListLock,
     master_key: &MasterKey,
+    replica_state: &parking_lot::RwLock<CrdtStateReplica>,
+    local_state_crdt: &LocalStateCrdt,
 ) -> Result<SyncReportFetch, LibraryError> {
     let remote_uuid = remote_id
         .parse::<uuid::Uuid>()
@@ -87,60 +92,59 @@ pub(super) async fn fetch_impl(
     let last_known_state =
         LastKnownState::download(storage, remote_last_known_state_dir, master_key).await?;
 
-    let local_valid_ids: HashSet<_> = local_ops_read_write_lock
-        .lock(master_key)
-        .read_log_groups()?
-        .into_iter()
-        .map(|group| group.op_id)
-        .collect();
-
     let mut ops_downloaded = 0usize;
     let mut merged_files_changed = false;
     let mut local_state_rebuild_required = false;
-    // Track op_ids appended this run to avoid double-appending within one merge pass
-    let mut appended_this_run: HashSet<_> = HashSet::new();
-
-    for file in last_known_state.files() {
-        let file_uuid = LastKnownState::file_uuid(file);
-        if merged_files.contains(&file_uuid) {
-            continue;
-        }
-        match file {
-            RemoteOpFile::Compaction {
-                uuid,
-                tier,
-                op_count,
-            } => {
-                let compaction =
-                    last_known_state.read_compaction_file(master_key, uuid, *tier, *op_count)?;
-                for entry in &compaction.contents {
-                    if !local_valid_ids.contains(&entry.op_id)
-                        && !appended_this_run.contains(&entry.op_id)
-                    {
-                        local_ops_read_write_lock
-                            .lock(master_key)
-                            .append_log(&entry.group)?;
-                        appended_this_run.insert(entry.op_id);
-                        update_media_list_from_group(
-                            storage,
-                            &entry.group,
-                            remote_id,
-                            remote_media_list,
-                            remote_media_list_lock,
-                        )
-                        .await;
-                        ops_downloaded += 1;
+    let inventory_operations = {
+        let mut replica = replica_state.write();
+        let mut inventory_operations = Vec::new();
+        for file in last_known_state.files() {
+            let file_uuid = LastKnownState::file_uuid(file);
+            if merged_files.contains(&file_uuid) {
+                continue;
+            }
+            match file {
+                RemoteOpFile::Compaction {
+                    uuid,
+                    tier,
+                    op_count,
+                } => {
+                    let compaction = last_known_state
+                        .read_compaction_file(master_key, uuid, *tier, *op_count)?;
+                    for operation in &compaction.operations {
+                        if !replica.state.causal_context.contains(&operation.dot) {
+                            local_ops_read_write_lock
+                                .lock(master_key)
+                                .append_operation(operation)?;
+                            replica.state.apply(operation);
+                            inventory_operations.push(operation.clone());
+                            ops_downloaded += 1;
+                        }
                     }
+                    merged_files.insert(file_uuid);
+                    merged_files_changed = true;
+                    local_state_rebuild_required = true;
                 }
-                merged_files.insert(file_uuid);
-                merged_files_changed = true;
-                local_state_rebuild_required = true;
             }
         }
-    }
 
-    if merged_files_changed {
-        merged_files.save(&merged_files_path)?;
+        if merged_files_changed {
+            merged_files.save(&merged_files_path)?;
+        }
+        if local_state_rebuild_required {
+            crate::crdt::save_persisted(&local_state_crdt.snapshot_path(), master_key, &replica)?;
+        }
+        inventory_operations
+    };
+    for operation in &inventory_operations {
+        update_media_list_from_group(
+            storage,
+            operation,
+            remote_id,
+            remote_media_list,
+            remote_media_list_lock,
+        )
+        .await;
     }
 
     Ok(SyncReportFetch {
@@ -189,7 +193,7 @@ async fn fetch_library_dir(
         .collect();
 
     let local_dir = local_state_library_dir.path();
-    let local_mk_names: HashSet<String> = match std::fs::read_dir(&local_dir) {
+    let local_mk_names: HashSet<String> = match std::fs::read_dir(local_dir) {
         Ok(entries) => entries
             .flatten()
             .filter_map(|e| {
@@ -209,53 +213,41 @@ async fn fetch_library_dir(
             .get(&format!("library/{name}"))
             .await
             .map_err(SyncError::RemoteUnreachable)?;
-        std::fs::create_dir_all(&local_dir).map_err(SyncError::Io)?;
+        std::fs::create_dir_all(local_dir).map_err(SyncError::Io)?;
         crate::atomic_file::write(&local_dir.join(name), &bytes).map_err(SyncError::Io)?;
     }
 
     Ok(())
 }
 
-/// For each MediaCreation op in `group`, checks if the file exists on the remote and
+/// For each `MediaCreation` operation, checks if the file exists on the remote and
 /// records it in `media_list` if so. Inventory errors are intentionally ignored.
 async fn update_media_list_from_group(
     storage: &StorageRead<'_>,
-    group: &OperationGroup,
+    operation: &CrdtOperation,
     remote_id: &str,
     remote_media_list: &RemoteMediaList,
     remote_media_list_lock: &RemoteMediaListLock,
 ) {
-    for op in &group.operations {
-        if let Operation::MediaCreation {
-            media_id,
-            storage_date,
-            ..
-        } = op
-        {
-            let key = format!(
-                "media/{}/{:02}/{}.data",
-                storage_date.year, storage_date.month, media_id.0
-            );
-            if matches!(storage.exists(&key).await, Ok(true)) {
-                remote_media_list_lock.with_lock(
-                    remote_id,
-                    remote_media_list,
-                    |remote_media_list| {
-                        let path = remote_media_list.media_list_path();
-                        // This is a positive-only, opportunistic inventory. Its absence or corruption
-                        // must not prevent fetch from establishing the last-known operation state and local log.
-                        let Ok(mut media_list) = MediaList::load_or_default(&path) else {
-                            return;
-                        };
-                        if media_list.insert_present(*media_id) {
-                            let _ = media_list.save(&path);
-                        }
-                    },
-                );
-            }
+    if let OperationContent::MediaCreation(creation) = &operation.content {
+        let media_id = creation.media_id;
+        let storage_date = creation.storage_date;
+        let key = format!(
+            "media/{}/{:02}/{}.data",
+            storage_date.year, storage_date.month, media_id.0
+        );
+        if matches!(storage.exists(&key).await, Ok(true)) {
+            remote_media_list_lock.with_lock(remote_id, remote_media_list, |remote_media_list| {
+                let path = remote_media_list.media_list_path();
+                // This is a positive-only, opportunistic inventory. Its absence or corruption
+                // must not prevent fetch from establishing the last-known operation state and local log.
+                let Ok(mut media_list) = MediaList::load_or_default(&path) else {
+                    return;
+                };
+                if media_list.insert_present(media_id) {
+                    let _ = media_list.save(&path);
+                }
+            });
         }
     }
 }
-
-#[cfg(test)]
-mod tests;

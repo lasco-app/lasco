@@ -13,6 +13,8 @@ pub enum LibraryError {
     UnsupportedFormatVersion { found: String, expected: String },
     #[error(transparent)]
     Operation(#[from] OperationError),
+    #[error(transparent)]
+    CrdtPersistence(#[from] crate::crdt::PersistenceError),
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
     #[error("cannot remove the last user")]

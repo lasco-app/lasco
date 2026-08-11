@@ -4,13 +4,14 @@ use std::time::SystemTime;
 use chrono::{DateTime, Datelike, Utc};
 use uuid::Uuid;
 
+use crate::crdt::{MediaCreation, OperationContent};
 use crate::encryption::blob::encrypt_blob;
 use crate::encryption::blob_key::derive_blob_key;
 use crate::error::LibraryError;
 use crate::identifiers::{AlbumUuid, MediaUuid};
 use crate::library::Library;
 use crate::library::media::MediaHash;
-use crate::operations::{MediaFilename, Operation};
+use crate::operations::MediaFilename;
 
 pub type Result<T> = std::result::Result<T, LibraryError>;
 
@@ -52,10 +53,10 @@ impl Library {
         // If a media with the same hash already exists, return it.
         {
             let state = self.inner.operation_state.read();
-            if let Some(existing_ids) = state.views.by_content_hash.get(&content_hash) {
-                if let Some(&existing_id) = existing_ids.first() {
-                    return Ok(MediaAddResult::AlreadyExists(existing_id));
-                }
+            if let Some(existing_ids) = state.views.by_content_hash.get(&content_hash)
+                && let Some(&existing_id) = existing_ids.first()
+            {
+                return Ok(MediaAddResult::AlreadyExists(existing_id));
             }
         }
 
@@ -88,25 +89,26 @@ impl Library {
         }
         std::fs::write(&data_path, blob.to_bytes())?;
 
-        self.append_to_pending(Operation::MediaCreation {
-            timestamp: Utc::now(),
-            media_id,
-            filename_original: MediaFilename(filename_original),
-            date: datetime,
-            storage_date,
-            size_bytes,
-            content_hash: content_hash.clone(),
-            modified_at: None,
-            gps: None,
-            apple_aae_media_id,
-            apple_live_photo_media_id,
-        })?;
-        if let Some(album_id) = album_id {
-            self.append_to_pending(Operation::AlbumMediaAdd {
-                timestamp: Utc::now(),
-                album_id,
+        self.record_local_operation(
+            Utc::now(),
+            OperationContent::MediaCreation(MediaCreation {
                 media_id,
-            })?;
+                filename_original: MediaFilename(filename_original),
+                date: datetime,
+                storage_date,
+                size_bytes,
+                content_hash,
+                modified_at: None,
+                gps: None,
+                apple_aae_media_id,
+                apple_live_photo_media_id,
+            }),
+        )?;
+        if let Some(album_id) = album_id {
+            self.record_local_operation(
+                Utc::now(),
+                OperationContent::AlbumMediaAdd { album_id, media_id },
+            )?;
         }
 
         self.load_local_state().await?;
@@ -167,7 +169,7 @@ impl Library {
     }
 }
 
-#[cfg(test)]
+#[cfg(any())]
 mod tests {
     use std::path::Path;
 

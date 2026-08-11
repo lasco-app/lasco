@@ -1,4 +1,4 @@
-use lasco_core::identifiers::{AlbumUuid, GroupUuid, LibraryId, MediaUuid, OpUuid, RemoteUuid};
+use lasco_core::identifiers::{AlbumUuid, GroupUuid, LibraryId, MediaUuid, RemoteUuid};
 
 use crate::error::LascoError;
 
@@ -33,9 +33,9 @@ macro_rules! ffi_id {
 }
 
 ffi_id!(
-    /// A media identifier exposed to UniFFI as a record so Swift and Kotlin receive
+    /// A media identifier exposed to `UniFFI` as a record so Swift and Kotlin receive
     /// a distinct type. Do not replace this with `uniffi::custom_type!` backed by
-    /// `String`: UniFFI generates custom string types as `String` aliases, allowing
+    /// `String`: `UniFFI` generates custom string types as `String` aliases, allowing
     /// media IDs to be accidentally passed where another ID kind is required.
     FfiMediaUuid,
     MediaUuid,
@@ -45,4 +45,3 @@ ffi_id!(FfiAlbumUuid, AlbumUuid, "album id");
 ffi_id!(FfiGroupUuid, GroupUuid, "group id");
 ffi_id!(FfiRemoteUuid, RemoteUuid, "remote id");
 ffi_id!(FfiLibraryId, LibraryId, "library id");
-ffi_id!(FfiOpUuid, OpUuid, "operation id");

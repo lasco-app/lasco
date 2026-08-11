@@ -3,11 +3,12 @@ use std::collections::{HashSet, VecDeque};
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
+use crate::crdt::OperationContent;
 use crate::error::LibraryError;
 use crate::identifiers::{AlbumUuid, MediaUuid};
 use crate::library::Library;
 use crate::library::media::MediaEntry;
-use crate::operations::{AlbumName, Operation};
+use crate::operations::AlbumName;
 use crate::state::{AlbumBrowseItem, GroupEntry};
 
 pub type Result<T> = std::result::Result<T, LibraryError>;
@@ -105,41 +106,48 @@ impl Library {
         album_id_parent: Option<AlbumUuid>,
     ) -> Result<AlbumUuid> {
         let album_id = AlbumUuid::from_uuid(Uuid::new_v4());
-        self.append_to_pending(Operation::AlbumCreation {
-            timestamp: Utc::now(),
-            album_id,
-            name,
-            album_id_parent,
-        })?;
+        self.record_local_operation(
+            Utc::now(),
+            OperationContent::AlbumCreation {
+                album_id,
+                name,
+                parent_id: album_id_parent,
+            },
+        )?;
         self.load_local_state().await?;
         Ok(album_id)
     }
 
     pub async fn album_add_media(&self, album_id: AlbumUuid, media_id: MediaUuid) -> Result<()> {
-        self.append_to_pending(Operation::AlbumMediaAdd {
-            timestamp: Utc::now(),
-            album_id,
-            media_id,
-        })?;
+        self.record_local_operation(
+            Utc::now(),
+            OperationContent::AlbumMediaAdd { album_id, media_id },
+        )?;
         self.load_local_state().await?;
         Ok(())
     }
 
     pub async fn album_remove_media(&self, album_id: AlbumUuid, media_id: MediaUuid) -> Result<()> {
-        self.append_to_pending(Operation::AlbumMediaRemove {
-            timestamp: Utc::now(),
-            album_id,
-            media_id,
-        })?;
+        let observed = self
+            .inner
+            .crdt_replica_state
+            .read()
+            .state
+            .album_member_dots(album_id, media_id);
+        self.record_local_operation(
+            Utc::now(),
+            OperationContent::AlbumMediaRemove {
+                album_id,
+                media_id,
+                observed,
+            },
+        )?;
         self.load_local_state().await?;
         Ok(())
     }
 
     pub async fn album_delete(&self, album_id: AlbumUuid) -> Result<()> {
-        self.append_to_pending(Operation::AlbumDeletion {
-            timestamp: Utc::now(),
-            album_id,
-        })?;
+        self.record_local_operation(Utc::now(), OperationContent::AlbumDeletion { album_id })?;
         self.load_local_state().await?;
         Ok(())
     }
@@ -302,11 +310,13 @@ impl Library {
                 return Err(LibraryError::AlbumNotFound(album_id));
             }
         }
-        self.append_to_pending(Operation::AlbumRename {
-            timestamp: Utc::now(),
-            album_id,
-            name,
-        })?;
+        self.record_local_operation(
+            Utc::now(),
+            OperationContent::AlbumRename {
+                album_id,
+                name: Some(name),
+            },
+        )?;
         self.load_local_state().await?;
         Ok(())
     }
@@ -342,11 +352,13 @@ impl Library {
                 }
             }
         }
-        self.append_to_pending(Operation::AlbumReparent {
-            timestamp: Utc::now(),
-            album_id,
-            new_parent_id,
-        })?;
+        self.record_local_operation(
+            Utc::now(),
+            OperationContent::AlbumReparent {
+                album_id,
+                parent_id: new_parent_id,
+            },
+        )?;
         self.load_local_state().await?;
         Ok(())
     }
@@ -385,7 +397,7 @@ impl Library {
             .collect()
     }
 
-    /// Return (name, parent_id, media_count, thumbnail_media_id) for a non-deleted album, or None.
+    /// Return (name, `parent_id`, `media_count`, `thumbnail_media_id`) for a non-deleted album, or None.
     pub fn album_node_by_id(
         &self,
         album_id: AlbumUuid,
@@ -414,18 +426,17 @@ impl Library {
                 return Err(LibraryError::AlbumNotFound(album_id));
             }
         }
-        self.append_to_pending(Operation::AlbumThumbnailSet {
-            timestamp: Utc::now(),
-            album_id,
-            media_id,
-        })?;
+        self.record_local_operation(
+            Utc::now(),
+            OperationContent::AlbumThumbnailSet { album_id, media_id },
+        )?;
         self.load_local_state().await?;
         Ok(())
     }
 
     /// Resolve an album name to its UUID.
     /// Returns an error if the name is not found or if multiple albums match (ambiguous).
-    pub fn album_resolve_name(&self, name: &AlbumName) -> Result<AlbumUuid> {
+    fn album_resolve_name(&self, name: &AlbumName) -> Result<AlbumUuid> {
         let state = self.inner.operation_state.read();
         let matches: Vec<(AlbumUuid, String)> = state
             .reconstructed
@@ -631,7 +642,7 @@ mod tests {
         assert!(
             by_album
                 .get(&album_id)
-                .map_or(false, |ids| ids.contains(&media_id))
+                .is_some_and(|ids| ids.contains(&media_id))
         );
     }
 
@@ -779,7 +790,7 @@ mod tests {
     }
 
     #[tokio::test]
-    // album_get_path with deleted album still works (deleted flag doesn't affect path lookup)
+    // Deleted albums are absent from the derived CRDT projection.
     async fn album_get_path_deleted_album() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
@@ -793,9 +804,9 @@ mod tests {
         lib.album_delete(album_id).await.unwrap();
         lib.load_local_state().await.unwrap();
 
-        // Path should still be resolvable
+        // Deleted ancestors do not remain browse-visible.
         let path = lib.album_get_path(album_id);
-        assert_eq!(path, "Deletable");
+        assert_eq!(path, "");
     }
 
     #[tokio::test]

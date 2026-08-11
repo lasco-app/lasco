@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -23,7 +23,7 @@ pub(super) const TIER_FILE_LIMIT: usize = 10;
 /// compaction file that stays within its tier's ops limit.
 ///
 /// Tier N's ops limit is 20*10^(N-1), so the smallest tier holding `op_count`
-/// is the smallest N with 10^(N-1) >= ceil(op_count / 20). Writing q for that
+/// is the smallest N with 10^(N-1) >= `ceil(op_count` / 20). Writing q for that
 /// ceiling, N-1 is the number of digits of q-1, which `ilog10` gives directly.
 pub(super) fn appropriate_tier(op_count: usize) -> u8 {
     let q = (op_count as u64).div_ceil(20);
@@ -67,8 +67,7 @@ const LOCK_KEY: &str = "operations/LOCK.op";
 /// [`release_lock`]. [`compact_tier`] requires a reference to one, so the type system rules out
 /// calling it without the lock held.
 pub(super) struct CompactionLockToken {
-    #[allow(dead_code)]
-    private: (),
+    _private: (),
 }
 
 /// Tries to acquire the compaction lock.
@@ -93,11 +92,11 @@ pub(super) async fn try_acquire_lock(
     .expect("CompactionLock is always serializable");
 
     let acquired = storage
-        .put_if_absent(&key, &payload)
+        .put_if_absent(key, &payload)
         .await
         .map_err(SyncError::RemoteUnreachable)?;
 
-    Ok(acquired.then_some(CompactionLockToken { private: () }))
+    Ok(acquired.then_some(CompactionLockToken { _private: () }))
 }
 
 /// Releases the compaction lock.
@@ -117,7 +116,7 @@ pub(super) async fn release_lock(
 
 /// Metadata produced by a successful [`compact_tier`] call, so the caller can update its
 /// in-memory view of known files. The on-disk last known state is already up to date by the
-/// time this is returned, compact_tier writes it incrementally as each remote op succeeds.
+/// time this is returned, `compact_tier` writes it incrementally as each remote op succeeds.
 pub(super) struct CompactionResult {
     pub(super) sources: Vec<RemoteOpFile>,
     pub(super) new_file: RemoteOpFile,
@@ -152,8 +151,9 @@ pub(super) async fn compact_tier(
         .cloned()
         .collect();
 
-    // Read all op groups from every source file, from the local cache.
-    let mut all_entries: Vec<crate::operations::CompactionEntry> = Vec::new();
+    // Read all individual operations from every source file, deduplicated by dot.
+    let mut operations = Vec::new();
+    let mut known_dots = HashSet::new();
     for source in &sources {
         let RemoteOpFile::Compaction {
             uuid,
@@ -162,21 +162,22 @@ pub(super) async fn compact_tier(
         } = source;
         let file =
             last_known_state.read_compaction_file(master_key, uuid, *file_tier, *op_count)?;
-        all_entries.extend(file.contents);
+        operations.extend(
+            file.operations
+                .into_iter()
+                .filter(|operation| known_dots.insert(operation.dot)),
+        );
     }
 
     // Write the new compaction file at tier+1. Encrypted once, so the same ciphertext is
     // written to both the remote and the local cache below.
     let new_uuid = CompactedOpId::new();
     let new_tier = tier + 1;
-    let new_op_count: u32 = all_entries
-        .iter()
-        .map(|e| e.group.operations.len() as u32)
-        .sum();
+    let new_op_count = operations.len() as u32;
     let new_key = format!("operations/{new_uuid}.op{new_tier}_{new_op_count}");
     let new_file = crate::operations::CompactionFile {
         tier: new_tier,
-        contents: all_entries,
+        operations,
     };
     let blob = crate::operations::encrypt_compaction_file(master_key, &new_uuid, &new_file)
         .map_err(map_op_err)?;

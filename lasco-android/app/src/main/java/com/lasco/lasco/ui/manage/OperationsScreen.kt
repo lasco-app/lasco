@@ -29,21 +29,21 @@ import com.lasco.lasco.ui.theme.lascoPanel
 import java.text.SimpleDateFormat
 import java.util.Locale
 import uniffi.lasco_ffi.FfiOperation
-import uniffi.lasco_ffi.FfiOperationGroup
+import uniffi.lasco_ffi.FfiCrdtOperation
 
 /**
  * Ported from Swift's OperationsView, gated behind expert mode the same way
- * as the Swift Manage screen. Shows the raw operation log, newest group first.
+ * as the Swift Manage screen. Shows individual CRDT operations, newest first.
  */
 @Composable
 fun OperationsScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     val colors = LascoTheme.colors
     val context = LocalContext.current
     val repo = remember { LibraryRepository.from(context) }
-    var groups by remember { mutableStateOf<List<FfiOperationGroup>>(emptyList()) }
+    var operations by remember { mutableStateOf<List<FfiCrdtOperation>>(emptyList()) }
 
     LaunchedEffect(Unit) {
-        groups = repo.listOperationGroups().reversed()
+        operations = repo.listOperations().reversed()
     }
 
     Column(
@@ -63,7 +63,7 @@ fun OperationsScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
         Text(text = "OPERATIONS", style = LascoTheme.type.categoryLarge(), color = colors.ink)
         Spacer(modifier = Modifier.height(16.dp))
 
-        if (groups.isEmpty()) {
+        if (operations.isEmpty()) {
             Column(
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 verticalArrangement = Arrangement.Center,
@@ -80,8 +80,8 @@ fun OperationsScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                items(groups, key = { it.opId }) { group ->
-                    OperationGroupCard(group)
+                items(operations, key = { "${it.dot.deviceId}:${it.dot.lamportCounter}" }) { operation ->
+                    OperationCard(operation)
                 }
             }
         }
@@ -89,7 +89,7 @@ fun OperationsScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun OperationGroupCard(group: FfiOperationGroup) {
+private fun OperationCard(operation: FfiCrdtOperation) {
     val colors = LascoTheme.colors
     Column(
         modifier = Modifier.fillMaxWidth().lascoPanel().padding(14.dp),
@@ -97,20 +97,12 @@ private fun OperationGroupCard(group: FfiOperationGroup) {
     ) {
         Row(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(text = group.opId.value.take(12), style = LascoTheme.type.mono(), color = colors.ink)
-                group.parentOpId?.let { parentId ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(text = "↑", style = LascoTheme.type.mono(), color = colors.inkMuted)
-                        Text(text = parentId.value.take(12), style = LascoTheme.type.mono(), color = colors.inkMuted)
-                    }
-                }
+                Text(text = "${operation.dot.deviceId.take(8)}:${operation.dot.lamportCounter}", style = LascoTheme.type.mono(), color = colors.ink)
             }
-            Text(text = group.author, style = LascoTheme.type.mono(), color = colors.inkMuted)
+            Text(text = operation.author, style = LascoTheme.type.mono(), color = colors.inkMuted)
         }
 
-        for (op in group.operations) {
-            OperationRow(op)
-        }
+        OperationRow(operation.operation)
     }
 }
 

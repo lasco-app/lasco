@@ -1,12 +1,6 @@
-use crate::operations::OperationGroup;
-
-mod reconstruct;
-#[cfg(test)]
-mod tests;
 mod types;
 mod views;
 
-pub use reconstruct::reconstruct_state;
 pub use types::{
     AlbumBrowseItem, AlbumEntry, ComputedViews, GroupEntry, MediaEntry, ReconstructedState,
 };
@@ -19,10 +13,9 @@ pub struct OperationState {
 }
 
 impl OperationState {
-    pub fn build(sorted_ops: &[OperationGroup]) -> Self {
-        let reconstructed = reconstruct_state(sorted_ops);
+    pub fn from_reconstructed(reconstructed: ReconstructedState) -> Self {
         let views = build_computed_views(&reconstructed);
-        OperationState {
+        Self {
             reconstructed,
             views,
         }

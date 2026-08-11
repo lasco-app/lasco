@@ -13,7 +13,7 @@ pub struct StorageLocalFs {
 }
 
 impl StorageLocalFs {
-    pub fn new(root: impl Into<PathBuf>) -> Result<Self> {
+    pub(crate) fn new(root: impl Into<PathBuf>) -> Result<Self> {
         let root = root.into();
         Ok(Self { root })
     }
@@ -81,13 +81,15 @@ impl Storage for StorageLocalFs {
             return Err(StorageError::NotFound);
         }
         let mut keys = Vec::new();
-        for entry in WalkDir::new(&base).into_iter().filter_map(std::result::Result::ok) {
-            if entry.file_type().is_file() {
-                if let Ok(rel) = entry.path().strip_prefix(&self.root) {
-                    if let Some(s) = rel.to_str() {
-                        keys.push(s.to_owned());
-                    }
-                }
+        for entry in WalkDir::new(&base)
+            .into_iter()
+            .filter_map(std::result::Result::ok)
+        {
+            if entry.file_type().is_file()
+                && let Ok(rel) = entry.path().strip_prefix(&self.root)
+                && let Some(s) = rel.to_str()
+            {
+                keys.push(s.to_owned());
             }
         }
         Ok(keys)
@@ -129,7 +131,10 @@ mod tests {
     #[tokio::test]
     async fn get_missing_key_returns_not_found() {
         let (s, _dir) = store();
-        assert!(matches!(s.get("missing").await, Err(StorageError::NotFound)));
+        assert!(matches!(
+            s.get("missing").await,
+            Err(StorageError::NotFound)
+        ));
     }
 
     #[tokio::test]

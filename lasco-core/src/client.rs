@@ -74,7 +74,9 @@ fn build_usb_android_storage(_tree_uri: &str) -> Result<Box<dyn Storage + Send +
 
 #[cfg(target_vendor = "apple")]
 fn build_usb_apple_storage(bookmark_base64: &str) -> Result<Box<dyn Storage + Send + Sync>> {
-    Ok(Box::new(crate::storage::StorageUsbApple::new(bookmark_base64)?))
+    Ok(Box::new(crate::storage::StorageUsbApple::new(
+        bookmark_base64,
+    )?))
 }
 
 #[cfg(not(target_vendor = "apple"))]
@@ -105,7 +107,7 @@ pub async fn open_library(
     if let Some(master_key) = session_load_master_key(*library_id, &username, session_dir)? {
         let library = Library::open_with_master_key(local_dirs, master_key, *library_id, username)
             .await
-            .map_err(|e| anyhow::anyhow!("failed to open library: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("failed to open library: {e}"))?;
         library.load_local_state().await?;
         return Ok(library);
     }
@@ -121,7 +123,7 @@ pub async fn open_library(
         },
     )
     .await
-    .map_err(|e| anyhow::anyhow!("failed to open library: {}", e))?;
+    .map_err(|e| anyhow::anyhow!("failed to open library: {e}"))?;
 
     session_store_master_key(*library_id, &username, library.master_key(), session_dir)?;
 
@@ -183,7 +185,10 @@ pub async fn create_library(
 ///
 /// `new_user` optionally registers an additional user (same master key, encrypted
 /// under a new password) and makes that user the effective one for this device.
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "S3 connection settings are kept explicit at this public entry point."
+)]
 pub async fn add_existing_library_s3(
     app_dir: &Path,
     nickname: String,
@@ -263,7 +268,7 @@ pub async fn add_existing_library_s3(
         username.clone(),
     )
     .await
-    .map_err(|e| anyhow::anyhow!("failed to open library: {}", e))?;
+    .map_err(|e| anyhow::anyhow!("failed to open library: {e}"))?;
 
     // Optionally register and switch to a new user on this device.
     let (effective_username, active_password_uuid, library) = match new_user {
@@ -271,7 +276,7 @@ pub async fn add_existing_library_s3(
             let new_uuid = library
                 .user_add(new_username.clone(), new_password)
                 .await
-                .map_err(|e| anyhow::anyhow!("failed to add user: {}", e))?;
+                .map_err(|e| anyhow::anyhow!("failed to add user: {e}"))?;
 
             // Propagate the new user's master-key file to the remote so other
             // devices can authenticate as them.
@@ -290,7 +295,7 @@ pub async fn add_existing_library_s3(
                 new_username.clone(),
             )
             .await
-            .map_err(|e| anyhow::anyhow!("failed to reopen library as new user: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("failed to reopen library as new user: {e}"))?;
             (new_username, new_uuid, library)
         }
         None => (username, active_password_uuid, library),
@@ -341,11 +346,11 @@ pub async fn add_existing_library_s3(
     library
         .fetch(&storage, &remote_uuid.to_string())
         .await
-        .map_err(|e| anyhow::anyhow!("failed to fetch from remote: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("failed to fetch from remote: {e}"))?;
     library
         .load_local_state()
         .await
-        .map_err(|e| anyhow::anyhow!("failed to load local state: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("failed to load local state: {e}"))?;
 
     Ok((library_id, library))
 }
@@ -374,15 +379,15 @@ pub fn delete_library(
     if let Some(dir) = session_dir {
         let session_lib_dir = dir.join(library_id.to_string());
         if session_lib_dir.exists() {
-            std::fs::remove_dir_all(&session_lib_dir).ok();
+            let _ = std::fs::remove_dir_all(&session_lib_dir);
         }
     }
 
-    if let Some(mut config) = ConfigJson::load(app_dir)? {
-        if config.libraries.contains_key(library_id) {
-            config.remove_library(library_id)?;
-            config.save(app_dir)?;
-        }
+    if let Some(mut config) = ConfigJson::load(app_dir)?
+        && config.libraries.contains_key(library_id)
+    {
+        config.remove_library(library_id)?;
+        config.save(app_dir)?;
     }
 
     Ok(())
