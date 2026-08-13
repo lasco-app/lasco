@@ -128,8 +128,10 @@ impl Library {
         let remote_last_known_state_dir =
             self.inner.local_dirs.remote_last_known_state_dir(remote_id);
         let remote_media_list = self.inner.local_dirs.remote_media_list(remote_id);
-        let remote_merged_remote_files =
-            self.inner.local_dirs.remote_merged_remote_files(remote_id);
+        let remote_compact_op_id_merged_to_local = self
+            .inner
+            .local_dirs
+            .remote_compact_op_id_merged_to_local(remote_id);
         let local_state_crdt = self.inner.local_dirs.local_state_crdt();
         let fetch_report = {
             let _fetch_guard = self
@@ -142,7 +144,7 @@ impl Library {
                     local_state_library_dir: &local_state_library_dir,
                     remote_last_known_state_dir: &remote_last_known_state_dir,
                     remote_media_list: &remote_media_list,
-                    remote_merged_remote_files: &remote_merged_remote_files,
+                    remote_compact_op_id_merged_to_local: &remote_compact_op_id_merged_to_local,
                     local_ops_read_write_lock: &self.inner.local_ops_read_write_lock,
                     remote_media_list_lock: &self.inner.remote_media_list_lock,
                 },

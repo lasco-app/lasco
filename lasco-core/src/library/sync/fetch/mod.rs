@@ -7,12 +7,12 @@ use crate::identifiers::{LibraryId, RemoteUuid};
 use crate::library::Library;
 use crate::library::local_dirs::{
     LocalStateCrdt, LocalStateLibraryDir, RemoteLastKnownStateDir, RemoteMediaList,
-    RemoteMergedRemoteFiles,
+    RemoteCompactOpIdMergedToLocal,
 };
 use crate::library::local_ops_read_write::LocalOpsReadWriteLock;
 use crate::library::remote_media_list_lock::RemoteMediaListLock;
 use crate::operations::remote_ops::RemoteOpFile;
-use crate::remote::{LastKnownState, MediaList, MergedRemoteFiles};
+use crate::remote::{CompactOpIdMergedToLocal, LastKnownState, MediaList};
 
 use super::remote_access::StorageRead;
 use super::{SyncReportFetch, verify_remote_identity};
@@ -22,7 +22,7 @@ pub(super) struct FetchAccess<'a> {
     pub local_state_library_dir: &'a LocalStateLibraryDir,
     pub remote_last_known_state_dir: &'a RemoteLastKnownStateDir,
     pub remote_media_list: &'a RemoteMediaList,
-    pub remote_merged_remote_files: &'a RemoteMergedRemoteFiles,
+    pub remote_compact_op_id_merged_to_local: &'a RemoteCompactOpIdMergedToLocal,
     pub local_ops_read_write_lock: &'a LocalOpsReadWriteLock,
     pub remote_media_list_lock: &'a RemoteMediaListLock,
 }
@@ -47,8 +47,10 @@ impl Library {
         let remote_last_known_state_dir =
             self.inner.local_dirs.remote_last_known_state_dir(remote_id);
         let remote_media_list = self.inner.local_dirs.remote_media_list(remote_id);
-        let remote_merged_remote_files =
-            self.inner.local_dirs.remote_merged_remote_files(remote_id);
+        let remote_compact_op_id_merged_to_local = self
+            .inner
+            .local_dirs
+            .remote_compact_op_id_merged_to_local(remote_id);
         let local_state_crdt = self.inner.local_dirs.local_state_crdt();
         let report = fetch_impl(
             FetchAccess {
@@ -56,7 +58,7 @@ impl Library {
                 local_state_library_dir: &local_state_library_dir,
                 remote_last_known_state_dir: &remote_last_known_state_dir,
                 remote_media_list: &remote_media_list,
-                remote_merged_remote_files: &remote_merged_remote_files,
+                remote_compact_op_id_merged_to_local: &remote_compact_op_id_merged_to_local,
                 local_ops_read_write_lock: &self.inner.local_ops_read_write_lock,
                 remote_media_list_lock: &self.inner.remote_media_list_lock,
             },
@@ -96,8 +98,10 @@ pub(super) async fn fetch_impl(
 
     // Load merge progress for immutable remote operation files. It controls only whether a file
     // must be merged again; cache presence is determined independently by LastKnownState.
-    let merged_files_path = access.remote_merged_remote_files.merged_remote_files_path();
-    let mut merged_files = MergedRemoteFiles::load_or_default(&merged_files_path)?;
+    let merged_files_path = access
+        .remote_compact_op_id_merged_to_local
+        .compact_op_id_merged_to_local_path();
+    let mut merged_files = CompactOpIdMergedToLocal::load_or_default(&merged_files_path)?;
 
     let last_known_state = LastKnownState::download(
         access.storage,

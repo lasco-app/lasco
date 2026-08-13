@@ -90,7 +90,7 @@ impl LocalStateMediaDir {
 
 /// `remotes/{remote_id}/state/operations/`: this client's last-known operation state for one remote.
 ///
-/// This deliberately excludes `merged_remote_files.json` and `media/media_list.json`, despite
+/// This deliberately excludes `compact_op_id_merged_to_local.json` and `media/media_list.json`, despite
 /// their shared `state/` parent directory.
 #[derive(Clone, Debug)]
 pub struct RemoteLastKnownStateDir {
@@ -122,16 +122,16 @@ impl RemoteMediaList {
     }
 }
 
-/// `remotes/{remote_id}/state/merged_remote_files.json`: fetch merge progress for one remote.
+/// `remotes/{remote_id}/state/compact_op_id_merged_to_local.json`: fetch merge progress for one remote.
 #[derive(Clone, Debug)]
-pub struct RemoteMergedRemoteFiles {
+pub struct RemoteCompactOpIdMergedToLocal {
     path: PathBuf,
 }
 
-impl RemoteMergedRemoteFiles {
+impl RemoteCompactOpIdMergedToLocal {
     /// Records immutable remote operation files already merged into `operations.log`.
     #[must_use]
-    pub fn merged_remote_files_path(&self) -> PathBuf {
+    pub fn compact_op_id_merged_to_local_path(&self) -> PathBuf {
         self.path.clone()
     }
 }
@@ -209,14 +209,17 @@ impl LocalDirs {
     }
 
     #[must_use]
-    pub fn remote_merged_remote_files(&self, remote_id: &str) -> RemoteMergedRemoteFiles {
-        RemoteMergedRemoteFiles {
+    pub fn remote_compact_op_id_merged_to_local(
+        &self,
+        remote_id: &str,
+    ) -> RemoteCompactOpIdMergedToLocal {
+        RemoteCompactOpIdMergedToLocal {
             path: self
                 .root
                 .join("remotes")
                 .join(remote_id)
                 .join("state")
-                .join("merged_remote_files.json"),
+                .join("compact_op_id_merged_to_local.json"),
         }
     }
 

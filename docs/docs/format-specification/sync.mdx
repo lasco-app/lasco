@@ -32,7 +32,7 @@ Fetch lists and downloads remote operation files missing from the remote's last-
 - **Local:**
   - Read and append to the local operation log.
   - Read and atomically write the remote's last-known operation state (`remotes/{remote_id}/state/operations/`).
-  - Read and atomically write the merge marker (`remotes/{remote_id}/state/merged_remote_files.json`).
+  - Read and atomically write the merge marker (`remotes/{remote_id}/state/compact_op_id_merged_to_local.json`).
   - Read and opportunistically atomically update the media inventory (`remotes/{remote_id}/state/media/media_list.json`) under its per-remote mutex.
   - Atomically write missing `mk_*.enc` files in the library directory.
 - **In-memory local state:** Rebuild derived state from `CrdtState`.
@@ -72,7 +72,7 @@ Fetch lists and downloads remote operation files missing from the remote's last-
     </tr>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>5</td>
-      <td>Apply individual operations from compacted files not already recorded in `remotes/{remote_id}/state/merged_remote_files.json` to `crdt-state.enc` and append them to the local log. Applying a duplicate is safe because each CRDT substate is idempotent. Fetch may record media blobs whose remote existence it successfully confirms in `media_list.json`; this positive-only inventory may be incomplete. Update `merged_remote_files.json`, then rebuild derived state once.</td>
+      <td>Apply individual operations from compacted files not already recorded in `remotes/{remote_id}/state/compact_op_id_merged_to_local.json` to `crdt-state.enc` and append them to the local log. Applying a duplicate is safe because each CRDT substate is idempotent. Fetch may record media blobs whose remote existence it successfully confirms in `media_list.json`; this positive-only inventory may be incomplete. Update `compact_op_id_merged_to_local.json`, then rebuild derived state once.</td>
       <td><span className="tag tag-ok">Read remote</span> <span className="tag tag-warn">Append local log</span> <span className="tag tag-warn">Write local state</span> <span className="tag tag-warn">Rebuild in-memory state</span></td>
     </tr>
   </tbody>
