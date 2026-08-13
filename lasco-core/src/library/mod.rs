@@ -304,6 +304,8 @@ impl Library {
         let remote_last_known_state_dir =
             self.inner.local_dirs.remote_last_known_state_dir(remote_id);
         let master_key = &self.inner.master_key;
+        // The log is the complete operation history, including operations received
+        // during Fetch that may still need delivery to this remote.
         let local_ids = self.local_ops_read_write().known_dots()?;
 
         if local_ids.is_empty() {

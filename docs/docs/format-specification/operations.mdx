@@ -95,10 +95,11 @@ still covered by the remote's current files, then merges unseen dots into canoni
 local operation log. Each immutable file is marked merged only after its operations have been
 persisted. Fetch records confirmed `MediaCreation` objects in the positive-only media inventory.
 
-Push compares `CrdtStateReplica.outgoing` with dots covered by the target remote's cached files.
-It uploads uncovered operations in one compaction file and writes the same ciphertext into the
-target's last-known-state cache. The outbox is intentionally durable across remotes: an operation
-must remain available until each configured remote has covered it.
+Push compares dots in the complete local operation log with dots covered by the target remote's
+cached files. It uploads uncovered operations in one compaction file and writes the same ciphertext
+into the target's last-known-state cache. `CrdtStateReplica.outgoing` is a durable local-mutation
+outbox used for crash recovery: it repairs a log append interrupted after the snapshot write, but
+is not Push's source of truth because it excludes operations learned by Fetch.
 
 ## Debug UI
 

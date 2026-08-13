@@ -86,7 +86,7 @@ Push brings a target remote up to date with the local library by uploading missi
 
 Push uploads all files that are considered missing on the target remote, based on its last known state.
 
-For operation files, the client simply copies what it has locally. For media and thumbnail files, since they are downloaded lazily, the client may not have them on disk. Because the last known state of all remotes is stored locally, the push procedure can download the needed files directly from another remote and immediately upload them to the target, without performing a full fetch.
+For operation files, the client selects operations from the complete local operation log whose dots are not covered by the target remote's cached operation files, then writes them as one immutable compaction file. For media and thumbnail files, since they are downloaded lazily, the client may not have them on disk. Because the last known state of all remotes is stored locally, the push procedure can download the needed files directly from another remote and immediately upload them to the target, without performing a full fetch.
 
 ### Required access
 
@@ -95,7 +95,7 @@ For operation files, the client simply copies what it has locally. For media and
 - **Sync policy:** Acquire the per-remote sync slot.
 - **Remote:** List, read, write, and delete access.
 - **Local:**
-  - Read local master-key files, the CRDT outbox, reconstructed derived state, and media files.
+  - Read local master-key files, reconstructed derived state, and media files.
   - Read the remote's last-known operation state (`remotes/{remote_id}/state/operations/`) and the media inventory (`remotes/{remote_id}/state/media/media_list.json`).
   - Read the append-only operation log; no pending operation file exists.
   - Atomically write the remote's last-known operation state and, under its per-remote mutex, the media inventory.

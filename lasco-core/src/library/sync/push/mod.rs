@@ -189,14 +189,15 @@ impl Library {
             }
         }
 
+        // The append-only log is the complete local operation history. `outgoing`
+        // contains locally-authored delivery obligations only, so it deliberately
+        // excludes operations learned by Fetch that must be relayed to this remote.
+        // Read it synchronously and release its guard before any network await.
         let ops_to_upload: Vec<_> = self
-            .inner
-            .crdt_replica_state
-            .read()
-            .outgoing
-            .iter()
+            .local_ops_read_write()
+            .read_operations()?
+            .into_iter()
             .filter(|operation| !remote_covered.contains(&operation.dot))
-            .cloned()
             .collect();
 
         let ops_uploaded = ops_to_upload.len();
