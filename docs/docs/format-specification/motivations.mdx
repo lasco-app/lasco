@@ -40,7 +40,7 @@ Since media are rarely present locally, a push often involves downloading from o
 Because no server coordinates writes, concurrent modifications from multiple clients could produce conflicts. Lasco adopts a **CRDT-inspired operation log**: every local change is recorded as an operation appended to a log. When pushing or fetching, operation logs are merged. This merge is always well-defined because two invariants are enforced for the vast majority of stored files:
 
 1. **Unique random names.** Every new file is given a randomly generated name, making name collisions effectively impossible.
-2. **Immutability.** Once created, a file is never modified in place. The one exception is the local pending-operations file, which accumulates operations before they are uploaded.
+2. **Immutability.** Once created, a file is never modified in place. The local `crdt-state.enc` snapshot is the exception: it is atomically replaced as the durable CRDT state and outgoing-operation outbox change.
 
 ### Always-representable state
 
