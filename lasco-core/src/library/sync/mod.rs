@@ -149,7 +149,7 @@ impl Library {
                 remote_id,
                 self.inner.library_id,
                 &self.inner.master_key,
-                &self.inner.crdt_replica_state,
+                &self.inner.crdt_state,
                 &local_state_crdt,
             )
             .await?;

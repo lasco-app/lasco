@@ -480,9 +480,8 @@ impl Library {
         for album_id in album_ids {
             let observed = self
                 .inner
-                .crdt_replica_state
+                .crdt_state
                 .read()
-                .state
                 .album_member_dots(album_id, media_id);
             self.record_local_operation(
                 chrono::Utc::now(),

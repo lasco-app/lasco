@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::crdt::{CrdtOperation, CrdtStateReplica, OperationContent};
+use crate::crdt::{CrdtOperation, CrdtState, OperationContent};
 use crate::encryption::master_key::{MasterKey, parse_mk_filename};
 use crate::error::{LibraryError, SyncError};
 use crate::identifiers::{LibraryId, RemoteUuid};
@@ -63,7 +63,7 @@ impl Library {
             remote_id,
             self.inner.library_id,
             &self.inner.master_key,
-            &self.inner.crdt_replica_state,
+            &self.inner.crdt_state,
             &local_state_crdt,
         )
         .await?;
@@ -79,7 +79,7 @@ pub(super) async fn fetch_impl(
     remote_id: &str,
     library_id: LibraryId,
     master_key: &MasterKey,
-    replica_state: &parking_lot::RwLock<CrdtStateReplica>,
+    crdt_state: &parking_lot::RwLock<CrdtState>,
     local_state_crdt: &LocalStateCrdt,
 ) -> Result<SyncReportFetch, LibraryError> {
     let remote_uuid = remote_id
@@ -109,8 +109,11 @@ pub(super) async fn fetch_impl(
     let mut ops_downloaded = 0usize;
     let mut merged_files_changed = false;
     let mut local_state_rebuild_required = false;
+    // This is a transient log-write deduplication set, not materialized CRDT state.
+    // CrdtState itself remains idempotent when an operation is applied again.
+    let mut local_log_dots = access.local_ops_read_write_lock.lock(master_key).known_dots()?;
     let inventory_operations = {
-        let mut replica = replica_state.write();
+        let mut crdt_state = crdt_state.write();
         let mut inventory_operations = Vec::new();
         for file in last_known_state.files() {
             let file_uuid = LastKnownState::file_uuid(file);
@@ -126,15 +129,15 @@ pub(super) async fn fetch_impl(
                     let compaction = last_known_state
                         .read_compaction_file(master_key, uuid, *tier, *op_count)?;
                     for operation in &compaction.operations {
-                        if !replica.state.causal_context.contains(&operation.dot) {
+                        if local_log_dots.insert(operation.dot) {
                             access
                                 .local_ops_read_write_lock
                                 .lock(master_key)
                                 .append_operation(operation)?;
-                            replica.state.apply(operation);
-                            inventory_operations.push(operation.clone());
                             ops_downloaded += 1;
                         }
+                        crdt_state.apply(operation);
+                        inventory_operations.push(operation.clone());
                     }
                     merged_files.insert(file_uuid);
                     merged_files_changed = true;
@@ -147,7 +150,7 @@ pub(super) async fn fetch_impl(
             merged_files.save(&merged_files_path)?;
         }
         if local_state_rebuild_required {
-            crate::crdt::save_persisted(&local_state_crdt.snapshot_path(), master_key, &replica)?;
+            crate::crdt::save_persisted(&local_state_crdt.snapshot_path(), master_key, &crdt_state)?;
         }
         inventory_operations
     };

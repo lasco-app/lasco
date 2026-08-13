@@ -24,7 +24,8 @@ CrdtOperation {
 ```
 
 `author` and `timestamp` are audit metadata. Conflict resolution uses only the dot and the
-operation content. Receivers merge an operation only if its dot is absent from causal context.
+operation content. Receivers may apply a duplicate operation: each affected CRDT substate is
+idempotent using its own stored dots.
 
 `OperationContent` includes media creation, rename and properties; album creation, membership,
 rename, reparent, thumbnail, and permanent deletion; and group creation, membership, and permanent
@@ -33,18 +34,19 @@ concurrent unseen adds win.
 
 ## Local durable state
 
-`local_state/crdt-state.enc` is an atomically replaced, encrypted CBOR `CrdtStateReplica`:
+`local_state/crdt-state.enc` is an atomically replaced, encrypted CBOR `CrdtState`:
 
 ```text
-CrdtStateReplica {
-  state: CanonicalState,       // causal context, device clock, CRDT registers and sets
-  outgoing: Vec<CrdtOperation> // durable operations still requiring remote delivery
+CrdtState {
+  device_id: DeviceId,
+  lamport_clock: LamportClock,
+  // CRDT registers, sets, and tombstones
 }
 ```
 
 `local_state/operations.log` is an append-only sequence of encrypted frames. Each frame is one
 `CrdtOperation`; it is not a second state representation. Reads authenticate every frame and
-deduplicate by dot. A local edit saves the snapshot/outbox, appends the operation frame, then
+deduplicate by dot. A local edit appends the operation frame, saves the snapshot, then
 rebuilds the derived browse state. Interruption can create a duplicate frame, which is harmless.
 
 The materialized browse state and computed views are derived caches. They are never persisted and
@@ -91,15 +93,14 @@ dot deduplication.
 ## Fetch and push
 
 Fetch caches immutable remote files, verifies that all dots previously cached for that remote are
-still covered by the remote's current files, then merges unseen dots into canonical state and the
+still covered by the remote's current files, then applies their operations to `CrdtState` and the
 local operation log. Each immutable file is marked merged only after its operations have been
 persisted. Fetch records confirmed `MediaCreation` objects in the positive-only media inventory.
 
 Push compares dots in the complete local operation log with dots covered by the target remote's
 cached files. It uploads uncovered operations in one compaction file and writes the same ciphertext
-into the target's last-known-state cache. `CrdtStateReplica.outgoing` is a durable local-mutation
-outbox used for crash recovery: it repairs a log append interrupted after the snapshot write, but
-is not Push's source of truth because it excludes operations learned by Fetch.
+into the target's last-known-state cache. `CrdtState` is a materialized CRDT-state snapshot,
+not an operation outbox. The operation log is the sole source used to decide what Push delivers.
 
 ## Debug UI
 

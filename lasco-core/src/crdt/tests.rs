@@ -54,9 +54,9 @@ fn lww_is_order_independent_including_option_clear() {
             name: None,
         },
     );
-    let mut left = CanonicalState::new(DeviceId(1));
+    let mut left = CrdtState::new(DeviceId(1));
     left.merge_all([&create, &rename, &clear]);
-    let mut right = CanonicalState::new(DeviceId(2));
+    let mut right = CrdtState::new(DeviceId(2));
     right.merge_all([&clear, &create, &rename]);
     assert_eq!(left.albums[&id].name, right.albums[&id].name);
     assert_eq!(left.albums[&id].name.as_ref().unwrap().value, None);
@@ -88,7 +88,7 @@ fn observed_remove_is_add_wins_for_unseen_concurrent_adds() {
             observed: HashSet::from([add_a.dot]),
         },
     );
-    let mut state = CanonicalState::new(DeviceId(3));
+    let mut state = CrdtState::new(DeviceId(3));
     state.merge_all([&remove, &add_b, &add_a, &add_a]);
     assert_eq!(
         state.album_member_dots(aid, mid),
@@ -114,7 +114,7 @@ fn mutation_before_creation_retains_its_lww_value() {
             parent_id: None,
         },
     );
-    let mut state = CanonicalState::new(DeviceId(1));
+    let mut state = CrdtState::new(DeviceId(1));
     state.merge_all([&rename, &create]);
     assert_eq!(
         state.albums[&id].name.as_ref().unwrap().value,
@@ -143,7 +143,7 @@ fn tombstones_are_permanent_and_hide_membership() {
             media_id: mid,
         },
     );
-    let mut state = CanonicalState::new(DeviceId(4));
+    let mut state = CrdtState::new(DeviceId(4));
     state.merge_all([&add, &delete, &create]);
     assert!(!state.is_album_created_and_live(id));
     assert!(state.album_member_dots(id, mid).contains(&add.dot));
@@ -169,7 +169,7 @@ fn cycles_sever_the_lowest_winning_parent_dot() {
             parent_id: Some(a),
         },
     );
-    let mut state = CanonicalState::new(DeviceId(3));
+    let mut state = CrdtState::new(DeviceId(3));
     state.merge_all([&create_b, &create_a]);
     let projection = state.album_projection();
     assert_eq!(projection.effective_parents[&a], None);
@@ -179,9 +179,9 @@ fn cycles_sever_the_lowest_winning_parent_dot() {
 
 #[test]
 fn clock_advances_past_remote_observations() {
-    let mut clock = ReplicaClock::new(DeviceId(9));
+    let mut clock = LamportClock::default();
     clock.observe(dot(41, 2));
-    assert_eq!(clock.next_dot(), dot(42, 9));
+    assert_eq!(clock.next_dot(DeviceId(9)), dot(42, 9));
 }
 
 #[test]
@@ -229,7 +229,7 @@ fn media_registers_preserve_creation_and_merge_each_property_independently() {
             value: "new".into(),
         },
     );
-    let mut state = CanonicalState::new(DeviceId(4));
+    let mut state = CrdtState::new(DeviceId(4));
     state.merge_all([&rename, &property_new, &create, &property_old]);
     let media = &state.media[&id];
     assert_eq!(
@@ -282,7 +282,7 @@ fn group_parent_is_immutable_and_its_membership_is_an_observed_remove_set() {
         dot(5, 3),
         OperationContent::GroupDeletion { group_id: group },
     );
-    let mut state = CanonicalState::new(DeviceId(4));
+    let mut state = CrdtState::new(DeviceId(4));
     state.merge_all([&delete, &remove, &later_create, &add, &create]);
     assert_eq!(
         state.groups[&group]
@@ -331,18 +331,17 @@ fn reordered_and_duplicated_operations_converge_to_the_same_canonical_state() {
         },
     );
     let operations = [&create, &thumbnail, &clear_thumbnail, &add];
-    let mut left = CanonicalState::new(DeviceId(7));
+    let mut left = CrdtState::new(DeviceId(7));
     left.merge_all(operations);
-    let mut right = CanonicalState::new(DeviceId(8));
+    let mut right = CrdtState::new(DeviceId(8));
     right.merge_all([&add, &clear_thumbnail, &create, &thumbnail, &add]);
-    assert_eq!(left.causal_context, right.causal_context);
     assert_eq!(left.albums, right.albums);
     assert_eq!(left.album_memberships, right.album_memberships);
     assert_eq!(left.albums[&id].thumbnail.as_ref().unwrap().value, None);
 }
 
 #[test]
-fn persisted_state_keeps_causal_context_clock_and_outbox() {
+fn persisted_state_keeps_crdt_metadata_and_clock() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("crdt-state.enc");
     let master_key = crate::encryption::master_key::generate_master_key();
@@ -350,15 +349,12 @@ fn persisted_state_keeps_causal_context_clock_and_outbox() {
         dot(7, 2),
         OperationContent::AlbumDeletion { album_id: album(1) },
     );
-    let mut persisted = CrdtStateReplica {
-        state: CanonicalState::new(DeviceId(3)),
-        outgoing: vec![operation.clone()],
-    };
-    persisted.state.apply(&operation);
+    let mut persisted = CrdtState::new(DeviceId(3));
+    persisted.apply(&operation);
     save_persisted(&path, &master_key, &persisted).unwrap();
     let mut loaded = load_persisted(&path, &master_key, DeviceId(99)).unwrap();
     assert_eq!(loaded, persisted);
-    assert_eq!(loaded.state.next_local_dot(), dot(8, 3));
+    assert_eq!(loaded.next_local_dot(), dot(8, 3));
 }
 
 #[test]
@@ -367,7 +363,7 @@ fn materialization_hides_missing_or_deleted_ancestors_and_groups() {
     let live_parent = album(2);
     let deleted_parent = album(3);
     let group = GroupUuid::from_uuid(Uuid::from_u128(4));
-    let mut state = CanonicalState::new(DeviceId(1));
+    let mut state = CrdtState::new(DeviceId(1));
     let operations = [
         op(
             dot(1, 1),
@@ -446,9 +442,9 @@ fn encrypted_operation_log_is_a_merge_oracle_and_deduplicates_dots() {
             .len(),
         2
     );
-    let mut from_log = CanonicalState::new(DeviceId(10));
+    let mut from_log = CrdtState::new(DeviceId(10));
     from_log.merge_all(logged.iter());
-    let mut expected = CanonicalState::new(DeviceId(10));
+    let mut expected = CrdtState::new(DeviceId(10));
     expected.merge_all([&first, &second]);
     assert_eq!(from_log, expected);
 }
@@ -478,7 +474,7 @@ fn merge_is_commutative_associative_and_idempotent() {
         },
     );
     let merge = |operations: &[&CrdtOperation]| {
-        let mut state = CanonicalState::new(DeviceId(99));
+        let mut state = CrdtState::new(DeviceId(99));
         state.merge_all(operations.iter().copied());
         state
     };

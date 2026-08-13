@@ -1,26 +1,16 @@
 use serde::{Deserialize, Serialize};
 
-use super::{CanonicalState, CrdtOperation, DeviceId};
+use super::{CrdtState, DeviceId};
 
 const CRDT_SNAPSHOT_FORMAT_VERSION: u32 = 1;
 
-/// The encrypted local snapshot written atomically after a merge. The outbox is
-/// deliberately separate from causal context: it records delivery obligations,
-/// whereas causal context records operations already incorporated in state.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct CrdtStateReplica {
-    pub state: CanonicalState,
-    pub outgoing: Vec<CrdtOperation>,
-}
-
-/// Versioned on-disk representation of [`CrdtStateReplica`]. The version applies only to the
+/// Versioned on-disk representation of [`CrdtState`]. The version applies only to the
 /// local snapshot encoding; it does not alter CRDT operation semantics.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-struct PersistedCrdtStateReplica {
+struct VersionedCrdtState {
     #[serde(default)]
     format_version: u32,
-    state: CanonicalState,
-    outgoing: Vec<CrdtOperation>,
+    state: CrdtState,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -39,44 +29,36 @@ pub enum PersistenceError {
     UnsupportedFormatVersion(u32),
 }
 
-/// Reads a complete canonical-state snapshot. There is intentionally no reader
-/// for the pre-CRDT operation log; this format is an explicit local-data reset.
+/// Reads a complete `CrdtState` snapshot.
 pub(crate) fn load_persisted(
     path: &std::path::Path,
     master_key: &crate::encryption::master_key::MasterKey,
     device_id: DeviceId,
-) -> Result<CrdtStateReplica, PersistenceError> {
+) -> Result<CrdtState, PersistenceError> {
     if !path.exists() {
-        return Ok(CrdtStateReplica {
-            state: CanonicalState::new(device_id),
-            outgoing: Vec::new(),
-        });
+        return Ok(CrdtState::new(device_id));
     }
     let encrypted = crate::encryption::blob::BlobEncrypted::from_bytes(&std::fs::read(path)?)?;
     let key = crate::encryption::blob_key::derive_blob_key(master_key, &CRDT_STATE_KEY_ID);
     let bytes = crate::encryption::blob::decrypt_blob(&key, &encrypted)?;
-    let persisted: PersistedCrdtStateReplica = ciborium::de::from_reader(bytes.as_slice())
+    let persisted: VersionedCrdtState = ciborium::de::from_reader(bytes.as_slice())
         .map_err(|error| PersistenceError::Deserialize(error.to_string()))?;
     match persisted.format_version {
-        0 | CRDT_SNAPSHOT_FORMAT_VERSION => Ok(CrdtStateReplica {
-            state: persisted.state,
-            outgoing: persisted.outgoing,
-        }),
+        CRDT_SNAPSHOT_FORMAT_VERSION => Ok(persisted.state),
         version => Err(PersistenceError::UnsupportedFormatVersion(version)),
     }
 }
 
-/// Atomically encrypts and replaces the canonical state and durable outbox.
+/// Atomically encrypts and replaces the `CrdtState` snapshot.
 pub(crate) fn save_persisted(
     path: &std::path::Path,
     master_key: &crate::encryption::master_key::MasterKey,
-    persisted: &CrdtStateReplica,
+    state: &CrdtState,
 ) -> Result<(), PersistenceError> {
     let mut bytes = Vec::new();
-    let on_disk = PersistedCrdtStateReplica {
+    let on_disk = VersionedCrdtState {
         format_version: CRDT_SNAPSHOT_FORMAT_VERSION,
-        state: persisted.state.clone(),
-        outgoing: persisted.outgoing.clone(),
+        state: state.clone(),
     };
     ciborium::ser::into_writer(&on_disk, &mut bytes)
         .map_err(|error| PersistenceError::Serialize(error.to_string()))?;
@@ -101,10 +83,9 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("crdt-state.enc");
         let key = crate::encryption::master_key::generate_master_key();
-        let unsupported = PersistedCrdtStateReplica {
+        let unsupported = VersionedCrdtState {
             format_version: CRDT_SNAPSHOT_FORMAT_VERSION + 1,
-            state: CanonicalState::new(DeviceId(1)),
-            outgoing: Vec::new(),
+            state: CrdtState::new(DeviceId(1)),
         };
         let mut plaintext = Vec::new();
         ciborium::ser::into_writer(&unsupported, &mut plaintext).unwrap();
@@ -118,4 +99,5 @@ mod tests {
                 if version == CRDT_SNAPSHOT_FORMAT_VERSION + 1
         ));
     }
+
 }

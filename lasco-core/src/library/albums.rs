@@ -145,9 +145,8 @@ impl Library {
     pub async fn album_remove_media(&self, album_id: AlbumUuid, media_id: MediaUuid) -> Result<()> {
         let observed = self
             .inner
-            .crdt_replica_state
+            .crdt_state
             .read()
-            .state
             .album_member_dots(album_id, media_id);
         self.record_local_operation(
             Utc::now(),

@@ -1,4 +1,4 @@
-//! Canonical, incrementally merged library CRDT state.
+//! Materialized, incrementally merged library CRDT state.
 //!
 //! This module deliberately has no storage or transport policy.  It is the
 //! representation persisted by the next storage format and the single merge
@@ -18,7 +18,7 @@ use crate::operations::{
 use crate::state::{AlbumEntry, GroupEntry, MediaEntry, ReconstructedState};
 
 /// A device-stable random identifier. Generate it once and persist it with the
-/// canonical state; creating it per operation would defeat Lamport ordering.
+/// `CrdtState`; creating it per operation would defeat Lamport ordering.
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
@@ -39,38 +39,28 @@ pub struct Dot {
     pub device_id: DeviceId,
 }
 
-/// Counter state owned by a replica. It is persisted alongside canonical CRDT
-/// state and advanced for every observed remote dot before the next local dot.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ReplicaClock {
-    pub device_id: DeviceId,
-    pub counter: u64,
-}
+/// Persisted Lamport timestamp. It advances for every observed remote dot before
+/// the next locally-authored dot is allocated.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct LamportClock(u64);
 
-impl ReplicaClock {
-    #[must_use]
-    pub fn new(device_id: DeviceId) -> Self {
-        Self {
-            device_id,
-            counter: 0,
-        }
-    }
-
+impl LamportClock {
     pub fn observe(&mut self, dot: Dot) {
-        self.counter = self.counter.max(dot.lamport_counter);
+        self.0 = self.0.max(dot.lamport_counter);
     }
 
     /// # Panics
     ///
-    /// Panics if this replica has emitted `u64::MAX` dots and its Lamport counter cannot advance.
-    pub fn next_dot(&mut self) -> Dot {
-        self.counter = self
-            .counter
+    /// Panics if it cannot advance past `u64::MAX`; this should never happen in practice.
+    pub fn next_dot(&mut self, device_id: DeviceId) -> Dot {
+        self.0 = self
+            .0
             .checked_add(1)
-            .expect("Lamport counter exhausted");
+            .expect("Lamport clock exhausted");
         Dot {
-            lamport_counter: self.counter,
-            device_id: self.device_id,
+            lamport_counter: self.0,
+            device_id,
         }
     }
 }
@@ -198,11 +188,10 @@ impl ObservedRemoveSet {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct CanonicalState {
-    /// All seen operation identities, used for idempotence and sync.
-    pub causal_context: HashSet<Dot>,
-    pub clock: ReplicaClock,
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CrdtState {
+    pub device_id: DeviceId,
+    pub lamport_clock: LamportClock,
     pub media: HashMap<MediaUuid, MediaCrdt>,
     pub albums: HashMap<AlbumUuid, AlbumCrdt>,
     pub groups: HashMap<GroupUuid, GroupCrdt>,
@@ -210,9 +199,17 @@ pub struct CanonicalState {
     pub group_memberships: HashMap<(GroupUuid, MediaUuid), ObservedRemoveSet>,
 }
 
-impl Default for ReplicaClock {
+impl Default for CrdtState {
     fn default() -> Self {
-        Self::new(DeviceId::random())
+        Self {
+            device_id: DeviceId::random(),
+            lamport_clock: LamportClock::default(),
+            media: HashMap::new(),
+            albums: HashMap::new(),
+            groups: HashMap::new(),
+            album_memberships: HashMap::new(),
+            group_memberships: HashMap::new(),
+        }
     }
 }
 
@@ -254,30 +251,28 @@ pub struct GroupCreation {
     pub parent_id: AlbumUuid,
 }
 
-impl CanonicalState {
+impl CrdtState {
     #[must_use]
     pub fn new(device_id: DeviceId) -> Self {
         Self {
-            clock: ReplicaClock::new(device_id),
+            device_id,
             ..Self::default()
         }
     }
 
     pub fn next_local_dot(&mut self) -> Dot {
-        self.clock.next_dot()
+        self.lamport_clock.next_dot(self.device_id)
     }
 
-    /// Merges one operation. Duplicate dots are intentionally no-ops.
+    /// Merges one operation. Each CRDT substate is idempotent: LWW registers retain
+    /// their winning dot, observed-remove sets store add/tombstone dots, and entity
+    /// tombstones retain their greatest dot. No global set of applied operations is kept.
     #[allow(
         clippy::too_many_lines,
         reason = "Keeping all CRDT operation mutations in one exhaustive match makes state transitions auditable."
     )]
     pub fn apply(&mut self, operation: &CrdtOperation) {
-        self.clock.observe(operation.dot);
-        if !self.causal_context.insert(operation.dot) {
-            return;
-        }
-
+        self.lamport_clock.observe(operation.dot);
         match &operation.content {
             OperationContent::MediaCreation(creation) => {
                 let media = self.media.entry(creation.media_id).or_default();

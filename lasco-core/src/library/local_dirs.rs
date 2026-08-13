@@ -39,8 +39,7 @@ pub struct LocalStateOperations {
     local_state_dir: PathBuf,
 }
 
-/// `local_state/crdt-state.enc`: encrypted canonical CRDT state and durable
-/// outgoing-operation outbox. This replaces replay logs in format version 2.
+/// `local_state/crdt-state.enc`: encrypted materialized `CrdtState`.
 #[derive(Clone, Debug)]
 pub struct LocalStateCrdt {
     local_state_dir: PathBuf,

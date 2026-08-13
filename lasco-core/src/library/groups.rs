@@ -45,9 +45,8 @@ impl Library {
     pub async fn group_remove_media(&self, group_id: GroupUuid, media_id: MediaUuid) -> Result<()> {
         let observed = self
             .inner
-            .crdt_replica_state
+            .crdt_state
             .read()
-            .state
             .group_member_dots(group_id, media_id);
         self.record_local_operation(
             Utc::now(),

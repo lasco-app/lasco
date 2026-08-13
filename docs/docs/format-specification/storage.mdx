@@ -53,7 +53,7 @@ The root can be overridden via the `--data-dir` CLI flag.
         │   │   ├── library_salt           random 32-byte salt
         │   │   ├── version_1              write format version
         │   │   └── mk_{username}_{uuid}.enc  master key encrypted with the user's KEK
-        │   ├── crdt-state.enc            encrypted canonical state, device clock, and durable outbox
+        │   ├── crdt-state.enc            encrypted CrdtState and Lamport clock
         │   ├── operations.log            append-only encrypted frames of individual CRDT operations
         │   └── media/
         │       └── YYYY/

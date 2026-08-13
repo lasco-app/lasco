@@ -189,9 +189,8 @@ impl Library {
             }
         }
 
-        // The append-only log is the complete local operation history. `outgoing`
-        // contains locally-authored delivery obligations only, so it deliberately
-        // excludes operations learned by Fetch that must be relayed to this remote.
+        // The append-only log is the complete local operation history, including
+        // operations learned by Fetch that must be relayed to this remote.
         // Read it synchronously and release its guard before any network await.
         let ops_to_upload: Vec<_> = self
             .local_ops_read_write()
