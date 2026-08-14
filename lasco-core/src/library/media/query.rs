@@ -17,18 +17,6 @@ use super::MediaEntry;
 
 pub type Result<T> = std::result::Result<T, LibraryError>;
 
-/// Writes `data` to a temp file next to `path` then renames it into place, so a concurrent
-/// reader never observes a partially-written file.
-fn write_atomic(path: &Path, data: &[u8]) -> std::io::Result<()> {
-    let tmp_name = format!(
-        "{}.tmp",
-        path.file_name().unwrap_or_default().to_string_lossy()
-    );
-    let tmp = path.with_file_name(tmp_name);
-    std::fs::write(&tmp, data)?;
-    std::fs::rename(&tmp, path)
-}
-
 /// Selects which media entries `Library::media_list` returns.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MediaListScope {
@@ -234,7 +222,7 @@ impl Library {
         if let Some(parent) = data_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        write_atomic(&data_path, &blob_bytes)?;
+        crate::atomic_file::write(&data_path, &blob_bytes)?;
 
         Ok(plaintext)
     }
@@ -304,7 +292,7 @@ impl Library {
                 if let Some(parent) = thumb_path.parent() {
                     std::fs::create_dir_all(parent)?;
                 }
-                write_atomic(&thumb_path, &bytes)?;
+                crate::atomic_file::write(&thumb_path, &bytes)?;
                 bytes
             }
             Err(e) => return Err(LibraryError::Io(e)),
