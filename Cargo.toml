@@ -29,6 +29,7 @@ redundant_type_annotations      = "warn"
 empty_structs_with_brackets     = "warn"
 
 too_many_lines                      = "warn"
+multiple_crate_versions             = "allow"
 
 [profile.release]
 strip = true

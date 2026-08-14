@@ -32,7 +32,7 @@ pub struct MediaEntry {
 }
 
 impl MediaEntry {
-    pub(crate) fn from_state(entry: &crate::state::MediaEntry, group_ids: Vec<GroupUuid>) -> Self {
+    pub(crate) fn from_state(entry: &crate::crdt::MediaEntry, group_ids: Vec<GroupUuid>) -> Self {
         Self {
             media_id: entry.media_id,
             filename_original: entry.filename_original.clone(),

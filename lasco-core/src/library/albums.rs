@@ -3,6 +3,7 @@ use std::collections::{HashSet, VecDeque};
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
+use crate::crdt::GroupEntry;
 use crate::crdt::OperationContent;
 use crate::error::LibraryError;
 use crate::identifiers::{AlbumUuid, MediaUuid};
@@ -10,7 +11,7 @@ use crate::library::Library;
 use crate::library::media::MediaEntry;
 use crate::library::range::inclusive_slice;
 use crate::operations::AlbumName;
-use crate::state::{AlbumBrowseItem, GroupEntry};
+use crate::state::AlbumBrowseItem;
 
 pub type Result<T> = std::result::Result<T, LibraryError>;
 
@@ -45,14 +46,14 @@ impl Library {
     /// name and then ID. `None` denotes the root album level.
     #[must_use]
     pub fn album_albums(&self, parent_album_id: Option<AlbumUuid>) -> Vec<AlbumSummary> {
-        let state = self.inner.operation_state.read();
+        let state = self.inner.state.read();
         state
             .views
             .album_albums_by_name
             .get(&parent_album_id)
             .into_iter()
             .flatten()
-            .filter_map(|album_id| state.reconstructed.albums.get(album_id))
+            .filter_map(|album_id| state.crdt.album(*album_id))
             .map(|entry| AlbumSummary {
                 album_id: entry.album_id,
                 album_id_parent: entry.album_id_parent,
@@ -64,7 +65,7 @@ impl Library {
     }
 
     pub fn album_albums_count(&self, parent_album_id: Option<AlbumUuid>) -> usize {
-        let state = self.inner.operation_state.read();
+        let state = self.inner.state.read();
         state
             .views
             .album_albums_by_name
@@ -82,7 +83,7 @@ impl Library {
         if pos_start_inclusive > pos_end_inclusive {
             return Vec::new();
         }
-        let state = self.inner.operation_state.read();
+        let state = self.inner.state.read();
         let Some(album_ids) = state.views.album_albums_by_name.get(&parent_album_id) else {
             return Vec::new();
         };
@@ -90,7 +91,7 @@ impl Library {
             return Vec::new();
         };
         ids.iter()
-            .filter_map(|album_id| state.reconstructed.albums.get(album_id))
+            .filter_map(|album_id| state.crdt.album(*album_id))
             .map(|entry| AlbumSummary {
                 album_id: entry.album_id,
                 album_id_parent: entry.album_id_parent,
@@ -117,7 +118,6 @@ impl Library {
                 parent_id: album_id_parent,
             },
         )?;
-        self.load_local_state().await?;
         Ok(album_id)
     }
 
@@ -129,7 +129,6 @@ impl Library {
             Utc::now(),
             OperationContent::AlbumMediaAdd { album_id, media_id },
         )?;
-        self.load_local_state().await?;
         Ok(())
     }
 
@@ -139,8 +138,9 @@ impl Library {
     pub async fn album_remove_media(&self, album_id: AlbumUuid, media_id: MediaUuid) -> Result<()> {
         let observed = self
             .inner
-            .crdt_state
+            .state
             .read()
+            .crdt
             .album_member_dots(album_id, media_id);
         self.record_local_operation(
             Utc::now(),
@@ -150,7 +150,6 @@ impl Library {
                 observed,
             },
         )?;
-        self.load_local_state().await?;
         Ok(())
     }
 
@@ -159,7 +158,6 @@ impl Library {
     /// Returns an error if the album is absent or the delete operation cannot be persisted.
     pub async fn album_delete(&self, album_id: AlbumUuid) -> Result<()> {
         self.record_local_operation(Utc::now(), OperationContent::AlbumDeletion { album_id })?;
-        self.load_local_state().await?;
         Ok(())
     }
 
@@ -167,7 +165,7 @@ impl Library {
     ///
     /// Returns an error if the album is absent.
     pub fn album_list_media(&self, album_id: AlbumUuid) -> Result<Vec<MediaEntry>> {
-        let state = self.inner.operation_state.read();
+        let state = self.inner.state.read();
         let media_ids = state
             .views
             .by_album
@@ -176,14 +174,10 @@ impl Library {
         let entries = media_ids
             .iter()
             .filter_map(|mid| {
-                let media = state.reconstructed.media.get(mid)?;
-                let group_ids = state
-                    .views
-                    .media_group_membership
-                    .get(mid)
-                    .cloned()
-                    .unwrap_or_default();
-                Some(MediaEntry::from_state(media, group_ids))
+                state
+                    .crdt
+                    .media(*mid)
+                    .map(|media| MediaEntry::from_state(&media, media.group_ids.clone()))
             })
             .collect();
         Ok(entries)
@@ -193,7 +187,7 @@ impl Library {
     ///
     /// Returns an error if the album is absent.
     pub fn album_items_count(&self, album_id: AlbumUuid) -> Result<usize> {
-        let state = self.inner.operation_state.read();
+        let state = self.inner.state.read();
         state
             .views
             .album_items_newest
@@ -217,7 +211,7 @@ impl Library {
         if pos_start_inclusive > pos_end_inclusive {
             return Ok(Vec::new());
         }
-        let state = self.inner.operation_state.read();
+        let state = self.inner.state.read();
         let items = state
             .views
             .album_items_newest
@@ -245,34 +239,25 @@ impl Library {
             .into_iter()
             .filter_map(|item| match item {
                 AlbumBrowseItem::Media(media_id) => {
-                    let media = state.reconstructed.media.get(media_id)?;
-                    let group_ids = state
-                        .views
-                        .media_group_membership
-                        .get(media_id)
-                        .cloned()
-                        .unwrap_or_default();
+                    let media = state.crdt.media(*media_id)?;
                     Some(DatedAlbumItem {
-                        item: AlbumItem::Media(MediaEntry::from_state(media, group_ids)),
+                        item: AlbumItem::Media(MediaEntry::from_state(
+                            &media,
+                            media.group_ids.clone(),
+                        )),
                         effective_date: media.date,
                     })
                 }
                 AlbumBrowseItem::Group(group_id) => {
-                    let group = state.reconstructed.groups.get(group_id)?;
+                    let group = state.crdt.group(*group_id)?;
                     let effective_date = group
                         .media_ids
                         .iter()
-                        .filter_map(|media_id| {
-                            state
-                                .reconstructed
-                                .media
-                                .get(media_id)
-                                .map(|media| media.date)
-                        })
+                        .filter_map(|media_id| state.crdt.media(*media_id).map(|media| media.date))
                         .max()
                         .unwrap_or_default();
                     Some(DatedAlbumItem {
-                        item: AlbumItem::Group(group.clone()),
+                        item: AlbumItem::Group(group),
                         effective_date,
                     })
                 }
@@ -282,13 +267,13 @@ impl Library {
 
     #[must_use]
     pub fn album_list(&self) -> Vec<AlbumSummary> {
-        let state = self.inner.operation_state.read();
+        let state = self.inner.state.read();
         state
             .views
             .album_albums_by_name
             .values()
             .flatten()
-            .filter_map(|album_id| state.reconstructed.albums.get(album_id))
+            .filter_map(|album_id| state.crdt.album(*album_id))
             .map(|entry| AlbumSummary {
                 album_id: entry.album_id,
                 album_id_parent: entry.album_id_parent,
@@ -303,12 +288,12 @@ impl Library {
     /// Uses a visited set so it is safe even if reparent ops created cycles.
     #[must_use]
     pub fn album_get_path(&self, album_id: AlbumUuid) -> String {
-        let state = self.inner.operation_state.read();
+        let state = self.inner.state.read();
         let mut current = album_id;
         let mut names = Vec::new();
         let mut visited: HashSet<AlbumUuid> = HashSet::new();
 
-        while let Some(entry) = state.reconstructed.albums.get(&current) {
+        while let Some(entry) = state.crdt.album(current) {
             if !visited.insert(current) {
                 names.push("...".to_string());
                 break;
@@ -330,8 +315,8 @@ impl Library {
     /// Returns an error if the album is absent or the rename operation cannot be persisted.
     pub async fn album_rename(&self, album_id: AlbumUuid, name: AlbumName) -> Result<()> {
         {
-            let state = self.inner.operation_state.read();
-            if !state.reconstructed.albums.contains_key(&album_id) {
+            let state = self.inner.state.read();
+            if state.crdt.album(album_id).is_none() {
                 return Err(LibraryError::AlbumNotFound(album_id));
             }
         }
@@ -342,7 +327,6 @@ impl Library {
                 name: Some(name),
             },
         )?;
-        self.load_local_state().await?;
         Ok(())
     }
 
@@ -355,8 +339,8 @@ impl Library {
         new_parent_id: Option<AlbumUuid>,
     ) -> Result<()> {
         {
-            let state = self.inner.operation_state.read();
-            if !state.reconstructed.albums.contains_key(&album_id) {
+            let state = self.inner.state.read();
+            if state.crdt.album(album_id).is_none() {
                 return Err(LibraryError::AlbumNotFound(album_id));
             }
             if new_parent_id == Some(album_id) {
@@ -372,11 +356,7 @@ impl Library {
                     if !visited.insert(c) {
                         break;
                     }
-                    cursor = state
-                        .reconstructed
-                        .albums
-                        .get(&c)
-                        .and_then(|e| e.album_id_parent);
+                    cursor = state.crdt.album(c).and_then(|entry| entry.album_id_parent);
                 }
             }
         }
@@ -387,7 +367,6 @@ impl Library {
                 parent_id: new_parent_id,
             },
         )?;
-        self.load_local_state().await?;
         Ok(())
     }
 
@@ -395,7 +374,7 @@ impl Library {
     /// These arise from concurrent reparent ops that created cycles.
     #[must_use]
     pub fn album_disconnected_ids(&self) -> Vec<AlbumUuid> {
-        let state = self.inner.operation_state.read();
+        let state = self.inner.state.read();
         let mut reachable: HashSet<AlbumUuid> = HashSet::new();
         let mut queue: VecDeque<AlbumUuid> = VecDeque::new();
 
@@ -418,10 +397,10 @@ impl Library {
         }
 
         state
-            .reconstructed
-            .albums
-            .values()
-            .filter(|a| !a.deleted && !reachable.contains(&a.album_id))
+            .crdt
+            .album_entries()
+            .iter()
+            .filter(|a| !reachable.contains(&a.album_id))
             .map(|a| a.album_id)
             .collect()
     }
@@ -432,11 +411,8 @@ impl Library {
         &self,
         album_id: AlbumUuid,
     ) -> Option<(AlbumName, Option<AlbumUuid>, usize, Option<MediaUuid>)> {
-        let state = self.inner.operation_state.read();
-        let entry = state.reconstructed.albums.get(&album_id)?;
-        if entry.deleted {
-            return None;
-        }
+        let state = self.inner.state.read();
+        let entry = state.crdt.album(album_id)?;
         Some((
             entry.name.clone(),
             entry.album_id_parent,
@@ -454,8 +430,8 @@ impl Library {
         media_id: Option<MediaUuid>,
     ) -> Result<()> {
         {
-            let state = self.inner.operation_state.read();
-            if !state.reconstructed.albums.contains_key(&album_id) {
+            let state = self.inner.state.read();
+            if state.crdt.album(album_id).is_none() {
                 return Err(LibraryError::AlbumNotFound(album_id));
             }
         }
@@ -463,7 +439,6 @@ impl Library {
             Utc::now(),
             OperationContent::AlbumThumbnailSet { album_id, media_id },
         )?;
-        self.load_local_state().await?;
         Ok(())
     }
 
@@ -474,13 +449,13 @@ impl Library {
         reason = "Retained for name-based album selection in the CLI."
     )]
     fn album_resolve_name(&self, name: &AlbumName) -> Result<AlbumUuid> {
-        let state = self.inner.operation_state.read();
+        let state = self.inner.state.read();
         let matches: Vec<(AlbumUuid, String)> = state
-            .reconstructed
-            .albums
+            .crdt
+            .album_entries()
             .iter()
-            .filter(|(_, entry)| !entry.deleted && &entry.name == name)
-            .map(|(id, _)| (*id, self.album_get_path(*id)))
+            .filter(|entry| &entry.name == name)
+            .map(|entry| (entry.album_id, self.album_get_path(entry.album_id)))
             .collect();
 
         match matches.len() {
@@ -673,7 +648,7 @@ mod tests {
             .unwrap()
             .id();
 
-        let state = lib.inner.operation_state.read();
+        let state = lib.inner.state.read();
         let by_album = &state.views.by_album;
         assert!(
             by_album
@@ -721,7 +696,6 @@ mod tests {
             .album_create(AlbumName("Root Album".into()), None)
             .await
             .unwrap();
-        lib.load_local_state().await.unwrap();
 
         let path = lib.album_get_path(album_id);
         assert_eq!(path, "Root Album");
@@ -746,7 +720,6 @@ mod tests {
             .album_create(AlbumName("Grandchild".into()), Some(child))
             .await
             .unwrap();
-        lib.load_local_state().await.unwrap();
 
         let path = lib.album_get_path(grandchild);
         assert_eq!(path, "Root / Child / Grandchild");
@@ -761,7 +734,6 @@ mod tests {
 
         let album_name = AlbumName("Unique Album".into());
         let album_id = lib.album_create(album_name.clone(), None).await.unwrap();
-        lib.load_local_state().await.unwrap();
 
         let resolved = lib.album_resolve_name(&album_name).unwrap();
         assert_eq!(resolved, album_id);
@@ -790,7 +762,6 @@ mod tests {
         let album_name = AlbumName("Duplicate".into());
         let _album1 = lib.album_create(album_name.clone(), None).await.unwrap();
         let _album2 = lib.album_create(album_name.clone(), None).await.unwrap();
-        lib.load_local_state().await.unwrap();
 
         let result = lib.album_resolve_name(&album_name);
         assert!(matches!(
@@ -814,11 +785,9 @@ mod tests {
 
         let album_name = AlbumName("Deletable".into());
         let album_id = lib.album_create(album_name.clone(), None).await.unwrap();
-        lib.load_local_state().await.unwrap();
 
         // Delete the album
         lib.album_delete(album_id).await.unwrap();
-        lib.load_local_state().await.unwrap();
 
         // Resolution should now fail
         let result = lib.album_resolve_name(&album_name);
@@ -834,11 +803,9 @@ mod tests {
 
         let album_name = AlbumName("Deletable".into());
         let album_id = lib.album_create(album_name.clone(), None).await.unwrap();
-        lib.load_local_state().await.unwrap();
 
         // Delete the album
         lib.album_delete(album_id).await.unwrap();
-        lib.load_local_state().await.unwrap();
 
         // Deleted ancestors do not remain browse-visible.
         let path = lib.album_get_path(album_id);

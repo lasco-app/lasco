@@ -18,9 +18,6 @@ use remote_access::{StorageRead, StorageReadWrite};
 #[derive(Debug)]
 pub struct SyncReportFetch {
     pub ops_downloaded: usize,
-    /// True when this invocation merged a remote file and callers must rebuild state, even when
-    /// every operation was already appended by an interrupted earlier invocation.
-    pub(crate) local_state_rebuild_required: bool,
 }
 
 #[derive(Debug)]
@@ -141,7 +138,7 @@ impl Library {
                 .try_acquire_fetch_slot()
                 .ok_or(SyncError::AlreadyRunning)?;
             let remote = StorageRead::new(storage);
-            let report = fetch_impl(
+            fetch_impl(
                 FetchAccess {
                     storage: &remote,
                     local_state_library_dir: &local_state_library_dir,
@@ -154,14 +151,10 @@ impl Library {
                 remote_id,
                 self.inner.library_id,
                 &self.inner.master_key,
-                &self.inner.crdt_state,
+                &self.inner.state,
                 &local_state_crdt,
             )
-            .await?;
-            if report.local_state_rebuild_required {
-                self.load_local_state().await?;
-            }
-            report
+            .await?
         };
         let remote = StorageReadWrite::new(storage);
         let push_report = self

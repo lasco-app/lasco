@@ -404,11 +404,10 @@ fn materialization_hides_missing_or_deleted_ancestors_and_groups() {
         ),
     ];
     state.merge_all(operations.iter());
-    let materialized = state.materialize();
-    assert!(materialized.albums.contains_key(&live_parent));
-    assert!(!materialized.albums.contains_key(&orphan));
-    assert!(!materialized.albums.contains_key(&deleted_parent));
-    assert!(!materialized.groups.contains_key(&group));
+    assert!(state.album(live_parent).is_some());
+    assert!(state.album(orphan).is_none());
+    assert!(state.album(deleted_parent).is_none());
+    assert!(state.group(group).is_none());
 }
 
 #[test]

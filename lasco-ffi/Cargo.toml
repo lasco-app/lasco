@@ -28,6 +28,7 @@ missing_fields_in_debug = "allow"
 case_sensitive_file_extension_comparisons = "allow"
 items_after_statements = "allow"
 cargo_common_metadata = "allow"
+multiple_crate_versions = "allow"
 
 [lib]
 crate-type = ["cdylib", "staticlib"]

@@ -56,7 +56,7 @@ impl Library {
 
         // If a media with the same hash already exists, return it.
         {
-            let state = self.inner.operation_state.read();
+            let state = self.inner.state.read();
             if let Some(existing_ids) = state.views.by_content_hash.get(&content_hash)
                 && let Some(&existing_id) = existing_ids.first()
             {
@@ -116,8 +116,6 @@ impl Library {
                 OperationContent::AlbumMediaAdd { album_id, media_id },
             )?;
         }
-
-        self.load_local_state().await?;
 
         Ok(MediaAddResult::Added(media_id))
     }

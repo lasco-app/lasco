@@ -21,11 +21,9 @@ pub(super) fn inclusive_range(start: u32, end: u32) -> Result<(usize, usize), La
 impl FfiLibrary {
     /// # Errors
     ///
-    /// Returns an error when rebuilding the local state from persisted operations fails.
+    /// Views are rebuilt atomically with every state change; retained as a no-op for FFI compatibility.
     pub fn load_local_state(&self) -> Result<(), LascoError> {
-        self.rt
-            .block_on(self.inner.load_local_state())
-            .map_err(Into::into)
+        Ok(())
     }
 
     pub fn library_id(&self) -> FfiLibraryId {

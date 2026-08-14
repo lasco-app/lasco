@@ -155,22 +155,22 @@ impl Library {
         // source and retry without a partially completed default Push.
         if relay_source.is_none() {
             let missing: Vec<_> = {
-                let state = self.inner.operation_state.read();
+                let state = self.inner.state.read();
                 state
-                    .reconstructed
-                    .media
+                    .crdt
+                    .media_entries()
                     .iter()
-                    .filter(|(media_id, _)| !media_list.contains(media_id))
-                    .filter_map(|(media_id, file_meta)| {
+                    .filter(|entry| !media_list.contains(&entry.media_id))
+                    .filter_map(|entry| {
                         (!access
                             .local_state_media_dir
                             .data_path(
-                                file_meta.storage_date.year,
-                                file_meta.storage_date.month,
-                                media_id,
+                                entry.storage_date.year,
+                                entry.storage_date.month,
+                                &entry.media_id,
                             )
                             .exists())
-                        .then_some(*media_id)
+                        .then_some(entry.media_id)
                     })
                     .collect()
             };
@@ -275,15 +275,15 @@ impl Library {
         }
 
         let media_pending: Vec<FileToPush> = {
-            let state = self.inner.operation_state.read();
+            let state = self.inner.state.read();
             state
-                .reconstructed
-                .media
+                .crdt
+                .media_entries()
                 .iter()
-                .filter(|(media_id, _)| !media_list.contains(media_id))
-                .map(|(media_id, file_meta)| FileToPush {
-                    media_id: *media_id,
-                    storage_date: file_meta.storage_date,
+                .filter(|entry| !media_list.contains(&entry.media_id))
+                .map(|entry| FileToPush {
+                    media_id: entry.media_id,
+                    storage_date: entry.storage_date,
                 })
                 .collect()
         };

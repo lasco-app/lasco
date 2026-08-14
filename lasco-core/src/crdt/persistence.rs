@@ -99,5 +99,4 @@ mod tests {
                 if version == CRDT_SNAPSHOT_FORMAT_VERSION + 1
         ));
     }
-
 }

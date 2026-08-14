@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::crdt::{CrdtOperation, CrdtState, OperationContent};
+use crate::crdt::{CrdtOperation, OperationContent};
 use crate::encryption::master_key::{MasterKey, parse_mk_filename};
 use crate::error::{LibraryError, SyncError};
 use crate::identifiers::{LibraryId, RemoteUuid};
@@ -13,6 +13,7 @@ use crate::library::local_ops_read_write::LocalOpsReadWriteLock;
 use crate::library::remote_media_list_lock::RemoteMediaListLock;
 use crate::operations::remote_ops::RemoteOpFile;
 use crate::remote::{CompactOpIdMergedToLocal, LastKnownState, MediaList};
+use crate::state::InMemoryLibraryState;
 
 use super::remote_access::StorageRead;
 use super::{SyncReportFetch, verify_remote_identity};
@@ -68,13 +69,10 @@ impl Library {
             remote_id,
             self.inner.library_id,
             &self.inner.master_key,
-            &self.inner.crdt_state,
+            &self.inner.state,
             &local_state_crdt,
         )
         .await?;
-        if report.local_state_rebuild_required {
-            self.load_local_state().await?;
-        }
         Ok(report)
     }
 }
@@ -84,7 +82,7 @@ pub(super) async fn fetch_impl(
     remote_id: RemoteUuid,
     library_id: LibraryId,
     master_key: &MasterKey,
-    crdt_state: &parking_lot::RwLock<CrdtState>,
+    state_lock: &parking_lot::RwLock<InMemoryLibraryState>,
     local_state_crdt: &LocalStateCrdt,
 ) -> Result<SyncReportFetch, LibraryError> {
     verify_remote_identity(access.storage, remote_id).await?;
@@ -110,7 +108,6 @@ pub(super) async fn fetch_impl(
 
     let mut ops_downloaded = 0usize;
     let mut merged_files_changed = false;
-    let mut local_state_rebuild_required = false;
     // This is a transient log-write deduplication set, not materialized CRDT state.
     // CrdtState itself remains idempotent when an operation is applied again.
     let mut local_log_dots = access
@@ -118,7 +115,7 @@ pub(super) async fn fetch_impl(
         .lock(master_key)
         .known_dots()?;
     let inventory_operations = {
-        let mut crdt_state = crdt_state.write();
+        let mut state = state_lock.write();
         let mut inventory_operations = Vec::new();
         for file in last_known_state.files() {
             let file_uuid = LastKnownState::file_uuid(file);
@@ -141,12 +138,11 @@ pub(super) async fn fetch_impl(
                                 .append_operation(operation)?;
                             ops_downloaded += 1;
                         }
-                        crdt_state.apply(operation);
+                        state.crdt.apply(operation);
                         inventory_operations.push(operation.clone());
                     }
                     merged_files.insert(file_uuid);
                     merged_files_changed = true;
-                    local_state_rebuild_required = true;
                 }
             }
         }
@@ -154,12 +150,13 @@ pub(super) async fn fetch_impl(
         if merged_files_changed {
             merged_files.save(&merged_files_path)?;
         }
-        if local_state_rebuild_required {
+        if merged_files_changed {
             crate::crdt::save_persisted(
                 &local_state_crdt.snapshot_path(),
                 master_key,
-                &crdt_state,
+                &state.crdt,
             )?;
+            state.rebuild_views();
         }
         inventory_operations
     };
@@ -174,10 +171,7 @@ pub(super) async fn fetch_impl(
         .await;
     }
 
-    Ok(SyncReportFetch {
-        ops_downloaded,
-        local_state_rebuild_required,
-    })
+    Ok(SyncReportFetch { ops_downloaded })
 }
 
 /// Step 1 of fetch. Verifies the remote's `library/library_id_{uuid}` matches this
