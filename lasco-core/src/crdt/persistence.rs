@@ -81,6 +81,10 @@ const CRDT_STATE_KEY_ID: uuid::Uuid =
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::crdt::{CrdtOperation, Dot, OperationContent};
+    use crate::identifiers::AlbumUuid;
+    use crate::operations::LibraryUsername;
+    use chrono::Utc;
 
     #[test]
     fn snapshot_rejects_an_unknown_format_version() {
@@ -102,5 +106,37 @@ mod tests {
             Err(PersistenceError::UnsupportedFormatVersion(version))
                 if version == CRDT_SNAPSHOT_FORMAT_VERSION + 1
         ));
+    }
+
+    #[test]
+    fn snapshot_keeps_crdt_metadata_and_clock() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("crdt-state.enc");
+        let master_key = crate::encryption::master_key::generate_master_key();
+        let operation = CrdtOperation {
+            dot: Dot {
+                lamport_counter: 7,
+                device_id: DeviceId(2),
+            },
+            author: LibraryUsername("test".into()),
+            timestamp: Utc::now(),
+            content: OperationContent::AlbumDeletion {
+                album_id: AlbumUuid::from_uuid(uuid::Uuid::from_u128(1)),
+            },
+        };
+        let mut persisted = CrdtState::new(DeviceId(3));
+        persisted.apply(&operation);
+
+        save_persisted(&path, &master_key, &persisted).unwrap();
+        let mut loaded = load_persisted(&path, &master_key, DeviceId(99)).unwrap();
+
+        assert_eq!(loaded, persisted);
+        assert_eq!(
+            loaded.next_local_dot(),
+            Dot {
+                lamport_counter: 8,
+                device_id: DeviceId(3),
+            }
+        );
     }
 }

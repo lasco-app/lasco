@@ -1,0 +1,43 @@
+---
+sidebar_position: 11
+sidebar_label: CRDT tests
+---
+
+# CRDT tests
+
+The CRDT test suite checks operation merging directly in `CrdtState`. Sync, storage, and user-interface tests have separate responsibilities.
+
+## Test layout
+
+Tests are grouped by the state they protect:
+
+- `media.rs` covers media creation and media registers.
+- `albums.rs` covers album registers, membership, deletion, and album-tree resolution.
+- `groups.rs` covers groups, group membership, deletion, and parent visibility.
+- `state.rs` covers rules that involve more than one substate: Lamport clocks and replica convergence.
+
+Test operations are authored as valid histories. A client can only remove add-dots it has observed, and it normally creates an entity before mutating it. Tests may deliver those operations in any order because transport order is not part of CRDT semantics.
+
+## Deterministic scenarios
+
+Each substate has small named tests for its rules. They cover last-write-wins registers, explicit clears, observed-remove membership, permanent tombstones, missing parents, and deterministic cycle handling. These tests document the expected result of a particular conflict.
+
+## Delivery orders
+
+Each scenario is a valid, small operation history. The test runs every possible delivery order and checks the resulting library state, rather than comparing private CRDT implementation details.
+
+This checks the three merge laws:
+
+- The order of delivery does not matter.
+- Merging in batches has the same result as merging all operations together.
+- Delivering an operation more than once does not change the result.
+
+Larger histories should use selected adversarial orders or a generated valid history. Exhaustive permutations remain the default whenever the history is small enough.
+
+## Running the suite
+
+Run CRDT tests with:
+
+```sh
+cargo nextest run -p lasco-core crdt::
+```
