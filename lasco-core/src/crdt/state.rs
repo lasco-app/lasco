@@ -219,16 +219,22 @@ impl ObservedRemoveSet {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CrdtState {
-    pub device_id: DeviceId,
-    pub lamport_clock: LamportClock,
-    pub media: HashMap<MediaUuid, MediaCrdt>,
-    pub albums: HashMap<AlbumUuid, AlbumCrdt>,
-    pub groups: HashMap<GroupUuid, GroupCrdt>,
-    pub album_memberships: HashMap<(AlbumUuid, MediaUuid), ObservedRemoveSet>,
-    pub group_memberships: HashMap<(GroupUuid, MediaUuid), ObservedRemoveSet>,
+    pub(super) device_id: DeviceId,
+    pub(super) lamport_clock: LamportClock,
+    pub(super) media: HashMap<MediaUuid, MediaCrdt>,
+    pub(super) albums: HashMap<AlbumUuid, AlbumCrdt>,
+    pub(super) groups: HashMap<GroupUuid, GroupCrdt>,
+    pub(super) album_memberships: HashMap<(AlbumUuid, MediaUuid), ObservedRemoveSet>,
+    pub(super) group_memberships: HashMap<(GroupUuid, MediaUuid), ObservedRemoveSet>,
     /// Derived, in-memory query indexes. This cache is never serialized.
     #[serde(skip)]
-    pub views: ComputedViews,
+    pub(crate) views: ComputedViews,
+}
+
+pub(crate) struct ResolvedEntries {
+    pub(crate) media: Vec<MediaEntry>,
+    pub(crate) albums: Vec<AlbumEntry>,
+    pub(crate) groups: Vec<GroupEntry>,
 }
 
 impl Default for CrdtState {
@@ -544,7 +550,7 @@ impl CrdtState {
         clippy::too_many_lines,
         reason = "Resolving all query entries together guarantees one shared album projection."
     )]
-    fn resolved_entries(&self) -> (Vec<MediaEntry>, Vec<AlbumEntry>, Vec<GroupEntry>) {
+    pub(crate) fn resolve_entries(&self) -> ResolvedEntries {
         let projection = self.album_projection();
         let mut media_entries = Vec::new();
         for media in self.media.values() {
@@ -646,41 +652,45 @@ impl CrdtState {
         for entry in &mut group_entries {
             entry.media_ids.sort_by_key(|id| id.0);
         }
-        (media_entries, album_entries, group_entries)
+        ResolvedEntries {
+            media: media_entries,
+            albums: album_entries,
+            groups: group_entries,
+        }
     }
 
     #[must_use]
     pub fn media(&self, id: MediaUuid) -> Option<MediaEntry> {
-        self.resolved_entries()
-            .0
+        self.resolve_entries()
+            .media
             .into_iter()
             .find(|e| e.media_id == id)
     }
     #[must_use]
     pub fn media_entries(&self) -> Vec<MediaEntry> {
-        self.resolved_entries().0
+        self.resolve_entries().media
     }
     #[must_use]
     pub fn album(&self, id: AlbumUuid) -> Option<AlbumEntry> {
-        self.resolved_entries()
-            .1
+        self.resolve_entries()
+            .albums
             .into_iter()
             .find(|e| e.album_id == id)
     }
     #[must_use]
     pub fn album_entries(&self) -> Vec<AlbumEntry> {
-        self.resolved_entries().1
+        self.resolve_entries().albums
     }
     #[must_use]
     pub fn group(&self, id: GroupUuid) -> Option<GroupEntry> {
-        self.resolved_entries()
-            .2
+        self.resolve_entries()
+            .groups
             .into_iter()
             .find(|e| e.group_id == id)
     }
     #[must_use]
     pub fn group_entries(&self) -> Vec<GroupEntry> {
-        self.resolved_entries().2
+        self.resolve_entries().groups
     }
 }
 

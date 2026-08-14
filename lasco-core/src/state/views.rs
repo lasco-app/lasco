@@ -11,9 +11,10 @@ use crate::crdt::CrdtState;
 /// map, violating the consistency invariant established while reconstructing state.
 pub fn build_computed_views(state: &CrdtState) -> ComputedViews {
     let mut views = ComputedViews::default();
-    let media_entries = state.media_entries();
-    let album_entries = state.album_entries();
-    let group_entries = state.group_entries();
+    let resolved = state.resolve_entries();
+    let media_entries = resolved.media;
+    let album_entries = resolved.albums;
+    let group_entries = resolved.groups;
     let media: rustc_hash::FxHashMap<_, _> = media_entries
         .iter()
         .map(|entry| (entry.media_id, entry))
