@@ -8,6 +8,81 @@ use crate::library::media::MediaHash;
 use crate::operations::StorageDate;
 
 #[test]
+fn a_created_album_is_shown_as_a_root_album() {
+    let album_id = album(1);
+    let operations = [operation(
+        Dot {
+            lamport_counter: 1,
+            device_id: DeviceId(1),
+        },
+        OperationContent::AlbumCreation {
+            album_id,
+            name: "Holiday".into(),
+            parent_id: None,
+        },
+    )];
+
+    assert_every_delivery_order(&operations, |state| {
+        let entry = state.album(album_id).unwrap();
+        assert_eq!(entry.name.0, "Holiday");
+        assert_eq!(entry.album_id_parent, None);
+        assert!(entry.media_ids.is_empty());
+    });
+}
+
+#[test]
+fn a_created_media_item_added_to_an_album_is_shown_in_that_album() {
+    let album_id = album(1);
+    let media_id = media(2);
+    let operations = [
+        operation(
+            Dot {
+                lamport_counter: 1,
+                device_id: DeviceId(1),
+            },
+            OperationContent::AlbumCreation {
+                album_id,
+                name: "Holiday".into(),
+                parent_id: None,
+            },
+        ),
+        operation(
+            Dot {
+                lamport_counter: 1,
+                device_id: DeviceId(2),
+            },
+            OperationContent::MediaCreation(MediaCreation {
+                media_id,
+                filename_original: "source.jpg".into(),
+                date: Utc::now(),
+                storage_date: StorageDate {
+                    year: 2026,
+                    month: 8,
+                },
+                size_bytes: 42,
+                content_hash: MediaHash::zeroed(),
+                modified_at: None,
+                gps: None,
+                apple_aae_media_id: None,
+                apple_live_photo_media_id: None,
+            }),
+        ),
+        operation(
+            Dot {
+                lamport_counter: 2,
+                device_id: DeviceId(1),
+            },
+            OperationContent::AlbumMediaAdd { album_id, media_id },
+        ),
+    ];
+
+    assert_every_delivery_order(&operations, |state| {
+        assert!(state.media(media_id).is_some());
+        assert_eq!(state.album(album_id).unwrap().media_ids, vec![media_id]);
+    });
+}
+
+#[test]
 fn an_album_thumbnail_can_be_set_and_then_cleared() {
     let album_id = album(1);
     let media_id = media(2);
@@ -47,6 +122,65 @@ fn an_album_thumbnail_can_be_set_and_then_cleared() {
 
     assert_every_delivery_order(&operations, |state| {
         assert_eq!(state.album(album_id).unwrap().thumbnail_media_id, None);
+    });
+}
+
+#[test]
+fn an_album_reparented_to_another_album_is_shown_under_the_new_parent() {
+    let first_parent = album(1);
+    let second_parent = album(2);
+    let child = album(3);
+    let operations = [
+        operation(
+            Dot {
+                lamport_counter: 1,
+                device_id: DeviceId(1),
+            },
+            OperationContent::AlbumCreation {
+                album_id: first_parent,
+                name: "First parent".into(),
+                parent_id: None,
+            },
+        ),
+        operation(
+            Dot {
+                lamport_counter: 2,
+                device_id: DeviceId(1),
+            },
+            OperationContent::AlbumCreation {
+                album_id: second_parent,
+                name: "Second parent".into(),
+                parent_id: None,
+            },
+        ),
+        operation(
+            Dot {
+                lamport_counter: 3,
+                device_id: DeviceId(1),
+            },
+            OperationContent::AlbumCreation {
+                album_id: child,
+                name: "Child".into(),
+                parent_id: Some(first_parent),
+            },
+        ),
+        operation(
+            Dot {
+                lamport_counter: 4,
+                device_id: DeviceId(2),
+            },
+            OperationContent::AlbumReparent {
+                album_id: child,
+                parent_id: Some(second_parent),
+            },
+        ),
+    ];
+
+    assert_every_delivery_order(&operations, |state| {
+        assert_eq!(
+            state.album(child).unwrap().album_id_parent,
+            Some(second_parent)
+        );
     });
 }
 

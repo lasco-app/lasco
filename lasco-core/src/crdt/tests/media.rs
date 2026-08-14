@@ -30,6 +30,21 @@ fn create_media(media_id: crate::identifiers::MediaUuid) -> CrdtOperation {
 }
 
 #[test]
+fn a_created_media_item_is_visible_with_its_original_metadata() {
+    let media_id = media(1);
+    let operations = [create_media(media_id)];
+
+    assert_every_delivery_order(&operations, |state| {
+        let item = state.media(media_id).unwrap();
+        assert_eq!(item.media_id, media_id);
+        assert_eq!(item.filename_original.0, "source.jpg");
+        assert_eq!(item.size_bytes, 42);
+        assert_eq!(item.storage_date.year, 2026);
+        assert_eq!(item.storage_date.month, 8);
+    });
+}
+
+#[test]
 fn a_media_item_renamed_on_another_device_keeps_the_latest_name() {
     let media_id = media(1);
     let operations = [
