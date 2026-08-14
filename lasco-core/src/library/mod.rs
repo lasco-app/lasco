@@ -4,8 +4,8 @@ pub mod groups;
 pub mod local_dirs;
 mod local_ops_read_write;
 pub mod media;
-mod remote_media_list_lock;
 mod range;
+mod remote_media_list_lock;
 pub mod sync;
 mod sync_policy;
 pub mod user;
@@ -20,6 +20,7 @@ use crate::encryption::master_key::{
     MasterKey, find_master_key, generate_master_key, write_mk_file,
 };
 use crate::error::LibraryError;
+use crate::identifiers::RemoteUuid;
 use crate::library::local_dirs::LocalDirs;
 use crate::library::local_ops_read_write::LocalOpsReadWriteLock;
 use crate::library::remote_media_list_lock::RemoteMediaListLock;
@@ -292,9 +293,11 @@ impl Library {
     /// # Errors
     ///
     /// Returns an error if the remote's synchronization metadata cannot be read.
-    pub fn has_unpushed_changes(&self, remote_id: &str) -> Result<bool> {
-        let remote_last_known_state_dir =
-            self.inner.local_dirs.remote_last_known_state_dir(remote_id);
+    pub fn has_unpushed_changes(&self, remote_id: RemoteUuid) -> Result<bool> {
+        let remote_last_known_state_dir = self
+            .inner
+            .local_dirs
+            .remote_last_known_state_dir(&remote_id.to_string());
         let master_key = &self.inner.master_key;
         // The log is the complete operation history, including operations received
         // during Fetch that may still need delivery to this remote.

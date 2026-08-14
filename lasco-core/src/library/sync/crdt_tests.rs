@@ -90,17 +90,25 @@ async fn push_relays_operations_learned_by_fetch() {
 
     source.album_create("shared".into(), None).await.unwrap();
     source.push(&source_storage, REMOTE_ID).await.unwrap();
-    assert_eq!(replica.fetch(&source_storage, REMOTE_ID).await.unwrap().ops_downloaded, 1);
+    assert_eq!(
+        replica
+            .fetch(&source_storage, REMOTE_ID)
+            .await
+            .unwrap()
+            .ops_downloaded,
+        1
+    );
 
-    let target_remote_id = "33333333-3333-3333-3333-333333333333";
+    let target_remote_id =
+        RemoteUuid::from_uuid("33333333-3333-3333-3333-333333333333".parse().unwrap());
     replica
-        .initialize_remote(
-            &target_storage,
-            RemoteUuid::from_uuid(target_remote_id.parse().unwrap()),
-        )
+        .initialize_remote(&target_storage, target_remote_id)
         .await
         .unwrap();
-    let report = replica.push(&target_storage, target_remote_id).await.unwrap();
+    let report = replica
+        .push(&target_storage, target_remote_id)
+        .await
+        .unwrap();
 
     assert_eq!(report.ops_uploaded, 1);
 }

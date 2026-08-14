@@ -370,7 +370,7 @@ pub async fn add_existing_library_s3(
 
     // Download operations from the remote and rebuild local state.
     library
-        .fetch(&storage, &remote_uuid.to_string())
+        .fetch(&storage, remote_uuid)
         .await
         .map_err(|e| anyhow::anyhow!("failed to fetch from remote: {e}"))?;
     library

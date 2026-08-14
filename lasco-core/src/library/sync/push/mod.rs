@@ -38,7 +38,7 @@ impl Library {
     pub async fn push(
         &self,
         storage: &dyn crate::storage::Storage,
-        remote_id: &str,
+        remote_id: RemoteUuid,
     ) -> Result<SyncReportPush, LibraryError> {
         self.push_with_media_source(storage, remote_id, PushMediaSource::LocalOnly)
             .await
@@ -52,18 +52,21 @@ impl Library {
     pub async fn push_with_media_source(
         &self,
         storage: &dyn crate::storage::Storage,
-        remote_id: &str,
+        remote_id: RemoteUuid,
         media_source: PushMediaSource<'_>,
     ) -> Result<SyncReportPush, LibraryError> {
+        let remote_id_string = remote_id.to_string();
         let _guard = self
-            .try_acquire_remote_sync(remote_id)
+            .try_acquire_remote_sync(&remote_id_string)
             .ok_or(SyncError::AlreadyRunning)?;
         let remote = StorageReadWrite::new(storage);
         let local_state_media_dir = self.inner.local_dirs.local_state_media_dir();
         let local_state_library_dir = self.inner.local_dirs.local_state_library_dir();
-        let remote_last_known_state_dir =
-            self.inner.local_dirs.remote_last_known_state_dir(remote_id);
-        let remote_media_list = self.inner.local_dirs.remote_media_list(remote_id);
+        let remote_last_known_state_dir = self
+            .inner
+            .local_dirs
+            .remote_last_known_state_dir(&remote_id_string);
+        let remote_media_list = self.inner.local_dirs.remote_media_list(&remote_id_string);
         self.push_impl(
             PushAccess {
                 storage: &remote,
@@ -85,32 +88,19 @@ impl Library {
     pub(super) async fn push_impl(
         &self,
         access: PushAccess<'_>,
-        remote_id: &str,
+        remote_id: RemoteUuid,
         media_source: PushMediaSource<'_>,
     ) -> Result<SyncReportPush, LibraryError> {
         let master_key = &self.inner.master_key;
 
-        let remote_uuid = remote_id
-            .parse::<uuid::Uuid>()
-            .map(RemoteUuid::from_uuid)
-            .map_err(|e| {
-                SyncError::RemoteIdMismatch(format!("invalid remote id '{remote_id}': {e}"))
-            })?;
-        verify_remote_identity(&access.storage.as_read(), remote_uuid).await?;
+        verify_remote_identity(&access.storage.as_read(), remote_id).await?;
+        let remote_id_string = remote_id.to_string();
 
         let relay_source = match media_source {
             PushMediaSource::LocalOnly => None,
             PushMediaSource::FromRemote { remote_id, storage } => {
-                let remote_uuid = remote_id
-                    .parse::<uuid::Uuid>()
-                    .map(RemoteUuid::from_uuid)
-                    .map_err(|e| {
-                        SyncError::RemoteIdMismatch(format!(
-                            "invalid source remote id '{remote_id}': {e}"
-                        ))
-                    })?;
-                verify_remote_identity(&storage, remote_uuid).await?;
-                Some((remote_id, storage))
+                verify_remote_identity(&storage, remote_id).await?;
+                Some((remote_id.to_string(), storage))
             }
         };
 
@@ -156,7 +146,7 @@ impl Library {
 
         // Only the snapshot read is locked. Network storage awaits below must remain unlocked.
         let media_list = self.inner.remote_media_list_lock.with_lock(
-            remote_id,
+            &remote_id_string,
             access.remote_media_list,
             |remote_media_list| MediaList::load_or_default(&remote_media_list.media_list_path()),
         )?;
@@ -381,7 +371,7 @@ impl Library {
             // Reload under the lock so this write preserves any concurrent fetch or on-demand
             // download observations made while the upload was in progress.
             self.inner.remote_media_list_lock.with_lock(
-                remote_id,
+                &remote_id_string,
                 access.remote_media_list,
                 |remote_media_list| {
                     let path = remote_media_list.media_list_path();

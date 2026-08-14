@@ -7,10 +7,11 @@ use crate::identifiers::{LibraryId, RemoteUuid};
 use crate::library::local_dirs::LocalDirs;
 use crate::library::{Credentials, Library};
 
-pub const REMOTE_ID: &str = "11111111-1111-1111-1111-111111111111";
+pub const REMOTE_ID: RemoteUuid =
+    RemoteUuid(Uuid::from_u128(0x1111_1111_1111_1111_1111_1111_1111_1111));
 
 pub fn remote_uuid() -> RemoteUuid {
-    RemoteUuid::from_uuid(REMOTE_ID.parse().unwrap())
+    REMOTE_ID
 }
 
 pub async fn make_library(tmp: &TempDir) -> Library {

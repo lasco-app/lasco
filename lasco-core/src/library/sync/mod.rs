@@ -41,7 +41,7 @@ pub enum PushMediaSource<'a> {
     LocalOnly,
     /// Relay missing media from exactly one verified, read-only remote.
     FromRemote {
-        remote_id: &'a str,
+        remote_id: RemoteUuid,
         storage: StorageRead<'a>,
     },
 }
@@ -118,20 +118,23 @@ impl Library {
     pub async fn sync(
         &self,
         storage: &dyn crate::storage::Storage,
-        remote_id: &str,
+        remote_id: RemoteUuid,
     ) -> Result<SyncReport, LibraryError> {
+        let remote_id_string = remote_id.to_string();
         let _remote_guard = self
-            .try_acquire_remote_sync(remote_id)
+            .try_acquire_remote_sync(&remote_id_string)
             .ok_or(SyncError::AlreadyRunning)?;
         let local_state_media_dir = self.inner.local_dirs.local_state_media_dir();
         let local_state_library_dir = self.inner.local_dirs.local_state_library_dir();
-        let remote_last_known_state_dir =
-            self.inner.local_dirs.remote_last_known_state_dir(remote_id);
-        let remote_media_list = self.inner.local_dirs.remote_media_list(remote_id);
+        let remote_last_known_state_dir = self
+            .inner
+            .local_dirs
+            .remote_last_known_state_dir(&remote_id_string);
+        let remote_media_list = self.inner.local_dirs.remote_media_list(&remote_id_string);
         let remote_compact_op_id_merged_to_local = self
             .inner
             .local_dirs
-            .remote_compact_op_id_merged_to_local(remote_id);
+            .remote_compact_op_id_merged_to_local(&remote_id_string);
         let local_state_crdt = self.inner.local_dirs.local_state_crdt();
         let fetch_report = {
             let _fetch_guard = self

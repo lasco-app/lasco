@@ -355,9 +355,10 @@ impl FfiLibrary {
         reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
     )]
     pub fn has_unpushed_changes(&self, remote_id: FfiRemoteUuid) -> bool {
-        self.inner
-            .has_unpushed_changes(&remote_id.value.clone())
-            .unwrap_or(false)
+        let Ok(remote_id) = remote_id.try_into() else {
+            return false;
+        };
+        self.inner.has_unpushed_changes(remote_id).unwrap_or(false)
     }
 
     /// # Errors
