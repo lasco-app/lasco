@@ -1,6 +1,6 @@
 use chrono::Utc;
 
-use super::operations::{album, assert_every_delivery_order, dot, group, media, operation};
+use super::operations::{album, assert_every_delivery_order, group, media, operation};
 use crate::crdt::*;
 use crate::library::media::MediaHash;
 use crate::operations::{MediaName, StorageDate};
@@ -12,7 +12,10 @@ fn a_photo_added_to_an_album_and_group_converges_for_every_delivery_order() {
     let media_id = media(3);
     let operations = [
         operation(
-            dot(1, 1),
+            Dot {
+                lamport_counter: 1,
+                device_id: DeviceId(1),
+            },
             OperationContent::AlbumCreation {
                 album_id,
                 name: "Holiday".into(),
@@ -20,7 +23,10 @@ fn a_photo_added_to_an_album_and_group_converges_for_every_delivery_order() {
             },
         ),
         operation(
-            dot(2, 1),
+            Dot {
+                lamport_counter: 2,
+                device_id: DeviceId(1),
+            },
             OperationContent::MediaCreation(MediaCreation {
                 media_id,
                 filename_original: "source.jpg".into(),
@@ -38,22 +44,34 @@ fn a_photo_added_to_an_album_and_group_converges_for_every_delivery_order() {
             }),
         ),
         operation(
-            dot(3, 2),
+            Dot {
+                lamport_counter: 3,
+                device_id: DeviceId(2),
+            },
             OperationContent::AlbumMediaAdd { album_id, media_id },
         ),
         operation(
-            dot(4, 2),
+            Dot {
+                lamport_counter: 4,
+                device_id: DeviceId(2),
+            },
             OperationContent::GroupCreation {
                 group_id,
                 parent_id: album_id,
             },
         ),
         operation(
-            dot(5, 3),
+            Dot {
+                lamport_counter: 5,
+                device_id: DeviceId(3),
+            },
             OperationContent::GroupMediaAdd { group_id, media_id },
         ),
         operation(
-            dot(6, 3),
+            Dot {
+                lamport_counter: 6,
+                device_id: DeviceId(3),
+            },
             OperationContent::MediaRename {
                 media_id,
                 name: Some("Edited photo".into()),
@@ -74,8 +92,66 @@ fn a_photo_added_to_an_album_and_group_converges_for_every_delivery_order() {
 fn a_device_uses_a_dot_after_the_latest_remote_operation_it_received() {
     let mut state = CrdtState::new(DeviceId(9));
     state.apply(&operation(
-        dot(41, 2),
+        Dot {
+            lamport_counter: 41,
+            device_id: DeviceId(2),
+        },
         OperationContent::AlbumDeletion { album_id: album(1) },
     ));
-    assert_eq!(state.next_local_dot(), dot(42, 9));
+    assert_eq!(
+        state.next_local_dot(),
+        Dot {
+            lamport_counter: 42,
+            device_id: DeviceId(9)
+        }
+    );
+}
+
+#[test]
+fn delivering_the_same_album_history_twice_keeps_the_exact_same_crdt_state() {
+    let album_id = album(1);
+    let media_id = media(2);
+    let add = operation(
+        Dot {
+            lamport_counter: 2,
+            device_id: DeviceId(1),
+        },
+        OperationContent::AlbumMediaAdd { album_id, media_id },
+    );
+    let operations = [
+        operation(
+            Dot {
+                lamport_counter: 1,
+                device_id: DeviceId(1),
+            },
+            OperationContent::AlbumCreation {
+                album_id,
+                name: "Holiday".into(),
+                parent_id: None,
+            },
+        ),
+        add.clone(),
+        operation(
+            Dot {
+                lamport_counter: 3,
+                device_id: DeviceId(1),
+            },
+            OperationContent::AlbumMediaRemove {
+                album_id,
+                media_id,
+                observed: std::collections::HashSet::from([add.dot]),
+            },
+        ),
+    ];
+    let mut delivered_once = CrdtState::new(DeviceId(99));
+    delivered_once.merge_all(operations.iter());
+    let mut delivered_twice = CrdtState::new(DeviceId(99));
+    delivered_twice.merge_all(operations.iter().chain(operations.iter()));
+
+    assert_eq!(delivered_twice, delivered_once);
+    assert!(delivered_twice
+        .album(album_id)
+        .unwrap()
+        .media_ids
+        .is_empty());
 }

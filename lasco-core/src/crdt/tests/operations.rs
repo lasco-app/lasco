@@ -5,13 +5,6 @@ use crate::crdt::{CrdtOperation, CrdtState, DeviceId, Dot, OperationContent};
 use crate::identifiers::{AlbumUuid, GroupUuid, MediaUuid};
 use crate::operations::LibraryUsername;
 
-pub(super) fn dot(counter: u64, device: u128) -> Dot {
-    Dot {
-        lamport_counter: counter,
-        device_id: DeviceId(device),
-    }
-}
-
 pub(super) fn album(n: u128) -> AlbumUuid {
     AlbumUuid::from_uuid(Uuid::from_u128(n))
 }

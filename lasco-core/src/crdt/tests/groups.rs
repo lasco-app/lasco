@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use super::operations::{album, assert_every_delivery_order, dot, group, media, operation};
+use super::operations::{album, assert_every_delivery_order, group, media, operation};
 use crate::crdt::*;
 
 #[test]
@@ -8,17 +8,26 @@ fn a_group_remove_keeps_media_added_concurrently_on_another_device() {
     let group_id = group(1);
     let media_id = media(2);
     let first_add = operation(
-        dot(1, 1),
+        Dot {
+            lamport_counter: 1,
+            device_id: DeviceId(1),
+        },
         OperationContent::GroupMediaAdd { group_id, media_id },
     );
     let operations = [
         first_add.clone(),
         operation(
-            dot(1, 2),
+            Dot {
+                lamport_counter: 1,
+                device_id: DeviceId(2),
+            },
             OperationContent::GroupMediaAdd { group_id, media_id },
         ),
         operation(
-            dot(2, 1),
+            Dot {
+                lamport_counter: 2,
+                device_id: DeviceId(1),
+            },
             OperationContent::GroupMediaRemove {
                 group_id,
                 media_id,
@@ -30,7 +39,10 @@ fn a_group_remove_keeps_media_added_concurrently_on_another_device() {
     assert_every_delivery_order(&operations, |state| {
         assert_eq!(
             state.group_member_dots(group_id, media_id),
-            HashSet::from([dot(1, 2)])
+            HashSet::from([Dot {
+                lamport_counter: 1,
+                device_id: DeviceId(2)
+            }])
         );
     });
 }
@@ -41,7 +53,10 @@ fn a_group_is_not_shown_after_its_parent_album_is_deleted() {
     let group_id = group(2);
     let operations = [
         operation(
-            dot(1, 1),
+            Dot {
+                lamport_counter: 1,
+                device_id: DeviceId(1),
+            },
             OperationContent::AlbumCreation {
                 album_id,
                 name: "Holiday".into(),
@@ -49,13 +64,22 @@ fn a_group_is_not_shown_after_its_parent_album_is_deleted() {
             },
         ),
         operation(
-            dot(2, 1),
+            Dot {
+                lamport_counter: 2,
+                device_id: DeviceId(1),
+            },
             OperationContent::GroupCreation {
                 group_id,
                 parent_id: album_id,
             },
         ),
-        operation(dot(3, 2), OperationContent::AlbumDeletion { album_id }),
+        operation(
+            Dot {
+                lamport_counter: 3,
+                device_id: DeviceId(2),
+            },
+            OperationContent::AlbumDeletion { album_id },
+        ),
     ];
 
     assert_every_delivery_order(&operations, |state| {
@@ -69,7 +93,10 @@ fn a_deleted_group_stays_absent_when_its_creation_arrives_late() {
     let group_id = group(2);
     let operations = [
         operation(
-            dot(1, 1),
+            Dot {
+                lamport_counter: 1,
+                device_id: DeviceId(1),
+            },
             OperationContent::AlbumCreation {
                 album_id,
                 name: "Holiday".into(),
@@ -77,13 +104,22 @@ fn a_deleted_group_stays_absent_when_its_creation_arrives_late() {
             },
         ),
         operation(
-            dot(2, 1),
+            Dot {
+                lamport_counter: 2,
+                device_id: DeviceId(1),
+            },
             OperationContent::GroupCreation {
                 group_id,
                 parent_id: album_id,
             },
         ),
-        operation(dot(3, 2), OperationContent::GroupDeletion { group_id }),
+        operation(
+            Dot {
+                lamport_counter: 3,
+                device_id: DeviceId(2),
+            },
+            OperationContent::GroupDeletion { group_id },
+        ),
     ];
 
     assert_every_delivery_order(&operations, |state| {
