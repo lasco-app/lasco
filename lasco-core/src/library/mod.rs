@@ -5,6 +5,7 @@ pub mod local_dirs;
 mod local_ops_read_write;
 pub mod media;
 mod remote_media_list_lock;
+mod range;
 pub mod sync;
 mod sync_policy;
 pub mod user;

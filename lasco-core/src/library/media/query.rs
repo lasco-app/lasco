@@ -9,6 +9,7 @@ use crate::encryption::blob_key::derive_blob_key;
 use crate::error::{LibraryError, OperationError};
 use crate::identifiers::{AlbumUuid, GroupUuid, MediaUuid};
 use crate::library::Library;
+use crate::library::range::inclusive_slice;
 use crate::operations::MediaName;
 use crate::remote::MediaList;
 use crate::storage::Storage;
@@ -483,13 +484,6 @@ impl Library {
         }
         Ok(())
     }
-}
-
-fn inclusive_slice<T>(items: &[T], start: usize, end: usize) -> Option<&[T]> {
-    if start > end || start >= items.len() {
-        return None;
-    }
-    items.get(start..=end.min(items.len() - 1))
 }
 
 #[allow(

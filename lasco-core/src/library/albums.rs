@@ -8,17 +8,11 @@ use crate::error::LibraryError;
 use crate::identifiers::{AlbumUuid, MediaUuid};
 use crate::library::Library;
 use crate::library::media::MediaEntry;
+use crate::library::range::inclusive_slice;
 use crate::operations::AlbumName;
 use crate::state::{AlbumBrowseItem, GroupEntry};
 
 pub type Result<T> = std::result::Result<T, LibraryError>;
-
-fn inclusive_slice<T>(items: &[T], start: usize, end: usize) -> Option<&[T]> {
-    if start > end || start >= items.len() {
-        return None;
-    }
-    items.get(start..=end.min(items.len() - 1))
-}
 
 #[derive(Debug, Clone)]
 pub struct AlbumSummary {
