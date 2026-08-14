@@ -45,7 +45,6 @@ impl Library {
             .inner
             .state
             .read()
-            .crdt
             .group_member_dots(group_id, media_id);
         self.record_local_operation(
             Utc::now(),
@@ -69,7 +68,7 @@ impl Library {
     #[must_use]
     pub fn group_list(&self) -> Vec<GroupEntry> {
         let state = self.inner.state.read();
-        state.crdt.group_entries()
+        state.group_entries()
     }
 
     /// # Errors
@@ -86,7 +85,6 @@ impl Library {
             .iter()
             .filter_map(|mid| {
                 state
-                    .crdt
                     .media(*mid)
                     .map(|media| MediaEntry::from_state(&media, media.group_ids.clone()))
             })
@@ -100,7 +98,7 @@ impl Library {
     pub fn album_list_groups(&self, album_id: AlbumUuid) -> Result<Vec<GroupEntry>> {
         let state = self.inner.state.read();
         // Return AlbumNotFound only if the album was never created.
-        if state.crdt.album(album_id).is_none() {
+        if state.album(album_id).is_none() {
             return Err(LibraryError::AlbumNotFound(album_id));
         }
         let entries = state
@@ -109,7 +107,7 @@ impl Library {
             .get(&album_id)
             .map(|ids| {
                 ids.iter()
-                    .filter_map(|gid| state.crdt.group(*gid))
+                    .filter_map(|gid| state.group(*gid))
                     .collect()
             })
             .unwrap_or_default();
@@ -293,7 +291,7 @@ mod tests {
 
         let state = lib.inner.state.read();
         // Groups beneath a deleted parent are hidden from the CRDT projection.
-        assert!(state.crdt.group(group_id).is_none());
+        assert!(state.group(group_id).is_none());
         // Its media is also unreachable (transitive).
         assert!(!state.views.reachable_media_ids.contains(&media_id));
     }

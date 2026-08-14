@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::crdt::{CrdtOperation, OperationContent};
+use crate::crdt::{CrdtOperation, CrdtState, OperationContent};
 use crate::encryption::master_key::{MasterKey, parse_mk_filename};
 use crate::error::{LibraryError, SyncError};
 use crate::identifiers::{LibraryId, RemoteUuid};
@@ -13,7 +13,6 @@ use crate::library::local_ops_read_write::LocalOpsReadWriteLock;
 use crate::library::remote_media_list_lock::RemoteMediaListLock;
 use crate::operations::remote_ops::RemoteOpFile;
 use crate::remote::{CompactOpIdMergedToLocal, LastKnownState, MediaList};
-use crate::state::InMemoryLibraryState;
 
 use super::remote_access::StorageRead;
 use super::{SyncReportFetch, verify_remote_identity};
@@ -82,7 +81,7 @@ pub(super) async fn fetch_impl(
     remote_id: RemoteUuid,
     library_id: LibraryId,
     master_key: &MasterKey,
-    state_lock: &parking_lot::RwLock<InMemoryLibraryState>,
+    state_lock: &parking_lot::RwLock<CrdtState>,
     local_state_crdt: &LocalStateCrdt,
 ) -> Result<SyncReportFetch, LibraryError> {
     verify_remote_identity(access.storage, remote_id).await?;
@@ -138,7 +137,6 @@ pub(super) async fn fetch_impl(
                                 .append_operation(operation)?;
                             ops_downloaded += 1;
                         }
-                        state.crdt.apply(operation);
                         inventory_operations.push(operation.clone());
                     }
                     merged_files.insert(file_uuid);
@@ -151,12 +149,12 @@ pub(super) async fn fetch_impl(
             merged_files.save(&merged_files_path)?;
         }
         if merged_files_changed {
+            state.apply_batch(inventory_operations.iter());
             crate::crdt::save_persisted(
                 &local_state_crdt.snapshot_path(),
                 master_key,
-                &state.crdt,
+                &state,
             )?;
-            state.rebuild_views();
         }
         inventory_operations
     };

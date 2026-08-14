@@ -15,6 +15,7 @@ use crate::library::media::MediaHash;
 use crate::operations::{
     AlbumName, GpsCoords, LibraryUsername, MediaFilename, MediaName, StorageDate,
 };
+use crate::state::{ComputedViews, build_computed_views};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct MediaEntry {
@@ -225,6 +226,9 @@ pub struct CrdtState {
     pub groups: HashMap<GroupUuid, GroupCrdt>,
     pub album_memberships: HashMap<(AlbumUuid, MediaUuid), ObservedRemoveSet>,
     pub group_memberships: HashMap<(GroupUuid, MediaUuid), ObservedRemoveSet>,
+    /// Derived, in-memory query indexes. This cache is never serialized.
+    #[serde(skip)]
+    pub views: ComputedViews,
 }
 
 impl Default for CrdtState {
@@ -237,6 +241,7 @@ impl Default for CrdtState {
             groups: HashMap::new(),
             album_memberships: HashMap::new(),
             group_memberships: HashMap::new(),
+            views: ComputedViews::default(),
         }
     }
 }
@@ -299,7 +304,7 @@ impl CrdtState {
         clippy::too_many_lines,
         reason = "Keeping all CRDT operation mutations in one exhaustive match makes state transitions auditable."
     )]
-    pub fn apply(&mut self, operation: &CrdtOperation) {
+    fn apply_raw(&mut self, operation: &CrdtOperation) {
         self.lamport_clock.observe(operation.dot);
         match &operation.content {
             OperationContent::MediaCreation(creation) => {
@@ -431,10 +436,24 @@ impl CrdtState {
         }
     }
 
-    pub fn merge_all<'a>(&mut self, operations: impl IntoIterator<Item = &'a CrdtOperation>) {
+    pub fn apply(&mut self, operation: &CrdtOperation) {
+        self.apply_raw(operation);
+        self.rebuild_views();
+    }
+
+    pub fn rebuild_views(&mut self) {
+        self.views = build_computed_views(self);
+    }
+
+    pub fn apply_batch<'a>(&mut self, operations: impl IntoIterator<Item = &'a CrdtOperation>) {
         for operation in operations {
-            self.apply(operation);
+            self.apply_raw(operation);
         }
+        self.rebuild_views();
+    }
+
+    pub fn merge_all<'a>(&mut self, operations: impl IntoIterator<Item = &'a CrdtOperation>) {
+        self.apply_batch(operations);
     }
 
     pub fn album_member_dots(&self, album_id: AlbumUuid, media_id: MediaUuid) -> HashSet<Dot> {
@@ -521,6 +540,10 @@ impl CrdtState {
         }
     }
 
+    #[allow(
+        clippy::too_many_lines,
+        reason = "Resolving all query entries together guarantees one shared album projection."
+    )]
     fn resolved_entries(&self) -> (Vec<MediaEntry>, Vec<AlbumEntry>, Vec<GroupEntry>) {
         let projection = self.album_projection();
         let mut media_entries = Vec::new();

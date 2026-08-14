@@ -26,7 +26,6 @@ use crate::library::local_ops_read_write::LocalOpsReadWriteLock;
 use crate::library::remote_media_list_lock::RemoteMediaListLock;
 use crate::library::sync_policy::{FetchSlotGuard, RemoteSyncGuard, SyncPolicy};
 use crate::operations::{LibraryPassword, LibraryUsername};
-use crate::state::InMemoryLibraryState;
 
 pub use crate::identifiers::LibraryId;
 
@@ -52,7 +51,7 @@ pub(crate) struct LibraryInner {
     pub(crate) master_key: MasterKey,
     pub(crate) library_id: LibraryId,
     pub(crate) local_dirs: LocalDirs,
-    pub(crate) state: parking_lot::RwLock<InMemoryLibraryState>,
+    pub(crate) state: parking_lot::RwLock<crate::crdt::CrdtState>,
     pub(crate) sync_policy: SyncPolicy,
     pub(crate) username: LibraryUsername,
     /// The sole lock that grants access to `operations.log`.
@@ -134,7 +133,7 @@ impl Library {
                 library_id,
                 local_dirs,
                 username: credentials.username,
-                state: parking_lot::RwLock::new(InMemoryLibraryState::new(initial_crdt)),
+                state: parking_lot::RwLock::new(initial_crdt),
                 sync_policy: SyncPolicy::new(),
                 local_ops_read_write_lock,
                 remote_media_list_lock: RemoteMediaListLock::new(),
@@ -177,7 +176,7 @@ impl Library {
                 master_key,
                 local_dirs,
                 username: credentials.username,
-                state: parking_lot::RwLock::new(InMemoryLibraryState::new(loaded_crdt)),
+                state: parking_lot::RwLock::new(loaded_crdt),
                 sync_policy: SyncPolicy::new(),
                 local_ops_read_write_lock,
                 remote_media_list_lock: RemoteMediaListLock::new(),
@@ -211,7 +210,7 @@ impl Library {
                 library_id,
                 local_dirs,
                 username,
-                state: parking_lot::RwLock::new(InMemoryLibraryState::new(loaded_crdt)),
+                state: parking_lot::RwLock::new(loaded_crdt),
                 sync_policy: SyncPolicy::new(),
                 local_ops_read_write_lock,
                 remote_media_list_lock: RemoteMediaListLock::new(),
@@ -247,7 +246,7 @@ impl Library {
     ) -> Result<()> {
         let mut state = self.inner.state.write();
         let crdt_operation = crate::crdt::CrdtOperation {
-            dot: state.crdt.next_local_dot(),
+            dot: state.next_local_dot(),
             author: self.inner.username.clone(),
             timestamp,
             content,
@@ -260,7 +259,7 @@ impl Library {
         crate::crdt::save_persisted(
             &self.inner.local_dirs.local_state_crdt().snapshot_path(),
             &self.inner.master_key,
-            &state.crdt,
+            &state,
         )?;
         Ok(())
     }

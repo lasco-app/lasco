@@ -71,7 +71,6 @@ impl Library {
             .iter()
             .filter_map(|media_id| {
                 state
-                    .crdt
                     .media(*media_id)
                     .map(|entry| MediaEntry::from_state(&entry, entry.group_ids.clone()))
             })
@@ -89,13 +88,12 @@ impl Library {
                 .iter()
                 .filter_map(|&media_id| {
                     state
-                        .crdt
                         .media(media_id)
                         .map(|entry| MediaEntry::from_state(&entry, entry.group_ids.clone()))
                 })
                 .collect(),
             MediaListScope::Visible => {
-                let entries = state.crdt.media_entries();
+                let entries = state.media_entries();
                 let companion_ids: std::collections::HashSet<_> = entries
                     .iter()
                     .flat_map(|entry| [entry.apple_aae_media_id, entry.apple_live_photo_media_id])
@@ -109,7 +107,7 @@ impl Library {
                     .collect()
             }
             MediaListScope::Orphaned => {
-                let entries = state.crdt.media_entries();
+                let entries = state.media_entries();
                 let companion_ids: std::collections::HashSet<_> = entries
                     .iter()
                     .flat_map(|entry| [entry.apple_aae_media_id, entry.apple_live_photo_media_id])
@@ -126,7 +124,6 @@ impl Library {
                     .collect()
             }
             MediaListScope::All => state
-                .crdt
                 .media_entries()
                 .iter()
                 .map(|entry| MediaEntry::from_state(entry, entry.group_ids.clone()))
@@ -141,7 +138,6 @@ impl Library {
     pub fn media_show(&self, media_id: MediaUuid) -> Result<MediaEntry> {
         let state = self.inner.state.read();
         let entry = state
-            .crdt
             .media(media_id)
             .ok_or(LibraryError::MediaNotFound(media_id))?;
         Ok(MediaEntry::from_state(&entry, entry.group_ids.clone()))
@@ -209,7 +205,7 @@ impl Library {
     pub async fn media_rename(&self, media_id: MediaUuid, name: Option<MediaName>) -> Result<()> {
         {
             let state = self.inner.state.read();
-            if state.crdt.media(media_id).is_none() {
+            if state.media(media_id).is_none() {
                 return Err(LibraryError::MediaNotFound(media_id));
             }
         }
@@ -275,7 +271,6 @@ impl Library {
     pub(crate) fn media_year_month(&self, media_id: MediaUuid) -> Result<(u16, u8)> {
         let state = self.inner.state.read();
         let entry = state
-            .crdt
             .media(media_id)
             .ok_or(LibraryError::MediaNotFound(media_id))?;
         Ok((entry.storage_date.year, entry.storage_date.month))
@@ -325,7 +320,6 @@ impl Library {
     pub fn media_album_ids(&self, media_id: MediaUuid) -> Vec<AlbumUuid> {
         let state = self.inner.state.read();
         state
-            .crdt
             .album_entries()
             .iter()
             .filter(|album| album.media_ids.contains(&media_id))
@@ -343,7 +337,6 @@ impl Library {
     ) -> Vec<AlbumUuid> {
         let state = self.inner.state.read();
         let mut album_ids: Vec<AlbumUuid> = state
-            .crdt
             .album_entries()
             .iter()
             .filter(|album| album.media_ids.contains(&media_id))
@@ -358,9 +351,9 @@ impl Library {
                 .cloned()
                 .unwrap_or_default();
             for group_id in group_ids {
-                if let Some(group) = state.crdt.group(group_id) {
+                if let Some(group) = state.group(group_id) {
                     let parent = group.album_id_parent;
-                    let parent_alive = state.crdt.album(parent).is_some();
+                    let parent_alive = state.album(parent).is_some();
                     if parent_alive && !album_ids.contains(&parent) {
                         album_ids.push(parent);
                     }
@@ -405,7 +398,6 @@ impl Library {
         let album_ids: Vec<AlbumUuid> = {
             let state = self.inner.state.read();
             state
-                .crdt
                 .album_entries()
                 .iter()
                 .filter(|album| album.media_ids.contains(&media_id))
@@ -417,7 +409,6 @@ impl Library {
                 .inner
                 .state
                 .read()
-                .crdt
                 .album_member_dots(album_id, media_id);
             self.record_local_operation(
                 chrono::Utc::now(),

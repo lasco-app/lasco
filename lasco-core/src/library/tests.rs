@@ -161,7 +161,7 @@ async fn concurrent_append_to_pending_does_not_lose_operations() {
 }
 
 #[tokio::test]
-async fn local_edit_is_merged_into_crdt_state() {
+async fn local_edit_is_merged_into_state() {
     let tmp = TempDir::new().unwrap();
     let (lib, _library_id) = make_library(&tmp).await;
     let album_id = AlbumUuid::from_uuid(Uuid::new_v4());
@@ -174,10 +174,10 @@ async fn local_edit_is_merged_into_crdt_state() {
     })
     .unwrap();
 
-    let crdt_state = lib.inner.crdt_state.read();
-    assert!(crdt_state.is_album_created_and_live(album_id));
+    let state = lib.inner.state.read();
+    assert!(state.is_album_created_and_live(album_id));
     assert_eq!(
-        crdt_state.albums[&album_id]
+        state.albums[&album_id]
             .creation
             .as_ref()
             .unwrap()

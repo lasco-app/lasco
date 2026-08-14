@@ -8,7 +8,7 @@ use crate::identifiers::{AlbumUuid, GroupUuid, MediaUuid};
 use crate::library::media::MediaHash;
 
 /// Always derived from the canonical CRDT state, rebuilt on every state change.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct ComputedViews {
     pub reachable_media_ids: HashSet<MediaUuid>,
     pub by_date: BTreeMap<DateTime<Utc>, Vec<MediaUuid>>,

@@ -44,7 +44,11 @@ pub(crate) fn load_persisted(
     let persisted: VersionedCrdtState = ciborium::de::from_reader(bytes.as_slice())
         .map_err(|error| PersistenceError::Deserialize(error.to_string()))?;
     match persisted.format_version {
-        CRDT_SNAPSHOT_FORMAT_VERSION => Ok(persisted.state),
+        CRDT_SNAPSHOT_FORMAT_VERSION => {
+            let mut state = persisted.state;
+            state.rebuild_views();
+            Ok(state)
+        }
         version => Err(PersistenceError::UnsupportedFormatVersion(version)),
     }
 }

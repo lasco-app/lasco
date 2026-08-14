@@ -53,7 +53,7 @@ impl Library {
             .get(&parent_album_id)
             .into_iter()
             .flatten()
-            .filter_map(|album_id| state.crdt.album(*album_id))
+            .filter_map(|album_id| state.album(*album_id))
             .map(|entry| AlbumSummary {
                 album_id: entry.album_id,
                 album_id_parent: entry.album_id_parent,
@@ -91,7 +91,7 @@ impl Library {
             return Vec::new();
         };
         ids.iter()
-            .filter_map(|album_id| state.crdt.album(*album_id))
+            .filter_map(|album_id| state.album(*album_id))
             .map(|entry| AlbumSummary {
                 album_id: entry.album_id,
                 album_id_parent: entry.album_id_parent,
@@ -140,7 +140,6 @@ impl Library {
             .inner
             .state
             .read()
-            .crdt
             .album_member_dots(album_id, media_id);
         self.record_local_operation(
             Utc::now(),
@@ -175,7 +174,6 @@ impl Library {
             .iter()
             .filter_map(|mid| {
                 state
-                    .crdt
                     .media(*mid)
                     .map(|media| MediaEntry::from_state(&media, media.group_ids.clone()))
             })
@@ -239,7 +237,7 @@ impl Library {
             .into_iter()
             .filter_map(|item| match item {
                 AlbumBrowseItem::Media(media_id) => {
-                    let media = state.crdt.media(*media_id)?;
+                    let media = state.media(*media_id)?;
                     Some(DatedAlbumItem {
                         item: AlbumItem::Media(MediaEntry::from_state(
                             &media,
@@ -249,11 +247,11 @@ impl Library {
                     })
                 }
                 AlbumBrowseItem::Group(group_id) => {
-                    let group = state.crdt.group(*group_id)?;
+                    let group = state.group(*group_id)?;
                     let effective_date = group
                         .media_ids
                         .iter()
-                        .filter_map(|media_id| state.crdt.media(*media_id).map(|media| media.date))
+                        .filter_map(|media_id| state.media(*media_id).map(|media| media.date))
                         .max()
                         .unwrap_or_default();
                     Some(DatedAlbumItem {
@@ -273,7 +271,7 @@ impl Library {
             .album_albums_by_name
             .values()
             .flatten()
-            .filter_map(|album_id| state.crdt.album(*album_id))
+            .filter_map(|album_id| state.album(*album_id))
             .map(|entry| AlbumSummary {
                 album_id: entry.album_id,
                 album_id_parent: entry.album_id_parent,
@@ -293,7 +291,7 @@ impl Library {
         let mut names = Vec::new();
         let mut visited: HashSet<AlbumUuid> = HashSet::new();
 
-        while let Some(entry) = state.crdt.album(current) {
+        while let Some(entry) = state.album(current) {
             if !visited.insert(current) {
                 names.push("...".to_string());
                 break;
@@ -316,7 +314,7 @@ impl Library {
     pub async fn album_rename(&self, album_id: AlbumUuid, name: AlbumName) -> Result<()> {
         {
             let state = self.inner.state.read();
-            if state.crdt.album(album_id).is_none() {
+            if state.album(album_id).is_none() {
                 return Err(LibraryError::AlbumNotFound(album_id));
             }
         }
@@ -340,7 +338,7 @@ impl Library {
     ) -> Result<()> {
         {
             let state = self.inner.state.read();
-            if state.crdt.album(album_id).is_none() {
+            if state.album(album_id).is_none() {
                 return Err(LibraryError::AlbumNotFound(album_id));
             }
             if new_parent_id == Some(album_id) {
@@ -356,7 +354,7 @@ impl Library {
                     if !visited.insert(c) {
                         break;
                     }
-                    cursor = state.crdt.album(c).and_then(|entry| entry.album_id_parent);
+                    cursor = state.album(c).and_then(|entry| entry.album_id_parent);
                 }
             }
         }
@@ -397,7 +395,6 @@ impl Library {
         }
 
         state
-            .crdt
             .album_entries()
             .iter()
             .filter(|a| !reachable.contains(&a.album_id))
@@ -412,7 +409,7 @@ impl Library {
         album_id: AlbumUuid,
     ) -> Option<(AlbumName, Option<AlbumUuid>, usize, Option<MediaUuid>)> {
         let state = self.inner.state.read();
-        let entry = state.crdt.album(album_id)?;
+        let entry = state.album(album_id)?;
         Some((
             entry.name.clone(),
             entry.album_id_parent,
@@ -431,7 +428,7 @@ impl Library {
     ) -> Result<()> {
         {
             let state = self.inner.state.read();
-            if state.crdt.album(album_id).is_none() {
+            if state.album(album_id).is_none() {
                 return Err(LibraryError::AlbumNotFound(album_id));
             }
         }
@@ -451,7 +448,6 @@ impl Library {
     fn album_resolve_name(&self, name: &AlbumName) -> Result<AlbumUuid> {
         let state = self.inner.state.read();
         let matches: Vec<(AlbumUuid, String)> = state
-            .crdt
             .album_entries()
             .iter()
             .filter(|entry| &entry.name == name)

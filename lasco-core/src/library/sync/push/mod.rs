@@ -157,7 +157,6 @@ impl Library {
             let missing: Vec<_> = {
                 let state = self.inner.state.read();
                 state
-                    .crdt
                     .media_entries()
                     .iter()
                     .filter(|entry| !media_list.contains(&entry.media_id))
@@ -277,7 +276,6 @@ impl Library {
         let media_pending: Vec<FileToPush> = {
             let state = self.inner.state.read();
             state
-                .crdt
                 .media_entries()
                 .iter()
                 .filter(|entry| !media_list.contains(&entry.media_id))
