@@ -71,4 +71,5 @@ objc2 = "0.6"
 objc2-foundation = "0.3"
 
 [dev-dependencies]
+proptest = "1"
 uuid = { version = "1", features = ["v4"] }
