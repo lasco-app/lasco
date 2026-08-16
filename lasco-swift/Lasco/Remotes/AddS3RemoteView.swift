@@ -18,6 +18,8 @@ struct AddS3RemoteView: View {
     @State private var accessKey = ""
     @State private var secretKey = ""
     @State private var uploadAcknowledged = false
+    @State private var addErrorMessage: String?
+    @State private var isAdding = false
 
     enum TestState: Equatable {
         case idle
@@ -124,6 +126,13 @@ struct AddS3RemoteView: View {
                             case .idle, .testing:
                                 EmptyView()
                             }
+
+                            if let addErrorMessage {
+                                Text(addErrorMessage)
+                                    .font(LascoFont.body(13))
+                                    .foregroundStyle(theme.error)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
                         }
 
                         Spacer().frame(height: 100)
@@ -135,23 +144,26 @@ struct AddS3RemoteView: View {
 
             VStack(spacing: 0) {
                 Button("Add Remote") {
+                    guard !isAdding else { return }
+                    isAdding = true
+                    addErrorMessage = nil
                     Task {
                         do {
                             let remoteID = try await repository.addRemoteS3(id: name, endpoint: endpoint, bucket: bucket, region: region, pathPrefix: pathPrefix, accessKey: accessKey, secretKey: secretKey)
                             try await repository.initializeRemote(id: remoteID)
-                            _ = try await repository.push(remoteID: remoteID)
                             try await onRemoteReady()
                             dismiss()
                             toastManager.show(ok: "\(name): initialized")
                         } catch {
-                            toastManager.show(error: error.localizedDescription)
+                            addErrorMessage = error.localizedDescription
                         }
+                        isAdding = false
                     }
                 }
                 .buttonStyle(LascoPrimaryButtonStyle())
                 .frame(maxWidth: .infinity)
-                .disabled(!isValid)
-                .opacity(isValid ? 1 : 0.45)
+                .disabled(!isValid || isAdding)
+                .opacity(isValid && !isAdding ? 1 : 0.45)
             }
             .padding(.horizontal, 32)
             .padding(.top, 20)

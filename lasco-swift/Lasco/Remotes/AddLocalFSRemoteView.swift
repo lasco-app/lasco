@@ -13,6 +13,8 @@ struct AddLocalFSRemoteView: View {
 
     @FocusState private var nameFieldFocused: Bool
     @State private var name = ""
+    @State private var errorMessage: String?
+    @State private var isAdding = false
 
     init(onRemoteReady: @escaping @MainActor () async throws -> Void = {}) {
         self.onRemoteReady = onRemoteReady
@@ -77,6 +79,13 @@ struct AddLocalFSRemoteView: View {
                                     .textInputAutocapitalization(.never)
                                     #endif
                             }
+
+                            if let errorMessage {
+                                Text(errorMessage)
+                                    .font(LascoFont.body(13))
+                                    .foregroundStyle(theme.error)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
                         }
 
                         Spacer().frame(height: 100)
@@ -88,25 +97,27 @@ struct AddLocalFSRemoteView: View {
 
             VStack(spacing: 0) {
                 Button("Add Remote") {
-                    guard !name.isEmpty else { return }
+                    guard !isAdding else { return }
                     let remoteName = name
+                    isAdding = true
+                    errorMessage = nil
                     Task {
                         do {
                             let remoteID = try await repository.addRemoteDebugLocalApple(name: remoteName)
                             try await repository.initializeRemote(id: remoteID)
-                            _ = try await repository.push(remoteID: remoteID)
                             try await onRemoteReady()
                             dismiss()
                             toastManager.show(ok: "\(remoteName): initialized")
                         } catch {
-                            toastManager.show(error: error.localizedDescription)
+                            errorMessage = error.localizedDescription
                         }
+                        isAdding = false
                     }
                 }
                 .buttonStyle(LascoDevButtonStyle())
                 .frame(maxWidth: .infinity)
-                .disabled(!isValid)
-                .opacity(isValid ? 1 : 0.45)
+                .disabled(!isValid || isAdding)
+                .opacity(isValid && !isAdding ? 1 : 0.45)
             }
             .padding(.horizontal, 32)
             .padding(.top, 20)
