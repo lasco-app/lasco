@@ -1,6 +1,8 @@
 //! Append-only encrypted frames containing one `CrdtOperation` each.
 
 use std::collections::HashSet;
+use std::fs::File;
+use std::io::Read;
 use std::io::Write as _;
 
 use crate::crdt::{CrdtOperation, Dot};
@@ -54,6 +56,125 @@ pub(crate) fn read_crdt_operations(
         }
     }
     Ok(operations)
+}
+
+/// Reads a newest-first slice of the operation log without loading the full file or
+/// decrypting operations outside the requested range.
+///
+/// Positions are zero-based from the newest operation. `end_pos_exclusive` follows
+/// the usual half-open range convention.
+pub(crate) fn read_crdt_operations_range(
+    log_path: &std::path::Path,
+    master_key: &MasterKey,
+    start_pos: u64,
+    end_pos_exclusive: u64,
+) -> Result<Vec<CrdtOperation>> {
+    if end_pos_exclusive <= start_pos || !log_path.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut count_reader = open_log(log_path)?;
+    let mut frame_count = 0usize;
+    while read_frame_from(&mut count_reader)?.is_some() {
+        frame_count = frame_count
+            .checked_add(1)
+            .ok_or(OperationError::BlobTooLarge {
+                declared: usize::MAX,
+                maximum: usize::MAX - 1,
+            })?;
+    }
+
+    let start_pos = usize::try_from(start_pos).unwrap_or(usize::MAX);
+    let end_pos_exclusive = usize::try_from(end_pos_exclusive).unwrap_or(usize::MAX);
+    if start_pos >= frame_count {
+        return Ok(Vec::new());
+    }
+
+    let oldest_index = frame_count.saturating_sub(end_pos_exclusive);
+    let newest_index_exclusive = frame_count.saturating_sub(start_pos);
+    let mut operations = Vec::with_capacity(newest_index_exclusive - oldest_index);
+    let mut operation_reader = open_log(log_path)?;
+
+    for index in 0..frame_count {
+        let frame =
+            read_frame_from(&mut operation_reader)?.expect("frame count was just validated");
+        if (oldest_index..newest_index_exclusive).contains(&index) {
+            operations.push(decrypt_operation(master_key, &frame)?);
+        }
+    }
+
+    operations.reverse();
+    Ok(operations)
+}
+
+fn open_log(log_path: &std::path::Path) -> Result<File> {
+    let mut file = File::open(log_path)?;
+    let mut prefix = [0_u8; LOG_MAGIC.len()];
+    let read = file.read(&mut prefix)?;
+    if read == 0 {
+        return Ok(file);
+    }
+    if read < prefix.len() {
+        return Err(OperationError::IncompleteFrame {
+            expected: prefix.len(),
+            found: read,
+        });
+    }
+    if prefix == LOG_MAGIC {
+        let mut version = [0_u8; size_of::<u32>()];
+        read_exact_frame_bytes(&mut file, &mut version)?;
+        let version = u32::from_le_bytes(version);
+        if version != LOCAL_OP_LOG_FORMAT_VERSION {
+            return Err(OperationError::UnsupportedLocalOperationLogVersion(version));
+        }
+    } else {
+        use std::io::{Seek as _, SeekFrom};
+        file.seek(SeekFrom::Start(0))?;
+    }
+    Ok(file)
+}
+
+fn read_frame_from(reader: &mut impl Read) -> Result<Option<Vec<u8>>> {
+    let mut length = [0_u8; BLOB_LEN_FIELD];
+    let read = reader.read(&mut length)?;
+    if read == 0 {
+        return Ok(None);
+    }
+    if read < length.len() {
+        return Err(OperationError::IncompleteFrame {
+            expected: length.len(),
+            found: read,
+        });
+    }
+    let length = u32::from_le_bytes(length) as usize;
+    if length == 0 {
+        return Err(OperationError::ZeroLengthBlob);
+    }
+    if length > MAX_LOCAL_OP_BLOB_LEN {
+        return Err(OperationError::BlobTooLarge {
+            declared: length,
+            maximum: MAX_LOCAL_OP_BLOB_LEN,
+        });
+    }
+
+    let mut frame = vec![0; length];
+    read_exact_frame_bytes(reader, &mut frame)?;
+    Ok(Some(frame))
+}
+
+fn read_exact_frame_bytes(reader: &mut impl Read, bytes: &mut [u8]) -> Result<()> {
+    let mut read = 0;
+    while read < bytes.len() {
+        let count = reader.read(&mut bytes[read..])?;
+        if count == 0 {
+            return Err(OperationError::IncompleteFrame {
+                expected: bytes.len(),
+                found: read,
+            });
+        }
+        read += count;
+    }
+    Ok(())
 }
 
 /// Ensures subsequent appends use the current file-level framing. Legacy headerless logs are
@@ -247,5 +368,39 @@ mod tests {
         let bytes = std::fs::read(&path).unwrap();
         assert!(bytes.starts_with(&LOG_MAGIC));
         assert_eq!(read_crdt_operations(&path, &key).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn range_reads_newest_operations_without_loading_the_full_log() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("operations.log");
+        let key = crate::encryption::master_key::generate_master_key();
+
+        for counter in 1..=5 {
+            append_crdt_operation(&path, &key, &operation(counter)).unwrap();
+        }
+
+        let newest = read_crdt_operations_range(&path, &key, 0, 2).unwrap();
+        assert_eq!(
+            newest
+                .iter()
+                .map(|operation| operation.dot.lamport_counter)
+                .collect::<Vec<_>>(),
+            vec![5, 4]
+        );
+
+        let older = read_crdt_operations_range(&path, &key, 2, 5).unwrap();
+        assert_eq!(
+            older
+                .iter()
+                .map(|operation| operation.dot.lamport_counter)
+                .collect::<Vec<_>>(),
+            vec![3, 2, 1]
+        );
+        assert!(
+            read_crdt_operations_range(&path, &key, 5, 10)
+                .unwrap()
+                .is_empty()
+        );
     }
 }

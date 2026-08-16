@@ -1152,7 +1152,7 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_usb_android(`ptr`: Pointer,
 fun uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_usb_apple(`ptr`: Pointer,`name`: RustBuffer.ByValue,`bookmarkBase64`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_album_albums_count(`ptr`: Pointer,`parentAlbumId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-): Int
+): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_album_albums_range(`ptr`: Pointer,`parentAlbumId`: RustBuffer.ByValue,`posStartInclusive`: Int,`posEndInclusive`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_album_items_by_date_neighbors(`ptr`: Pointer,`albumId`: RustBuffer.ByValue,`ascending`: Byte,`position`: Int,uniffi_out_err: UniffiRustCallStatus, 
@@ -1160,7 +1160,7 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_album_items_by_date_neighbors(`ptr`: P
 fun uniffi_lasco_ffi_fn_method_ffilibrary_album_items_by_date_range(`ptr`: Pointer,`albumId`: RustBuffer.ByValue,`ascending`: Byte,`posStartInclusive`: Int,`posEndInclusive`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_album_items_count(`ptr`: Pointer,`albumId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-): Int
+): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_album_list_groups(`ptr`: Pointer,`albumId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_album_list_items_sorted(`ptr`: Pointer,`albumId`: RustBuffer.ByValue,`ascending`: Byte,uniffi_out_err: UniffiRustCallStatus, 
@@ -1180,7 +1180,7 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_delete_group(`ptr`: Pointer,`groupId`:
 fun uniffi_lasco_ffi_fn_method_ffilibrary_delete_media(`ptr`: Pointer,`mediaId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_disconnected_albums_count(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
-): Int
+): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_disconnected_albums_range(`ptr`: Pointer,`posStartInclusive`: Int,`posEndInclusive`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_evict_local_data(`ptr`: Pointer,`mediaIds`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1188,7 +1188,7 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_evict_local_data(`ptr`: Pointer,`media
 fun uniffi_lasco_ffi_fn_method_ffilibrary_evict_local_thumbnails(`ptr`: Pointer,`mediaIds`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_fetch_remote(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-): Int
+): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_fetch_remote_async(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,
 ): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_get_auto_import_device_media(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -1217,7 +1217,7 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_list_albums(`ptr`: Pointer,uniffi_out_
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_list_media(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-fun uniffi_lasco_ffi_fn_method_ffilibrary_list_operations(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+fun uniffi_lasco_ffi_fn_method_ffilibrary_list_operations(`ptr`: Pointer,`startPos`: Long,`endPosExclusive`: Long,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_list_remotes(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -1230,7 +1230,7 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_media_album_ids(`ptr`: Pointer,`mediaI
 fun uniffi_lasco_ffi_fn_method_ffilibrary_media_by_date(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_media_by_date_count(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
-): Int
+): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_media_by_date_neighbors(`ptr`: Pointer,`position`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_media_by_date_range(`ptr`: Pointer,`posStartInclusive`: Int,`posEndInclusive`: Int,uniffi_out_err: UniffiRustCallStatus, 
@@ -1246,19 +1246,19 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_move_media_to_album(`ptr`: Pointer,`me
 fun uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date_count(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
-): Int
+): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date_neighbors(`ptr`: Pointer,`position`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date_range(`ptr`: Pointer,`posStartInclusive`: Int,`posEndInclusive`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_pending_media_count(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
-): Int
+): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_push_remote(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-): Int
+): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_async(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,
 ): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_from_remote(`ptr`: Pointer,`targetRemoteId`: RustBuffer.ByValue,`sourceRemoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-): Int
+): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_from_remote_async(`ptr`: Pointer,`targetRemoteId`: RustBuffer.ByValue,`sourceRemoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,
 ): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_remove_media_from_album(`ptr`: Pointer,`albumId`: RustBuffer.ByValue,`mediaId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1431,109 +1431,109 @@ private fun uniffiCheckContractApiVersion(lib: IntegrityCheckingUniffiLib) {
 }
 @Suppress("UNUSED_PARAMETER")
 private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
-    if (lib.uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_s3() != 64054.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_s3() != 45002.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_func_ffi_create_library() != 65253.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_func_ffi_create_library() != 46039.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_func_ffi_delete_library() != 40145.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_func_ffi_delete_library() != 17812.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_func_ffi_open_cached() != 45988.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_func_ffi_open_cached() != 29965.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_func_ffi_test_s3_remote() != 63928.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_func_ffi_test_s3_remote() != 38987.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_func_list_libraries() != 48425.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_func_list_libraries() != 63304.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_func_session_clear() != 35874.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_func_session_clear() != 3068.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_add_media_to_album() != 55216.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_add_media_to_album() != 34537.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_add_media_to_group() != 5675.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_add_media_to_group() != 3438.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_debug_local_android() != 7330.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_debug_local_android() != 10217.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_debug_local_apple() != 64099.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_debug_local_apple() != 58084.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_fixed_path() != 49491.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_fixed_path() != 50273.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_s3() != 64944.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_s3() != 5472.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_usb_android() != 42164.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_usb_android() != 31100.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_usb_apple() != 26312.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_usb_apple() != 52226.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_album_albums_count() != 28015.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_album_albums_count() != 36704.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_album_albums_range() != 13456.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_album_albums_range() != 48572.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_album_items_by_date_neighbors() != 62753.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_album_items_by_date_neighbors() != 3643.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_album_items_by_date_range() != 47055.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_album_items_by_date_range() != 39515.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_album_items_count() != 2483.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_album_items_count() != 638.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_album_list_groups() != 51918.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_album_list_groups() != 7.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_album_list_items_sorted() != 47227.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_album_list_items_sorted() != 10839.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_all_media_ids() != 28671.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_connect_remote() != 49612.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_connect_remote() != 33397.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_create_album() != 61555.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_create_album() != 16703.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_create_group() != 64046.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_create_group() != 60402.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_delete_album() != 1112.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_delete_album() != 11771.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_delete_group() != 35649.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_delete_group() != 44891.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_delete_media() != 63575.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_delete_media() != 3803.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_disconnected_albums_count() != 34428.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_disconnected_albums_count() != 3821.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_disconnected_albums_range() != 48974.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_disconnected_albums_range() != 62195.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_evict_local_data() != 32747.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_evict_local_data() != 58897.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_evict_local_thumbnails() != 3577.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_evict_local_thumbnails() != 60119.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_fetch_remote() != 3271.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_fetch_remote() != 60655.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_fetch_remote_async() != 62501.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_fetch_remote_async() != 58688.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_get_auto_import_device_media() != 41412.toShort()) {
@@ -1542,151 +1542,151 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_get_default_fetch_remote() != 26534.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_bytes() != 43678.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_bytes() != 47719.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_bytes_async() != 42941.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_bytes_async() != 39230.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_thumbnail() != 9842.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_thumbnail() != 38204.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_thumbnail_async() != 56646.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_thumbnail_async() != 58793.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_group_list_media() != 45492.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_group_list_media() != 51462.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_has_unpushed_changes() != 50625.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_import_media() != 24601.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_import_media() != 49744.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_initialize_remote() != 14967.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_initialize_remote() != 54402.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_library_id() != 29748.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_list_albums() != 29638.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_list_albums() != 20929.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_list_media() != 48443.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_list_media() != 41620.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_list_operations() != 224.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_list_operations() != 17590.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_list_remotes() != 6196.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_list_remotes() != 14789.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_load_local_state() != 3933.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_load_local_state() != 24975.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_local_state_stats() != 38463.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_media_album_ids() != 44766.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_media_album_ids() != 37108.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date() != 16831.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date() != 35684.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date_count() != 56581.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date_count() != 22303.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date_neighbors() != 17050.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date_neighbors() != 13523.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date_range() != 705.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date_range() != 45831.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_media_containing_album_ids() != 61871.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_media_containing_album_ids() != 8372.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_media_ids_without_remote_backup() != 24845.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_media_ids_without_remote_backup() != 14902.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_media_in_album() != 1494.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_media_in_album() != 39680.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_move_media_to_album() != 48351.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_move_media_to_album() != 48107.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date() != 1863.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date() != 25082.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_count() != 51224.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_count() != 18881.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_neighbors() != 28984.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_neighbors() != 26108.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_range() != 37391.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_range() != 61721.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_pending_media_count() != 40879.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_pending_media_count() != 2390.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote() != 55829.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote() != 27651.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_async() != 35115.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_async() != 8987.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_from_remote() != 11414.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_from_remote() != 39422.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_from_remote_async() != 35115.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_from_remote_async() != 41311.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_remove_media_from_album() != 18225.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_remove_media_from_album() != 46585.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_remove_media_from_group() != 64893.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_remove_media_from_group() != 15256.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_remove_remote() != 14102.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_remove_remote() != 41678.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_rename_album() != 31123.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_rename_album() != 50813.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_rename_media() != 1783.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_rename_media() != 36270.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_reparent_album() != 23412.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_reparent_album() != 42959.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_set_album_thumbnail() != 42471.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_set_album_thumbnail() != 48225.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_set_auto_import_device_media() != 35965.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_set_auto_import_device_media() != 2768.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_set_default_fetch_remote() != 50467.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_set_default_fetch_remote() != 3089.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_set_media_thumbnail() != 40269.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_set_media_thumbnail() != 10306.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_set_remote_auto_push() != 27320.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_set_remote_auto_push() != 52461.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_set_remote_media_fetch_priority() != 21910.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_set_remote_media_fetch_priority() != 26777.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_show_media() != 14090.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_show_media() != 45030.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_user_add() != 37143.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_user_add() != 31541.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_user_list() != 55837.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_user_list() != 50139.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_constructor_ffilibrary_open() != 15911.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_constructor_ffilibrary_open() != 55421.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
 }
@@ -2164,199 +2164,563 @@ public object FfiConverterByteArray: FfiConverterRustBuffer<ByteArray> {
 
 public interface FfiLibraryInterface {
     
+    /**
+     * # Errors
+     *
+     * Returns an error for invalid or absent IDs, or an unpersistable membership operation.
+     */
     fun `addMediaToAlbum`(`albumId`: FfiAlbumUuid, `mediaId`: FfiMediaUuid)
     
+    /**
+     * # Errors
+     *
+     * Returns an error for invalid or absent IDs, or an unpersistable membership operation.
+     */
     fun `addMediaToGroup`(`groupId`: FfiGroupUuid, `mediaId`: FfiMediaUuid)
     
+    /**
+     * # Errors
+     *
+     * Returns an error for a duplicate name or failed library-configuration persistence.
+     *
+     * # Panics
+     *
+     * Panics if another thread panicked while holding the cached remote-list mutex during the
+     * in-memory update after configuration is saved.
+     */
     fun `addRemoteDebugLocalAndroid`(`name`: kotlin.String): FfiRemoteUuid
     
+    /**
+     * # Errors
+     *
+     * Returns an error for a duplicate name or failed library-configuration persistence.
+     *
+     * # Panics
+     *
+     * Panics if another thread panicked while holding the cached remote-list mutex during the
+     * in-memory update after configuration is saved.
+     */
     fun `addRemoteDebugLocalApple`(`name`: kotlin.String): FfiRemoteUuid
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the name already exists or library configuration cannot be read or saved.
+     *
+     * # Panics
+     *
+     * Panics if another thread panicked while holding the cached remote-list mutex during the
+     * in-memory update after configuration is saved.
+     */
     fun `addRemoteFixedPath`(`name`: kotlin.String, `path`: kotlin.String): FfiRemoteUuid
     
+    /**
+     * # Errors
+     *
+     * Returns an error for a duplicate name, failed secret-key encryption, or failed configuration persistence.
+     *
+     * # Panics
+     *
+     * Panics if another thread panicked while holding the cached remote-list mutex during the
+     * in-memory update after configuration is saved.
+     */
     fun `addRemoteS3`(`name`: kotlin.String, `endpoint`: kotlin.String, `bucket`: kotlin.String, `region`: kotlin.String, `pathPrefix`: kotlin.String, `accessKey`: kotlin.String, `secretKey`: kotlin.String): FfiRemoteUuid
     
     /**
      * Add a wired USB drive selected through Android's Storage Access
      * Framework. `tree_uri` is an opaque, persistable access grant.
+     *
+     * # Errors
+     *
+     * Returns an error for an empty URI, duplicate name, or failed configuration persistence.
      */
     fun `addRemoteUsbAndroid`(`name`: kotlin.String, `treeUri`: kotlin.String): FfiRemoteUuid
     
     /**
      * Add a wired USB drive selected through Apple's document picker.
      * `bookmark_base64` is an opaque security-scoped bookmark.
+     *
+     * # Errors
+     *
+     * Returns an error for an empty bookmark, duplicate name, or failed configuration persistence.
      */
     fun `addRemoteUsbApple`(`name`: kotlin.String, `bookmarkBase64`: kotlin.String): FfiRemoteUuid
     
-    fun `albumAlbumsCount`(`parentAlbumId`: FfiAlbumUuid?): kotlin.UInt
+    /**
+     * # Errors
+     *
+     * Returns an error if `parent_album_id` is not a valid UUID.
+     */
+    fun `albumAlbumsCount`(`parentAlbumId`: FfiAlbumUuid?): kotlin.ULong
     
     /**
      * Returns direct albums under `parent_album_id`; `None` means root albums.
      * Positions are zero-based and both ends of the range are inclusive.
+     *
+     * # Errors
+     *
+     * Returns an error for an invalid parent ID or an inverted position range.
      */
     fun `albumAlbumsRange`(`parentAlbumId`: FfiAlbumUuid?, `posStartInclusive`: kotlin.UInt, `posEndInclusive`: kotlin.UInt): List<FfiAlbum>
     
     /**
      * Returns the entries immediately surrounding a zero-based album position.
+     *
+     * # Errors
+     *
+     * Returns an error if the album ID is invalid or absent, or `position` is outside its item list.
      */
     fun `albumItemsByDateNeighbors`(`albumId`: FfiAlbumUuid, `ascending`: kotlin.Boolean, `position`: kotlin.UInt): FfiMediaOrGroupNeighbors
     
     /**
      * Positions are zero-based and both ends of the range are inclusive.
+     *
+     * # Errors
+     *
+     * Returns an error for an invalid or absent album ID, or an inverted position range.
      */
     fun `albumItemsByDateRange`(`albumId`: FfiAlbumUuid, `ascending`: kotlin.Boolean, `posStartInclusive`: kotlin.UInt, `posEndInclusive`: kotlin.UInt): List<FfiAlbumItem>
     
-    fun `albumItemsCount`(`albumId`: FfiAlbumUuid): kotlin.UInt
+    /**
+     * # Errors
+     *
+     * Returns an error if `album_id` is invalid or absent.
+     */
+    fun `albumItemsCount`(`albumId`: FfiAlbumUuid): kotlin.ULong
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `album_id` is invalid or absent.
+     */
     fun `albumListGroups`(`albumId`: FfiAlbumUuid): List<FfiGroup>
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `album_id` is invalid or absent.
+     */
     fun `albumListItemsSorted`(`albumId`: FfiAlbumUuid, `ascending`: kotlin.Boolean): List<FfiAlbumItem>
     
     fun `allMediaIds`(): List<FfiMediaUuid>
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID/configuration is invalid, storage cannot be built, or remote identity cannot be verified.
+     */
     fun `connectRemote`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?)
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the optional parent ID is invalid or absent, or creation cannot be persisted.
+     */
     fun `createAlbum`(`name`: kotlin.String, `parentAlbumId`: FfiAlbumUuid?): FfiAlbumUuid
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `album_id` is invalid or absent, or creation cannot be persisted.
+     */
     fun `createGroup`(`albumId`: FfiAlbumUuid): FfiGroupUuid
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `album_id` is invalid or absent, or deletion cannot be persisted.
+     */
     fun `deleteAlbum`(`albumId`: FfiAlbumUuid)
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `group_id` is invalid or absent, or deletion cannot be persisted.
+     */
     fun `deleteGroup`(`groupId`: FfiGroupUuid)
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `media_id` is invalid, absent, or the delete operation cannot be persisted.
+     */
     fun `deleteMedia`(`mediaId`: FfiMediaUuid)
     
-    fun `disconnectedAlbumsCount`(): kotlin.UInt
+    fun `disconnectedAlbumsCount`(): kotlin.ULong
     
     /**
      * Returns disconnected albums in the same order as `list_albums`.
      * Positions are zero-based and both ends of the range are inclusive.
+     *
+     * # Errors
+     *
+     * Returns an error when the start position exceeds the end position.
      */
     fun `disconnectedAlbumsRange`(`posStartInclusive`: kotlin.UInt, `posEndInclusive`: kotlin.UInt): List<FfiAlbum>
     
+    /**
+     * # Errors
+     *
+     * Returns an error if an ID is invalid or removing a cached media file fails.
+     */
     fun `evictLocalData`(`mediaIds`: List<FfiMediaUuid>)
     
+    /**
+     * # Errors
+     *
+     * Returns an error if an ID is invalid or removing a cached thumbnail fails.
+     */
     fun `evictLocalThumbnails`(`mediaIds`: List<FfiMediaUuid>)
     
-    fun `fetchRemote`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): kotlin.UInt
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID/configuration is invalid, storage cannot be built, or remote fetch fails.
+     */
+    fun `fetchRemote`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): kotlin.ULong
     
-    suspend fun `fetchRemoteAsync`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): kotlin.UInt
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID/configuration is invalid, storage cannot be built, the task fails, or remote fetch fails.
+     */
+    suspend fun `fetchRemoteAsync`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): kotlin.ULong
     
     fun `getAutoImportDeviceMedia`(): kotlin.Boolean
     
     fun `getDefaultFetchRemote`(): FfiRemoteUuid?
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID is invalid, no local or configured remote copy is available, or reading, decrypting, or caching it fails.
+     */
     fun `getMediaBytes`(`mediaId`: FfiMediaUuid, `appSupportDir`: kotlin.String?): kotlin.ByteArray
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID is invalid, no local or configured remote blob is available, or a remote read, decryption, or cache write fails.
+     */
     suspend fun `getMediaBytesAsync`(`mediaId`: FfiMediaUuid, `appSupportDir`: kotlin.String?): kotlin.ByteArray
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID is invalid, no local or configured remote copy is available, or reading, decrypting, or caching it fails.
+     */
     fun `getMediaThumbnail`(`mediaId`: FfiMediaUuid, `appSupportDir`: kotlin.String?): kotlin.ByteArray
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID is invalid, no local or configured remote thumbnail is available, or a remote read or cache write fails.
+     */
     suspend fun `getMediaThumbnailAsync`(`mediaId`: FfiMediaUuid, `appSupportDir`: kotlin.String?): kotlin.ByteArray
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `group_id` is invalid or absent.
+     */
     fun `groupListMedia`(`groupId`: FfiGroupUuid): List<FfiMediaItem>
     
     fun `hasUnpushedChanges`(`remoteId`: FfiRemoteUuid): kotlin.Boolean
     
+    /**
+     * # Errors
+     *
+     * Returns an error if an ID is invalid, the source cannot be read, media encryption/storage fails, or the creation operation cannot be persisted.
+     */
     fun `importMedia`(`path`: kotlin.String, `albumId`: FfiAlbumUuid?, `originalFilename`: kotlin.String?, `appleAaeMediaId`: FfiMediaUuid?, `appleLivePhotoMediaId`: FfiMediaUuid?): FfiMediaAddResult
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID is invalid or unknown, storage cannot be built, or remote initialization fails.
+     */
     fun `initializeRemote`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?)
     
     fun `libraryId`(): FfiLibraryId
     
+    /**
+     * # Errors
+     *
+     * This method currently cannot fail; the `Result` preserves the FFI query API.
+     */
     fun `listAlbums`(): List<FfiAlbum>
     
+    /**
+     * # Errors
+     *
+     * This method currently cannot fail; the `Result` preserves the FFI query API.
+     */
     fun `listMedia`(): List<FfiMediaItem>
     
-    fun `listOperations`(): List<FfiCrdtOperation>
+    /**
+     * # Errors
+     *
+     * Returns an error if persisted local operations cannot be read or decoded.
+     */
+    fun `listOperations`(`startPos`: kotlin.ULong, `endPosExclusive`: kotlin.ULong): List<FfiCrdtOperation>
     
+    /**
+     * # Panics
+     *
+     * Panics if another thread panicked while holding the cached remote-list mutex.
+     */
     fun `listRemotes`(): List<FfiRemote>
     
+    /**
+     * # Errors
+     *
+     * Views are rebuilt atomically with every state change; retained as a no-op for FFI compatibility.
+     */
     fun `loadLocalState`()
     
     fun `localStateStats`(): FfiLocalStateStats
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `media_id` is not a valid UUID.
+     */
     fun `mediaAlbumIds`(`mediaId`: FfiMediaUuid): List<FfiAlbumUuid>
     
+    /**
+     * # Errors
+     *
+     * This method currently cannot fail; the `Result` preserves the FFI query API.
+     */
     fun `mediaByDate`(): List<FfiMediaItem>
     
-    fun `mediaByDateCount`(): kotlin.UInt
+    fun `mediaByDateCount`(): kotlin.ULong
     
     /**
      * Returns the entries immediately surrounding a zero-based home position.
+     *
+     * # Errors
+     *
+     * Returns an error when `position` is outside the dated-media list.
      */
     fun `mediaByDateNeighbors`(`position`: kotlin.UInt): FfiMediaNeighbors
     
     /**
      * Positions are zero-based and both ends of the range are inclusive.
+     *
+     * # Errors
+     *
+     * Returns an error when the start position exceeds the end position.
      */
     fun `mediaByDateRange`(`posStartInclusive`: kotlin.UInt, `posEndInclusive`: kotlin.UInt): List<FfiMediaItem>
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `media_id` is not a valid UUID.
+     */
     fun `mediaContainingAlbumIds`(`mediaId`: FfiMediaUuid, `includeViaGroups`: kotlin.Boolean): List<FfiAlbumUuid>
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the library configuration cannot be read.
+     */
     fun `mediaIdsWithoutRemoteBackup`(): List<FfiMediaUuid>
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `album_id` is invalid or absent.
+     */
     fun `mediaInAlbum`(`albumId`: FfiAlbumUuid): List<FfiMediaItem>
     
+    /**
+     * # Errors
+     *
+     * Returns an error for invalid or absent IDs, missing source membership, or a failed remove/add operation.
+     */
     fun `moveMediaToAlbum`(`mediaId`: FfiMediaUuid, `fromAlbumId`: FfiAlbumUuid, `toAlbumId`: FfiAlbumUuid)
     
+    /**
+     * # Errors
+     *
+     * This method currently cannot fail; the `Result` preserves the FFI query API.
+     */
     fun `orphanMediaByDate`(): List<FfiMediaItem>
     
-    fun `orphanMediaByDateCount`(): kotlin.UInt
+    fun `orphanMediaByDateCount`(): kotlin.ULong
     
     /**
      * Returns the entries immediately surrounding a zero-based orphan position.
+     *
+     * # Errors
+     *
+     * Returns an error when `position` is outside the dated orphan-media list.
      */
     fun `orphanMediaByDateNeighbors`(`position`: kotlin.UInt): FfiMediaNeighbors
     
     /**
      * Positions are zero-based and both ends of the range are inclusive.
+     *
+     * # Errors
+     *
+     * Returns an error when the start position exceeds the end position.
      */
     fun `orphanMediaByDateRange`(`posStartInclusive`: kotlin.UInt, `posEndInclusive`: kotlin.UInt): List<FfiMediaItem>
     
-    fun `pendingMediaCount`(): kotlin.UInt
+    fun `pendingMediaCount`(): kotlin.ULong
     
-    fun `pushRemote`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): kotlin.UInt
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID/configuration is invalid, storage cannot be built, or remote push fails.
+     */
+    fun `pushRemote`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): kotlin.ULong
     
-    suspend fun `pushRemoteAsync`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): kotlin.UInt
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID/configuration is invalid, storage cannot be built, the task fails, or remote push fails.
+     */
+    suspend fun `pushRemoteAsync`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): kotlin.ULong
     
     /**
      * Push to `target_remote_id`, relaying absent local media from the selected
      * configured source remote. Callers should only use this after an explicit
      * user choice; ordinary and scheduled pushes remain local-only.
+     *
+     * # Errors
+     *
+     * Returns an error for invalid IDs, unavailable remote storage, failed validation, or failed relay/upload.
      */
-    fun `pushRemoteFromRemote`(`targetRemoteId`: FfiRemoteUuid, `sourceRemoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): kotlin.UInt
+    fun `pushRemoteFromRemote`(`targetRemoteId`: FfiRemoteUuid, `sourceRemoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): kotlin.ULong
     
-    suspend fun `pushRemoteFromRemoteAsync`(`targetRemoteId`: FfiRemoteUuid, `sourceRemoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): kotlin.UInt
+    /**
+     * # Errors
+     *
+     * Returns an error for invalid IDs, unavailable storage, task failure, failed validation, or failed relay/upload.
+     */
+    suspend fun `pushRemoteFromRemoteAsync`(`targetRemoteId`: FfiRemoteUuid, `sourceRemoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): kotlin.ULong
     
+    /**
+     * # Errors
+     *
+     * Returns an error for invalid or absent IDs, missing membership, or an unpersistable operation.
+     */
     fun `removeMediaFromAlbum`(`albumId`: FfiAlbumUuid, `mediaId`: FfiMediaUuid)
     
+    /**
+     * # Errors
+     *
+     * Returns an error for invalid or absent IDs, missing membership, or an unpersistable operation.
+     */
     fun `removeMediaFromGroup`(`groupId`: FfiGroupUuid, `mediaId`: FfiMediaUuid)
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
+     *
+     * # Panics
+     *
+     * Panics if another thread panicked while holding the cached remote-list mutex during the
+     * in-memory removal after configuration is saved.
+     */
     fun `removeRemote`(`remoteId`: FfiRemoteUuid)
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID is invalid or absent, or the rename cannot be persisted.
+     */
     fun `renameAlbum`(`albumId`: FfiAlbumUuid, `name`: kotlin.String)
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `media_id` is invalid, absent, or the rename operation cannot be persisted.
+     */
     fun `renameMedia`(`mediaId`: FfiMediaUuid, `name`: kotlin.String?)
     
+    /**
+     * # Errors
+     *
+     * Returns an error for invalid or absent IDs, a cyclic move, or an unpersistable operation.
+     */
     fun `reparentAlbum`(`albumId`: FfiAlbumUuid, `newParentAlbumId`: FfiAlbumUuid?)
     
+    /**
+     * # Errors
+     *
+     * Returns an error for invalid or absent album/media IDs, or an unpersistable operation.
+     */
     fun `setAlbumThumbnail`(`albumId`: FfiAlbumUuid, `mediaId`: FfiMediaUuid?)
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the library configuration is missing, malformed, or cannot be saved.
+     */
     fun `setAutoImportDeviceMedia`(`enabled`: kotlin.Boolean)
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the library config cannot be read or saved, or `remote_id` is invalid or unconfigured.
+     */
     fun `setDefaultFetchRemote`(`remoteId`: FfiRemoteUuid?)
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `media_id` is invalid or the local thumbnail cannot be written.
+     */
     fun `setMediaThumbnail`(`mediaId`: FfiMediaUuid, `data`: kotlin.ByteArray)
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
+     *
+     * # Panics
+     *
+     * Panics if another thread panicked while holding the cached remote-list mutex during the
+     * in-memory auto-push update after configuration is saved.
+     */
     fun `setRemoteAutoPush`(`remoteId`: FfiRemoteUuid, `enabled`: kotlin.Boolean)
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
+     *
+     * # Panics
+     *
+     * Panics if another thread panicked while holding the cached remote-list mutex during the
+     * in-memory priority update after configuration is saved.
+     */
     fun `setRemoteMediaFetchPriority`(`remoteId`: FfiRemoteUuid, `priority`: kotlin.UInt)
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `media_id` is invalid or does not identify media in the local state.
+     */
     fun `showMedia`(`mediaId`: FfiMediaUuid): FfiMediaItem
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the user key or add-user operation cannot be persisted.
+     */
     fun `userAdd`(`username`: kotlin.String, `password`: kotlin.String)
     
+    /**
+     * # Errors
+     *
+     * Returns an error if user records cannot be read from local library state.
+     */
     fun `userList`(): List<kotlin.String>
     
     companion object
@@ -2445,6 +2809,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     }
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error for invalid or absent IDs, or an unpersistable membership operation.
+     */
     @Throws(LascoException::class)override fun `addMediaToAlbum`(`albumId`: FfiAlbumUuid, `mediaId`: FfiMediaUuid)
         = 
     callWithPointer {
@@ -2457,6 +2826,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error for invalid or absent IDs, or an unpersistable membership operation.
+     */
     @Throws(LascoException::class)override fun `addMediaToGroup`(`groupId`: FfiGroupUuid, `mediaId`: FfiMediaUuid)
         = 
     callWithPointer {
@@ -2469,6 +2843,16 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error for a duplicate name or failed library-configuration persistence.
+     *
+     * # Panics
+     *
+     * Panics if another thread panicked while holding the cached remote-list mutex during the
+     * in-memory update after configuration is saved.
+     */
     @Throws(LascoException::class)override fun `addRemoteDebugLocalAndroid`(`name`: kotlin.String): FfiRemoteUuid {
             return FfiConverterTypeFfiRemoteUuid.lift(
     callWithPointer {
@@ -2482,6 +2866,16 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error for a duplicate name or failed library-configuration persistence.
+     *
+     * # Panics
+     *
+     * Panics if another thread panicked while holding the cached remote-list mutex during the
+     * in-memory update after configuration is saved.
+     */
     @Throws(LascoException::class)override fun `addRemoteDebugLocalApple`(`name`: kotlin.String): FfiRemoteUuid {
             return FfiConverterTypeFfiRemoteUuid.lift(
     callWithPointer {
@@ -2495,6 +2889,16 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the name already exists or library configuration cannot be read or saved.
+     *
+     * # Panics
+     *
+     * Panics if another thread panicked while holding the cached remote-list mutex during the
+     * in-memory update after configuration is saved.
+     */
     @Throws(LascoException::class)override fun `addRemoteFixedPath`(`name`: kotlin.String, `path`: kotlin.String): FfiRemoteUuid {
             return FfiConverterTypeFfiRemoteUuid.lift(
     callWithPointer {
@@ -2508,6 +2912,16 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error for a duplicate name, failed secret-key encryption, or failed configuration persistence.
+     *
+     * # Panics
+     *
+     * Panics if another thread panicked while holding the cached remote-list mutex during the
+     * in-memory update after configuration is saved.
+     */
     @Throws(LascoException::class)override fun `addRemoteS3`(`name`: kotlin.String, `endpoint`: kotlin.String, `bucket`: kotlin.String, `region`: kotlin.String, `pathPrefix`: kotlin.String, `accessKey`: kotlin.String, `secretKey`: kotlin.String): FfiRemoteUuid {
             return FfiConverterTypeFfiRemoteUuid.lift(
     callWithPointer {
@@ -2524,6 +2938,10 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     /**
      * Add a wired USB drive selected through Android's Storage Access
      * Framework. `tree_uri` is an opaque, persistable access grant.
+     *
+     * # Errors
+     *
+     * Returns an error for an empty URI, duplicate name, or failed configuration persistence.
      */
     @Throws(LascoException::class)override fun `addRemoteUsbAndroid`(`name`: kotlin.String, `treeUri`: kotlin.String): FfiRemoteUuid {
             return FfiConverterTypeFfiRemoteUuid.lift(
@@ -2541,6 +2959,10 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     /**
      * Add a wired USB drive selected through Apple's document picker.
      * `bookmark_base64` is an opaque security-scoped bookmark.
+     *
+     * # Errors
+     *
+     * Returns an error for an empty bookmark, duplicate name, or failed configuration persistence.
      */
     @Throws(LascoException::class)override fun `addRemoteUsbApple`(`name`: kotlin.String, `bookmarkBase64`: kotlin.String): FfiRemoteUuid {
             return FfiConverterTypeFfiRemoteUuid.lift(
@@ -2555,8 +2977,13 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
-    @Throws(LascoException::class)override fun `albumAlbumsCount`(`parentAlbumId`: FfiAlbumUuid?): kotlin.UInt {
-            return FfiConverterUInt.lift(
+    /**
+     * # Errors
+     *
+     * Returns an error if `parent_album_id` is not a valid UUID.
+     */
+    @Throws(LascoException::class)override fun `albumAlbumsCount`(`parentAlbumId`: FfiAlbumUuid?): kotlin.ULong {
+            return FfiConverterULong.lift(
     callWithPointer {
     uniffiRustCallWithError(LascoException) { _status ->
     UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_album_albums_count(
@@ -2571,6 +2998,10 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     /**
      * Returns direct albums under `parent_album_id`; `None` means root albums.
      * Positions are zero-based and both ends of the range are inclusive.
+     *
+     * # Errors
+     *
+     * Returns an error for an invalid parent ID or an inverted position range.
      */
     @Throws(LascoException::class)override fun `albumAlbumsRange`(`parentAlbumId`: FfiAlbumUuid?, `posStartInclusive`: kotlin.UInt, `posEndInclusive`: kotlin.UInt): List<FfiAlbum> {
             return FfiConverterSequenceTypeFfiAlbum.lift(
@@ -2587,6 +3018,10 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
     /**
      * Returns the entries immediately surrounding a zero-based album position.
+     *
+     * # Errors
+     *
+     * Returns an error if the album ID is invalid or absent, or `position` is outside its item list.
      */
     @Throws(LascoException::class)override fun `albumItemsByDateNeighbors`(`albumId`: FfiAlbumUuid, `ascending`: kotlin.Boolean, `position`: kotlin.UInt): FfiMediaOrGroupNeighbors {
             return FfiConverterTypeFfiMediaOrGroupNeighbors.lift(
@@ -2603,6 +3038,10 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
     /**
      * Positions are zero-based and both ends of the range are inclusive.
+     *
+     * # Errors
+     *
+     * Returns an error for an invalid or absent album ID, or an inverted position range.
      */
     @Throws(LascoException::class)override fun `albumItemsByDateRange`(`albumId`: FfiAlbumUuid, `ascending`: kotlin.Boolean, `posStartInclusive`: kotlin.UInt, `posEndInclusive`: kotlin.UInt): List<FfiAlbumItem> {
             return FfiConverterSequenceTypeFfiAlbumItem.lift(
@@ -2617,8 +3056,13 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
-    @Throws(LascoException::class)override fun `albumItemsCount`(`albumId`: FfiAlbumUuid): kotlin.UInt {
-            return FfiConverterUInt.lift(
+    /**
+     * # Errors
+     *
+     * Returns an error if `album_id` is invalid or absent.
+     */
+    @Throws(LascoException::class)override fun `albumItemsCount`(`albumId`: FfiAlbumUuid): kotlin.ULong {
+            return FfiConverterULong.lift(
     callWithPointer {
     uniffiRustCallWithError(LascoException) { _status ->
     UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_album_items_count(
@@ -2630,6 +3074,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `album_id` is invalid or absent.
+     */
     @Throws(LascoException::class)override fun `albumListGroups`(`albumId`: FfiAlbumUuid): List<FfiGroup> {
             return FfiConverterSequenceTypeFfiGroup.lift(
     callWithPointer {
@@ -2643,6 +3092,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `album_id` is invalid or absent.
+     */
     @Throws(LascoException::class)override fun `albumListItemsSorted`(`albumId`: FfiAlbumUuid, `ascending`: kotlin.Boolean): List<FfiAlbumItem> {
             return FfiConverterSequenceTypeFfiAlbumItem.lift(
     callWithPointer {
@@ -2668,6 +3122,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID/configuration is invalid, storage cannot be built, or remote identity cannot be verified.
+     */
     @Throws(LascoException::class)override fun `connectRemote`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?)
         = 
     callWithPointer {
@@ -2680,6 +3139,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the optional parent ID is invalid or absent, or creation cannot be persisted.
+     */
     @Throws(LascoException::class)override fun `createAlbum`(`name`: kotlin.String, `parentAlbumId`: FfiAlbumUuid?): FfiAlbumUuid {
             return FfiConverterTypeFfiAlbumUuid.lift(
     callWithPointer {
@@ -2693,6 +3157,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `album_id` is invalid or absent, or creation cannot be persisted.
+     */
     @Throws(LascoException::class)override fun `createGroup`(`albumId`: FfiAlbumUuid): FfiGroupUuid {
             return FfiConverterTypeFfiGroupUuid.lift(
     callWithPointer {
@@ -2706,6 +3175,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `album_id` is invalid or absent, or deletion cannot be persisted.
+     */
     @Throws(LascoException::class)override fun `deleteAlbum`(`albumId`: FfiAlbumUuid)
         = 
     callWithPointer {
@@ -2718,6 +3192,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `group_id` is invalid or absent, or deletion cannot be persisted.
+     */
     @Throws(LascoException::class)override fun `deleteGroup`(`groupId`: FfiGroupUuid)
         = 
     callWithPointer {
@@ -2730,6 +3209,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `media_id` is invalid, absent, or the delete operation cannot be persisted.
+     */
     @Throws(LascoException::class)override fun `deleteMedia`(`mediaId`: FfiMediaUuid)
         = 
     callWithPointer {
@@ -2741,8 +3225,8 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
     
 
-    override fun `disconnectedAlbumsCount`(): kotlin.UInt {
-            return FfiConverterUInt.lift(
+    override fun `disconnectedAlbumsCount`(): kotlin.ULong {
+            return FfiConverterULong.lift(
     callWithPointer {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_disconnected_albums_count(
@@ -2757,6 +3241,10 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     /**
      * Returns disconnected albums in the same order as `list_albums`.
      * Positions are zero-based and both ends of the range are inclusive.
+     *
+     * # Errors
+     *
+     * Returns an error when the start position exceeds the end position.
      */
     @Throws(LascoException::class)override fun `disconnectedAlbumsRange`(`posStartInclusive`: kotlin.UInt, `posEndInclusive`: kotlin.UInt): List<FfiAlbum> {
             return FfiConverterSequenceTypeFfiAlbum.lift(
@@ -2771,6 +3259,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if an ID is invalid or removing a cached media file fails.
+     */
     @Throws(LascoException::class)override fun `evictLocalData`(`mediaIds`: List<FfiMediaUuid>)
         = 
     callWithPointer {
@@ -2783,6 +3276,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if an ID is invalid or removing a cached thumbnail fails.
+     */
     @Throws(LascoException::class)override fun `evictLocalThumbnails`(`mediaIds`: List<FfiMediaUuid>)
         = 
     callWithPointer {
@@ -2795,8 +3293,13 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
-    @Throws(LascoException::class)override fun `fetchRemote`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): kotlin.UInt {
-            return FfiConverterUInt.lift(
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID/configuration is invalid, storage cannot be built, or remote fetch fails.
+     */
+    @Throws(LascoException::class)override fun `fetchRemote`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): kotlin.ULong {
+            return FfiConverterULong.lift(
     callWithPointer {
     uniffiRustCallWithError(LascoException) { _status ->
     UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_fetch_remote(
@@ -2808,9 +3311,14 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID/configuration is invalid, storage cannot be built, the task fails, or remote fetch fails.
+     */
     @Throws(LascoException::class)
     @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
-    override suspend fun `fetchRemoteAsync`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?) : kotlin.UInt {
+    override suspend fun `fetchRemoteAsync`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?) : kotlin.ULong {
         return uniffiRustCallAsync(
         callWithPointer { thisPtr ->
             UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_fetch_remote_async(
@@ -2818,11 +3326,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
                 FfiConverterTypeFfiRemoteUuid.lower(`remoteId`),FfiConverterOptionalString.lower(`appSupportDir`),
             )
         },
-        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_poll_u32(future, callback, continuation) },
-        { future, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_complete_u32(future, continuation) },
-        { future -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_free_u32(future) },
+        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_poll_u64(future, callback, continuation) },
+        { future, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_complete_u64(future, continuation) },
+        { future -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_free_u64(future) },
         // lift function
-        { FfiConverterUInt.lift(it) },
+        { FfiConverterULong.lift(it) },
         // Error FFI converter
         LascoException.ErrorHandler,
     )
@@ -2853,6 +3361,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID is invalid, no local or configured remote copy is available, or reading, decrypting, or caching it fails.
+     */
     @Throws(LascoException::class)override fun `getMediaBytes`(`mediaId`: FfiMediaUuid, `appSupportDir`: kotlin.String?): kotlin.ByteArray {
             return FfiConverterByteArray.lift(
     callWithPointer {
@@ -2866,6 +3379,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID is invalid, no local or configured remote blob is available, or a remote read, decryption, or cache write fails.
+     */
     @Throws(LascoException::class)
     @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
     override suspend fun `getMediaBytesAsync`(`mediaId`: FfiMediaUuid, `appSupportDir`: kotlin.String?) : kotlin.ByteArray {
@@ -2887,6 +3405,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     }
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID is invalid, no local or configured remote copy is available, or reading, decrypting, or caching it fails.
+     */
     @Throws(LascoException::class)override fun `getMediaThumbnail`(`mediaId`: FfiMediaUuid, `appSupportDir`: kotlin.String?): kotlin.ByteArray {
             return FfiConverterByteArray.lift(
     callWithPointer {
@@ -2900,6 +3423,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID is invalid, no local or configured remote thumbnail is available, or a remote read or cache write fails.
+     */
     @Throws(LascoException::class)
     @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
     override suspend fun `getMediaThumbnailAsync`(`mediaId`: FfiMediaUuid, `appSupportDir`: kotlin.String?) : kotlin.ByteArray {
@@ -2921,6 +3449,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     }
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `group_id` is invalid or absent.
+     */
     @Throws(LascoException::class)override fun `groupListMedia`(`groupId`: FfiGroupUuid): List<FfiMediaItem> {
             return FfiConverterSequenceTypeFfiMediaItem.lift(
     callWithPointer {
@@ -2946,6 +3479,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if an ID is invalid, the source cannot be read, media encryption/storage fails, or the creation operation cannot be persisted.
+     */
     @Throws(LascoException::class)override fun `importMedia`(`path`: kotlin.String, `albumId`: FfiAlbumUuid?, `originalFilename`: kotlin.String?, `appleAaeMediaId`: FfiMediaUuid?, `appleLivePhotoMediaId`: FfiMediaUuid?): FfiMediaAddResult {
             return FfiConverterTypeFfiMediaAddResult.lift(
     callWithPointer {
@@ -2959,6 +3497,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID is invalid or unknown, storage cannot be built, or remote initialization fails.
+     */
     @Throws(LascoException::class)override fun `initializeRemote`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?)
         = 
     callWithPointer {
@@ -2983,6 +3526,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * This method currently cannot fail; the `Result` preserves the FFI query API.
+     */
     @Throws(LascoException::class)override fun `listAlbums`(): List<FfiAlbum> {
             return FfiConverterSequenceTypeFfiAlbum.lift(
     callWithPointer {
@@ -2996,6 +3544,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * This method currently cannot fail; the `Result` preserves the FFI query API.
+     */
     @Throws(LascoException::class)override fun `listMedia`(): List<FfiMediaItem> {
             return FfiConverterSequenceTypeFfiMediaItem.lift(
     callWithPointer {
@@ -3009,19 +3562,29 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
-    @Throws(LascoException::class)override fun `listOperations`(): List<FfiCrdtOperation> {
+    /**
+     * # Errors
+     *
+     * Returns an error if persisted local operations cannot be read or decoded.
+     */
+    @Throws(LascoException::class)override fun `listOperations`(`startPos`: kotlin.ULong, `endPosExclusive`: kotlin.ULong): List<FfiCrdtOperation> {
             return FfiConverterSequenceTypeFfiCrdtOperation.lift(
     callWithPointer {
     uniffiRustCallWithError(LascoException) { _status ->
     UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_list_operations(
-        it, _status)
+        it, FfiConverterULong.lower(`startPos`),FfiConverterULong.lower(`endPosExclusive`),_status)
 }
     }
     )
     }
     
 
-    override fun `listRemotes`(): List<FfiRemote> {
+    
+    /**
+     * # Panics
+     *
+     * Panics if another thread panicked while holding the cached remote-list mutex.
+     */override fun `listRemotes`(): List<FfiRemote> {
             return FfiConverterSequenceTypeFfiRemote.lift(
     callWithPointer {
     uniffiRustCall() { _status ->
@@ -3034,6 +3597,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Views are rebuilt atomically with every state change; retained as a no-op for FFI compatibility.
+     */
     @Throws(LascoException::class)override fun `loadLocalState`()
         = 
     callWithPointer {
@@ -3058,6 +3626,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `media_id` is not a valid UUID.
+     */
     @Throws(LascoException::class)override fun `mediaAlbumIds`(`mediaId`: FfiMediaUuid): List<FfiAlbumUuid> {
             return FfiConverterSequenceTypeFfiAlbumUuid.lift(
     callWithPointer {
@@ -3071,6 +3644,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * This method currently cannot fail; the `Result` preserves the FFI query API.
+     */
     @Throws(LascoException::class)override fun `mediaByDate`(): List<FfiMediaItem> {
             return FfiConverterSequenceTypeFfiMediaItem.lift(
     callWithPointer {
@@ -3083,8 +3661,8 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     }
     
 
-    override fun `mediaByDateCount`(): kotlin.UInt {
-            return FfiConverterUInt.lift(
+    override fun `mediaByDateCount`(): kotlin.ULong {
+            return FfiConverterULong.lift(
     callWithPointer {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_media_by_date_count(
@@ -3098,6 +3676,10 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
     /**
      * Returns the entries immediately surrounding a zero-based home position.
+     *
+     * # Errors
+     *
+     * Returns an error when `position` is outside the dated-media list.
      */
     @Throws(LascoException::class)override fun `mediaByDateNeighbors`(`position`: kotlin.UInt): FfiMediaNeighbors {
             return FfiConverterTypeFfiMediaNeighbors.lift(
@@ -3114,6 +3696,10 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
     /**
      * Positions are zero-based and both ends of the range are inclusive.
+     *
+     * # Errors
+     *
+     * Returns an error when the start position exceeds the end position.
      */
     @Throws(LascoException::class)override fun `mediaByDateRange`(`posStartInclusive`: kotlin.UInt, `posEndInclusive`: kotlin.UInt): List<FfiMediaItem> {
             return FfiConverterSequenceTypeFfiMediaItem.lift(
@@ -3128,6 +3714,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `media_id` is not a valid UUID.
+     */
     @Throws(LascoException::class)override fun `mediaContainingAlbumIds`(`mediaId`: FfiMediaUuid, `includeViaGroups`: kotlin.Boolean): List<FfiAlbumUuid> {
             return FfiConverterSequenceTypeFfiAlbumUuid.lift(
     callWithPointer {
@@ -3141,6 +3732,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the library configuration cannot be read.
+     */
     @Throws(LascoException::class)override fun `mediaIdsWithoutRemoteBackup`(): List<FfiMediaUuid> {
             return FfiConverterSequenceTypeFfiMediaUuid.lift(
     callWithPointer {
@@ -3154,6 +3750,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `album_id` is invalid or absent.
+     */
     @Throws(LascoException::class)override fun `mediaInAlbum`(`albumId`: FfiAlbumUuid): List<FfiMediaItem> {
             return FfiConverterSequenceTypeFfiMediaItem.lift(
     callWithPointer {
@@ -3167,6 +3768,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error for invalid or absent IDs, missing source membership, or a failed remove/add operation.
+     */
     @Throws(LascoException::class)override fun `moveMediaToAlbum`(`mediaId`: FfiMediaUuid, `fromAlbumId`: FfiAlbumUuid, `toAlbumId`: FfiAlbumUuid)
         = 
     callWithPointer {
@@ -3179,6 +3785,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * This method currently cannot fail; the `Result` preserves the FFI query API.
+     */
     @Throws(LascoException::class)override fun `orphanMediaByDate`(): List<FfiMediaItem> {
             return FfiConverterSequenceTypeFfiMediaItem.lift(
     callWithPointer {
@@ -3191,8 +3802,8 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     }
     
 
-    override fun `orphanMediaByDateCount`(): kotlin.UInt {
-            return FfiConverterUInt.lift(
+    override fun `orphanMediaByDateCount`(): kotlin.ULong {
+            return FfiConverterULong.lift(
     callWithPointer {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date_count(
@@ -3206,6 +3817,10 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
     /**
      * Returns the entries immediately surrounding a zero-based orphan position.
+     *
+     * # Errors
+     *
+     * Returns an error when `position` is outside the dated orphan-media list.
      */
     @Throws(LascoException::class)override fun `orphanMediaByDateNeighbors`(`position`: kotlin.UInt): FfiMediaNeighbors {
             return FfiConverterTypeFfiMediaNeighbors.lift(
@@ -3222,6 +3837,10 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
     /**
      * Positions are zero-based and both ends of the range are inclusive.
+     *
+     * # Errors
+     *
+     * Returns an error when the start position exceeds the end position.
      */
     @Throws(LascoException::class)override fun `orphanMediaByDateRange`(`posStartInclusive`: kotlin.UInt, `posEndInclusive`: kotlin.UInt): List<FfiMediaItem> {
             return FfiConverterSequenceTypeFfiMediaItem.lift(
@@ -3235,8 +3854,8 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     }
     
 
-    override fun `pendingMediaCount`(): kotlin.UInt {
-            return FfiConverterUInt.lift(
+    override fun `pendingMediaCount`(): kotlin.ULong {
+            return FfiConverterULong.lift(
     callWithPointer {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_pending_media_count(
@@ -3248,8 +3867,13 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
-    @Throws(LascoException::class)override fun `pushRemote`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): kotlin.UInt {
-            return FfiConverterUInt.lift(
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID/configuration is invalid, storage cannot be built, or remote push fails.
+     */
+    @Throws(LascoException::class)override fun `pushRemote`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): kotlin.ULong {
+            return FfiConverterULong.lift(
     callWithPointer {
     uniffiRustCallWithError(LascoException) { _status ->
     UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_push_remote(
@@ -3261,9 +3885,14 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID/configuration is invalid, storage cannot be built, the task fails, or remote push fails.
+     */
     @Throws(LascoException::class)
     @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
-    override suspend fun `pushRemoteAsync`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?) : kotlin.UInt {
+    override suspend fun `pushRemoteAsync`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?) : kotlin.ULong {
         return uniffiRustCallAsync(
         callWithPointer { thisPtr ->
             UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_async(
@@ -3271,11 +3900,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
                 FfiConverterTypeFfiRemoteUuid.lower(`remoteId`),FfiConverterOptionalString.lower(`appSupportDir`),
             )
         },
-        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_poll_u32(future, callback, continuation) },
-        { future, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_complete_u32(future, continuation) },
-        { future -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_free_u32(future) },
+        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_poll_u64(future, callback, continuation) },
+        { future, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_complete_u64(future, continuation) },
+        { future -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_free_u64(future) },
         // lift function
-        { FfiConverterUInt.lift(it) },
+        { FfiConverterULong.lift(it) },
         // Error FFI converter
         LascoException.ErrorHandler,
     )
@@ -3286,9 +3915,13 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
      * Push to `target_remote_id`, relaying absent local media from the selected
      * configured source remote. Callers should only use this after an explicit
      * user choice; ordinary and scheduled pushes remain local-only.
+     *
+     * # Errors
+     *
+     * Returns an error for invalid IDs, unavailable remote storage, failed validation, or failed relay/upload.
      */
-    @Throws(LascoException::class)override fun `pushRemoteFromRemote`(`targetRemoteId`: FfiRemoteUuid, `sourceRemoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): kotlin.UInt {
-            return FfiConverterUInt.lift(
+    @Throws(LascoException::class)override fun `pushRemoteFromRemote`(`targetRemoteId`: FfiRemoteUuid, `sourceRemoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): kotlin.ULong {
+            return FfiConverterULong.lift(
     callWithPointer {
     uniffiRustCallWithError(LascoException) { _status ->
     UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_from_remote(
@@ -3300,9 +3933,14 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error for invalid IDs, unavailable storage, task failure, failed validation, or failed relay/upload.
+     */
     @Throws(LascoException::class)
     @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
-    override suspend fun `pushRemoteFromRemoteAsync`(`targetRemoteId`: FfiRemoteUuid, `sourceRemoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?) : kotlin.UInt {
+    override suspend fun `pushRemoteFromRemoteAsync`(`targetRemoteId`: FfiRemoteUuid, `sourceRemoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?) : kotlin.ULong {
         return uniffiRustCallAsync(
         callWithPointer { thisPtr ->
             UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_from_remote_async(
@@ -3310,17 +3948,22 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
                 FfiConverterTypeFfiRemoteUuid.lower(`targetRemoteId`),FfiConverterTypeFfiRemoteUuid.lower(`sourceRemoteId`),FfiConverterOptionalString.lower(`appSupportDir`),
             )
         },
-        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_poll_u32(future, callback, continuation) },
-        { future, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_complete_u32(future, continuation) },
-        { future -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_free_u32(future) },
+        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_poll_u64(future, callback, continuation) },
+        { future, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_complete_u64(future, continuation) },
+        { future -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_free_u64(future) },
         // lift function
-        { FfiConverterUInt.lift(it) },
+        { FfiConverterULong.lift(it) },
         // Error FFI converter
         LascoException.ErrorHandler,
     )
     }
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error for invalid or absent IDs, missing membership, or an unpersistable operation.
+     */
     @Throws(LascoException::class)override fun `removeMediaFromAlbum`(`albumId`: FfiAlbumUuid, `mediaId`: FfiMediaUuid)
         = 
     callWithPointer {
@@ -3333,6 +3976,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error for invalid or absent IDs, missing membership, or an unpersistable operation.
+     */
     @Throws(LascoException::class)override fun `removeMediaFromGroup`(`groupId`: FfiGroupUuid, `mediaId`: FfiMediaUuid)
         = 
     callWithPointer {
@@ -3345,6 +3993,16 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
+     *
+     * # Panics
+     *
+     * Panics if another thread panicked while holding the cached remote-list mutex during the
+     * in-memory removal after configuration is saved.
+     */
     @Throws(LascoException::class)override fun `removeRemote`(`remoteId`: FfiRemoteUuid)
         = 
     callWithPointer {
@@ -3357,6 +4015,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID is invalid or absent, or the rename cannot be persisted.
+     */
     @Throws(LascoException::class)override fun `renameAlbum`(`albumId`: FfiAlbumUuid, `name`: kotlin.String)
         = 
     callWithPointer {
@@ -3369,6 +4032,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `media_id` is invalid, absent, or the rename operation cannot be persisted.
+     */
     @Throws(LascoException::class)override fun `renameMedia`(`mediaId`: FfiMediaUuid, `name`: kotlin.String?)
         = 
     callWithPointer {
@@ -3381,6 +4049,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error for invalid or absent IDs, a cyclic move, or an unpersistable operation.
+     */
     @Throws(LascoException::class)override fun `reparentAlbum`(`albumId`: FfiAlbumUuid, `newParentAlbumId`: FfiAlbumUuid?)
         = 
     callWithPointer {
@@ -3393,6 +4066,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error for invalid or absent album/media IDs, or an unpersistable operation.
+     */
     @Throws(LascoException::class)override fun `setAlbumThumbnail`(`albumId`: FfiAlbumUuid, `mediaId`: FfiMediaUuid?)
         = 
     callWithPointer {
@@ -3405,6 +4083,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the library configuration is missing, malformed, or cannot be saved.
+     */
     @Throws(LascoException::class)override fun `setAutoImportDeviceMedia`(`enabled`: kotlin.Boolean)
         = 
     callWithPointer {
@@ -3417,6 +4100,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the library config cannot be read or saved, or `remote_id` is invalid or unconfigured.
+     */
     @Throws(LascoException::class)override fun `setDefaultFetchRemote`(`remoteId`: FfiRemoteUuid?)
         = 
     callWithPointer {
@@ -3429,6 +4117,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `media_id` is invalid or the local thumbnail cannot be written.
+     */
     @Throws(LascoException::class)override fun `setMediaThumbnail`(`mediaId`: FfiMediaUuid, `data`: kotlin.ByteArray)
         = 
     callWithPointer {
@@ -3441,6 +4134,16 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
+     *
+     * # Panics
+     *
+     * Panics if another thread panicked while holding the cached remote-list mutex during the
+     * in-memory auto-push update after configuration is saved.
+     */
     @Throws(LascoException::class)override fun `setRemoteAutoPush`(`remoteId`: FfiRemoteUuid, `enabled`: kotlin.Boolean)
         = 
     callWithPointer {
@@ -3453,6 +4156,16 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
+     *
+     * # Panics
+     *
+     * Panics if another thread panicked while holding the cached remote-list mutex during the
+     * in-memory priority update after configuration is saved.
+     */
     @Throws(LascoException::class)override fun `setRemoteMediaFetchPriority`(`remoteId`: FfiRemoteUuid, `priority`: kotlin.UInt)
         = 
     callWithPointer {
@@ -3465,6 +4178,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `media_id` is invalid or does not identify media in the local state.
+     */
     @Throws(LascoException::class)override fun `showMedia`(`mediaId`: FfiMediaUuid): FfiMediaItem {
             return FfiConverterTypeFfiMediaItem.lift(
     callWithPointer {
@@ -3478,6 +4196,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the user key or add-user operation cannot be persisted.
+     */
     @Throws(LascoException::class)override fun `userAdd`(`username`: kotlin.String, `password`: kotlin.String)
         = 
     callWithPointer {
@@ -3490,6 +4213,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if user records cannot be read from local library state.
+     */
     @Throws(LascoException::class)override fun `userList`(): List<kotlin.String> {
             return FfiConverterSequenceString.lift(
     callWithPointer {
@@ -3510,6 +4238,10 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     /**
      * Open a library by nickname. Delegates config loading, storage
      * construction, and session/master-key handling to `lasco_core::client`.
+     *
+     * # Errors
+     *
+     * Returns an error if setup/configuration fails, the nickname is unknown, or credentials cannot open the library.
      */
     @Throws(LascoException::class) fun `open`(`nickname`: kotlin.String?, `username`: kotlin.String, `password`: kotlin.String, `appDir`: kotlin.String? = null): FfiLibrary {
             return FfiConverterTypeFfiLibrary.lift(
@@ -3560,7 +4292,7 @@ data class FfiAlbum (
     var `albumId`: FfiAlbumUuid, 
     var `name`: kotlin.String, 
     var `parentAlbumId`: FfiAlbumUuid?, 
-    var `mediaCount`: kotlin.UInt, 
+    var `mediaCount`: kotlin.ULong, 
     var `deleted`: kotlin.Boolean, 
     var `isDisconnected`: kotlin.Boolean, 
     var `thumbnailMediaId`: FfiMediaUuid?
@@ -3578,7 +4310,7 @@ public object FfiConverterTypeFfiAlbum: FfiConverterRustBuffer<FfiAlbum> {
             FfiConverterTypeFfiAlbumUuid.read(buf),
             FfiConverterString.read(buf),
             FfiConverterOptionalTypeFfiAlbumUuid.read(buf),
-            FfiConverterUInt.read(buf),
+            FfiConverterULong.read(buf),
             FfiConverterBoolean.read(buf),
             FfiConverterBoolean.read(buf),
             FfiConverterOptionalTypeFfiMediaUuid.read(buf),
@@ -3589,7 +4321,7 @@ public object FfiConverterTypeFfiAlbum: FfiConverterRustBuffer<FfiAlbum> {
             FfiConverterTypeFfiAlbumUuid.allocationSize(value.`albumId`) +
             FfiConverterString.allocationSize(value.`name`) +
             FfiConverterOptionalTypeFfiAlbumUuid.allocationSize(value.`parentAlbumId`) +
-            FfiConverterUInt.allocationSize(value.`mediaCount`) +
+            FfiConverterULong.allocationSize(value.`mediaCount`) +
             FfiConverterBoolean.allocationSize(value.`deleted`) +
             FfiConverterBoolean.allocationSize(value.`isDisconnected`) +
             FfiConverterOptionalTypeFfiMediaUuid.allocationSize(value.`thumbnailMediaId`)
@@ -3599,7 +4331,7 @@ public object FfiConverterTypeFfiAlbum: FfiConverterRustBuffer<FfiAlbum> {
             FfiConverterTypeFfiAlbumUuid.write(value.`albumId`, buf)
             FfiConverterString.write(value.`name`, buf)
             FfiConverterOptionalTypeFfiAlbumUuid.write(value.`parentAlbumId`, buf)
-            FfiConverterUInt.write(value.`mediaCount`, buf)
+            FfiConverterULong.write(value.`mediaCount`, buf)
             FfiConverterBoolean.write(value.`deleted`, buf)
             FfiConverterBoolean.write(value.`isDisconnected`, buf)
             FfiConverterOptionalTypeFfiMediaUuid.write(value.`thumbnailMediaId`, buf)
@@ -4185,9 +4917,9 @@ public object FfiConverterTypeFfiMediaOrGroupNeighbors: FfiConverterRustBuffer<F
 
 
 /**
- * A media identifier exposed to UniFFI as a record so Swift and Kotlin receive
+ * A media identifier exposed to `UniFFI` as a record so Swift and Kotlin receive
  * a distinct type. Do not replace this with `uniffi::custom_type!` backed by
- * `String`: UniFFI generates custom string types as `String` aliases, allowing
+ * `String`: `UniFFI` generates custom string types as `String` aliases, allowing
  * media IDs to be accidentally passed where another ID kind is required.
  */
 data class FfiMediaUuid (
@@ -5094,6 +5826,10 @@ public object FfiConverterSequenceTypeFfiRemote: FfiConverterRustBuffer<List<Ffi
          * metadata and operations and opening it locally. `username`/`password` must be
          * an existing user on the remote. When `new_username`/`new_password` are both
          * provided, a new user is registered and used as the effective device user.
+         *
+         * # Errors
+         *
+         * Returns an error if runtime/app setup, remote connection or authentication, local persistence, or initial synchronization fails.
          */
     @Throws(LascoException::class) fun `ffiAddExistingLibraryS3`(`nickname`: kotlin.String, `username`: kotlin.String, `password`: kotlin.String, `newUsername`: kotlin.String?, `newPassword`: kotlin.String?, `remoteName`: kotlin.String, `endpoint`: kotlin.String, `bucket`: kotlin.String, `region`: kotlin.String, `pathPrefix`: kotlin.String, `accessKey`: kotlin.String, `secretKey`: kotlin.String, `appDir`: kotlin.String? = null): FfiLibrary {
             return FfiConverterTypeFfiLibrary.lift(
@@ -5105,6 +5841,15 @@ public object FfiConverterSequenceTypeFfiRemote: FfiConverterRustBuffer<List<Ffi
     }
     
 
+        /**
+         * # Errors
+         *
+         * Returns an error if the app directory/runtime cannot be created or library state, config, or session key cannot be initialized.
+         *
+         * # Panics
+         *
+         * Panics if Tokio cannot construct the runtime used to initialize the library.
+         */
     @Throws(LascoException::class) fun `ffiCreateLibrary`(`nickname`: kotlin.String, `username`: kotlin.String, `password`: kotlin.String, `appDir`: kotlin.String? = null): FfiCreateLibraryResult {
             return FfiConverterTypeFfiCreateLibraryResult.lift(
     uniffiRustCallWithError(LascoException) { _status ->
@@ -5115,6 +5860,11 @@ public object FfiConverterSequenceTypeFfiRemote: FfiConverterRustBuffer<List<Ffi
     }
     
 
+        /**
+         * # Errors
+         *
+         * Returns an error if the library ID is invalid or local data, session state, or app configuration cannot be removed or updated.
+         */
     @Throws(LascoException::class) fun `ffiDeleteLibrary`(`libraryId`: FfiLibraryId, `appDir`: kotlin.String? = null)
         = 
     uniffiRustCallWithError(LascoException) { _status ->
@@ -5127,6 +5877,10 @@ public object FfiConverterSequenceTypeFfiRemote: FfiConverterRustBuffer<List<Ffi
         /**
          * Try to open a library using a cached session (OS keychain), without a password.
          * Returns `None` if no session is cached — the caller should then prompt for credentials.
+         *
+         * # Errors
+         *
+         * Returns an error if configuration or the session key cannot be read, or opening a cached library fails.
          */
     @Throws(LascoException::class) fun `ffiOpenCached`(`nickname`: kotlin.String?, `username`: kotlin.String, `appDir`: kotlin.String? = null): FfiLibrary? {
             return FfiConverterOptionalTypeFfiLibrary.lift(
@@ -5141,6 +5895,10 @@ public object FfiConverterSequenceTypeFfiRemote: FfiConverterRustBuffer<List<Ffi
         /**
          * Test connectivity to an S3 remote using the given credentials, without
          * saving anything. Builds an ephemeral client and lists the bucket root.
+         *
+         * # Errors
+         *
+         * Returns an error if the S3 client or runtime cannot be created, or the bucket cannot be listed.
          */
     @Throws(LascoException::class) fun `ffiTestS3Remote`(`endpoint`: kotlin.String, `bucket`: kotlin.String, `region`: kotlin.String, `pathPrefix`: kotlin.String, `accessKey`: kotlin.String, `secretKey`: kotlin.String)
         = 
@@ -5151,6 +5909,11 @@ public object FfiConverterSequenceTypeFfiRemote: FfiConverterRustBuffer<List<Ffi
     
     
 
+        /**
+         * # Errors
+         *
+         * Returns an error if the application configuration cannot be read; per-library load failures are returned in each entry.
+         */
     @Throws(LascoException::class) fun `listLibraries`(`appDir`: kotlin.String? = null): List<FfiLibraryEntry> {
             return FfiConverterSequenceTypeFfiLibraryEntry.lift(
     uniffiRustCallWithError(LascoException) { _status ->
@@ -5161,6 +5924,11 @@ public object FfiConverterSequenceTypeFfiRemote: FfiConverterRustBuffer<List<Ffi
     }
     
 
+        /**
+         * # Errors
+         *
+         * Returns an error if the library ID is invalid or its file-based session cannot be cleared.
+         */
     @Throws(LascoException::class) fun `sessionClear`(`libraryId`: FfiLibraryId, `username`: kotlin.String, `appDir`: kotlin.String? = null)
         = 
     uniffiRustCallWithError(LascoException) { _status ->

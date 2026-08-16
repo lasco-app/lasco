@@ -24,11 +24,17 @@ fn next_media_fetch_priority(remote_count: usize) -> Result<u32, LascoError> {
 impl FfiLibrary {
     /// # Errors
     ///
+    /// Returns the newest-first half-open range `[start_pos, end_pos_exclusive)`.
+    ///
     /// Returns an error if persisted local operations cannot be read or decoded.
-    pub fn list_operations(&self) -> Result<Vec<FfiCrdtOperation>, LascoError> {
+    pub fn list_operations(
+        &self,
+        start_pos: u64,
+        end_pos_exclusive: u64,
+    ) -> Result<Vec<FfiCrdtOperation>, LascoError> {
         Ok(self
             .inner
-            .list_operations()?
+            .list_operations_range(start_pos, end_pos_exclusive)?
             .into_iter()
             .map(crdt_operation_to_ffi)
             .collect())

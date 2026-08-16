@@ -847,7 +847,7 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      *
      * Returns an error if persisted local operations cannot be read or decoded.
      */
-    func listOperations() throws  -> [FfiCrdtOperation]
+    func listOperations(startPos: UInt64, endPosExclusive: UInt64) throws  -> [FfiCrdtOperation]
     
     /**
      * # Panics
@@ -1765,9 +1765,11 @@ nonisolated open func listMedia()throws  -> [FfiMediaItem]  {
      *
      * Returns an error if persisted local operations cannot be read or decoded.
      */
-nonisolated open func listOperations()throws  -> [FfiCrdtOperation]  {
+nonisolated open func listOperations(startPos: UInt64, endPosExclusive: UInt64)throws  -> [FfiCrdtOperation]  {
     return try  FfiConverterSequenceTypeFfiCrdtOperation.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
-    uniffi_lasco_ffi_fn_method_ffilibrary_list_operations(self.uniffiClonePointer(),$0
+    uniffi_lasco_ffi_fn_method_ffilibrary_list_operations(self.uniffiClonePointer(),
+        FfiConverterUInt64.lower(startPos),
+        FfiConverterUInt64.lower(endPosExclusive),$0
     )
 })
 }
@@ -2390,7 +2392,7 @@ nonisolated public struct FfiConverterTypeFfiAlbum: FfiConverterRustBuffer {
                 albumId: FfiConverterTypeFfiAlbumUuid.read(from: &buf), 
                 name: FfiConverterString.read(from: &buf), 
                 parentAlbumId: FfiConverterOptionTypeFfiAlbumUuid.read(from: &buf), 
-                mediaCount: FfiConverterUInt64.read(from: &buf),
+                mediaCount: FfiConverterUInt64.read(from: &buf), 
                 deleted: FfiConverterBool.read(from: &buf), 
                 isDisconnected: FfiConverterBool.read(from: &buf), 
                 thumbnailMediaId: FfiConverterOptionTypeFfiMediaUuid.read(from: &buf)
@@ -4941,7 +4943,7 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_list_media() != 41620) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_list_operations() != 48835) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_list_operations() != 17590) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_list_remotes() != 14789) {

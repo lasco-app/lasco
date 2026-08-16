@@ -314,6 +314,16 @@ impl Library {
     pub fn list_operations(&self) -> Result<Vec<crate::crdt::CrdtOperation>> {
         self.local_ops_read_write().read_operations()
     }
+
+    /// Returns a newest-first slice of the persisted operation log.
+    pub fn list_operations_range(
+        &self,
+        start_pos: u64,
+        end_pos_exclusive: u64,
+    ) -> Result<Vec<crate::crdt::CrdtOperation>> {
+        self.local_ops_read_write()
+            .read_operations_range(start_pos, end_pos_exclusive)
+    }
 }
 
 /// The encrypted operation log is the recovery authority. Replaying it is

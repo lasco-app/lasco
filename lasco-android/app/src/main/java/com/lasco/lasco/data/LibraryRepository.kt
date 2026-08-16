@@ -363,7 +363,8 @@ class LibraryRepository(
 
     suspend fun groupMedia(groupId: FfiGroupUuid): List<FfiMediaItem> = lib.groupListMedia(groupId)
 
-    suspend fun listOperations(): List<FfiCrdtOperation> = lib.listOperations()
+    suspend fun listOperations(startPos: ULong, endPosExclusive: ULong): List<FfiCrdtOperation> =
+        lib.listOperations(startPos, endPosExclusive)
 
     // Blocking and proportional to file size. Drop the wrap once the Rust side is async.
     suspend fun loadLocalState() {

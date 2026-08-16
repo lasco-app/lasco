@@ -52,7 +52,7 @@ protocol LibraryRepositoryProtocol: Sendable {
     func mediaAlbumIDs(mediaID: FfiMediaUuid) async throws -> [FfiAlbumUuid]
     func albumGroups(albumID: FfiAlbumUuid) async throws -> [FfiGroup]
     func groupMedia(groupID: FfiGroupUuid) async throws -> [FfiMediaItem]
-    func listOperations() async throws -> [FfiCrdtOperation]
+    func listOperations(startPos: UInt64, endPosExclusive: UInt64) async throws -> [FfiCrdtOperation]
 
     func thumbnail(mediaID: FfiMediaUuid) async throws -> Data
     func mediaBytes(mediaID: FfiMediaUuid) async throws -> Data
@@ -326,9 +326,9 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         return try library.groupListMedia(groupId: groupID)
     }
 
-    func listOperations() async throws -> [FfiCrdtOperation] {
+    func listOperations(startPos: UInt64, endPosExclusive: UInt64) async throws -> [FfiCrdtOperation] {
         try ensureOpen()
-        return try library.listOperations()
+        return try library.listOperations(startPos: startPos, endPosExclusive: endPosExclusive)
     }
 
     func thumbnail(mediaID: FfiMediaUuid) async throws -> Data {
@@ -714,7 +714,9 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     func mediaAlbumIDs(mediaID: FfiMediaUuid) async throws -> [FfiAlbumUuid] { try await storage.mediaAlbumIDs(mediaID: mediaID) }
     func albumGroups(albumID: FfiAlbumUuid) async throws -> [FfiGroup] { try await storage.albumGroups(albumID: albumID) }
     func groupMedia(groupID: FfiGroupUuid) async throws -> [FfiMediaItem] { try await storage.groupMedia(groupID: groupID) }
-    func listOperations() async throws -> [FfiCrdtOperation] { try await storage.listOperations() }
+    func listOperations(startPos: UInt64, endPosExclusive: UInt64) async throws -> [FfiCrdtOperation] {
+        try await storage.listOperations(startPos: startPos, endPosExclusive: endPosExclusive)
+    }
     func thumbnail(mediaID: FfiMediaUuid) async throws -> Data { try await storage.thumbnail(mediaID: mediaID) }
     func mediaBytes(mediaID: FfiMediaUuid) async throws -> Data { try await storage.mediaBytes(mediaID: mediaID) }
     func thumbnailAsync(mediaID: FfiMediaUuid) async throws -> Data { try await storage.thumbnailAsync(mediaID: mediaID) }
