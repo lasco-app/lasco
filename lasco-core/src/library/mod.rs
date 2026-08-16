@@ -94,6 +94,7 @@ impl Library {
     pub(crate) fn init(
         local_dirs: LocalDirs,
         library_id: LibraryId,
+        device_id: crate::crdt::DeviceId,
         credentials: Credentials,
     ) -> Result<(Library, Uuid)> {
         let lib_dir = local_dirs.local_state_library_dir();
@@ -120,7 +121,7 @@ impl Library {
         )?;
         let local_ops_read_write_lock =
             LocalOpsReadWriteLock::new(local_dirs.local_state_operations());
-        let initial_crdt = crate::crdt::CrdtState::new(crate::crdt::DeviceId::random());
+        let initial_crdt = crate::crdt::CrdtState::new(device_id);
         crate::crdt::save_persisted(
             &local_dirs.local_state_crdt().snapshot_path(),
             &master_key,
@@ -142,7 +143,11 @@ impl Library {
         Ok((library, password_uuid))
     }
 
-    pub(crate) fn open(local_dirs: LocalDirs, credentials: Credentials) -> Result<Library> {
+    pub(crate) fn open(
+        local_dirs: LocalDirs,
+        device_id: crate::crdt::DeviceId,
+        credentials: Credentials,
+    ) -> Result<Library> {
         let lib_dir = local_dirs.local_state_library_dir();
         let sentinel_path = lib_dir.path().join(LIBRARY_FORMAT_SENTINEL);
         if !sentinel_path.exists() {
@@ -162,8 +167,9 @@ impl Library {
         let mut loaded_crdt = crate::crdt::load_persisted(
             &local_dirs.local_state_crdt().snapshot_path(),
             &master_key,
-            crate::crdt::DeviceId::random(),
+            device_id,
         )?;
+        loaded_crdt.set_device_id(device_id);
         reconcile_snapshot_with_operation_log(
             &mut loaded_crdt,
             &local_ops_read_write_lock,
@@ -189,6 +195,7 @@ impl Library {
         local_dirs: LocalDirs,
         master_key: MasterKey,
         library_id: LibraryId,
+        device_id: crate::crdt::DeviceId,
         username: LibraryUsername,
     ) -> Result<Library> {
         let local_ops_read_write_lock =
@@ -196,8 +203,9 @@ impl Library {
         let mut loaded_crdt = crate::crdt::load_persisted(
             &local_dirs.local_state_crdt().snapshot_path(),
             &master_key,
-            crate::crdt::DeviceId::random(),
+            device_id,
         )?;
+        loaded_crdt.set_device_id(device_id);
         reconcile_snapshot_with_operation_log(
             &mut loaded_crdt,
             &local_ops_read_write_lock,
@@ -216,6 +224,31 @@ impl Library {
                 remote_media_list_lock: RemoteMediaListLock::new(),
             }),
         })
+    }
+
+    /// Rebuilds the disposable materialized snapshot from the durable operation log.
+    ///
+    /// The caller must have already authenticated and explicitly obtained user consent. The old
+    /// snapshot is retained beside the replacement for diagnosis.
+    pub(crate) fn recover_persisted_state(
+        local_dirs: &LocalDirs,
+        master_key: &MasterKey,
+        device_id: crate::crdt::DeviceId,
+    ) -> Result<()> {
+        let snapshot_path = local_dirs.local_state_crdt().snapshot_path();
+        if snapshot_path.exists() {
+            let backup_path = snapshot_path.with_extension(format!(
+                "enc.unrecoverable-{}",
+                chrono::Utc::now().timestamp_millis()
+            ));
+            std::fs::rename(&snapshot_path, backup_path)?;
+        }
+        let operations = LocalOpsReadWriteLock::new(local_dirs.local_state_operations());
+        let log = operations.lock(master_key).read_operations()?;
+        let mut rebuilt = crate::crdt::CrdtState::new(device_id);
+        rebuilt.merge_all(log.iter());
+        crate::crdt::save_persisted(&snapshot_path, master_key, &rebuilt)?;
+        Ok(())
     }
 
     #[must_use]

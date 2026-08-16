@@ -16,6 +16,7 @@ async fn make_library(tmp: &TempDir) -> (Library, LibraryId) {
     let (lib, _password_uuid) = Library::init(
         local_dirs,
         library_id,
+        crate::crdt::DeviceId(1),
         Credentials {
             username: LibraryUsername("alice".to_string()),
             password: LibraryPassword("pass".to_string()),
@@ -80,6 +81,7 @@ async fn init_writes_expected_files_on_disk() {
     Library::init(
         local_dirs.clone(),
         library_id,
+        crate::crdt::DeviceId(1),
         Credentials {
             username: LibraryUsername(username.to_string()),
             password: LibraryPassword("pass".to_string()),

@@ -1,6 +1,9 @@
 use lasco_core::crdt::{CrdtOperation, OperationContent};
 use lasco_core::identifiers::RemoteUuid;
-use lasco_core::library::sync::{PushMediaSource, remote_access::StorageRead};
+use lasco_core::library::sync::{
+    PushMediaSource, compaction,
+    remote_access::{StorageRead, StorageReadWrite},
+};
 use lasco_core::library_json::{
     DebugLocalAndroidConfig, DebugLocalAppleConfig, FixedPathConfig, LibraryJson, RemoteConfig,
     RemoteKind, UsbAndroidConfig, UsbAppleConfig, save_library,
@@ -9,7 +12,8 @@ use lasco_core::operations::{LibraryPassword, LibraryUsername};
 use std::path::PathBuf;
 
 use super::{
-    FfiCrdtOperation, FfiDot, FfiKv, FfiLibrary, FfiMediaItem, FfiOperation, FfiRemote, ffi_count,
+    FfiCompactionLockInfo, FfiCrdtOperation, FfiDot, FfiKv, FfiLibrary, FfiMediaItem, FfiOperation,
+    FfiRemote, ffi_count,
 };
 use crate::error::LascoError;
 use crate::ids::FfiRemoteUuid;
@@ -69,6 +73,50 @@ impl FfiLibrary {
     /// Panics if another thread panicked while holding the cached remote-list mutex.
     pub fn list_remotes(&self) -> Vec<FfiRemote> {
         self.remotes.lock().unwrap().clone()
+    }
+
+    /// Returns the owner and creation time of this remote's compaction lock, if held.
+    pub fn inspect_compaction_lock(
+        &self,
+        remote_id: FfiRemoteUuid,
+        app_support_dir: Option<String>,
+    ) -> Result<Option<FfiCompactionLockInfo>, LascoError> {
+        let remote_id: RemoteUuid = remote_id.try_into()?;
+        let storage = self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
+        let device_id = self.load_library_json()?.device_id.to_string();
+        let info = self
+            .rt
+            .block_on(compaction::inspect_lock(&StorageRead::new(
+                storage.as_ref(),
+            )))
+            .map_err(|error| LascoError::Other {
+                msg: error.to_string(),
+            })?;
+        Ok(info.map(|lock| FfiCompactionLockInfo {
+            is_owned_by_current_device: lock.owner_device_id == device_id,
+            owner_device_id: lock.owner_device_id,
+            created_at: lock.created_at.to_rfc3339(),
+        }))
+    }
+
+    /// Removes a compaction lock only when it still names this local device as its owner.
+    /// The caller is responsible for obtaining explicit user confirmation before this call.
+    pub fn remove_own_compaction_lock(
+        &self,
+        remote_id: FfiRemoteUuid,
+        app_support_dir: Option<String>,
+    ) -> Result<bool, LascoError> {
+        let remote_id: RemoteUuid = remote_id.try_into()?;
+        let device_id = self.load_library_json()?.device_id.to_string();
+        let storage = self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
+        self.rt
+            .block_on(compaction::remove_lock_owned_by(
+                &StorageReadWrite::new(storage.as_ref()),
+                &device_id,
+            ))
+            .map_err(|error| LascoError::Other {
+                msg: error.to_string(),
+            })
     }
 
     /// # Errors

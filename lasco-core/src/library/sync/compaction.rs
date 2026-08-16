@@ -1,7 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::encryption::master_key::MasterKey;
 use crate::error::SyncError;
@@ -11,7 +10,7 @@ use crate::remote::LastKnownState;
 use crate::storage::AtomicWriteMode;
 
 use super::map_op_err;
-use super::remote_access::StorageReadWrite;
+use super::remote_access::{StorageRead, StorageReadWrite};
 
 pub(super) type Result<T> = std::result::Result<T, SyncError>;
 
@@ -64,6 +63,51 @@ struct CompactionLock {
 /// Remote key for the compaction lock (shared across all tiers).
 const LOCK_KEY: &str = "operations/LOCK.op";
 
+/// Metadata shown to a user before they explicitly remove a stale lock.
+#[derive(Debug, Clone)]
+pub struct CompactionLockInfo {
+    pub owner_device_id: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+async fn read_lock(storage: &StorageRead<'_>) -> Result<Option<CompactionLockInfo>> {
+    let bytes = match storage.get(LOCK_KEY).await {
+        Ok(bytes) => bytes,
+        Err(crate::storage::StorageError::NotFound) => return Ok(None),
+        Err(error) => return Err(SyncError::RemoteUnreachable(error)),
+    };
+    let lock: CompactionLock = serde_json::from_slice(&bytes).map_err(|error| {
+        SyncError::RemoteOperationInvalid(format!("invalid compaction lock: {error}"))
+    })?;
+    Ok(Some(CompactionLockInfo {
+        owner_device_id: lock.client_id,
+        created_at: lock.created_at,
+    }))
+}
+
+/// Reads the current global compaction lock without changing it.
+pub async fn inspect_lock(storage: &StorageRead<'_>) -> Result<Option<CompactionLockInfo>> {
+    read_lock(storage).await
+}
+
+/// Deletes a lock only if it still belongs to the expected local device.
+pub async fn remove_lock_owned_by(
+    storage: &StorageReadWrite<'_>,
+    expected_device_id: &str,
+) -> Result<bool> {
+    let Some(lock) = read_lock(&storage.as_read()).await? else {
+        return Ok(false);
+    };
+    if lock.owner_device_id != expected_device_id {
+        return Ok(false);
+    }
+    storage
+        .delete(LOCK_KEY)
+        .await
+        .map_err(SyncError::RemoteUnreachable)?;
+    Ok(true)
+}
+
 /// Proof that the compaction lock is held. Obtained from [`try_acquire_lock`] and consumed by
 /// [`release_lock`]. [`compact_tier`] requires a reference to one, so the type system rules out
 /// calling it without the lock held.
@@ -84,10 +128,11 @@ pub(super) struct CompactionLockToken {
 /// Returns `None` if the lock is already held by another client.
 pub(super) async fn try_acquire_lock(
     storage: &StorageReadWrite<'_>,
+    device_id: crate::crdt::DeviceId,
 ) -> Result<Option<CompactionLockToken>> {
     let key = LOCK_KEY;
     let payload = serde_json::to_vec(&CompactionLock {
-        client_id: Uuid::new_v4().to_string(),
+        client_id: device_id.to_string(),
         created_at: chrono::Utc::now(),
     })
     .expect("CompactionLock is always serializable");

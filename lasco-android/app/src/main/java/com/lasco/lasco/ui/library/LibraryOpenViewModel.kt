@@ -15,12 +15,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import uniffi.lasco_ffi.FfiLibraryEntry
+import uniffi.lasco_ffi.LascoException
 
 data class LibraryOpenUiState(
     val checkingCache: Boolean = true,
     val loading: Boolean = false,
     val error: String? = null,
     val opened: Boolean = false,
+    val recoveryAvailable: Boolean = false,
 )
 
 /**
@@ -83,7 +85,23 @@ class LibraryOpenViewModel(
                     LibraryRepository(lib, nickname = nickname, username = username, appDir = repository.appDir, context = app, prefs = prefs)
                 _uiState.value = _uiState.value.copy(loading = false, opened = true)
             } catch (e: Throwable) {
-                _uiState.value = _uiState.value.copy(loading = false, error = e.message ?: "Could not open library")
+                _uiState.value = _uiState.value.copy(
+                    loading = false,
+                    error = e.message ?: "Could not open library",
+                    recoveryAvailable = e is LascoException.CrdtRecoveryAvailable,
+                )
+            }
+        }
+    }
+
+    fun recover(nickname: String, username: String, password: String) {
+        _uiState.value = _uiState.value.copy(loading = true, error = null, recoveryAvailable = false)
+        viewModelScope.launch {
+            try {
+                repository.recoverLibraryState(nickname, username, password)
+                open(nickname, username, password)
+            } catch (e: Throwable) {
+                _uiState.value = _uiState.value.copy(loading = false, error = e.message ?: "Could not recover library state")
             }
         }
     }

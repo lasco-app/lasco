@@ -99,6 +99,8 @@ protocol LibraryRepositoryProtocol: Sendable {
     func initializeRemote(id: FfiRemoteUuid) async throws
     func connectRemote(id: FfiRemoteUuid) async throws
     func hasUnpushedChanges(remoteID: FfiRemoteUuid) async -> Bool
+    func inspectCompactionLock(remoteID: FfiRemoteUuid) async throws -> FfiCompactionLockInfo?
+    func removeOwnCompactionLock(remoteID: FfiRemoteUuid) async throws -> Bool
 
     func push(remoteID: FfiRemoteUuid) async throws -> UInt64
     func push(remoteID: FfiRemoteUuid, sourceRemoteID: FfiRemoteUuid) async throws -> UInt64
@@ -597,6 +599,16 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         return library.hasUnpushedChanges(remoteId: remoteID)
     }
 
+    func inspectCompactionLock(remoteID: FfiRemoteUuid) async throws -> FfiCompactionLockInfo? {
+        try ensureOpen()
+        return try library.inspectCompactionLock(remoteId: remoteID, appSupportDir: appSupportDirectory)
+    }
+
+    func removeOwnCompactionLock(remoteID: FfiRemoteUuid) async throws -> Bool {
+        try ensureOpen()
+        return try library.removeOwnCompactionLock(remoteId: remoteID, appSupportDir: appSupportDirectory)
+    }
+
     func push(remoteID: FfiRemoteUuid) async throws -> UInt64 {
         try ensureOpen()
         let result = try await library.pushRemoteAsync(remoteId: remoteID, appSupportDir: appSupportDirectory)
@@ -759,6 +771,8 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     func initializeRemote(id: FfiRemoteUuid) async throws { try await storage.initializeRemote(id: id) }
     func connectRemote(id: FfiRemoteUuid) async throws { try await storage.connectRemote(id: id) }
     func hasUnpushedChanges(remoteID: FfiRemoteUuid) async -> Bool { await storage.hasUnpushedChanges(remoteID: remoteID) }
+    func inspectCompactionLock(remoteID: FfiRemoteUuid) async throws -> FfiCompactionLockInfo? { try await storage.inspectCompactionLock(remoteID: remoteID) }
+    func removeOwnCompactionLock(remoteID: FfiRemoteUuid) async throws -> Bool { try await storage.removeOwnCompactionLock(remoteID: remoteID) }
     func push(remoteID: FfiRemoteUuid) async throws -> UInt64 { try await storage.push(remoteID: remoteID) }
     func push(remoteID: FfiRemoteUuid, sourceRemoteID: FfiRemoteUuid) async throws -> UInt64 { try await storage.push(remoteID: remoteID, sourceRemoteID: sourceRemoteID) }
     func fetch(remoteID: FfiRemoteUuid) async throws -> UInt64 { try await storage.fetch(remoteID: remoteID) }

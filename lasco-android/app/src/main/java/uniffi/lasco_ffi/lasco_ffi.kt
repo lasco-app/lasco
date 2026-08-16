@@ -893,6 +893,12 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -915,6 +921,8 @@ fun uniffi_lasco_ffi_checksum_func_ffi_create_library(
 fun uniffi_lasco_ffi_checksum_func_ffi_delete_library(
 ): Short
 fun uniffi_lasco_ffi_checksum_func_ffi_open_cached(
+): Short
+fun uniffi_lasco_ffi_checksum_func_ffi_recover_library_state(
 ): Short
 fun uniffi_lasco_ffi_checksum_func_ffi_test_s3_remote(
 ): Short
@@ -998,6 +1006,8 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_import_media(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_initialize_remote(
 ): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_inspect_compaction_lock(
+): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_library_id(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_list_albums(
@@ -1051,6 +1061,8 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_from_remote_async(
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_remove_media_from_album(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_remove_media_from_group(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_remove_own_compaction_lock(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_remove_remote(
 ): Short
@@ -1211,6 +1223,8 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_import_media(`ptr`: Pointer,`path`: Ru
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_initialize_remote(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_lasco_ffi_fn_method_ffilibrary_inspect_compaction_lock(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_library_id(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_list_albums(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -1265,6 +1279,8 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_remove_media_from_album(`ptr`: Pointer
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_remove_media_from_group(`ptr`: Pointer,`groupId`: RustBuffer.ByValue,`mediaId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_lasco_ffi_fn_method_ffilibrary_remove_own_compaction_lock(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
 fun uniffi_lasco_ffi_fn_method_ffilibrary_remove_remote(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_rename_album(`ptr`: Pointer,`albumId`: RustBuffer.ByValue,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1299,6 +1315,8 @@ fun uniffi_lasco_ffi_fn_func_ffi_delete_library(`libraryId`: RustBuffer.ByValue,
 ): Unit
 fun uniffi_lasco_ffi_fn_func_ffi_open_cached(`nickname`: RustBuffer.ByValue,`username`: RustBuffer.ByValue,`appDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_lasco_ffi_fn_func_ffi_recover_library_state(`nickname`: RustBuffer.ByValue,`username`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,`appDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_lasco_ffi_fn_func_ffi_test_s3_remote(`endpoint`: RustBuffer.ByValue,`bucket`: RustBuffer.ByValue,`region`: RustBuffer.ByValue,`pathPrefix`: RustBuffer.ByValue,`accessKey`: RustBuffer.ByValue,`secretKey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_lasco_ffi_fn_func_list_libraries(`appDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1443,6 +1461,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_func_ffi_open_cached() != 29965.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_lasco_ffi_checksum_func_ffi_recover_library_state() != 5874.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_lasco_ffi_checksum_func_ffi_test_s3_remote() != 38987.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1566,6 +1587,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_initialize_remote() != 54402.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_inspect_compaction_lock() != 42815.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_library_id() != 29748.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1575,7 +1599,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_list_media() != 41620.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_list_operations() != 17590.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_list_operations() != 36514.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_list_remotes() != 14789.toShort()) {
@@ -1645,6 +1669,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_remove_media_from_group() != 15256.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_remove_own_compaction_lock() != 13031.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_remove_remote() != 41678.toShort()) {
@@ -2441,6 +2468,11 @@ public interface FfiLibraryInterface {
      */
     fun `initializeRemote`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?)
     
+    /**
+     * Returns the owner and creation time of this remote's compaction lock, if held.
+     */
+    fun `inspectCompactionLock`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): FfiCompactionLockInfo?
+    
     fun `libraryId`(): FfiLibraryId
     
     /**
@@ -2459,6 +2491,8 @@ public interface FfiLibraryInterface {
     
     /**
      * # Errors
+     *
+     * Returns the newest-first half-open range `[start_pos, end_pos_exclusive)`.
      *
      * Returns an error if persisted local operations cannot be read or decoded.
      */
@@ -2616,6 +2650,12 @@ public interface FfiLibraryInterface {
      * Returns an error for invalid or absent IDs, missing membership, or an unpersistable operation.
      */
     fun `removeMediaFromGroup`(`groupId`: FfiGroupUuid, `mediaId`: FfiMediaUuid)
+    
+    /**
+     * Removes a compaction lock only when it still names this local device as its owner.
+     * The caller is responsible for obtaining explicit user confirmation before this call.
+     */
+    fun `removeOwnCompactionLock`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): kotlin.Boolean
     
     /**
      * # Errors
@@ -3513,6 +3553,22 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
     
 
+    
+    /**
+     * Returns the owner and creation time of this remote's compaction lock, if held.
+     */
+    @Throws(LascoException::class)override fun `inspectCompactionLock`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): FfiCompactionLockInfo? {
+            return FfiConverterOptionalTypeFfiCompactionLockInfo.lift(
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_inspect_compaction_lock(
+        it, FfiConverterTypeFfiRemoteUuid.lower(`remoteId`),FfiConverterOptionalString.lower(`appSupportDir`),_status)
+}
+    }
+    )
+    }
+    
+
     override fun `libraryId`(): FfiLibraryId {
             return FfiConverterTypeFfiLibraryId.lift(
     callWithPointer {
@@ -3564,6 +3620,8 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
     /**
      * # Errors
+     *
+     * Returns the newest-first half-open range `[start_pos, end_pos_exclusive)`.
      *
      * Returns an error if persisted local operations cannot be read or decoded.
      */
@@ -3994,6 +4052,23 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
 
     
     /**
+     * Removes a compaction lock only when it still names this local device as its owner.
+     * The caller is responsible for obtaining explicit user confirmation before this call.
+     */
+    @Throws(LascoException::class)override fun `removeOwnCompactionLock`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_remove_own_compaction_lock(
+        it, FfiConverterTypeFfiRemoteUuid.lower(`remoteId`),FfiConverterOptionalString.lower(`appSupportDir`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * # Errors
      *
      * Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
@@ -4403,6 +4478,45 @@ public object FfiConverterTypeFfiAlbumUuid: FfiConverterRustBuffer<FfiAlbumUuid>
 
     override fun write(value: FfiAlbumUuid, buf: ByteBuffer) {
             FfiConverterString.write(value.`value`, buf)
+    }
+}
+
+
+
+/**
+ * Remote compaction-lock metadata. Absence of this record means no lock is held.
+ */
+data class FfiCompactionLockInfo (
+    var `ownerDeviceId`: kotlin.String, 
+    var `createdAt`: kotlin.String, 
+    var `isOwnedByCurrentDevice`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFfiCompactionLockInfo: FfiConverterRustBuffer<FfiCompactionLockInfo> {
+    override fun read(buf: ByteBuffer): FfiCompactionLockInfo {
+        return FfiCompactionLockInfo(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FfiCompactionLockInfo) = (
+            FfiConverterString.allocationSize(value.`ownerDeviceId`) +
+            FfiConverterString.allocationSize(value.`createdAt`) +
+            FfiConverterBoolean.allocationSize(value.`isOwnedByCurrentDevice`)
+    )
+
+    override fun write(value: FfiCompactionLockInfo, buf: ByteBuffer) {
+            FfiConverterString.write(value.`ownerDeviceId`, buf)
+            FfiConverterString.write(value.`createdAt`, buf)
+            FfiConverterBoolean.write(value.`isOwnedByCurrentDevice`, buf)
     }
 }
 
@@ -5108,6 +5222,12 @@ sealed class LascoException: kotlin.Exception() {
             get() = "mediaIds=${ `mediaIds` }"
     }
     
+    class CrdtRecoveryAvailable(
+        ) : LascoException() {
+        override val message
+            get() = ""
+    }
+    
     class Storage(
         
         val `msg`: kotlin.String
@@ -5146,10 +5266,11 @@ public object FfiConverterTypeLascoError : FfiConverterRustBuffer<LascoException
             4 -> LascoException.MissingLocalMedia(
                 FfiConverterSequenceTypeFfiMediaId.read(buf),
                 )
-            5 -> LascoException.Storage(
+            5 -> LascoException.CrdtRecoveryAvailable()
+            6 -> LascoException.Storage(
                 FfiConverterString.read(buf),
                 )
-            6 -> LascoException.Other(
+            7 -> LascoException.Other(
                 FfiConverterString.read(buf),
                 )
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
@@ -5174,6 +5295,10 @@ public object FfiConverterTypeLascoError : FfiConverterRustBuffer<LascoException
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
                 + FfiConverterSequenceTypeFfiMediaId.allocationSize(value.`mediaIds`)
+            )
+            is LascoException.CrdtRecoveryAvailable -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
             )
             is LascoException.Storage -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
@@ -5207,13 +5332,17 @@ public object FfiConverterTypeLascoError : FfiConverterRustBuffer<LascoException
                 FfiConverterSequenceTypeFfiMediaId.write(value.`mediaIds`, buf)
                 Unit
             }
-            is LascoException.Storage -> {
+            is LascoException.CrdtRecoveryAvailable -> {
                 buf.putInt(5)
+                Unit
+            }
+            is LascoException.Storage -> {
+                buf.putInt(6)
                 FfiConverterString.write(value.`msg`, buf)
                 Unit
             }
             is LascoException.Other -> {
-                buf.putInt(6)
+                buf.putInt(7)
                 FfiConverterString.write(value.`msg`, buf)
                 Unit
             }
@@ -5346,6 +5475,38 @@ public object FfiConverterOptionalTypeFfiAlbumUuid: FfiConverterRustBuffer<FfiAl
         } else {
             buf.put(1)
             FfiConverterTypeFfiAlbumUuid.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeFfiCompactionLockInfo: FfiConverterRustBuffer<FfiCompactionLockInfo?> {
+    override fun read(buf: ByteBuffer): FfiCompactionLockInfo? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeFfiCompactionLockInfo.read(buf)
+    }
+
+    override fun allocationSize(value: FfiCompactionLockInfo?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeFfiCompactionLockInfo.allocationSize(value)
+        }
+    }
+
+    override fun write(value: FfiCompactionLockInfo?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeFfiCompactionLockInfo.write(value, buf)
         }
     }
 }
@@ -5890,6 +6051,19 @@ public object FfiConverterSequenceTypeFfiRemote: FfiConverterRustBuffer<List<Ffi
 }
     )
     }
+    
+
+        /**
+         * Rebuild an unreadable local CRDT snapshot from the encrypted local operation log.
+         * This is intentionally separate from opening: clients must obtain explicit user consent first.
+         */
+    @Throws(LascoException::class) fun `ffiRecoverLibraryState`(`nickname`: kotlin.String, `username`: kotlin.String, `password`: kotlin.String, `appDir`: kotlin.String? = null)
+        = 
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_func_ffi_recover_library_state(
+        FfiConverterString.lower(`nickname`),FfiConverterString.lower(`username`),FfiConverterString.lower(`password`),FfiConverterOptionalString.lower(`appDir`),_status)
+}
+    
     
 
         /**

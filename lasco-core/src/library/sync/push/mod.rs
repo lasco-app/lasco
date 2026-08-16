@@ -228,7 +228,8 @@ impl Library {
             if !cascade_done {
                 // The lock spans the whole cascade below, not just a single tier's merge, so
                 // another client can never interleave a compaction between two of our tiers.
-                let lock_token = try_acquire_lock(access.storage).await?;
+                let device_id = self.inner.state.read().device_id();
+                let lock_token = try_acquire_lock(access.storage, device_id).await?;
                 if let Some(lock_token) = lock_token {
                     let mut cascade_error = None;
                     for current_tier in tier..tier + 10 {

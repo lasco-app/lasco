@@ -826,6 +826,11 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      */
     func initializeRemote(remoteId: FfiRemoteUuid, appSupportDir: String?) throws 
     
+    /**
+     * Returns the owner and creation time of this remote's compaction lock, if held.
+     */
+    func inspectCompactionLock(remoteId: FfiRemoteUuid, appSupportDir: String?) throws  -> FfiCompactionLockInfo?
+    
     func libraryId()  -> FfiLibraryId
     
     /**
@@ -844,6 +849,8 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     
     /**
      * # Errors
+     *
+     * Returns the newest-first half-open range `[start_pos, end_pos_exclusive)`.
      *
      * Returns an error if persisted local operations cannot be read or decoded.
      */
@@ -1001,6 +1008,12 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * Returns an error for invalid or absent IDs, missing membership, or an unpersistable operation.
      */
     func removeMediaFromGroup(groupId: FfiGroupUuid, mediaId: FfiMediaUuid) throws 
+    
+    /**
+     * Removes a compaction lock only when it still names this local device as its owner.
+     * The caller is responsible for obtaining explicit user confirmation before this call.
+     */
+    func removeOwnCompactionLock(remoteId: FfiRemoteUuid, appSupportDir: String?) throws  -> Bool
     
     /**
      * # Errors
@@ -1729,6 +1742,18 @@ nonisolated open func initializeRemote(remoteId: FfiRemoteUuid, appSupportDir: S
 }
 }
     
+    /**
+     * Returns the owner and creation time of this remote's compaction lock, if held.
+     */
+nonisolated open func inspectCompactionLock(remoteId: FfiRemoteUuid, appSupportDir: String?)throws  -> FfiCompactionLockInfo?  {
+    return try  FfiConverterOptionTypeFfiCompactionLockInfo.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_inspect_compaction_lock(self.uniffiClonePointer(),
+        FfiConverterTypeFfiRemoteUuid_lower(remoteId),
+        FfiConverterOptionString.lower(appSupportDir),$0
+    )
+})
+}
+    
 nonisolated open func libraryId() -> FfiLibraryId  {
     return try!  FfiConverterTypeFfiLibraryId_lift(try! rustCall() {
     uniffi_lasco_ffi_fn_method_ffilibrary_library_id(self.uniffiClonePointer(),$0
@@ -1762,6 +1787,8 @@ nonisolated open func listMedia()throws  -> [FfiMediaItem]  {
     
     /**
      * # Errors
+     *
+     * Returns the newest-first half-open range `[start_pos, end_pos_exclusive)`.
      *
      * Returns an error if persisted local operations cannot be read or decoded.
      */
@@ -2078,6 +2105,19 @@ nonisolated open func removeMediaFromGroup(groupId: FfiGroupUuid, mediaId: FfiMe
         FfiConverterTypeFfiMediaUuid_lower(mediaId),$0
     )
 }
+}
+    
+    /**
+     * Removes a compaction lock only when it still names this local device as its owner.
+     * The caller is responsible for obtaining explicit user confirmation before this call.
+     */
+nonisolated open func removeOwnCompactionLock(remoteId: FfiRemoteUuid, appSupportDir: String?)throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_remove_own_compaction_lock(self.uniffiClonePointer(),
+        FfiConverterTypeFfiRemoteUuid_lower(remoteId),
+        FfiConverterOptionString.lower(appSupportDir),$0
+    )
+})
 }
     
     /**
@@ -2571,6 +2611,87 @@ nonisolated public func FfiConverterTypeFfiAlbumUuid_lift(_ buf: RustBuffer) thr
 #endif
 nonisolated public func FfiConverterTypeFfiAlbumUuid_lower(_ value: FfiAlbumUuid) -> RustBuffer {
     return FfiConverterTypeFfiAlbumUuid.lower(value)
+}
+
+
+/**
+ * Remote compaction-lock metadata. Absence of this record means no lock is held.
+ */
+nonisolated public struct FfiCompactionLockInfo {
+    public var ownerDeviceId: String
+    public var createdAt: String
+    public var isOwnedByCurrentDevice: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(ownerDeviceId: String, createdAt: String, isOwnedByCurrentDevice: Bool) {
+        self.ownerDeviceId = ownerDeviceId
+        self.createdAt = createdAt
+        self.isOwnedByCurrentDevice = isOwnedByCurrentDevice
+    }
+}
+
+#if compiler(>=6)
+nonisolated extension FfiCompactionLockInfo: Sendable {}
+#endif
+
+
+nonisolated extension FfiCompactionLockInfo: Equatable, Hashable {
+    public static func ==(lhs: FfiCompactionLockInfo, rhs: FfiCompactionLockInfo) -> Bool {
+        if lhs.ownerDeviceId != rhs.ownerDeviceId {
+            return false
+        }
+        if lhs.createdAt != rhs.createdAt {
+            return false
+        }
+        if lhs.isOwnedByCurrentDevice != rhs.isOwnedByCurrentDevice {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(ownerDeviceId)
+        hasher.combine(createdAt)
+        hasher.combine(isOwnedByCurrentDevice)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public struct FfiConverterTypeFfiCompactionLockInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiCompactionLockInfo {
+        return
+            try FfiCompactionLockInfo(
+                ownerDeviceId: FfiConverterString.read(from: &buf), 
+                createdAt: FfiConverterString.read(from: &buf), 
+                isOwnedByCurrentDevice: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiCompactionLockInfo, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.ownerDeviceId, into: &buf)
+        FfiConverterString.write(value.createdAt, into: &buf)
+        FfiConverterBool.write(value.isOwnedByCurrentDevice, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public func FfiConverterTypeFfiCompactionLockInfo_lift(_ buf: RustBuffer) throws -> FfiCompactionLockInfo {
+    return try FfiConverterTypeFfiCompactionLockInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public func FfiConverterTypeFfiCompactionLockInfo_lower(_ value: FfiCompactionLockInfo) -> RustBuffer {
+    return FfiConverterTypeFfiCompactionLockInfo.lower(value)
 }
 
 
@@ -4021,6 +4142,7 @@ nonisolated public enum LascoError: Swift.Error {
     case SyncBusy
     case MissingLocalMedia(mediaIds: [FfiMediaId]
     )
+    case CrdtRecoveryAvailable
     case Storage(msg: String
     )
     case Other(msg: String
@@ -4047,10 +4169,11 @@ nonisolated public struct FfiConverterTypeLascoError: FfiConverterRustBuffer {
         case 4: return .MissingLocalMedia(
             mediaIds: try FfiConverterSequenceTypeFfiMediaId.read(from: &buf)
             )
-        case 5: return .Storage(
+        case 5: return .CrdtRecoveryAvailable
+        case 6: return .Storage(
             msg: try FfiConverterString.read(from: &buf)
             )
-        case 6: return .Other(
+        case 7: return .Other(
             msg: try FfiConverterString.read(from: &buf)
             )
 
@@ -4082,13 +4205,17 @@ nonisolated public struct FfiConverterTypeLascoError: FfiConverterRustBuffer {
             FfiConverterSequenceTypeFfiMediaId.write(mediaIds, into: &buf)
             
         
-        case let .Storage(msg):
+        case .CrdtRecoveryAvailable:
             writeInt(&buf, Int32(5))
+        
+        
+        case let .Storage(msg):
+            writeInt(&buf, Int32(6))
             FfiConverterString.write(msg, into: &buf)
             
         
         case let .Other(msg):
-            writeInt(&buf, Int32(6))
+            writeInt(&buf, Int32(7))
             FfiConverterString.write(msg, into: &buf)
             
         }
@@ -4216,6 +4343,30 @@ nonisolated fileprivate struct FfiConverterOptionTypeFfiAlbumUuid: FfiConverterR
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeFfiAlbumUuid.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated fileprivate struct FfiConverterOptionTypeFfiCompactionLockInfo: FfiConverterRustBuffer {
+    typealias SwiftType = FfiCompactionLockInfo?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeFfiCompactionLockInfo.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeFfiCompactionLockInfo.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -4740,6 +4891,19 @@ nonisolated public func ffiOpenCached(nickname: String?, username: String, appDi
 })
 }
 /**
+ * Rebuild an unreadable local CRDT snapshot from the encrypted local operation log.
+ * This is intentionally separate from opening: clients must obtain explicit user consent first.
+ */
+nonisolated public func ffiRecoverLibraryState(nickname: String, username: String, password: String, appDir: String? = nil)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_func_ffi_recover_library_state(
+        FfiConverterString.lower(nickname),
+        FfiConverterString.lower(username),
+        FfiConverterString.lower(password),
+        FfiConverterOptionString.lower(appDir),$0
+    )
+}
+}
+/**
  * Test connectivity to an S3 remote using the given credentials, without
  * saving anything. Builds an ephemeral client and lists the bucket root.
  *
@@ -4809,6 +4973,9 @@ nonisolated private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_func_ffi_open_cached() != 29965) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_func_ffi_recover_library_state() != 5874) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_func_ffi_test_s3_remote() != 38987) {
@@ -4934,6 +5101,9 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_initialize_remote() != 54402) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_inspect_compaction_lock() != 42815) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_library_id() != 29748) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -4943,7 +5113,7 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_list_media() != 41620) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_list_operations() != 17590) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_list_operations() != 36514) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_list_remotes() != 14789) {
@@ -5013,6 +5183,9 @@ nonisolated private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_remove_media_from_group() != 15256) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_remove_own_compaction_lock() != 13031) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_remove_remote() != 41678) {

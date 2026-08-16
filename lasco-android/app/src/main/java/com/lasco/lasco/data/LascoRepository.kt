@@ -17,6 +17,7 @@ import uniffi.lasco_ffi.ffiAddExistingLibraryS3
 import uniffi.lasco_ffi.ffiCreateLibrary
 import uniffi.lasco_ffi.ffiDeleteLibrary
 import uniffi.lasco_ffi.ffiOpenCached
+import uniffi.lasco_ffi.ffiRecoverLibraryState
 import uniffi.lasco_ffi.listLibraries
 import uniffi.lasco_ffi.sessionClear
 
@@ -72,6 +73,10 @@ class LascoRepository(
         withContext(Dispatchers.IO) {
             ffiOpenCached(nickname = nickname, username = username, appDir = appDir)
         }
+
+    suspend fun recoverLibraryState(nickname: String, username: String, password: String) = withContext(Dispatchers.IO) {
+        ffiRecoverLibraryState(nickname = nickname, username = username, password = password, appDir = appDir)
+    }
 
     suspend fun addExistingLibraryS3(
         nickname: String,

@@ -68,6 +68,12 @@ struct RemotesView: View {
                                 },
                                 onSetAutoPush: { enabled in
                                     Task { try? await repository.setRemoteAutoPush(remoteID: remote.remoteId, enabled: enabled) }
+                                },
+                                onInspectCompactionLock: {
+                                    try? await repository.inspectCompactionLock(remoteID: remote.remoteId)
+                                },
+                                onRemoveOwnCompactionLock: {
+                                    (try? await repository.removeOwnCompactionLock(remoteID: remote.remoteId)) ?? false
                                 }
                             )
                         }
@@ -171,8 +177,12 @@ private struct RemoteCard: View {
     let onTestConnection: () -> Void
     let onSetDefaultFetch: () -> Void
     let onSetAutoPush: (Bool) -> Void
+    let onInspectCompactionLock: () async -> FfiCompactionLockInfo?
+    let onRemoveOwnCompactionLock: () async -> Bool
 
     @State private var showDeleteConfirm = false
+    @State private var lockInfo: FfiCompactionLockInfo?
+    @State private var showRemoveLockConfirm = false
     @Environment(\.lascoTheme) var theme
 
     var body: some View {
@@ -240,6 +250,34 @@ private struct RemoteCard: View {
                     Button("Set as default fetch", action: onSetDefaultFetch)
                         .buttonStyle(LascoSecondaryButtonStyle())
                 }
+            }
+
+            if let lockInfo {
+                Text("Compaction lock: \(lockInfo.ownerDeviceId.prefix(8))… since \(lockInfo.createdAt)")
+                    .font(LascoFont.mono())
+                    .foregroundStyle(theme.inkMuted)
+                    .lineLimit(2)
+                if lockInfo.isOwnedByCurrentDevice {
+                    Button("Remove my compaction lock") {
+                        showRemoveLockConfirm = true
+                    }
+                    .buttonStyle(LascoSecondaryButtonStyle())
+                    .confirmationDialog("Remove your compaction lock?", isPresented: $showRemoveLockConfirm, titleVisibility: .visible) {
+                        Button("Remove Lock", role: .destructive) {
+                            Task {
+                                if await onRemoveOwnCompactionLock() { self.lockInfo = nil }
+                            }
+                        }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("Only remove this after confirming that this device is no longer compacting this remote.")
+                    }
+                }
+            } else {
+                Button("Check compaction lock") {
+                    Task { lockInfo = await onInspectCompactionLock() }
+                }
+                .buttonStyle(LascoSecondaryButtonStyle())
             }
         }
         .padding(.horizontal, 16)

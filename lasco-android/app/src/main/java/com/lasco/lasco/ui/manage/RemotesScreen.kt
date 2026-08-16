@@ -32,6 +32,7 @@ import com.lasco.lasco.ui.theme.LascoTheme
 import com.lasco.lasco.ui.theme.lascoPanel
 import kotlinx.coroutines.launch
 import uniffi.lasco_ffi.FfiRemote
+import uniffi.lasco_ffi.FfiCompactionLockInfo
 
 /**
  * Ported from Swift's RemotesView. Reads LibraryRepository.sync.syncState and
@@ -56,6 +57,7 @@ fun RemotesScreen(
     var showAddS3 by remember { mutableStateOf(false) }
     var showAddLocalFS by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<FfiRemote?>(null) }
+    var pendingLockRemoval by remember { mutableStateOf<FfiRemote?>(null) }
     var feedback by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
@@ -113,6 +115,10 @@ fun RemotesScreen(
                     },
                     onSetAutoPush = { enabled -> manageViewModel.setRemoteAutoPush(remote.remoteId, enabled) },
                     onDelete = { pendingDelete = remote },
+                    onInspectCompactionLock = {
+                        repo.inspectCompactionLock(remote.remoteId)
+                    },
+                    onRemoveOwnCompactionLock = { pendingLockRemoval = remote },
                 )
                 Spacer(modifier = Modifier.height(12.dp))
             }
@@ -157,6 +163,20 @@ fun RemotesScreen(
             onCancel = { pendingDelete = null },
         )
     }
+    pendingLockRemoval?.let { remote ->
+        LascoConfirmDialog(
+            title = "Remove your compaction lock?",
+            message = "Only remove this after confirming this device is no longer compacting the remote.",
+            confirmLabel = "Remove lock",
+            onConfirm = {
+                scope.launch {
+                    feedback = if (repo.removeOwnCompactionLock(remote.remoteId)) "${remote.name}: lock removed" else "${remote.name}: lock was not owned by this device"
+                }
+                pendingLockRemoval = null
+            },
+            onCancel = { pendingLockRemoval = null },
+        )
+    }
 }
 
 @Composable
@@ -168,8 +188,12 @@ private fun RemoteCard(
     onSetDefaultFetch: () -> Unit,
     onSetAutoPush: (Boolean) -> Unit,
     onDelete: () -> Unit,
+    onInspectCompactionLock: suspend () -> FfiCompactionLockInfo?,
+    onRemoveOwnCompactionLock: () -> Unit,
 ) {
     val colors = LascoTheme.colors
+    val scope = rememberCoroutineScope()
+    var lockInfo by remember(remote.remoteId) { mutableStateOf<FfiCompactionLockInfo?>(null) }
     val summary = remote.bucket?.let { bucket ->
         "${remote.endpoint.orEmpty()} / $bucket"
     } ?: remote.path.orEmpty()
@@ -220,6 +244,24 @@ private fun RemoteCard(
                 style = LascoTheme.type.body(13),
                 color = colors.error,
                 modifier = Modifier.clickable { onDelete() },
+            )
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = lockInfo?.let { "Compaction lock: ${it.ownerDeviceId.take(8)} since ${it.createdAt}" }
+                ?: "Check compaction lock",
+            style = LascoTheme.type.body(13),
+            color = colors.ink,
+            modifier = Modifier.clickable {
+                scope.launch { lockInfo = onInspectCompactionLock() }
+            },
+        )
+        if (lockInfo?.isOwnedByCurrentDevice == true) {
+            Text(
+                text = "Remove my compaction lock",
+                style = LascoTheme.type.body(13),
+                color = colors.inkMuted,
+                modifier = Modifier.clickable { onRemoveOwnCompactionLock() },
             )
         }
     }

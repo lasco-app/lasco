@@ -8,7 +8,7 @@ use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Utc};
 use rand::Rng as _;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::identifiers::{AlbumUuid, GroupUuid, MediaUuid};
 use crate::library::media::MediaHash;
@@ -51,16 +51,34 @@ pub struct GroupEntry {
 
 /// A device-stable random identifier. Generate it once and persist it with the
 /// `CrdtState`; creating it per operation would defeat Lamport ordering.
-#[derive(
-    Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
-#[serde(transparent)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct DeviceId(pub u128);
 
 impl DeviceId {
     #[must_use]
     pub fn random() -> Self {
         Self(rand::thread_rng().r#gen())
+    }
+}
+
+impl std::fmt::Display for DeviceId {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{:032x}", self.0)
+    }
+}
+
+impl Serialize for DeviceId {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+
+impl<'de> Deserialize<'de> for DeviceId {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = String::deserialize(deserializer)?;
+        u128::from_str_radix(&value, 16)
+            .map(Self)
+            .map_err(serde::de::Error::custom)
     }
 }
 
@@ -219,6 +237,8 @@ impl ObservedRemoveSet {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CrdtState {
+    /// The local author identity belongs to `library.json`, not to the rebuildable snapshot.
+    #[serde(skip)]
     pub(super) device_id: DeviceId,
     pub(super) lamport_clock: LamportClock,
     pub(super) media: HashMap<MediaUuid, MediaCrdt>,
@@ -297,6 +317,16 @@ impl CrdtState {
             device_id,
             ..Self::default()
         }
+    }
+
+    /// Restores the local author identity after loading a snapshot.
+    pub fn set_device_id(&mut self, device_id: DeviceId) {
+        self.device_id = device_id;
+    }
+
+    #[must_use]
+    pub fn device_id(&self) -> DeviceId {
+        self.device_id
     }
 
     pub fn next_local_dot(&mut self) -> Dot {

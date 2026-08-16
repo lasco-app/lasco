@@ -454,6 +454,7 @@ mod tests {
         let (lib, _password_uuid) = Library::init(
             local_dirs.clone(),
             library_id,
+            crate::crdt::DeviceId(1),
             Credentials {
                 username: LibraryUsername("alice".into()),
                 password: LibraryPassword("pass".into()),

@@ -31,6 +31,7 @@ import uniffi.lasco_ffi.FfiMediaUuid
 import uniffi.lasco_ffi.FfiMediaNeighbors
 import uniffi.lasco_ffi.FfiMediaOrGroupNeighbors
 import uniffi.lasco_ffi.FfiCrdtOperation
+import uniffi.lasco_ffi.FfiCompactionLockInfo
 import uniffi.lasco_ffi.FfiGroupUuid
 import uniffi.lasco_ffi.FfiRemoteUuid
 
@@ -386,6 +387,14 @@ class LibraryRepository(
     }
 
     suspend fun hasUnpushedChanges(remoteId: FfiRemoteUuid): Boolean = lib.hasUnpushedChanges(remoteId)
+
+    suspend fun inspectCompactionLock(remoteId: FfiRemoteUuid): FfiCompactionLockInfo? = withContext(io) {
+        lib.inspectCompactionLock(remoteId, null)
+    }
+
+    suspend fun removeOwnCompactionLock(remoteId: FfiRemoteUuid): Boolean = withContext(io) {
+        lib.removeOwnCompactionLock(remoteId, null)
+    }
 
     suspend fun localStateStats(): FfiLocalStateStats = lib.localStateStats()
 
