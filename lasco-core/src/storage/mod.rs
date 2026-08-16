@@ -41,6 +41,9 @@ pub trait Storage: Send + Sync {
 mod mock_memory;
 pub use mock_memory::StorageMockMemory;
 
+mod mock_memory_faulty;
+pub use mock_memory_faulty::{StorageMockMemoryFaulty, StorageMockOperation};
+
 mod local_fs;
 pub use local_fs::StorageLocalFs;
 

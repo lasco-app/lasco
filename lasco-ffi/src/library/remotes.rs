@@ -719,6 +719,11 @@ impl FfiLibrary {
         remote_id: &RemoteUuid,
         app_support_dir: Option<&str>,
     ) -> Result<Box<dyn lasco_core::storage::Storage + Send + Sync>, LascoError> {
+        #[cfg(test)]
+        if let Some(storage) = self.test_remotes.lock().unwrap().get(remote_id).cloned() {
+            return Ok(Box::new(storage));
+        }
+
         let lib_config = self.load_library_json()?;
 
         let remote = lib_config

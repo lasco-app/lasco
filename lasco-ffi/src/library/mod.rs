@@ -10,6 +10,9 @@ use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+#[cfg(test)]
+use std::collections::HashMap;
+
 use lasco_core::config_json::{ConfigJson, LibraryNickname};
 use lasco_core::library_json::LibraryJson;
 use lasco_core::operations::{LibraryPassword, LibraryUsername};
@@ -223,6 +226,8 @@ pub fn ffi_open_cached(
         rt,
         app_dir,
         remotes: Mutex::new(remotes),
+        #[cfg(test)]
+        test_remotes: Mutex::new(HashMap::new()),
     })))
 }
 
@@ -306,6 +311,8 @@ pub fn ffi_add_existing_library_s3(
         rt,
         app_dir,
         remotes: Mutex::new(remotes),
+        #[cfg(test)]
+        test_remotes: Mutex::new(HashMap::new()),
     }))
 }
 
@@ -315,6 +322,10 @@ pub struct FfiLibrary {
     rt: tokio::runtime::Runtime,
     app_dir: PathBuf,
     remotes: Mutex<Vec<FfiRemote>>,
+    #[cfg(test)]
+    test_remotes: Mutex<
+        HashMap<lasco_core::identifiers::RemoteUuid, lasco_core::storage::StorageMockMemoryFaulty>,
+    >,
 }
 
 #[uniffi::export]
@@ -370,6 +381,19 @@ impl FfiLibrary {
             rt,
             app_dir,
             remotes: Mutex::new(remotes),
+            #[cfg(test)]
+            test_remotes: Mutex::new(HashMap::new()),
         }))
+    }
+}
+
+#[cfg(test)]
+impl FfiLibrary {
+    pub(crate) fn register_test_remote(
+        &self,
+        remote_id: lasco_core::identifiers::RemoteUuid,
+        storage: lasco_core::storage::StorageMockMemoryFaulty,
+    ) {
+        self.test_remotes.lock().unwrap().insert(remote_id, storage);
     }
 }

@@ -5,6 +5,9 @@ pub mod ids;
 pub mod library;
 pub mod session;
 
+#[cfg(test)]
+mod tests;
+
 #[cfg(target_os = "android")]
 mod android_jni;
 

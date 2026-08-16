@@ -1,0 +1,88 @@
+---
+sidebar_position: 12
+sidebar_label: End-to-end tests
+---
+
+# End-to-end tests
+
+End-to-end tests use the FFI crate and an in-memory remote storage backend to check sync correctness.
+
+## Media integrity tests
+
+Media integrity tests use only media-creation operations. Every file is named with a UUID and contains that UUID's `u128` encoded as 16 little-endian bytes. Every media read must return exactly those bytes.
+
+### One device, one remote
+
+Normal scenario:
+
+- Import 16 media files.
+- Push it to the remote.
+- Evict all local copies.
+- Fetch every media file from the remote and verify its bytes.
+
+Push-failure scenario:
+
+- Import 16 media files.
+- Fail one media upload before it reaches remote storage.
+- Run this scenario with the first, eighth, and sixteenth media upload failing.
+- Retry pushes until every media file is completely pushed.
+- Evict all local copies, fetch every media file from the remote, and verify its bytes.
+
+The initial failures are targeted reported storage errors:
+
+- `PutAtomic` for `media/` keys: media-upload failure.
+- `Get` for `media/` keys: media-download failure, covered by a separate fetch-retry scenario.
+
+The tests do not yet simulate a write that succeeds remotely but reports an error to the caller.
+
+### One device, two remotes
+
+Remote-to-remote relay:
+
+- Import 16 media files and push them to the first remote.
+- Evict the local copy.
+- Push to the second remote, downloading the media from the first remote as the push source.
+- Evict the local copy again, fetch from the second remote, and verify the bytes.
+
+### Three devices, one remote
+
+Shared-remote convergence:
+
+- Three devices use the same library and remote.
+- Each device imports 16 distinct media files.
+- Each device pushes its media to the shared remote.
+- Every device fetches the remote operations, then evicts all local media copies.
+- Every device checks the presence and byte-for-byte integrity of all 48 media files.
+
+### Three devices, three remotes
+
+Seeded fuzzy test:
+
+- Run 64 seeded tests with three devices sharing one library and three remotes.
+- Each test runs 64 rounds.
+- Each round:
+  - Selects a device.
+  - Performs one or more media actions: import media, push local media to a remote, relay media from one remote to another, evict local media, or fetch remote operations.
+- Every imported media file keeps its UUID-derived expected bytes in the test model.
+- The test ends with convergence: every remote receives every created media file, then every device verifies every file using each remote independently as its only permitted media source.
+
+## Compaction tests
+
+### One device, one remote
+
+Compaction integrity test:
+
+- Use metadata-only album-creation operations.
+- Run 64 deterministic rounds.
+- Each round creates 1–30 operations, then pushes them through FFI to the remote.
+- Repeated pushes trigger remote compaction.
+- At the end, a fresh FFI client fetches the compacted remote.
+- Both clients must contain exactly every operation created during the run, with no duplicate operation dots.
+
+## Running the suite
+
+Run FFI end-to-end tests with:
+
+```sh
+cargo nextest run --release -p lasco-ffi
+```
