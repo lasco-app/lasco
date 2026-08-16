@@ -78,16 +78,9 @@ fun RecentMediaScreen(
         selection = emptySet()
     }
 
-    fun openContainingAlbums(mediaId: FfiMediaUuid) {
+    fun showAddToAlbumPicker() {
         scope.launch {
-            val containing = repo.albumsContainingMedia(mediaId)
-            if (containing.isEmpty()) return@launch
-            clearSelection()
-            if (containing.size == 1) {
-                onOpenAlbum(containing.first().albumId.value)
-            } else {
-                albumPicker = containing
-            }
+            albumPicker = repo.allAlbums()
         }
     }
 
@@ -112,11 +105,15 @@ fun RecentMediaScreen(
 
     albumPicker?.let { albums ->
         AlbumPickerDialog(
-            title = "Open album",
+            title = "Add to album",
             albums = albums,
-            onSelect = {
+            onSelect = { album ->
                 albumPicker = null
-                onOpenAlbum(it.albumId.value)
+                val mediaIds = selection
+                scope.launch {
+                    mediaIds.forEach { mediaId -> repo.addMediaToAlbum(album.albumId, mediaId) }
+                    clearSelection()
+                }
             },
             onCancel = { albumPicker = null },
         )
@@ -128,7 +125,7 @@ fun RecentMediaScreen(
             SelectionBar(
                 count = selection.size,
                 onClose = { clearSelection() },
-                onOpenAlbum = { selection.firstOrNull()?.let { openContainingAlbums(it) } },
+                onAddToAlbum = ::showAddToAlbumPicker,
             )
         } else {
             Row(
@@ -265,7 +262,7 @@ fun RecentMediaScreen(
 }
 
 @Composable
-private fun SelectionBar(count: Int, onClose: () -> Unit, onOpenAlbum: () -> Unit) {
+private fun SelectionBar(count: Int, onClose: () -> Unit, onAddToAlbum: () -> Unit) {
     val colors = LascoTheme.colors
     var showActionMenu by remember { mutableStateOf(false) }
     Row(
@@ -291,23 +288,21 @@ private fun SelectionBar(count: Int, onClose: () -> Unit, onOpenAlbum: () -> Uni
             )
         }
         Box(modifier = Modifier.weight(1f))
-        if (count == 1) {
-            Box {
-                Text(
-                    text = "...",
-                    style = LascoTheme.type.body(18),
-                    color = Color.White,
-                    modifier = Modifier.clickable { showActionMenu = true },
+        Box {
+            Text(
+                text = "...",
+                style = LascoTheme.type.body(18),
+                color = Color.White,
+                modifier = Modifier.clickable { showActionMenu = true },
+            )
+            DropdownMenu(expanded = showActionMenu, onDismissRequest = { showActionMenu = false }) {
+                DropdownMenuItem(
+                    text = { Text("Add to album") },
+                    onClick = {
+                        showActionMenu = false
+                        onAddToAlbum()
+                    },
                 )
-                DropdownMenu(expanded = showActionMenu, onDismissRequest = { showActionMenu = false }) {
-                    DropdownMenuItem(
-                        text = { Text("Open containing album") },
-                        onClick = {
-                            showActionMenu = false
-                            onOpenAlbum()
-                        },
-                    )
-                }
             }
         }
     }
