@@ -100,9 +100,9 @@ protocol LibraryRepositoryProtocol: Sendable {
     func connectRemote(id: FfiRemoteUuid) async throws
     func hasUnpushedChanges(remoteID: FfiRemoteUuid) async -> Bool
 
-    func push(remoteID: FfiRemoteUuid) async throws -> UInt32
-    func push(remoteID: FfiRemoteUuid, sourceRemoteID: FfiRemoteUuid) async throws -> UInt32
-    func fetch(remoteID: FfiRemoteUuid) async throws -> UInt32
+    func push(remoteID: FfiRemoteUuid) async throws -> UInt64
+    func push(remoteID: FfiRemoteUuid, sourceRemoteID: FfiRemoteUuid) async throws -> UInt64
+    func fetch(remoteID: FfiRemoteUuid) async throws -> UInt64
     func close() async
 }
 
@@ -597,7 +597,7 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         return library.hasUnpushedChanges(remoteId: remoteID)
     }
 
-    func push(remoteID: FfiRemoteUuid) async throws -> UInt32 {
+    func push(remoteID: FfiRemoteUuid) async throws -> UInt64 {
         try ensureOpen()
         let result = try await library.pushRemoteAsync(remoteId: remoteID, appSupportDir: appSupportDirectory)
         // A successful push changes the per-remote local/remote state. Publish it
@@ -606,7 +606,7 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         return result
     }
 
-    func push(remoteID: FfiRemoteUuid, sourceRemoteID: FfiRemoteUuid) async throws -> UInt32 {
+    func push(remoteID: FfiRemoteUuid, sourceRemoteID: FfiRemoteUuid) async throws -> UInt64 {
         try ensureOpen()
         let result = try await library.pushRemoteFromRemoteAsync(
             targetRemoteId: remoteID,
@@ -617,7 +617,7 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         return result
     }
 
-    func fetch(remoteID: FfiRemoteUuid) async throws -> UInt32 {
+    func fetch(remoteID: FfiRemoteUuid) async throws -> UInt64 {
         try ensureOpen()
         let result = try await library.fetchRemoteAsync(remoteId: remoteID, appSupportDir: appSupportDirectory)
         await notify(.all)
@@ -757,9 +757,8 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     func initializeRemote(id: FfiRemoteUuid) async throws { try await storage.initializeRemote(id: id) }
     func connectRemote(id: FfiRemoteUuid) async throws { try await storage.connectRemote(id: id) }
     func hasUnpushedChanges(remoteID: FfiRemoteUuid) async -> Bool { await storage.hasUnpushedChanges(remoteID: remoteID) }
-    func push(remoteID: FfiRemoteUuid) async throws -> UInt32 { try await storage.push(remoteID: remoteID) }
-    func push(remoteID: FfiRemoteUuid, sourceRemoteID: FfiRemoteUuid) async throws -> UInt32 { try await storage.push(remoteID: remoteID, sourceRemoteID: sourceRemoteID) }
-    func fetch(remoteID: FfiRemoteUuid) async throws -> UInt32 { try await storage.fetch(remoteID: remoteID) }
-    func sync() async throws -> FfiSyncResult { try await storage.sync() }
+    func push(remoteID: FfiRemoteUuid) async throws -> UInt64 { try await storage.push(remoteID: remoteID) }
+    func push(remoteID: FfiRemoteUuid, sourceRemoteID: FfiRemoteUuid) async throws -> UInt64 { try await storage.push(remoteID: remoteID, sourceRemoteID: sourceRemoteID) }
+    func fetch(remoteID: FfiRemoteUuid) async throws -> UInt64 { try await storage.fetch(remoteID: remoteID) }
     func close() async { await storage.close() }
 }
