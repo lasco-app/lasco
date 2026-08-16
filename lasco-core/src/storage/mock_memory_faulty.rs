@@ -22,13 +22,20 @@ struct FaultRule {
     key_prefix: String,
     matches_before_failure: usize,
     remaining_matches: usize,
+    timing: FaultTiming,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum FaultTiming {
+    Before,
+    After,
 }
 
 /// An in-memory storage backend that can report targeted, one-shot failures.
 ///
-/// A matching operation returns an error before it reaches the underlying
-/// [`StorageMockMemory`]. This models a normally reported storage error; it
-/// deliberately does not model an operation that succeeds but whose response is lost.
+/// A matching operation can return an error before it reaches the underlying
+/// [`StorageMockMemory`], or after the underlying operation succeeds. The latter
+/// models a response that is lost after a remote write is accepted.
 #[derive(Clone, Debug, Default)]
 pub struct StorageMockMemoryFaulty {
     inner: StorageMockMemory,
@@ -62,6 +69,27 @@ impl StorageMockMemoryFaulty {
             key_prefix: key_prefix.into(),
             matches_before_failure: match_number - 1,
             remaining_matches: 1,
+            timing: FaultTiming::Before,
+        });
+    }
+
+    /// Make the selected matching operation change storage, then report an error.
+    ///
+    /// This models a response that is lost after the remote has accepted a write.
+    /// `match_number` is one-based: `1` targets the first matching operation.
+    pub fn fail_after_on_match(
+        &self,
+        operation: StorageMockOperation,
+        key_prefix: impl Into<String>,
+        match_number: usize,
+    ) {
+        assert!(match_number > 0, "match_number must be at least one");
+        self.faults.lock().push(FaultRule {
+            operation,
+            key_prefix: key_prefix.into(),
+            matches_before_failure: match_number - 1,
+            remaining_matches: 1,
+            timing: FaultTiming::After,
         });
     }
 
@@ -75,27 +103,30 @@ impl StorageMockMemoryFaulty {
         self.faults.lock().len()
     }
 
-    fn check_fault(&self, operation: StorageMockOperation, key: &str) -> Result<()> {
+    fn take_fault(&self, operation: StorageMockOperation, key: &str) -> Option<FaultTiming> {
         let mut faults = self.faults.lock();
         let Some(index) = faults
             .iter()
             .position(|rule| rule.operation == operation && key.starts_with(&rule.key_prefix))
         else {
-            return Ok(());
+            return None;
         };
 
         let rule = &mut faults[index];
         if rule.matches_before_failure > 0 {
             rule.matches_before_failure -= 1;
-            return Ok(());
+            return None;
         }
+        let timing = rule.timing;
         rule.remaining_matches -= 1;
         if rule.remaining_matches == 0 {
             faults.remove(index);
         }
-        Err(StorageError::Unavailable(format!(
-            "injected failure for {operation:?} on key '{key}'"
-        )))
+        Some(timing)
+    }
+
+    fn failure(operation: StorageMockOperation, key: &str) -> StorageError {
+        StorageError::Unavailable(format!("injected failure for {operation:?} on key '{key}'"))
     }
 }
 
@@ -103,33 +134,75 @@ impl StorageMockMemoryFaulty {
 impl Storage for StorageMockMemoryFaulty {
     #[allow(deprecated)]
     async fn put(&self, key: &str, data: &[u8]) -> Result<()> {
-        self.check_fault(StorageMockOperation::Put, key)?;
-        self.inner.put(key, data).await
+        let fault = self.take_fault(StorageMockOperation::Put, key);
+        if matches!(fault, Some(FaultTiming::Before)) {
+            return Err(Self::failure(StorageMockOperation::Put, key));
+        }
+        self.inner.put(key, data).await?;
+        if matches!(fault, Some(FaultTiming::After)) {
+            return Err(Self::failure(StorageMockOperation::Put, key));
+        }
+        Ok(())
     }
 
     async fn put_atomic(&self, key: &str, data: &[u8], mode: AtomicWriteMode) -> Result<bool> {
-        self.check_fault(StorageMockOperation::PutAtomic, key)?;
-        self.inner.put_atomic(key, data, mode).await
+        let fault = self.take_fault(StorageMockOperation::PutAtomic, key);
+        if matches!(fault, Some(FaultTiming::Before)) {
+            return Err(Self::failure(StorageMockOperation::PutAtomic, key));
+        }
+        let result = self.inner.put_atomic(key, data, mode).await?;
+        if matches!(fault, Some(FaultTiming::After)) {
+            return Err(Self::failure(StorageMockOperation::PutAtomic, key));
+        }
+        Ok(result)
     }
 
     async fn get(&self, key: &str) -> Result<Vec<u8>> {
-        self.check_fault(StorageMockOperation::Get, key)?;
-        self.inner.get(key).await
+        let fault = self.take_fault(StorageMockOperation::Get, key);
+        if matches!(fault, Some(FaultTiming::Before)) {
+            return Err(Self::failure(StorageMockOperation::Get, key));
+        }
+        let result = self.inner.get(key).await?;
+        if matches!(fault, Some(FaultTiming::After)) {
+            return Err(Self::failure(StorageMockOperation::Get, key));
+        }
+        Ok(result)
     }
 
     async fn delete(&self, key: &str) -> Result<()> {
-        self.check_fault(StorageMockOperation::Delete, key)?;
-        self.inner.delete(key).await
+        let fault = self.take_fault(StorageMockOperation::Delete, key);
+        if matches!(fault, Some(FaultTiming::Before)) {
+            return Err(Self::failure(StorageMockOperation::Delete, key));
+        }
+        self.inner.delete(key).await?;
+        if matches!(fault, Some(FaultTiming::After)) {
+            return Err(Self::failure(StorageMockOperation::Delete, key));
+        }
+        Ok(())
     }
 
     async fn list(&self, prefix: &str) -> Result<Vec<String>> {
-        self.check_fault(StorageMockOperation::List, prefix)?;
-        self.inner.list(prefix).await
+        let fault = self.take_fault(StorageMockOperation::List, prefix);
+        if matches!(fault, Some(FaultTiming::Before)) {
+            return Err(Self::failure(StorageMockOperation::List, prefix));
+        }
+        let result = self.inner.list(prefix).await?;
+        if matches!(fault, Some(FaultTiming::After)) {
+            return Err(Self::failure(StorageMockOperation::List, prefix));
+        }
+        Ok(result)
     }
 
     async fn exists(&self, key: &str) -> Result<bool> {
-        self.check_fault(StorageMockOperation::Exists, key)?;
-        self.inner.exists(key).await
+        let fault = self.take_fault(StorageMockOperation::Exists, key);
+        if matches!(fault, Some(FaultTiming::Before)) {
+            return Err(Self::failure(StorageMockOperation::Exists, key));
+        }
+        let result = self.inner.exists(key).await?;
+        if matches!(fault, Some(FaultTiming::After)) {
+            return Err(Self::failure(StorageMockOperation::Exists, key));
+        }
+        Ok(result)
     }
 }
 
@@ -169,5 +242,19 @@ mod tests {
                 .await
                 .is_err()
         );
+    }
+
+    #[tokio::test]
+    async fn post_write_failure_reports_an_error_after_writing() {
+        let storage = StorageMockMemoryFaulty::new();
+        storage.fail_after_on_match(StorageMockOperation::PutAtomic, "media/", 1);
+
+        assert!(
+            storage
+                .put_atomic("media/a.data", b"payload", AtomicWriteMode::CreateIfAbsent)
+                .await
+                .is_err()
+        );
+        assert_eq!(storage.get("media/a.data").await.unwrap(), b"payload");
     }
 }

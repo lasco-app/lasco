@@ -5,6 +5,7 @@ use rand::{Rng as _, SeedableRng as _};
 use super::utils;
 
 const MEDIA_COUNT: usize = 16;
+const MAX_SYNC_ATTEMPTS: usize = 100;
 
 #[test]
 fn one_device_one_remote_preserves_media_bytes() {
@@ -31,6 +32,33 @@ fn one_device_one_remote_recovers_middle_media_upload_failure() {
 #[test]
 fn one_device_one_remote_recovers_last_media_upload_failure() {
     run_media_upload_failure(16);
+}
+
+#[test]
+fn one_device_one_remote_recovers_after_media_upload_succeeds_then_reports_error() {
+    let mut device = utils::Device::new();
+    let remote = StorageMockMemoryFaulty::new();
+    let remote_id = device.add_remote(&remote);
+    let media = device.import_uuid_media_batch(MEDIA_COUNT);
+
+    remote.fail_after_on_match(StorageMockOperation::PutAtomic, "media/", 1);
+    let error = device
+        .library
+        .push_remote(remote_id.clone(), None)
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("injected failure"),
+        "push must report the armed post-write failure, got: {error}"
+    );
+    assert_eq!(
+        remote.pending_fault_count(),
+        0,
+        "the first media upload must write remotely before reporting its error"
+    );
+
+    device.library.push_remote(remote_id, None).unwrap();
+    evict_media(&device, &media);
+    assert_media_integrity(&device, &media);
 }
 
 #[test]
@@ -80,6 +108,39 @@ fn one_device_two_remotes_relays_media_after_eviction() {
     assert_media_integrity(&device, &media);
 }
 
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(64))]
+
+    #[test]
+    fn one_device_two_remotes_recovers_random_storage_failures(seed in any::<u64>()) {
+        let mut device = utils::Device::new();
+        let first_remote = StorageMockMemoryFaulty::new();
+        let second_remote = StorageMockMemoryFaulty::new();
+        let first_remote_id = device.add_named_remote("first", &first_remote);
+        let second_remote_id = device.add_named_remote("second", &second_remote);
+        let media = device.import_uuid_media_batch(MEDIA_COUNT);
+
+        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+        arm_random_media_upload_failure(&first_remote, &mut rng);
+        retry_sync("push to the first remote", || {
+            device.library.push_remote(first_remote_id.clone(), None)
+        });
+        evict_media(&device, &media);
+        arm_random_media_upload_failure(&second_remote, &mut rng);
+        retry_sync("relay to the second remote", || {
+            device.library.push_remote_from_remote(
+                second_remote_id.clone(),
+                first_remote_id.clone(),
+                None,
+            )
+        });
+
+        evict_media(&device, &media);
+        first_remote.set_offline(true);
+        assert_media_integrity(&device, &media);
+    }
+}
+
 #[test]
 fn three_devices_one_remote_preserve_all_media_bytes() {
     let mut first = utils::Device::new();
@@ -108,6 +169,43 @@ fn three_devices_one_remote_preserve_all_media_bytes() {
     }
 }
 
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(64))]
+
+    #[test]
+    fn three_devices_one_remote_recovers_random_storage_failures(seed in any::<u64>()) {
+        let mut first = utils::Device::new();
+        let remote = StorageMockMemoryFaulty::new();
+        let remote_id = first.add_remote(&remote);
+        let mut second = utils::Device::join_existing(&first);
+        let mut third = utils::Device::join_existing(&first);
+        second.register_existing_remote(&remote_id, &remote);
+        third.register_existing_remote(&remote_id, &remote);
+
+        let mut media = first.import_uuid_media_batch(MEDIA_COUNT);
+        media.extend(second.import_uuid_media_batch(MEDIA_COUNT));
+        media.extend(third.import_uuid_media_batch(MEDIA_COUNT));
+
+        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+        for device in [&first, &second, &third] {
+            arm_random_media_upload_failure(&remote, &mut rng);
+            retry_sync("push to the shared remote", || {
+                device.library.push_remote(remote_id.clone(), None)
+            });
+        }
+        for device in [&first, &second, &third] {
+            retry_sync("fetch from the shared remote", || {
+                device.library.fetch_remote(remote_id.clone(), None)
+            });
+        }
+
+        for device in [&first, &second, &third] {
+            evict_media(device, &media);
+            assert_media_integrity(device, &media);
+        }
+    }
+}
+
 fn run_media_upload_failure(match_number: usize) {
     let mut device = utils::Device::new();
     let remote = StorageMockMemoryFaulty::new();
@@ -127,6 +225,26 @@ fn run_media_upload_failure(match_number: usize) {
     device.library.push_remote(remote_id, None).unwrap();
     evict_media(&device, &media);
     assert_media_integrity(&device, &media);
+}
+
+fn retry_sync<T, E>(name: &str, mut sync: impl FnMut() -> Result<T, E>) -> T {
+    for _ in 0..MAX_SYNC_ATTEMPTS {
+        if let Ok(result) = sync() {
+            return result;
+        }
+    }
+    panic!("{name} did not succeed within {MAX_SYNC_ATTEMPTS} attempts");
+}
+
+fn arm_random_media_upload_failure(remote: &StorageMockMemoryFaulty, rng: &mut rand::rngs::StdRng) {
+    if !rng.gen_bool(0.25) {
+        return;
+    }
+    if rng.gen_bool(0.5) {
+        remote.fail_after_on_match(StorageMockOperation::PutAtomic, "media/", 1);
+    } else {
+        remote.fail_next(StorageMockOperation::PutAtomic, "media/");
+    }
 }
 
 fn evict_media(device: &utils::Device, _media: &[(crate::ids::FfiMediaUuid, Vec<u8>)]) {

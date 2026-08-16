@@ -11,73 +11,133 @@ End-to-end tests use the FFI crate and an in-memory remote storage backend to ch
 
 Media integrity tests use only media-creation operations. Every file is named with a UUID and contains that UUID's `u128` encoded as 16 little-endian bytes. Every media read must return exactly those bytes.
 
-### One device, one remote
+<div className="e2e-test-grid">
 
-Normal scenario:
+<article className="e2e-test-card">
+<div className="e2e-test-card__eyebrow">Media integrity</div>
+<h3>Media preservation and retry</h3>
+<p>Setup: one device, one remote.</p>
+<p className="e2e-test-card__description">Confirms that one device can recover every imported media file from its only remote copy.</p>
 
-- Import 16 media files.
-- Push it to the remote.
-- Evict all local copies.
-- Fetch every media file from the remote and verify its bytes.
+<div className="e2e-test-card__section">
+<div className="e2e-test-card__label">Description</div>
+<ol>
+<li>Import 16 media files.</li>
+<li>Push them to the remote.</li>
+<li>Evict every local copy.</li>
+<li>Fetch every file from the remote and verify its bytes.</li>
+</ol>
+</div>
 
-Push-failure scenario:
+<div className="e2e-test-card__section">
+<div className="e2e-test-card__label">Execution modes</div>
+<div className="e2e-test-card__modes">
+<div className="e2e-test-card__mode"><span className="e2e-test-card__badge e2e-test-card__badge--normal">No failure</span></div>
+<div className="e2e-test-card__mode"><span className="e2e-test-card__badge e2e-test-card__badge--failure">Deterministic upload failure</span><p>Run three variants. In each variant, fail exactly media upload 1, 8, or 16 (<code>fail PutAtomic</code>). Complete the procedure by retrying the push without failure.</p></div>
+<div className="e2e-test-card__mode"><span className="e2e-test-card__badge e2e-test-card__badge--failure">Upload succeeds, error reported</span><p>The first <code>PutAtomic</code> call writes successfully but reports an error. Complete the procedure by retrying the push without failure.</p></div>
+<div className="e2e-test-card__mode"><span className="e2e-test-card__badge e2e-test-card__badge--failure">Deterministic download failure</span><p>Fail exactly the first <code>Get</code> call for a <code>media/</code> key before it returns bytes. Retry that media read, then verify every file.</p></div>
+</div>
+</div>
+</article>
 
-- Import 16 media files.
-- Fail one media upload before it reaches remote storage.
-- Run this scenario with the first, eighth, and sixteenth media upload failing.
-- Retry pushes until every media file is completely pushed.
-- Evict all local copies, fetch every media file from the remote, and verify its bytes.
+<article className="e2e-test-card">
+<div className="e2e-test-card__eyebrow">Media integrity</div>
+<h3>Media relay after eviction</h3>
+<p>Setup: one device, two remotes.</p>
+<p className="e2e-test-card__description">Confirms remote-to-remote media relay when the device has evicted its local copy.</p>
 
-The initial failures are targeted reported storage errors:
+<div className="e2e-test-card__section">
+<div className="e2e-test-card__label">Description</div>
+<ol>
+<li>Import 16 media files and push them to the first remote.</li>
+<li>Evict the local copies.</li>
+<li>Push to the second remote, using the first remote as the media source.</li>
+<li>Evict again, then fetch from the second remote and verify the bytes.</li>
+</ol>
+</div>
 
-- `PutAtomic` for `media/` keys: media-upload failure.
-- `Get` for `media/` keys: media-download failure, covered by a separate fetch-retry scenario.
+<div className="e2e-test-card__section">
+<div className="e2e-test-card__label">Execution modes</div>
+<div className="e2e-test-card__mode"><span className="e2e-test-card__badge e2e-test-card__badge--normal">No failure</span></div>
+<div className="e2e-test-card__mode"><span className="e2e-test-card__badge e2e-test-card__badge--failure">Random storage failures</span><p>Run 64 seeded variants. Each remote push has a 25% chance of one media-upload failure; half fail before the write takes effect, and half write successfully before reporting an error. When a sync procedure fails, retry that same procedure until it succeeds, with a limit of 100 attempts.</p></div>
+</div>
+</article>
 
-The tests do not yet simulate a write that succeeds remotely but reports an error to the caller.
+<article className="e2e-test-card">
+<div className="e2e-test-card__eyebrow">Media integrity</div>
+<h3>Shared-remote media convergence</h3>
+<p>Setup: three devices, one remote.</p>
+<p className="e2e-test-card__description">Confirms shared-remote convergence and byte-for-byte media availability across devices.</p>
 
-### One device, two remotes
+<div className="e2e-test-card__section">
+<div className="e2e-test-card__label">Description</div>
+<ol>
+<li>Give three devices the same library and remote.</li>
+<li>Import 16 distinct media files on each device.</li>
+<li>Push each device's media to the shared remote.</li>
+<li>Fetch remote operations, evict local media, and verify all 48 files on every device.</li>
+</ol>
+</div>
 
-Remote-to-remote relay:
+<div className="e2e-test-card__section">
+<div className="e2e-test-card__label">Execution modes</div>
+<div className="e2e-test-card__mode"><span className="e2e-test-card__badge e2e-test-card__badge--normal">No failure</span></div>
+<div className="e2e-test-card__mode"><span className="e2e-test-card__badge e2e-test-card__badge--failure">Random storage failures</span><p>Run 64 seeded variants. Each remote push has a 25% chance of one media-upload failure; half fail before the write takes effect, and half write successfully before reporting an error. When a sync procedure fails, retry that same procedure until it succeeds, with a limit of 100 attempts.</p></div>
+</div>
+</article>
 
-- Import 16 media files and push them to the first remote.
-- Evict the local copy.
-- Push to the second remote, downloading the media from the first remote as the push source.
-- Evict the local copy again, fetch from the second remote, and verify the bytes.
+<article className="e2e-test-card">
+<div className="e2e-test-card__eyebrow">Media integrity</div>
+<h3>Fuzzy media convergence</h3>
+<p>Setup: three devices, three remotes.</p>
+<p className="e2e-test-card__description">A seeded fuzzy simulation exercises changing device state, media locality, and remote topology before a final independent verification.</p>
 
-### Three devices, one remote
+<div className="e2e-test-card__section">
+<div className="e2e-test-card__label">Description</div>
+<ol>
+<li>Run 64 seeded tests with three devices sharing one library and three remotes.</li>
+<li>Run 64 rounds per seed, selecting a device and importing, pushing, relaying, evicting, or fetching media.</li>
+<li>Track every imported UUID and its expected bytes in the test model.</li>
+<li>Converge every remote, then verify every file from each remote independently on every device.</li>
+</ol>
+</div>
 
-Shared-remote convergence:
+<div className="e2e-test-card__section">
+<div className="e2e-test-card__label">Execution modes</div>
+<div className="e2e-test-card__mode"><span className="e2e-test-card__badge e2e-test-card__badge--normal">No failure</span></div>
+</div>
+</article>
 
-- Three devices use the same library and remote.
-- Each device imports 16 distinct media files.
-- Each device pushes its media to the shared remote.
-- Every device fetches the remote operations, then evicts all local media copies.
-- Every device checks the presence and byte-for-byte integrity of all 48 media files.
-
-### Three devices, three remotes
-
-Seeded fuzzy test:
-
-- Run 64 seeded tests with three devices sharing one library and three remotes.
-- Each test runs 64 rounds.
-- Each round:
-  - Selects a device.
-  - Performs one or more media actions: import media, push local media to a remote, relay media from one remote to another, evict local media, or fetch remote operations.
-- Every imported media file keeps its UUID-derived expected bytes in the test model.
-- The test ends with convergence: every remote receives every created media file, then every device verifies every file using each remote independently as its only permitted media source.
+</div>
 
 ## Compaction tests
 
-### One device, one remote
+<div className="e2e-test-grid">
 
-Compaction integrity test:
+<article className="e2e-test-card">
+<div className="e2e-test-card__eyebrow">Compaction</div>
+<h3>Compaction integrity</h3>
+<p>Setup: one device, one remote.</p>
+<p className="e2e-test-card__description">Confirms that repeated compaction preserves the complete, unique operation history for the original and a fresh client.</p>
 
-- Use metadata-only album-creation operations.
-- Run 64 deterministic rounds.
-- Each round creates 1–30 operations, then pushes them through FFI to the remote.
-- Repeated pushes trigger remote compaction.
-- At the end, a fresh FFI client fetches the compacted remote.
-- Both clients must contain exactly every operation created during the run, with no duplicate operation dots.
+<div className="e2e-test-card__section">
+<div className="e2e-test-card__label">Description</div>
+<ol>
+<li>Use metadata-only album-creation operations.</li>
+<li>Run 64 deterministic rounds, creating 1–30 operations and pushing them through FFI in each round.</li>
+<li>Allow repeated pushes to trigger remote compaction.</li>
+<li>Fetch the compacted remote with a fresh FFI client.</li>
+<li>Verify both clients contain every created operation and no duplicate dots.</li>
+</ol>
+</div>
+
+<div className="e2e-test-card__section">
+<div className="e2e-test-card__label">Execution modes</div>
+<div className="e2e-test-card__mode"><span className="e2e-test-card__badge e2e-test-card__badge--normal">No failure</span></div>
+</div>
+</article>
+
+</div>
 
 ## Running the suite
 
