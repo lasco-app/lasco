@@ -9,6 +9,7 @@ use crate::encryption::blob_key::derive_blob_key;
 use crate::error::{LibraryError, OperationError};
 use crate::identifiers::{AlbumUuid, GroupUuid, MediaUuid};
 use crate::library::Library;
+use crate::library::range::inclusive_slice;
 use crate::operations::MediaName;
 use crate::remote::MediaList;
 use crate::storage::Storage;
@@ -16,18 +17,6 @@ use crate::storage::Storage;
 use super::MediaEntry;
 
 pub type Result<T> = std::result::Result<T, LibraryError>;
-
-/// Writes `data` to a temp file next to `path` then renames it into place, so a concurrent
-/// reader never observes a partially-written file.
-fn write_atomic(path: &Path, data: &[u8]) -> std::io::Result<()> {
-    let tmp_name = format!(
-        "{}.tmp",
-        path.file_name().unwrap_or_default().to_string_lossy()
-    );
-    let tmp = path.with_file_name(tmp_name);
-    std::fs::write(&tmp, data)?;
-    std::fs::rename(&tmp, path)
-}
 
 /// Selects which media entries `Library::media_list` returns.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -50,7 +39,7 @@ impl Library {
     /// Returns primary visible media ordered by date descending, then ID descending.
     #[must_use]
     pub fn media_by_date_count(&self, orphaned: bool) -> usize {
-        let state = self.inner.operation_state.read();
+        let state = self.inner.state.read();
         if orphaned {
             state.views.home_orphaned_newest.len()
         } else {
@@ -69,7 +58,7 @@ impl Library {
         if pos_start_inclusive > pos_end_inclusive {
             return Vec::new();
         }
-        let state = self.inner.operation_state.read();
+        let state = self.inner.state.read();
         let ids = if orphaned {
             &state.views.home_orphaned_newest
         } else {
@@ -81,14 +70,9 @@ impl Library {
         range
             .iter()
             .filter_map(|media_id| {
-                let entry = state.reconstructed.media.get(media_id)?;
-                let group_ids = state
-                    .views
-                    .media_group_membership
-                    .get(media_id)
-                    .cloned()
-                    .unwrap_or_default();
-                Some(MediaEntry::from_state(entry, group_ids))
+                state
+                    .media(*media_id)
+                    .map(|entry| MediaEntry::from_state(&entry, entry.group_ids.clone()))
             })
             .collect()
     }
@@ -96,89 +80,53 @@ impl Library {
     /// Returns media entries matching `scope`.
     #[must_use]
     pub fn media_list(&self, scope: MediaListScope) -> Vec<MediaEntry> {
-        let state = self.inner.operation_state.read();
+        let state = self.inner.state.read();
         match scope {
             MediaListScope::Reachable => state
                 .views
                 .reachable_media_ids
                 .iter()
                 .filter_map(|&media_id| {
-                    let entry = state.reconstructed.media.get(&media_id)?;
-                    let group_ids = state
-                        .views
-                        .media_group_membership
-                        .get(&media_id)
-                        .cloned()
-                        .unwrap_or_default();
-                    Some(MediaEntry::from_state(entry, group_ids))
+                    state
+                        .media(media_id)
+                        .map(|entry| MediaEntry::from_state(&entry, entry.group_ids.clone()))
                 })
                 .collect(),
             MediaListScope::Visible => {
-                let companion_ids: std::collections::HashSet<_> = state
-                    .reconstructed
-                    .media
-                    .values()
+                let entries = state.media_entries();
+                let companion_ids: std::collections::HashSet<_> = entries
+                    .iter()
                     .flat_map(|entry| [entry.apple_aae_media_id, entry.apple_live_photo_media_id])
                     .flatten()
                     .collect();
 
-                state
-                    .reconstructed
-                    .media
-                    .values()
+                entries
+                    .iter()
                     .filter(|entry| !companion_ids.contains(&entry.media_id))
-                    .map(|entry| {
-                        let group_ids = state
-                            .views
-                            .media_group_membership
-                            .get(&entry.media_id)
-                            .cloned()
-                            .unwrap_or_default();
-                        MediaEntry::from_state(entry, group_ids)
-                    })
+                    .map(|entry| MediaEntry::from_state(entry, entry.group_ids.clone()))
                     .collect()
             }
             MediaListScope::Orphaned => {
-                let companion_ids: std::collections::HashSet<_> = state
-                    .reconstructed
-                    .media
-                    .values()
+                let entries = state.media_entries();
+                let companion_ids: std::collections::HashSet<_> = entries
+                    .iter()
                     .flat_map(|entry| [entry.apple_aae_media_id, entry.apple_live_photo_media_id])
                     .flatten()
                     .collect();
 
-                state
-                    .reconstructed
-                    .media
-                    .values()
+                entries
+                    .iter()
                     .filter(|entry| {
                         !state.views.reachable_media_ids.contains(&entry.media_id)
                             && !companion_ids.contains(&entry.media_id)
                     })
-                    .map(|entry| {
-                        let group_ids = state
-                            .views
-                            .media_group_membership
-                            .get(&entry.media_id)
-                            .cloned()
-                            .unwrap_or_default();
-                        MediaEntry::from_state(entry, group_ids)
-                    })
+                    .map(|entry| MediaEntry::from_state(entry, entry.group_ids.clone()))
                     .collect()
             }
             MediaListScope::All => state
-                .reconstructed
-                .media
-                .values()
-                .map(|entry| {
-                    let group_ids = state
-                        .views
-                        .media_group_membership
-                        .get(&entry.media_id)
-                        .cloned()
-                        .unwrap_or_default();
-                    MediaEntry::from_state(entry, group_ids)
-                })
+                .media_entries()
+                .iter()
+                .map(|entry| MediaEntry::from_state(entry, entry.group_ids.clone()))
                 .collect(),
         }
     }
@@ -188,19 +136,11 @@ impl Library {
     ///
     /// Returns an error if the media does not exist in the reconstructed state.
     pub fn media_show(&self, media_id: MediaUuid) -> Result<MediaEntry> {
-        let state = self.inner.operation_state.read();
+        let state = self.inner.state.read();
         let entry = state
-            .reconstructed
-            .media
-            .get(&media_id)
+            .media(media_id)
             .ok_or(LibraryError::MediaNotFound(media_id))?;
-        let group_ids = state
-            .views
-            .media_group_membership
-            .get(&media_id)
-            .cloned()
-            .unwrap_or_default();
-        Ok(MediaEntry::from_state(entry, group_ids))
+        Ok(MediaEntry::from_state(&entry, entry.group_ids.clone()))
     }
 
     /// Decrypts the media blob and returns the plaintext bytes.
@@ -234,7 +174,7 @@ impl Library {
         if let Some(parent) = data_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        write_atomic(&data_path, &blob_bytes)?;
+        crate::atomic_file::write(&data_path, &blob_bytes)?;
 
         Ok(plaintext)
     }
@@ -264,13 +204,12 @@ impl Library {
     /// Returns an error if media is absent or the rename operation cannot be persisted.
     pub async fn media_rename(&self, media_id: MediaUuid, name: Option<MediaName>) -> Result<()> {
         {
-            let state = self.inner.operation_state.read();
-            if !state.reconstructed.media.contains_key(&media_id) {
+            let state = self.inner.state.read();
+            if state.media(media_id).is_none() {
                 return Err(LibraryError::MediaNotFound(media_id));
             }
         }
         self.record_local_operation(Utc::now(), OperationContent::MediaRename { media_id, name })?;
-        self.load_local_state().await?;
         Ok(())
     }
 
@@ -304,7 +243,7 @@ impl Library {
                 if let Some(parent) = thumb_path.parent() {
                     std::fs::create_dir_all(parent)?;
                 }
-                write_atomic(&thumb_path, &bytes)?;
+                crate::atomic_file::write(&thumb_path, &bytes)?;
                 bytes
             }
             Err(e) => return Err(LibraryError::Io(e)),
@@ -330,11 +269,9 @@ impl Library {
     }
 
     pub(crate) fn media_year_month(&self, media_id: MediaUuid) -> Result<(u16, u8)> {
-        let state = self.inner.operation_state.read();
+        let state = self.inner.state.read();
         let entry = state
-            .reconstructed
-            .media
-            .get(&media_id)
+            .media(media_id)
             .ok_or(LibraryError::MediaNotFound(media_id))?;
         Ok((entry.storage_date.year, entry.storage_date.month))
     }
@@ -381,12 +318,11 @@ impl Library {
     /// Returns IDs of all non-deleted albums that directly contain `media_id`.
     #[must_use]
     pub fn media_album_ids(&self, media_id: MediaUuid) -> Vec<AlbumUuid> {
-        let state = self.inner.operation_state.read();
+        let state = self.inner.state.read();
         state
-            .reconstructed
-            .albums
-            .values()
-            .filter(|a| !a.deleted && a.media_ids.contains(&media_id))
+            .album_entries()
+            .iter()
+            .filter(|album| album.media_ids.contains(&media_id))
             .map(|a| a.album_id)
             .collect()
     }
@@ -399,12 +335,11 @@ impl Library {
         media_id: MediaUuid,
         include_via_groups: bool,
     ) -> Vec<AlbumUuid> {
-        let state = self.inner.operation_state.read();
+        let state = self.inner.state.read();
         let mut album_ids: Vec<AlbumUuid> = state
-            .reconstructed
-            .albums
-            .values()
-            .filter(|a| !a.deleted && a.media_ids.contains(&media_id))
+            .album_entries()
+            .iter()
+            .filter(|album| album.media_ids.contains(&media_id))
             .map(|a| a.album_id)
             .collect();
 
@@ -416,16 +351,9 @@ impl Library {
                 .cloned()
                 .unwrap_or_default();
             for group_id in group_ids {
-                if let Some(group) = state.reconstructed.groups.get(&group_id) {
-                    if group.deleted {
-                        continue;
-                    }
+                if let Some(group) = state.group(group_id) {
                     let parent = group.album_id_parent;
-                    let parent_alive = state
-                        .reconstructed
-                        .albums
-                        .get(&parent)
-                        .is_some_and(|a| !a.deleted);
+                    let parent_alive = state.album(parent).is_some();
                     if parent_alive && !album_ids.contains(&parent) {
                         album_ids.push(parent);
                     }
@@ -468,21 +396,19 @@ impl Library {
     /// Returns an error if media is absent or the delete operation cannot be persisted.
     pub async fn media_delete(&self, media_id: MediaUuid) -> Result<()> {
         let album_ids: Vec<AlbumUuid> = {
-            let state = self.inner.operation_state.read();
+            let state = self.inner.state.read();
             state
-                .reconstructed
-                .albums
-                .values()
-                .filter(|a| !a.deleted && a.media_ids.contains(&media_id))
+                .album_entries()
+                .iter()
+                .filter(|album| album.media_ids.contains(&media_id))
                 .map(|a| a.album_id)
                 .collect()
         };
         for album_id in album_ids {
             let observed = self
                 .inner
-                .crdt_replica_state
-                .read()
                 .state
+                .read()
                 .album_member_dots(album_id, media_id);
             self.record_local_operation(
                 chrono::Utc::now(),
@@ -492,17 +418,9 @@ impl Library {
                     observed,
                 },
             )?;
-            self.load_local_state().await?;
         }
         Ok(())
     }
-}
-
-fn inclusive_slice<T>(items: &[T], start: usize, end: usize) -> Option<&[T]> {
-    if start > end || start >= items.len() {
-        return None;
-    }
-    items.get(start..=end.min(items.len() - 1))
 }
 
 #[allow(

@@ -1,4 +1,4 @@
-use lasco_core::state::GroupEntry;
+use lasco_core::crdt::GroupEntry;
 
 use super::remotes::media_entry_to_ffi;
 use super::{FfiGroup, FfiLibrary, FfiMediaItem};

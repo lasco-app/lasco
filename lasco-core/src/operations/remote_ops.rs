@@ -1,15 +1,9 @@
 use uuid::Uuid;
 
-use crate::encryption::blob::BlobEncrypted;
-use crate::encryption::blob::decrypt_blob;
-use crate::encryption::blob_key::derive_blob_key;
-use crate::encryption::master_key::MasterKey;
 use crate::identifiers::CompactedOpId;
 use crate::library::sync::remote_access::{StorageRead, StorageReadWrite};
 use crate::operations::error::OperationError;
 use crate::storage::AtomicWriteMode;
-
-use super::{CompactionFile, compaction_file_from_cbor};
 
 pub type Result<T> = std::result::Result<T, OperationError>;
 
@@ -62,40 +56,6 @@ pub(crate) async fn list_remote_op_files(storage: &StorageRead<'_>) -> Result<Ve
         }
     }
     Ok(files)
-}
-
-/// Reads and decrypts a compaction file at `key`. The `file_uuid` drives key derivation.
-#[allow(
-    dead_code,
-    reason = "Exercised by compaction fixtures in the sync test target."
-)]
-pub(crate) async fn read_compaction_file(
-    storage: &StorageRead<'_>,
-    master_key: &MasterKey,
-    key: &str,
-    file_uuid: &CompactedOpId,
-) -> Result<CompactionFile> {
-    let bytes = storage.get(key).await?;
-    let blob = BlobEncrypted::from_bytes(&bytes)?;
-    let file_key = derive_blob_key(master_key, &file_uuid.0);
-    let plaintext = decrypt_blob(&file_key, &blob)?;
-    compaction_file_from_cbor(&plaintext)
-}
-
-/// Encrypts and writes a compaction file to `key`. The `file_uuid` drives key derivation.
-#[allow(
-    dead_code,
-    reason = "Exercised by compaction fixtures in the sync test target."
-)]
-pub(crate) async fn write_compaction_file(
-    storage: &StorageReadWrite<'_>,
-    master_key: &MasterKey,
-    key: &str,
-    file_uuid: &CompactedOpId,
-    file: &CompactionFile,
-) -> Result<()> {
-    let blob = super::encrypt_compaction_file(master_key, file_uuid, file)?;
-    write_compaction_bytes(storage, key, &blob.to_bytes()).await
 }
 
 /// Writes already-encrypted compaction file bytes to `key`, without encoding or encrypting

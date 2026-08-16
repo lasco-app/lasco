@@ -4,6 +4,7 @@ pub mod groups;
 pub mod local_dirs;
 mod local_ops_read_write;
 pub mod media;
+mod range;
 mod remote_media_list_lock;
 pub mod sync;
 mod sync_policy;
@@ -19,12 +20,12 @@ use crate::encryption::master_key::{
     MasterKey, find_master_key, generate_master_key, write_mk_file,
 };
 use crate::error::LibraryError;
+use crate::identifiers::RemoteUuid;
 use crate::library::local_dirs::LocalDirs;
 use crate::library::local_ops_read_write::LocalOpsReadWriteLock;
 use crate::library::remote_media_list_lock::RemoteMediaListLock;
 use crate::library::sync_policy::{FetchSlotGuard, RemoteSyncGuard, SyncPolicy};
 use crate::operations::{LibraryPassword, LibraryUsername};
-use crate::state::OperationState;
 
 pub use crate::identifiers::LibraryId;
 
@@ -50,9 +51,7 @@ pub(crate) struct LibraryInner {
     pub(crate) master_key: MasterKey,
     pub(crate) library_id: LibraryId,
     pub(crate) local_dirs: LocalDirs,
-    pub(crate) operation_state: parking_lot::RwLock<OperationState>,
-    /// Canonical state and the durable outgoing CRDT-operation outbox.
-    pub(crate) crdt_replica_state: parking_lot::RwLock<crate::crdt::CrdtStateReplica>,
+    pub(crate) state: parking_lot::RwLock<crate::crdt::CrdtState>,
     pub(crate) sync_policy: SyncPolicy,
     pub(crate) username: LibraryUsername,
     /// The sole lock that grants access to `operations.log`.
@@ -121,14 +120,11 @@ impl Library {
         )?;
         let local_ops_read_write_lock =
             LocalOpsReadWriteLock::new(local_dirs.local_state_operations());
-        let crdt_replica = crate::crdt::CrdtStateReplica {
-            state: crate::crdt::CanonicalState::new(crate::crdt::DeviceId::random()),
-            outgoing: Vec::new(),
-        };
+        let initial_crdt = crate::crdt::CrdtState::new(crate::crdt::DeviceId::random());
         crate::crdt::save_persisted(
             &local_dirs.local_state_crdt().snapshot_path(),
             &master_key,
-            &crdt_replica,
+            &initial_crdt,
         )?;
 
         let library = Library {
@@ -137,8 +133,7 @@ impl Library {
                 library_id,
                 local_dirs,
                 username: credentials.username,
-                operation_state: parking_lot::RwLock::new(OperationState::default()),
-                crdt_replica_state: parking_lot::RwLock::new(crdt_replica),
+                state: parking_lot::RwLock::new(initial_crdt),
                 sync_policy: SyncPolicy::new(),
                 local_ops_read_write_lock,
                 remote_media_list_lock: RemoteMediaListLock::new(),
@@ -164,21 +159,24 @@ impl Library {
         )?;
         let local_ops_read_write_lock =
             LocalOpsReadWriteLock::new(local_dirs.local_state_operations());
-        let crdt_replica = crate::crdt::load_persisted(
+        let mut loaded_crdt = crate::crdt::load_persisted(
             &local_dirs.local_state_crdt().snapshot_path(),
             &master_key,
             crate::crdt::DeviceId::random(),
         )?;
-        reconcile_outbox_log(&local_ops_read_write_lock, &master_key, &crdt_replica)?;
-
+        reconcile_snapshot_with_operation_log(
+            &mut loaded_crdt,
+            &local_ops_read_write_lock,
+            &local_dirs,
+            &master_key,
+        )?;
         Ok(Library {
             inner: Arc::new(LibraryInner {
                 library_id: local_dirs.library_id(),
                 master_key,
                 local_dirs,
                 username: credentials.username,
-                operation_state: parking_lot::RwLock::new(OperationState::default()),
-                crdt_replica_state: parking_lot::RwLock::new(crdt_replica),
+                state: parking_lot::RwLock::new(loaded_crdt),
                 sync_policy: SyncPolicy::new(),
                 local_ops_read_write_lock,
                 remote_media_list_lock: RemoteMediaListLock::new(),
@@ -195,20 +193,24 @@ impl Library {
     ) -> Result<Library> {
         let local_ops_read_write_lock =
             LocalOpsReadWriteLock::new(local_dirs.local_state_operations());
-        let crdt_replica = crate::crdt::load_persisted(
+        let mut loaded_crdt = crate::crdt::load_persisted(
             &local_dirs.local_state_crdt().snapshot_path(),
             &master_key,
             crate::crdt::DeviceId::random(),
         )?;
-        reconcile_outbox_log(&local_ops_read_write_lock, &master_key, &crdt_replica)?;
+        reconcile_snapshot_with_operation_log(
+            &mut loaded_crdt,
+            &local_ops_read_write_lock,
+            &local_dirs,
+            &master_key,
+        )?;
         Ok(Library {
             inner: Arc::new(LibraryInner {
                 master_key,
                 library_id,
                 local_dirs,
                 username,
-                operation_state: parking_lot::RwLock::new(OperationState::default()),
-                crdt_replica_state: parking_lot::RwLock::new(crdt_replica),
+                state: parking_lot::RwLock::new(loaded_crdt),
                 sync_policy: SyncPolicy::new(),
                 local_ops_read_write_lock,
                 remote_media_list_lock: RemoteMediaListLock::new(),
@@ -236,44 +238,29 @@ impl Library {
         PROTOCOL_VERSION
     }
 
-    /// Atomically records a local CRDT operation in canonical state/outbox and the durable log.
+    /// Atomically records a local CRDT operation in `CrdtState` and the durable log.
     pub(crate) fn record_local_operation(
         &self,
         timestamp: chrono::DateTime<chrono::Utc>,
         content: crate::crdt::OperationContent,
     ) -> Result<()> {
-        let mut replica = self.inner.crdt_replica_state.write();
+        let mut state = self.inner.state.write();
         let crdt_operation = crate::crdt::CrdtOperation {
-            dot: replica.state.next_local_dot(),
+            dot: state.next_local_dot(),
             author: self.inner.username.clone(),
             timestamp,
             content,
         };
-        replica.state.apply(&crdt_operation);
-        replica.outgoing.push(crdt_operation.clone());
+        // The append-only log is the operation source of truth for Push, so make the
+        // operation durable there before replacing the derived state snapshot.
+        self.local_ops_read_write()
+            .append_operation(&crdt_operation)?;
+        state.apply(&crdt_operation);
         crate::crdt::save_persisted(
             &self.inner.local_dirs.local_state_crdt().snapshot_path(),
             &self.inner.master_key,
-            &replica,
+            &state,
         )?;
-        // A crash after the snapshot save can leave this operation absent from the log;
-        // recovery appends it from the durable outbox on the next local mutation/push.
-        self.local_ops_read_write()
-            .append_operation(&crdt_operation)?;
-        Ok(())
-    }
-
-    /// # Errors
-    ///
-    /// Returns an error if persisted operations cannot be read, decrypted, decoded, or reconstructed.
-    #[allow(
-        clippy::unused_async,
-        reason = "Retains the public asynchronous library API used by FFI bindings."
-    )]
-    pub async fn load_local_state(&self) -> Result<()> {
-        let replica = self.inner.crdt_replica_state.read();
-        let state = OperationState::from_reconstructed(replica.state.materialize());
-        *self.inner.operation_state.write() = state;
         Ok(())
     }
 
@@ -282,10 +269,8 @@ impl Library {
     /// Returns an error if the local media cache directory cannot be read.
     pub fn pending_media_count(&self) -> Result<usize> {
         let count = self
-            .inner
-            .crdt_replica_state
-            .read()
-            .outgoing
+            .local_ops_read_write()
+            .read_operations()?
             .iter()
             .filter(|operation| {
                 matches!(
@@ -300,10 +285,14 @@ impl Library {
     /// # Errors
     ///
     /// Returns an error if the remote's synchronization metadata cannot be read.
-    pub fn has_unpushed_changes(&self, remote_id: &str) -> Result<bool> {
-        let remote_last_known_state_dir =
-            self.inner.local_dirs.remote_last_known_state_dir(remote_id);
+    pub fn has_unpushed_changes(&self, remote_id: RemoteUuid) -> Result<bool> {
+        let remote_last_known_state_dir = self
+            .inner
+            .local_dirs
+            .remote_last_known_state_dir(&remote_id.to_string());
         let master_key = &self.inner.master_key;
+        // The log is the complete operation history, including operations received
+        // during Fetch that may still need delivery to this remote.
         let local_ids = self.local_ops_read_write().known_dots()?;
 
         if local_ids.is_empty() {
@@ -327,20 +316,24 @@ impl Library {
     }
 }
 
-/// Repairs the only interrupted local-write state that can escape the normal
-/// snapshot-then-append sequence. The snapshot's outbox is authoritative, so
-/// appending any absent outgoing dots makes the log a complete merge oracle again.
-fn reconcile_outbox_log(
-    lock: &LocalOpsReadWriteLock,
+/// The encrypted operation log is the recovery authority. Replaying it is
+/// idempotent and repairs a snapshot that was not written after a successful
+/// log append.
+fn reconcile_snapshot_with_operation_log(
+    crdt: &mut crate::crdt::CrdtState,
+    operations: &LocalOpsReadWriteLock,
+    local_dirs: &LocalDirs,
     master_key: &MasterKey,
-    replica: &crate::crdt::CrdtStateReplica,
 ) -> Result<()> {
-    let mut log = lock.lock(master_key);
-    let known = log.known_dots()?;
-    for operation in &replica.outgoing {
-        if !known.contains(&operation.dot) {
-            log.append_operation(operation)?;
-        }
+    let log = operations.lock(master_key).read_operations()?;
+    if log.is_empty() {
+        return Ok(());
     }
+    crdt.merge_all(log.iter());
+    crate::crdt::save_persisted(
+        &local_dirs.local_state_crdt().snapshot_path(),
+        master_key,
+        crdt,
+    )?;
     Ok(())
 }

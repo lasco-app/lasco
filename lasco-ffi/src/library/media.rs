@@ -21,11 +21,9 @@ pub(super) fn inclusive_range(start: u32, end: u32) -> Result<(usize, usize), La
 impl FfiLibrary {
     /// # Errors
     ///
-    /// Returns an error when rebuilding the local state from persisted operations fails.
+    /// Views are rebuilt atomically with every state change; retained as a no-op for FFI compatibility.
     pub fn load_local_state(&self) -> Result<(), LascoError> {
-        self.rt
-            .block_on(self.inner.load_local_state())
-            .map_err(Into::into)
+        Ok(())
     }
 
     pub fn library_id(&self) -> FfiLibraryId {
@@ -355,9 +353,10 @@ impl FfiLibrary {
         reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
     )]
     pub fn has_unpushed_changes(&self, remote_id: FfiRemoteUuid) -> bool {
-        self.inner
-            .has_unpushed_changes(&remote_id.value.clone())
-            .unwrap_or(false)
+        let Ok(remote_id) = remote_id.try_into() else {
+            return false;
+        };
+        self.inner.has_unpushed_changes(remote_id).unwrap_or(false)
     }
 
     /// # Errors

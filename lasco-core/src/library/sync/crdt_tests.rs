@@ -1,8 +1,7 @@
 use tempfile::TempDir;
 
-use crate::identifiers::AlbumUuid;
+use crate::identifiers::{AlbumUuid, RemoteUuid};
 use crate::library::media::upload::MediaAddSource;
-use crate::library::{Credentials, Library};
 use crate::storage::StorageMockMemory;
 
 use super::test_utils::{
@@ -77,20 +76,39 @@ async fn repeated_fetch_is_idempotent_by_dot() {
 }
 
 #[tokio::test]
-async fn reopening_repairs_a_log_missing_an_outbox_operation() {
-    let directory = TempDir::new().unwrap();
-    let library = make_library(&directory).await;
-    library.album_create("recovery".into(), None).await.unwrap();
-    let local_dirs = library.inner.local_dirs.clone();
-    std::fs::remove_file(local_dirs.local_state_operations().operations_log_path()).unwrap();
+async fn push_relays_operations_learned_by_fetch() {
+    let source_storage = StorageMockMemory::new();
+    let target_storage = StorageMockMemory::new();
+    let source_dir = TempDir::new().unwrap();
+    let replica_dir = TempDir::new().unwrap();
+    let source = make_library(&source_dir).await;
+    source
+        .initialize_remote(&source_storage, remote_uuid())
+        .await
+        .unwrap();
+    let replica = make_library_with_same_keys(&replica_dir, &source).await;
 
-    let reopened = Library::open(
-        local_dirs,
-        Credentials {
-            username: "alice".into(),
-            password: "secret".into(),
-        },
-    )
-    .unwrap();
-    assert_eq!(reopened.list_operations().unwrap().len(), 1);
+    source.album_create("shared".into(), None).await.unwrap();
+    source.push(&source_storage, REMOTE_ID).await.unwrap();
+    assert_eq!(
+        replica
+            .fetch(&source_storage, REMOTE_ID)
+            .await
+            .unwrap()
+            .ops_downloaded,
+        1
+    );
+
+    let target_remote_id =
+        RemoteUuid::from_uuid("33333333-3333-3333-3333-333333333333".parse().unwrap());
+    replica
+        .initialize_remote(&target_storage, target_remote_id)
+        .await
+        .unwrap();
+    let report = replica
+        .push(&target_storage, target_remote_id)
+        .await
+        .unwrap();
+
+    assert_eq!(report.ops_uploaded, 1);
 }

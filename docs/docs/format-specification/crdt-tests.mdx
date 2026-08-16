@@ -1,0 +1,61 @@
+---
+sidebar_position: 11
+sidebar_label: CRDT tests
+---
+
+# CRDT tests
+
+## Deterministic scenarios
+
+Small named tests describe one user-visible operation history at a time.
+
+| Entity | Operations and behavior covered |
+| --- | --- |
+| Media | Creation, rename, property updates, delayed creation delivery, and same-counter rename conflicts. |
+| Album | Creation, rename, reparenting, thumbnails, media add/remove, deletion, missing parents, deleted ancestors, and cycles. |
+| Group | Creation below an album, media add/remove, concurrent membership changes, deletion, and deleted-parent visibility. |
+| State | Mixed media/album/group histories, duplicate delivery, Lamport-clock advancement, and persisted snapshots. |
+
+Each scenario checks:
+
+- The expected library result: which media, albums, groups, and memberships are visible.
+- Every delivery order for its small operation list. The operations are applied in that order, then the resulting `CrdtState` must converge to the same exact state.
+
+## Fuzzy simulation
+
+`fuzzy_multi_devices_convergence` tests longer histories that are too large to permute. It runs 64 seeded simulations.
+
+Each simulation:
+
+- Uses 2–5 in-memory devices over 24–48 rounds.
+- Includes one shared in-memory remote operation store.
+- Each device records the index of the last remote entry it fetched.
+- Ends with one final convergence round: every device pushes to the remote, then fetches the remote's complete contents.
+
+With `0.90` probability, run an action round:
+
+- Select a random device.
+- With `0.35` probability, fetch every remote-log entry after the device's recorded index.
+- Draw and apply 1–10 operations valid for the selected device's current state.
+- Choose operation weights once from the simulation seed:
+  - Media creation has a weight from `1` to `3`; media rename and property updates have weight `1`.
+  - Album creation, album deletion, group creation, and group deletion form two pairs. Each deletion has weight `1` or `2`; its creation weight is `1` or `2` higher.
+  - Album-media and group-media membership form two pairs. Each removal has weight `1` or `2`; its add weight is `1` or `2` higher.
+  - Album rename, reparenting, and thumbnail updates have weight `1`.
+- With `0.40` probability, push every operation the remote does not yet know.
+- A delivered batch has a `0.10` probability of being delivered twice.
+- Check that the selected device matches the state obtained by merging the operations it knows.
+
+With `0.10` probability, run a convergence round:
+
+- Every device pushes its known operations to the remote.
+- Every device fetches every remote-log entry after its recorded index.
+- Check that every device's `CrdtState` equals the state reconstructed from the remote operations, except for its local `device_id`.
+
+## Running the suite
+
+Run CRDT tests with:
+
+```sh
+cargo nextest run -p lasco-core crdt::
+```

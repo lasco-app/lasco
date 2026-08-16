@@ -40,7 +40,7 @@ Since media are rarely present locally, a push often involves downloading from o
 Because no server coordinates writes, concurrent modifications from multiple clients could produce conflicts. Lasco adopts a **CRDT-inspired operation log**: every local change is recorded as an operation appended to a log. When pushing or fetching, operation logs are merged. This merge is always well-defined because two invariants are enforced for the vast majority of stored files:
 
 1. **Unique random names.** Every new file is given a randomly generated name, making name collisions effectively impossible.
-2. **Immutability.** Once created, a file is never modified in place. The local `crdt-state.enc` snapshot is the exception: it is atomically replaced as the durable CRDT state and outgoing-operation outbox change.
+2. **Immutability.** Once created, a file is never modified in place. The local `crdt-state.enc` snapshot is the exception: it is atomically replaced as the durable CRDT state changes.
 
 ### Always-representable state
 
@@ -48,7 +48,7 @@ Any combination of valid operations must yield a state the client can present to
 
 ### CRDT operation ordering
 
-The canonical state is a CRDT rather than a replay log. Each immutable operation has a Lamport dot,
-and duplicate dots are ignored. LWW registers use dots for deterministic conflict resolution,
+`CrdtState` is a CRDT rather than a replay log. Each immutable operation has a Lamport dot,
+and applying a duplicate is idempotent. LWW registers use dots for deterministic conflict resolution,
 observed-remove sets preserve concurrent adds, and tombstones make deletions permanent. This makes
 merge order irrelevant while retaining an encrypted, append-only audit history.

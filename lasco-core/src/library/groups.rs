@@ -1,12 +1,12 @@
 use chrono::Utc;
 use uuid::Uuid;
 
+use crate::crdt::GroupEntry;
 use crate::crdt::OperationContent;
 use crate::error::LibraryError;
 use crate::identifiers::{AlbumUuid, GroupUuid, MediaUuid};
 use crate::library::Library;
 use crate::library::media::MediaEntry;
-use crate::state::GroupEntry;
 
 pub type Result<T> = std::result::Result<T, LibraryError>;
 
@@ -23,7 +23,6 @@ impl Library {
                 parent_id: album_id_parent,
             },
         )?;
-        self.load_local_state().await?;
         Ok(group_id)
     }
 
@@ -35,7 +34,6 @@ impl Library {
             Utc::now(),
             OperationContent::GroupMediaAdd { group_id, media_id },
         )?;
-        self.load_local_state().await?;
         Ok(())
     }
 
@@ -45,9 +43,8 @@ impl Library {
     pub async fn group_remove_media(&self, group_id: GroupUuid, media_id: MediaUuid) -> Result<()> {
         let observed = self
             .inner
-            .crdt_replica_state
-            .read()
             .state
+            .read()
             .group_member_dots(group_id, media_id);
         self.record_local_operation(
             Utc::now(),
@@ -57,7 +54,6 @@ impl Library {
                 observed,
             },
         )?;
-        self.load_local_state().await?;
         Ok(())
     }
 
@@ -66,27 +62,20 @@ impl Library {
     /// Returns an error if the group is absent or the delete operation cannot be persisted.
     pub async fn group_delete(&self, group_id: GroupUuid) -> Result<()> {
         self.record_local_operation(Utc::now(), OperationContent::GroupDeletion { group_id })?;
-        self.load_local_state().await?;
         Ok(())
     }
 
     #[must_use]
     pub fn group_list(&self) -> Vec<GroupEntry> {
-        let state = self.inner.operation_state.read();
-        state
-            .reconstructed
-            .groups
-            .values()
-            .filter(|g| !g.deleted)
-            .cloned()
-            .collect()
+        let state = self.inner.state.read();
+        state.group_entries()
     }
 
     /// # Errors
     ///
     /// Returns an error if the group is absent.
     pub fn group_list_media(&self, group_id: GroupUuid) -> Result<Vec<MediaEntry>> {
-        let state = self.inner.operation_state.read();
+        let state = self.inner.state.read();
         let media_ids = state
             .views
             .by_group
@@ -95,14 +84,9 @@ impl Library {
         let entries = media_ids
             .iter()
             .filter_map(|mid| {
-                let media = state.reconstructed.media.get(mid)?;
-                let group_ids = state
-                    .views
-                    .media_group_membership
-                    .get(mid)
-                    .cloned()
-                    .unwrap_or_default();
-                Some(MediaEntry::from_state(media, group_ids))
+                state
+                    .media(*mid)
+                    .map(|media| MediaEntry::from_state(&media, media.group_ids.clone()))
             })
             .collect();
         Ok(entries)
@@ -112,9 +96,9 @@ impl Library {
     ///
     /// Returns an error if the album is absent.
     pub fn album_list_groups(&self, album_id: AlbumUuid) -> Result<Vec<GroupEntry>> {
-        let state = self.inner.operation_state.read();
+        let state = self.inner.state.read();
         // Return AlbumNotFound only if the album was never created.
-        if !state.reconstructed.albums.contains_key(&album_id) {
+        if state.album(album_id).is_none() {
             return Err(LibraryError::AlbumNotFound(album_id));
         }
         let entries = state
@@ -123,9 +107,7 @@ impl Library {
             .get(&album_id)
             .map(|ids| {
                 ids.iter()
-                    .filter_map(|gid| state.reconstructed.groups.get(gid))
-                    .filter(|g| !g.deleted)
-                    .cloned()
+                    .filter_map(|gid| state.group(*gid))
                     .collect()
             })
             .unwrap_or_default();
@@ -224,7 +206,7 @@ mod tests {
         assert_eq!(media[0].media_id, media_id);
 
         // The file is reachable through the group and its parent album chain.
-        let state = lib.inner.operation_state.read();
+        let state = lib.inner.state.read();
         assert!(state.views.reachable_media_ids.contains(&media_id));
     }
 
@@ -256,7 +238,7 @@ mod tests {
         let media = lib.group_list_media(group_id).unwrap();
         assert!(media.is_empty());
 
-        let state = lib.inner.operation_state.read();
+        let state = lib.inner.state.read();
         assert!(!state.views.reachable_media_ids.contains(&media_id));
     }
 
@@ -307,9 +289,9 @@ mod tests {
 
         lib.album_delete(album_id).await.unwrap();
 
-        let state = lib.inner.operation_state.read();
+        let state = lib.inner.state.read();
         // Groups beneath a deleted parent are hidden from the CRDT projection.
-        assert!(!state.reconstructed.groups.contains_key(&group_id));
+        assert!(state.group(group_id).is_none());
         // Its media is also unreachable (transitive).
         assert!(!state.views.reachable_media_ids.contains(&media_id));
     }

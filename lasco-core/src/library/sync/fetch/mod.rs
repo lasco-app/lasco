@@ -1,18 +1,18 @@
 use std::collections::HashSet;
 
-use crate::crdt::{CrdtOperation, CrdtStateReplica, OperationContent};
+use crate::crdt::{CrdtOperation, CrdtState, OperationContent};
 use crate::encryption::master_key::{MasterKey, parse_mk_filename};
 use crate::error::{LibraryError, SyncError};
 use crate::identifiers::{LibraryId, RemoteUuid};
 use crate::library::Library;
 use crate::library::local_dirs::{
-    LocalStateCrdt, LocalStateLibraryDir, RemoteLastKnownStateDir, RemoteMediaList,
-    RemoteMergedRemoteFiles,
+    LocalStateCrdt, LocalStateLibraryDir, RemoteCompactOpIdMergedToLocal, RemoteLastKnownStateDir,
+    RemoteMediaList,
 };
 use crate::library::local_ops_read_write::LocalOpsReadWriteLock;
 use crate::library::remote_media_list_lock::RemoteMediaListLock;
 use crate::operations::remote_ops::RemoteOpFile;
-use crate::remote::{LastKnownState, MediaList, MergedRemoteFiles};
+use crate::remote::{CompactOpIdMergedToLocal, LastKnownState, MediaList};
 
 use super::remote_access::StorageRead;
 use super::{SyncReportFetch, verify_remote_identity};
@@ -22,7 +22,7 @@ pub(super) struct FetchAccess<'a> {
     pub local_state_library_dir: &'a LocalStateLibraryDir,
     pub remote_last_known_state_dir: &'a RemoteLastKnownStateDir,
     pub remote_media_list: &'a RemoteMediaList,
-    pub remote_merged_remote_files: &'a RemoteMergedRemoteFiles,
+    pub remote_compact_op_id_merged_to_local: &'a RemoteCompactOpIdMergedToLocal,
     pub local_ops_read_write_lock: &'a LocalOpsReadWriteLock,
     pub remote_media_list_lock: &'a RemoteMediaListLock,
 }
@@ -34,21 +34,26 @@ impl Library {
     pub async fn fetch(
         &self,
         storage: &dyn crate::storage::Storage,
-        remote_id: &str,
+        remote_id: RemoteUuid,
     ) -> Result<SyncReportFetch, LibraryError> {
+        let remote_id_string = remote_id.to_string();
         let _remote_guard = self
-            .try_acquire_remote_sync(remote_id)
+            .try_acquire_remote_sync(&remote_id_string)
             .ok_or(SyncError::AlreadyRunning)?;
         let _fetch_guard = self
             .try_acquire_fetch_slot()
             .ok_or(SyncError::AlreadyRunning)?;
         let remote = StorageRead::new(storage);
         let local_state_library_dir = self.inner.local_dirs.local_state_library_dir();
-        let remote_last_known_state_dir =
-            self.inner.local_dirs.remote_last_known_state_dir(remote_id);
-        let remote_media_list = self.inner.local_dirs.remote_media_list(remote_id);
-        let remote_merged_remote_files =
-            self.inner.local_dirs.remote_merged_remote_files(remote_id);
+        let remote_last_known_state_dir = self
+            .inner
+            .local_dirs
+            .remote_last_known_state_dir(&remote_id_string);
+        let remote_media_list = self.inner.local_dirs.remote_media_list(&remote_id_string);
+        let remote_compact_op_id_merged_to_local = self
+            .inner
+            .local_dirs
+            .remote_compact_op_id_merged_to_local(&remote_id_string);
         let local_state_crdt = self.inner.local_dirs.local_state_crdt();
         let report = fetch_impl(
             FetchAccess {
@@ -56,39 +61,31 @@ impl Library {
                 local_state_library_dir: &local_state_library_dir,
                 remote_last_known_state_dir: &remote_last_known_state_dir,
                 remote_media_list: &remote_media_list,
-                remote_merged_remote_files: &remote_merged_remote_files,
+                remote_compact_op_id_merged_to_local: &remote_compact_op_id_merged_to_local,
                 local_ops_read_write_lock: &self.inner.local_ops_read_write_lock,
                 remote_media_list_lock: &self.inner.remote_media_list_lock,
             },
             remote_id,
             self.inner.library_id,
             &self.inner.master_key,
-            &self.inner.crdt_replica_state,
+            &self.inner.state,
             &local_state_crdt,
         )
         .await?;
-        if report.local_state_rebuild_required {
-            self.load_local_state().await?;
-        }
         Ok(report)
     }
 }
 
 pub(super) async fn fetch_impl(
     access: FetchAccess<'_>,
-    remote_id: &str,
+    remote_id: RemoteUuid,
     library_id: LibraryId,
     master_key: &MasterKey,
-    replica_state: &parking_lot::RwLock<CrdtStateReplica>,
+    state_lock: &parking_lot::RwLock<CrdtState>,
     local_state_crdt: &LocalStateCrdt,
 ) -> Result<SyncReportFetch, LibraryError> {
-    let remote_uuid = remote_id
-        .parse::<uuid::Uuid>()
-        .map(RemoteUuid::from_uuid)
-        .map_err(|e| {
-            SyncError::RemoteIdMismatch(format!("invalid remote id '{remote_id}': {e}"))
-        })?;
-    verify_remote_identity(access.storage, remote_uuid).await?;
+    verify_remote_identity(access.storage, remote_id).await?;
+    let remote_id_string = remote_id.to_string();
 
     // Step 1: pull any mk_*.enc files present on the remote but missing locally,
     // so users added from another device become available on this one.
@@ -96,8 +93,10 @@ pub(super) async fn fetch_impl(
 
     // Load merge progress for immutable remote operation files. It controls only whether a file
     // must be merged again; cache presence is determined independently by LastKnownState.
-    let merged_files_path = access.remote_merged_remote_files.merged_remote_files_path();
-    let mut merged_files = MergedRemoteFiles::load_or_default(&merged_files_path)?;
+    let merged_files_path = access
+        .remote_compact_op_id_merged_to_local
+        .compact_op_id_merged_to_local_path();
+    let mut merged_files = CompactOpIdMergedToLocal::load_or_default(&merged_files_path)?;
 
     let last_known_state = LastKnownState::download(
         access.storage,
@@ -108,9 +107,14 @@ pub(super) async fn fetch_impl(
 
     let mut ops_downloaded = 0usize;
     let mut merged_files_changed = false;
-    let mut local_state_rebuild_required = false;
+    // This is a transient log-write deduplication set, not materialized CRDT state.
+    // CrdtState itself remains idempotent when an operation is applied again.
+    let mut local_log_dots = access
+        .local_ops_read_write_lock
+        .lock(master_key)
+        .known_dots()?;
     let inventory_operations = {
-        let mut replica = replica_state.write();
+        let mut state = state_lock.write();
         let mut inventory_operations = Vec::new();
         for file in last_known_state.files() {
             let file_uuid = LastKnownState::file_uuid(file);
@@ -126,19 +130,17 @@ pub(super) async fn fetch_impl(
                     let compaction = last_known_state
                         .read_compaction_file(master_key, uuid, *tier, *op_count)?;
                     for operation in &compaction.operations {
-                        if !replica.state.causal_context.contains(&operation.dot) {
+                        if local_log_dots.insert(operation.dot) {
                             access
                                 .local_ops_read_write_lock
                                 .lock(master_key)
                                 .append_operation(operation)?;
-                            replica.state.apply(operation);
-                            inventory_operations.push(operation.clone());
                             ops_downloaded += 1;
                         }
+                        inventory_operations.push(operation.clone());
                     }
                     merged_files.insert(file_uuid);
                     merged_files_changed = true;
-                    local_state_rebuild_required = true;
                 }
             }
         }
@@ -146,8 +148,13 @@ pub(super) async fn fetch_impl(
         if merged_files_changed {
             merged_files.save(&merged_files_path)?;
         }
-        if local_state_rebuild_required {
-            crate::crdt::save_persisted(&local_state_crdt.snapshot_path(), master_key, &replica)?;
+        if merged_files_changed {
+            state.apply_batch(inventory_operations.iter());
+            crate::crdt::save_persisted(
+                &local_state_crdt.snapshot_path(),
+                master_key,
+                &state,
+            )?;
         }
         inventory_operations
     };
@@ -155,17 +162,14 @@ pub(super) async fn fetch_impl(
         update_media_list_from_group(
             access.storage,
             operation,
-            remote_id,
+            &remote_id_string,
             access.remote_media_list,
             access.remote_media_list_lock,
         )
         .await;
     }
 
-    Ok(SyncReportFetch {
-        ops_downloaded,
-        local_state_rebuild_required,
-    })
+    Ok(SyncReportFetch { ops_downloaded })
 }
 
 /// Step 1 of fetch. Verifies the remote's `library/library_id_{uuid}` matches this

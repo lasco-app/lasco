@@ -38,7 +38,7 @@ impl Library {
     pub async fn push(
         &self,
         storage: &dyn crate::storage::Storage,
-        remote_id: &str,
+        remote_id: RemoteUuid,
     ) -> Result<SyncReportPush, LibraryError> {
         self.push_with_media_source(storage, remote_id, PushMediaSource::LocalOnly)
             .await
@@ -52,18 +52,21 @@ impl Library {
     pub async fn push_with_media_source(
         &self,
         storage: &dyn crate::storage::Storage,
-        remote_id: &str,
+        remote_id: RemoteUuid,
         media_source: PushMediaSource<'_>,
     ) -> Result<SyncReportPush, LibraryError> {
+        let remote_id_string = remote_id.to_string();
         let _guard = self
-            .try_acquire_remote_sync(remote_id)
+            .try_acquire_remote_sync(&remote_id_string)
             .ok_or(SyncError::AlreadyRunning)?;
         let remote = StorageReadWrite::new(storage);
         let local_state_media_dir = self.inner.local_dirs.local_state_media_dir();
         let local_state_library_dir = self.inner.local_dirs.local_state_library_dir();
-        let remote_last_known_state_dir =
-            self.inner.local_dirs.remote_last_known_state_dir(remote_id);
-        let remote_media_list = self.inner.local_dirs.remote_media_list(remote_id);
+        let remote_last_known_state_dir = self
+            .inner
+            .local_dirs
+            .remote_last_known_state_dir(&remote_id_string);
+        let remote_media_list = self.inner.local_dirs.remote_media_list(&remote_id_string);
         self.push_impl(
             PushAccess {
                 storage: &remote,
@@ -85,32 +88,19 @@ impl Library {
     pub(super) async fn push_impl(
         &self,
         access: PushAccess<'_>,
-        remote_id: &str,
+        remote_id: RemoteUuid,
         media_source: PushMediaSource<'_>,
     ) -> Result<SyncReportPush, LibraryError> {
         let master_key = &self.inner.master_key;
 
-        let remote_uuid = remote_id
-            .parse::<uuid::Uuid>()
-            .map(RemoteUuid::from_uuid)
-            .map_err(|e| {
-                SyncError::RemoteIdMismatch(format!("invalid remote id '{remote_id}': {e}"))
-            })?;
-        verify_remote_identity(&access.storage.as_read(), remote_uuid).await?;
+        verify_remote_identity(&access.storage.as_read(), remote_id).await?;
+        let remote_id_string = remote_id.to_string();
 
         let relay_source = match media_source {
             PushMediaSource::LocalOnly => None,
             PushMediaSource::FromRemote { remote_id, storage } => {
-                let remote_uuid = remote_id
-                    .parse::<uuid::Uuid>()
-                    .map(RemoteUuid::from_uuid)
-                    .map_err(|e| {
-                        SyncError::RemoteIdMismatch(format!(
-                            "invalid source remote id '{remote_id}': {e}"
-                        ))
-                    })?;
-                verify_remote_identity(&storage, remote_uuid).await?;
-                Some((remote_id, storage))
+                verify_remote_identity(&storage, remote_id).await?;
+                Some((remote_id.to_string(), storage))
             }
         };
 
@@ -156,7 +146,7 @@ impl Library {
 
         // Only the snapshot read is locked. Network storage awaits below must remain unlocked.
         let media_list = self.inner.remote_media_list_lock.with_lock(
-            remote_id,
+            &remote_id_string,
             access.remote_media_list,
             |remote_media_list| MediaList::load_or_default(&remote_media_list.media_list_path()),
         )?;
@@ -165,22 +155,21 @@ impl Library {
         // source and retry without a partially completed default Push.
         if relay_source.is_none() {
             let missing: Vec<_> = {
-                let state = self.inner.operation_state.read();
+                let state = self.inner.state.read();
                 state
-                    .reconstructed
-                    .media
+                    .media_entries()
                     .iter()
-                    .filter(|(media_id, _)| !media_list.contains(media_id))
-                    .filter_map(|(media_id, file_meta)| {
+                    .filter(|entry| !media_list.contains(&entry.media_id))
+                    .filter_map(|entry| {
                         (!access
                             .local_state_media_dir
                             .data_path(
-                                file_meta.storage_date.year,
-                                file_meta.storage_date.month,
-                                media_id,
+                                entry.storage_date.year,
+                                entry.storage_date.month,
+                                &entry.media_id,
                             )
                             .exists())
-                        .then_some(*media_id)
+                        .then_some(entry.media_id)
                     })
                     .collect()
             };
@@ -189,14 +178,14 @@ impl Library {
             }
         }
 
+        // The append-only log is the complete local operation history, including
+        // operations learned by Fetch that must be relayed to this remote.
+        // Read it synchronously and release its guard before any network await.
         let ops_to_upload: Vec<_> = self
-            .inner
-            .crdt_replica_state
-            .read()
-            .outgoing
-            .iter()
+            .local_ops_read_write()
+            .read_operations()?
+            .into_iter()
             .filter(|operation| !remote_covered.contains(&operation.dot))
-            .cloned()
             .collect();
 
         let ops_uploaded = ops_to_upload.len();
@@ -285,15 +274,14 @@ impl Library {
         }
 
         let media_pending: Vec<FileToPush> = {
-            let state = self.inner.operation_state.read();
+            let state = self.inner.state.read();
             state
-                .reconstructed
-                .media
+                .media_entries()
                 .iter()
-                .filter(|(media_id, _)| !media_list.contains(media_id))
-                .map(|(media_id, file_meta)| FileToPush {
-                    media_id: *media_id,
-                    storage_date: file_meta.storage_date,
+                .filter(|entry| !media_list.contains(&entry.media_id))
+                .map(|entry| FileToPush {
+                    media_id: entry.media_id,
+                    storage_date: entry.storage_date,
                 })
                 .collect()
         };
@@ -381,7 +369,7 @@ impl Library {
             // Reload under the lock so this write preserves any concurrent fetch or on-demand
             // download observations made while the upload was in progress.
             self.inner.remote_media_list_lock.with_lock(
-                remote_id,
+                &remote_id_string,
                 access.remote_media_list,
                 |remote_media_list| {
                     let path = remote_media_list.media_list_path();

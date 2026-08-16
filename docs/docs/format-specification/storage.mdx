@@ -53,7 +53,7 @@ The root can be overridden via the `--data-dir` CLI flag.
         │   │   ├── library_salt           random 32-byte salt
         │   │   ├── version_1              write format version
         │   │   └── mk_{username}_{uuid}.enc  master key encrypted with the user's KEK
-        │   ├── crdt-state.enc            encrypted canonical state, device clock, and durable outbox
+        │   ├── crdt-state.enc            encrypted CrdtState and Lamport clock
         │   ├── operations.log            append-only encrypted frames of individual CRDT operations
         │   └── media/
         │       └── YYYY/
@@ -63,13 +63,18 @@ The root can be overridden via the `--data-dir` CLI flag.
         └── remotes/
             └── {remote_id}/
                 └── state/                last known state of the remote
-                    ├── processed.json    remote operation files already ingested into the local log
+                    ├── compact_op_id_merged_to_local.json  `CompactedOpId` values for operation files already merged locally
                     ├── operations/       downloaded remote op files
                     └── media/
                         └── media_list.json  last known remote media availability
 ```
 
 Each library directory is self-describing. Its configuration lives in `library.json` next to the library data, so the whole directory can be copied or moved as a unit. The global `config.json` is only a thin index used to discover libraries.
+
+`remotes/{remote_id}/state/compact_op_id_merged_to_local.json` is a local Fetch-progress marker. It stores
+the UUIDs (`CompactedOpId`) of immutable `operations/{uuid}.op{tier}_{count}` files whose operations
+have already been applied to `CrdtState` and recorded in the local operation log. It does not contain
+individual operation dots, operation contents, or remote file ciphertext.
 
 ### config.json
 

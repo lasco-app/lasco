@@ -66,7 +66,7 @@ instance.
 | --- | --- | --- | --- | --- | --- |
 | `local_state/library/` | `LocalStateLibraryDir` | Not used | Not used | Not used | <span className="tag tag-ok">Safe</span> Only one fetch per library |
 | `remotes/{remote_id}/state/operations/` | `RemoteLastKnownStateDir` | `RemoteLastKnownStateDir` | Not used | Not used | <span className="tag tag-ok">Safe</span> Only one sync operation per remote |
-| `remotes/{remote_id}/state/merged_remote_files.json` | `RemoteMergedRemoteFiles` | Not used | Not used | Not used | <span className="tag tag-ok">Safe</span> Fetch-exclusive; corruption intentionally fails fetch |
+| `remotes/{remote_id}/state/compact_op_id_merged_to_local.json` | `RemoteCompactOpIdMergedToLocal` | Not used | Not used | Not used | <span className="tag tag-ok">Safe</span> Fetch-exclusive; corruption intentionally fails fetch |
 | `remotes/{remote_id}/state/media/media_list.json` | `RemoteMediaList` | `RemoteMediaList` | `RemoteMediaList` | Not used | <span className="tag tag-ok">Safe</span> Per-remote inventory mutex plus atomic writes |
 | `local_state/media/` | Not used | `LocalStateMediaDir` | `LocalStateMediaDir` (through `Library`) | `LocalStateMediaDir` (through `Library`) | <span className="tag tag-ok">Safe</span> Atomic write; immutable file with a 1-to-1 filename/content relation |
 | `operations.log` | `LocalOpsReadWriteLock` | `LocalOpsReadWriteLock` (through `Library`) | Not used | `LocalOpsReadWriteLock` (through `Library`) | <span className="tag tag-ok">Safe</span> Mutex |
@@ -74,7 +74,7 @@ instance.
 #### Remote media inventory
 
 The sibling path accessors enforce ownership within the shared `state/` parent: 
-`RemoteLastKnownStateDir` owns only the remote's last-known operation state, `RemoteMergedRemoteFiles` owns only the
+`RemoteLastKnownStateDir` owns only the remote's last-known operation state, `RemoteCompactOpIdMergedToLocal` owns only the
 merge marker, and `RemoteMediaList` owns only the media inventory.
 
 `media_list.json` is a positive-only inventory: an entry means the client has confirmed a media
@@ -87,5 +87,5 @@ operation fetch. The three writers use a per-remote non-async mutex, held only f
 local load-modify-save work and never across `exists`, `get`, or `put_if_absent` awaits. Atomic
 file replacement prevents partial JSON contents; the mutex prevents lost concurrent updates.
 
-`merged_remote_files.json` is written only by fetch. The global fetch slot makes it fetch-exclusive
+`compact_op_id_merged_to_local.json` is written only by fetch. The global fetch slot makes it fetch-exclusive
 within a `Library` instance, and corruption of this merge marker intentionally fails fetch.

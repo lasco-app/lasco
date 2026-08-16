@@ -7,15 +7,15 @@ use crate::identifiers::CompactedOpId;
 
 /// Persisted set of immutable remote operation files already merged into the local log.
 ///
-/// Stored at `remotes/{remote_id}/state/merged_remote_files.json`. This is merge progress,
+/// Stored at `remotes/{remote_id}/state/compact_op_id_merged_to_local.json`. This is merge progress,
 /// not the remote's last-known operation state: a file may be merged while its ciphertext
 /// still needs to be restored.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct MergedRemoteFiles {
+pub struct CompactOpIdMergedToLocal {
     pub file_uuids: HashSet<CompactedOpId>,
 }
 
-impl MergedRemoteFiles {
+impl CompactOpIdMergedToLocal {
     pub fn load_or_default(path: &Path) -> std::io::Result<Self> {
         if !path.exists() {
             return Ok(Self::default());

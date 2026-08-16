@@ -1,4 +1,4 @@
-//! CRDT protocol, canonical state, and durable local replica storage.
+//! CRDT protocol, materialized state, and durable local storage.
 
 mod persistence;
 mod state;

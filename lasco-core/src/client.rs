@@ -117,7 +117,6 @@ pub async fn open_library(
     if let Some(master_key) = session_load_master_key(*library_id, &username, session_dir)? {
         let library = Library::open_with_master_key(local_dirs, master_key, *library_id, username)
             .map_err(|e| anyhow::anyhow!("failed to open library: {e}"))?;
-        library.load_local_state().await?;
         return Ok(library);
     }
 
@@ -134,8 +133,6 @@ pub async fn open_library(
     .map_err(|e| anyhow::anyhow!("failed to open library: {e}"))?;
 
     session_store_master_key(*library_id, &username, library.master_key(), session_dir)?;
-
-    library.load_local_state().await?;
 
     Ok(library)
 }
@@ -370,13 +367,9 @@ pub async fn add_existing_library_s3(
 
     // Download operations from the remote and rebuild local state.
     library
-        .fetch(&storage, &remote_uuid.to_string())
+        .fetch(&storage, remote_uuid)
         .await
         .map_err(|e| anyhow::anyhow!("failed to fetch from remote: {e}"))?;
-    library
-        .load_local_state()
-        .await
-        .map_err(|e| anyhow::anyhow!("failed to load local state: {e}"))?;
 
     Ok((library_id, library))
 }

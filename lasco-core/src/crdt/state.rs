@@ -1,4 +1,4 @@
-//! Canonical, incrementally merged library CRDT state.
+//! Materialized, incrementally merged library CRDT state.
 //!
 //! This module deliberately has no storage or transport policy.  It is the
 //! representation persisted by the next storage format and the single merge
@@ -15,10 +15,42 @@ use crate::library::media::MediaHash;
 use crate::operations::{
     AlbumName, GpsCoords, LibraryUsername, MediaFilename, MediaName, StorageDate,
 };
-use crate::state::{AlbumEntry, GroupEntry, MediaEntry, ReconstructedState};
+use crate::state::{ComputedViews, build_computed_views};
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MediaEntry {
+    pub media_id: MediaUuid,
+    pub filename_original: MediaFilename,
+    pub name: Option<MediaName>,
+    pub date: DateTime<Utc>,
+    pub storage_date: StorageDate,
+    pub size_bytes: u64,
+    pub properties: rustc_hash::FxHashMap<String, String>,
+    pub content_hash: MediaHash,
+    pub author: LibraryUsername,
+    pub modified_at: Option<DateTime<Utc>>,
+    pub gps: Option<GpsCoords>,
+    pub apple_aae_media_id: Option<MediaUuid>,
+    pub apple_live_photo_media_id: Option<MediaUuid>,
+    pub group_ids: Vec<GroupUuid>,
+}
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AlbumEntry {
+    pub album_id: AlbumUuid,
+    pub name: AlbumName,
+    pub album_id_parent: Option<AlbumUuid>,
+    pub media_ids: Vec<MediaUuid>,
+    pub thumbnail_media_id: Option<MediaUuid>,
+}
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GroupEntry {
+    pub group_id: GroupUuid,
+    pub album_id_parent: AlbumUuid,
+    pub media_ids: Vec<MediaUuid>,
+}
 
 /// A device-stable random identifier. Generate it once and persist it with the
-/// canonical state; creating it per operation would defeat Lamport ordering.
+/// `CrdtState`; creating it per operation would defeat Lamport ordering.
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
@@ -39,38 +71,25 @@ pub struct Dot {
     pub device_id: DeviceId,
 }
 
-/// Counter state owned by a replica. It is persisted alongside canonical CRDT
-/// state and advanced for every observed remote dot before the next local dot.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ReplicaClock {
-    pub device_id: DeviceId,
-    pub counter: u64,
-}
+/// Persisted Lamport timestamp. It advances for every observed remote dot before
+/// the next locally-authored dot is allocated.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct LamportClock(u64);
 
-impl ReplicaClock {
-    #[must_use]
-    pub fn new(device_id: DeviceId) -> Self {
-        Self {
-            device_id,
-            counter: 0,
-        }
-    }
-
+impl LamportClock {
     pub fn observe(&mut self, dot: Dot) {
-        self.counter = self.counter.max(dot.lamport_counter);
+        self.0 = self.0.max(dot.lamport_counter);
     }
 
     /// # Panics
     ///
-    /// Panics if this replica has emitted `u64::MAX` dots and its Lamport counter cannot advance.
-    pub fn next_dot(&mut self) -> Dot {
-        self.counter = self
-            .counter
-            .checked_add(1)
-            .expect("Lamport counter exhausted");
+    /// Panics if it cannot advance past `u64::MAX`; this should never happen in practice.
+    pub fn next_dot(&mut self, device_id: DeviceId) -> Dot {
+        self.0 = self.0.checked_add(1).expect("Lamport clock exhausted");
         Dot {
-            lamport_counter: self.counter,
-            device_id: self.device_id,
+            lamport_counter: self.0,
+            device_id,
         }
     }
 }
@@ -198,21 +217,38 @@ impl ObservedRemoveSet {
     }
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct CanonicalState {
-    /// All seen operation identities, used for idempotence and sync.
-    pub causal_context: HashSet<Dot>,
-    pub clock: ReplicaClock,
-    pub media: HashMap<MediaUuid, MediaCrdt>,
-    pub albums: HashMap<AlbumUuid, AlbumCrdt>,
-    pub groups: HashMap<GroupUuid, GroupCrdt>,
-    pub album_memberships: HashMap<(AlbumUuid, MediaUuid), ObservedRemoveSet>,
-    pub group_memberships: HashMap<(GroupUuid, MediaUuid), ObservedRemoveSet>,
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CrdtState {
+    pub(super) device_id: DeviceId,
+    pub(super) lamport_clock: LamportClock,
+    pub(super) media: HashMap<MediaUuid, MediaCrdt>,
+    pub(super) albums: HashMap<AlbumUuid, AlbumCrdt>,
+    pub(super) groups: HashMap<GroupUuid, GroupCrdt>,
+    pub(super) album_memberships: HashMap<(AlbumUuid, MediaUuid), ObservedRemoveSet>,
+    pub(super) group_memberships: HashMap<(GroupUuid, MediaUuid), ObservedRemoveSet>,
+    /// Derived, in-memory query indexes. This cache is never serialized.
+    #[serde(skip)]
+    pub(crate) views: ComputedViews,
 }
 
-impl Default for ReplicaClock {
+pub(crate) struct ResolvedEntries {
+    pub(crate) media: Vec<MediaEntry>,
+    pub(crate) albums: Vec<AlbumEntry>,
+    pub(crate) groups: Vec<GroupEntry>,
+}
+
+impl Default for CrdtState {
     fn default() -> Self {
-        Self::new(DeviceId::random())
+        Self {
+            device_id: DeviceId::random(),
+            lamport_clock: LamportClock::default(),
+            media: HashMap::new(),
+            albums: HashMap::new(),
+            groups: HashMap::new(),
+            album_memberships: HashMap::new(),
+            group_memberships: HashMap::new(),
+            views: ComputedViews::default(),
+        }
     }
 }
 
@@ -254,30 +290,28 @@ pub struct GroupCreation {
     pub parent_id: AlbumUuid,
 }
 
-impl CanonicalState {
+impl CrdtState {
     #[must_use]
     pub fn new(device_id: DeviceId) -> Self {
         Self {
-            clock: ReplicaClock::new(device_id),
+            device_id,
             ..Self::default()
         }
     }
 
     pub fn next_local_dot(&mut self) -> Dot {
-        self.clock.next_dot()
+        self.lamport_clock.next_dot(self.device_id)
     }
 
-    /// Merges one operation. Duplicate dots are intentionally no-ops.
+    /// Merges one operation. Each CRDT substate is idempotent: LWW registers retain
+    /// their winning dot, observed-remove sets store add/tombstone dots, and entity
+    /// tombstones retain their greatest dot. No global set of applied operations is kept.
     #[allow(
         clippy::too_many_lines,
         reason = "Keeping all CRDT operation mutations in one exhaustive match makes state transitions auditable."
     )]
-    pub fn apply(&mut self, operation: &CrdtOperation) {
-        self.clock.observe(operation.dot);
-        if !self.causal_context.insert(operation.dot) {
-            return;
-        }
-
+    fn apply_raw(&mut self, operation: &CrdtOperation) {
+        self.lamport_clock.observe(operation.dot);
         match &operation.content {
             OperationContent::MediaCreation(creation) => {
                 let media = self.media.entry(creation.media_id).or_default();
@@ -408,10 +442,24 @@ impl CanonicalState {
         }
     }
 
-    pub fn merge_all<'a>(&mut self, operations: impl IntoIterator<Item = &'a CrdtOperation>) {
+    pub fn apply(&mut self, operation: &CrdtOperation) {
+        self.apply_raw(operation);
+        self.rebuild_views();
+    }
+
+    pub fn rebuild_views(&mut self) {
+        self.views = build_computed_views(self);
+    }
+
+    pub fn apply_batch<'a>(&mut self, operations: impl IntoIterator<Item = &'a CrdtOperation>) {
         for operation in operations {
-            self.apply(operation);
+            self.apply_raw(operation);
         }
+        self.rebuild_views();
+    }
+
+    pub fn merge_all<'a>(&mut self, operations: impl IntoIterator<Item = &'a CrdtOperation>) {
+        self.apply_batch(operations);
     }
 
     pub fn album_member_dots(&self, album_id: AlbumUuid, media_id: MediaUuid) -> HashSet<Dot> {
@@ -498,46 +546,46 @@ impl CanonicalState {
         }
     }
 
-    /// Produces the compatibility projection consumed by browse/query code.
-    /// It is derived data only; the CRDT structures above remain canonical.
-    #[must_use]
-    pub fn materialize(&self) -> ReconstructedState {
+    #[allow(
+        clippy::too_many_lines,
+        reason = "Resolving all query entries together guarantees one shared album projection."
+    )]
+    pub(crate) fn resolve_entries(&self) -> ResolvedEntries {
         let projection = self.album_projection();
-        let mut result = ReconstructedState::default();
+        let mut media_entries = Vec::new();
         for media in self.media.values() {
             let Some(creation) = &media.creation else {
                 continue;
             };
             let value = &creation.value;
-            result.media.insert(
-                value.media_id,
-                MediaEntry {
-                    media_id: value.media_id,
-                    filename_original: value.filename_original.clone(),
-                    name: media
-                        .name
-                        .as_ref()
-                        .and_then(|register| register.value.clone()),
-                    date: value.date,
-                    storage_date: value.storage_date,
-                    size_bytes: value.size_bytes,
-                    properties: media
-                        .properties
-                        .iter()
-                        .map(|(key, register)| (key.clone(), register.value.clone()))
-                        .collect(),
-                    content_hash: value.content_hash,
-                    author: media.author.as_ref().map_or_else(
-                        || LibraryUsername("unknown".into()),
-                        |register| register.value.clone(),
-                    ),
-                    modified_at: value.modified_at,
-                    gps: value.gps,
-                    apple_aae_media_id: value.apple_aae_media_id,
-                    apple_live_photo_media_id: value.apple_live_photo_media_id,
-                },
-            );
+            media_entries.push(MediaEntry {
+                media_id: value.media_id,
+                filename_original: value.filename_original.clone(),
+                name: media
+                    .name
+                    .as_ref()
+                    .and_then(|register| register.value.clone()),
+                date: value.date,
+                storage_date: value.storage_date,
+                size_bytes: value.size_bytes,
+                properties: media
+                    .properties
+                    .iter()
+                    .map(|(key, register)| (key.clone(), register.value.clone()))
+                    .collect(),
+                content_hash: value.content_hash,
+                author: media.author.as_ref().map_or_else(
+                    || LibraryUsername("unknown".into()),
+                    |register| register.value.clone(),
+                ),
+                modified_at: value.modified_at,
+                gps: value.gps,
+                apple_aae_media_id: value.apple_aae_media_id,
+                apple_live_photo_media_id: value.apple_live_photo_media_id,
+                group_ids: Vec::new(),
+            });
         }
+        let mut album_entries = Vec::new();
         for (album_id, album) in &self.albums {
             if !projection.visible.contains(album_id) {
                 continue;
@@ -552,25 +600,19 @@ impl CanonicalState {
                     (*id == *album_id && set.contains()).then_some(*media_id)
                 })
                 .collect();
-            result.albums.insert(
-                *album_id,
-                AlbumEntry {
-                    album_id: *album_id,
-                    name: album
-                        .name
-                        .as_ref()
-                        .and_then(|register| register.value.clone())
-                        .unwrap_or_else(|| creation.value.name.clone()),
-                    album_id_parent: projection.effective_parents[album_id],
-                    media_ids,
-                    deleted: false,
-                    thumbnail_media_id: album
-                        .thumbnail
-                        .as_ref()
-                        .and_then(|register| register.value),
-                },
-            );
+            album_entries.push(AlbumEntry {
+                album_id: *album_id,
+                name: album
+                    .name
+                    .as_ref()
+                    .and_then(|register| register.value.clone())
+                    .unwrap_or_else(|| creation.value.name.clone()),
+                album_id_parent: projection.effective_parents[album_id],
+                media_ids,
+                thumbnail_media_id: album.thumbnail.as_ref().and_then(|register| register.value),
+            });
         }
+        let mut group_entries = Vec::new();
         for (group_id, group) in &self.groups {
             let Some(creation) = &group.creation else {
                 continue;
@@ -586,17 +628,69 @@ impl CanonicalState {
                     (*id == *group_id && set.contains()).then_some(*media_id)
                 })
                 .collect();
-            result.groups.insert(
-                *group_id,
-                GroupEntry {
-                    group_id: *group_id,
-                    album_id_parent: creation.value.parent_id,
-                    media_ids,
-                    deleted: false,
-                },
-            );
+            group_entries.push(GroupEntry {
+                group_id: *group_id,
+                album_id_parent: creation.value.parent_id,
+                media_ids,
+            });
         }
-        result
+        let visible_groups: HashMap<_, _> = group_entries.iter().map(|g| (g.group_id, g)).collect();
+        for media in &mut media_entries {
+            media.group_ids = visible_groups
+                .values()
+                .filter(|group| group.media_ids.contains(&media.media_id))
+                .map(|group| group.group_id)
+                .collect();
+            media.group_ids.sort_by_key(|id| id.0);
+        }
+        media_entries.sort_by_key(|entry| entry.media_id.0);
+        album_entries.sort_by_key(|entry| entry.album_id.0);
+        group_entries.sort_by_key(|entry| entry.group_id.0);
+        for entry in &mut album_entries {
+            entry.media_ids.sort_by_key(|id| id.0);
+        }
+        for entry in &mut group_entries {
+            entry.media_ids.sort_by_key(|id| id.0);
+        }
+        ResolvedEntries {
+            media: media_entries,
+            albums: album_entries,
+            groups: group_entries,
+        }
+    }
+
+    #[must_use]
+    pub fn media(&self, id: MediaUuid) -> Option<MediaEntry> {
+        self.resolve_entries()
+            .media
+            .into_iter()
+            .find(|e| e.media_id == id)
+    }
+    #[must_use]
+    pub fn media_entries(&self) -> Vec<MediaEntry> {
+        self.resolve_entries().media
+    }
+    #[must_use]
+    pub fn album(&self, id: AlbumUuid) -> Option<AlbumEntry> {
+        self.resolve_entries()
+            .albums
+            .into_iter()
+            .find(|e| e.album_id == id)
+    }
+    #[must_use]
+    pub fn album_entries(&self) -> Vec<AlbumEntry> {
+        self.resolve_entries().albums
+    }
+    #[must_use]
+    pub fn group(&self, id: GroupUuid) -> Option<GroupEntry> {
+        self.resolve_entries()
+            .groups
+            .into_iter()
+            .find(|e| e.group_id == id)
+    }
+    #[must_use]
+    pub fn group_entries(&self) -> Vec<GroupEntry> {
+        self.resolve_entries().groups
     }
 }
 
