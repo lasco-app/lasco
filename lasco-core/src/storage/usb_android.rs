@@ -48,9 +48,11 @@ impl StorageUsbAndroid {
         let runtime = ANDROID_RUNTIME.get().ok_or_else(|| {
             StorageError::Unavailable("Android USB runtime has not been initialized".to_string())
         })?;
-        runtime
+        let mut env = runtime
             .vm
-            .attach_current_thread(f)
+            .attach_current_thread()
+            .map_err(|e| StorageError::Unavailable(format!("Android USB operation failed: {e}")))?;
+        f(&mut env)
             .map_err(|e| StorageError::Unavailable(format!("Android USB operation failed: {e}")))
     }
 
@@ -60,7 +62,7 @@ impl StorageUsbAndroid {
             "android/net/Uri",
             "parse",
             "(Ljava/lang/String;)Landroid/net/Uri;",
-            &[JValue::Object((&raw).into())],
+            &[JValue::Object((&*raw).into())],
         )?
         .l()
     }
@@ -145,7 +147,7 @@ impl StorageUsbAndroid {
                 &cursor,
                 "getColumnIndex",
                 "(Ljava/lang/String;)I",
-                &[JValue::Object((&name_key).into())],
+                &[JValue::Object((&*name_key).into())],
             )?
             .i()?;
         let id_col = env
@@ -153,21 +155,20 @@ impl StorageUsbAndroid {
                 &cursor,
                 "getColumnIndex",
                 "(Ljava/lang/String;)I",
-                &[JValue::Object((&id_key).into())],
+                &[JValue::Object((&*id_key).into())],
             )?
             .i()?;
         let mut found = None;
         while env.call_method(&cursor, "moveToNext", "()Z", &[])?.z()? {
-            let candidate = Self::string(
-                env,
-                env.call_method(
+            let candidate_object = env
+                .call_method(
                     &cursor,
                     "getString",
                     "(I)Ljava/lang/String;",
                     &[JValue::Int(name_col)],
                 )?
-                .l()?,
-            )?;
+                .l()?;
+            let candidate = Self::string(env, candidate_object)?;
             if candidate == name {
                 let id = env
                     .call_method(
@@ -205,7 +206,7 @@ impl StorageUsbAndroid {
         let name = env.new_string(name)?;
         env.call_static_method(
             "android/provider/DocumentsContract", "createDocument", "(Landroid/content/ContentResolver;Landroid/net/Uri;Ljava/lang/String;Ljava/lang/String;)Landroid/net/Uri;",
-            &[JValue::Object(&resolver), JValue::Object(parent), JValue::Object((&mime).into()), JValue::Object((&name).into())],
+            &[JValue::Object(&resolver), JValue::Object(parent), JValue::Object((&*mime).into()), JValue::Object((&*name).into())],
         )?.l()
     }
 
@@ -275,7 +276,7 @@ impl Storage for StorageUsbAndroid {
                 &stream,
                 "write",
                 "([B)V",
-                &[JValue::Object((&bytes).into())],
+                &[JValue::Object((&*bytes).into())],
             )?;
             env.call_method(&stream, "close", "()V", &[])?;
             Ok(())
@@ -310,7 +311,7 @@ impl Storage for StorageUsbAndroid {
                         &stream,
                         "read",
                         "([B)I",
-                        &[JValue::Object((&buffer).into())],
+                        &[JValue::Object((&*buffer).into())],
                     )?
                     .i()?;
                 if count < 0 {
