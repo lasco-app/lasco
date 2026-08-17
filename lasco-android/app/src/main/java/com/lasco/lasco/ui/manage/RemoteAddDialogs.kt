@@ -34,6 +34,7 @@ import com.lasco.lasco.ui.components.LascoPrimaryButton
 import com.lasco.lasco.ui.theme.LascoTheme
 import kotlinx.coroutines.launch
 import uniffi.lasco_ffi.LascoException
+import uniffi.lasco_ffi.FfiRemoteUuid
 import uniffi.lasco_ffi.ffiTestS3Remote
 
 @Composable
@@ -182,12 +183,17 @@ fun AddS3RemoteDialog(
                     submitting = true
                     addError = null
                     scope.launch {
+                        var addedRemoteId: FfiRemoteUuid? = null
                         try {
                             val remoteId = repo.addRemoteS3(name, endpoint, bucket, region, pathPrefix, accessKey, secretKey)
+                            addedRemoteId = remoteId
                             repo.initializeRemote(remoteId, null)
                             onDismiss()
                             onResult(name, null)
                         } catch (e: Exception) {
+                            addedRemoteId?.let { remoteId ->
+                                runCatching { repo.removeRemote(remoteId) }
+                            }
                             addError = e.message?.ifBlank { null } ?: "Failed to add remote"
                         }
                         submitting = false
@@ -242,12 +248,17 @@ fun AddLocalFSRemoteDialog(
                     submitting = true
                     addError = null
                     scope.launch {
+                        var addedRemoteId: FfiRemoteUuid? = null
                         try {
                             val remoteId = repo.addRemoteDebugLocalAndroid(name)
+                            addedRemoteId = remoteId
                             repo.initializeRemote(remoteId, null)
                             onDismiss()
                             onResult(name, null)
                         } catch (e: Exception) {
+                            addedRemoteId?.let { remoteId ->
+                                runCatching { repo.removeRemote(remoteId) }
+                            }
                             addError = e.message?.ifBlank { null } ?: "Failed to add remote"
                         }
                         submitting = false

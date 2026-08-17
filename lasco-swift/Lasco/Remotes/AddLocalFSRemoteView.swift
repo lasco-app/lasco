@@ -102,13 +102,18 @@ struct AddLocalFSRemoteView: View {
                     isAdding = true
                     errorMessage = nil
                     Task {
+                        var addedRemoteID: FfiRemoteUuid?
                         do {
                             let remoteID = try await repository.addRemoteDebugLocalApple(name: remoteName)
+                            addedRemoteID = remoteID
                             try await repository.initializeRemote(id: remoteID)
                             try await onRemoteReady()
                             dismiss()
                             toastManager.show(ok: "\(remoteName): initialized")
                         } catch {
+                            if let addedRemoteID {
+                                try? await repository.removeRemote(id: addedRemoteID)
+                            }
                             errorMessage = error.localizedDescription
                         }
                         isAdding = false

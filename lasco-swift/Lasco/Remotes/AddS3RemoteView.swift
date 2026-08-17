@@ -148,13 +148,18 @@ struct AddS3RemoteView: View {
                     isAdding = true
                     addErrorMessage = nil
                     Task {
+                        var addedRemoteID: FfiRemoteUuid?
                         do {
                             let remoteID = try await repository.addRemoteS3(id: name, endpoint: endpoint, bucket: bucket, region: region, pathPrefix: pathPrefix, accessKey: accessKey, secretKey: secretKey)
+                            addedRemoteID = remoteID
                             try await repository.initializeRemote(id: remoteID)
                             try await onRemoteReady()
                             dismiss()
                             toastManager.show(ok: "\(name): initialized")
                         } catch {
+                            if let addedRemoteID {
+                                try? await repository.removeRemote(id: addedRemoteID)
+                            }
                             addErrorMessage = error.localizedDescription
                         }
                         isAdding = false

@@ -7,6 +7,26 @@ use walkdir::WalkDir;
 
 use super::{AtomicWriteMode, Result, Storage, StorageError};
 
+/// Atomically move `from` to `to`, failing if `to` already exists.
+#[cfg(target_vendor = "apple")]
+fn rename_no_replace(from: &std::path::Path, to: &std::path::Path) -> io::Result<()> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
+    let from = CString::new(from.as_os_str().as_bytes())
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "source path contains NUL"))?;
+    let to = CString::new(to.as_os_str().as_bytes()).map_err(|_| {
+        io::Error::new(io::ErrorKind::InvalidInput, "destination path contains NUL")
+    })?;
+    // SAFETY: The C strings are NUL-terminated and live for the duration of the call.
+    let result = unsafe { libc::renamex_np(from.as_ptr(), to.as_ptr(), libc::RENAME_EXCL) };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
+}
+
 #[derive(Debug)]
 pub struct StorageLocalFs {
     root: PathBuf,
@@ -46,20 +66,31 @@ impl Storage for StorageLocalFs {
                 fs::rename(&temp_path, &path).map_err(|e| StorageError::Other(Box::new(e)))?;
                 Ok(true)
             }
-            AtomicWriteMode::CreateIfAbsent => match fs::hard_link(&temp_path, &path) {
-                Ok(()) => {
-                    fs::remove_file(&temp_path).map_err(|e| StorageError::Other(Box::new(e)))?;
-                    Ok(true)
+            AtomicWriteMode::CreateIfAbsent => {
+                #[cfg(target_vendor = "apple")]
+                let publish = rename_no_replace(&temp_path, &path);
+                // This fallback is for single-writer local filesystems. It intentionally
+                // accepts a check-then-rename race until the backend gains a real
+                // conditional-create primitive.
+                #[cfg(not(target_vendor = "apple"))]
+                let publish = if path.exists() {
+                    Err(io::Error::from(io::ErrorKind::AlreadyExists))
+                } else {
+                    fs::rename(&temp_path, &path)
+                };
+
+                match publish {
+                    Ok(()) => Ok(true),
+                    Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+                        let _ = fs::remove_file(&temp_path);
+                        Ok(false)
+                    }
+                    Err(e) => {
+                        let _ = fs::remove_file(&temp_path);
+                        Err(StorageError::Other(Box::new(e)))
+                    }
                 }
-                Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
-                    let _ = fs::remove_file(&temp_path);
-                    Ok(false)
-                }
-                Err(e) => {
-                    let _ = fs::remove_file(&temp_path);
-                    Err(StorageError::Other(Box::new(e)))
-                }
-            },
+            }
         }
     }
 
