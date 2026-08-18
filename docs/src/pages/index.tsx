@@ -240,7 +240,7 @@ const WHY_ITEMS = [
   {
     id: 'native',
     title: 'Native apps',
-    desc: 'Built natively for iOS and Android.',
+    desc: 'Built natively for iOS, with Android coming soon.',
   },
   {
     id: 'e2ee',
@@ -394,7 +394,7 @@ export default function Home(): ReactNode {
       title={siteConfig.title}
       description="Keep your memories usable, safe and private.">
       <main>
-        <h1 className={styles.heroTitle}>Self (non hosted) photo management app</h1>
+        <h1 className={styles.heroTitle}>Private photo management. No server to deploy.</h1>
         <p className={styles.mobileIntroText}>{SCREENSHOT_PANELS[0].desc}</p>
         <div style={{width: '100%', aspectRatio: '1448/360', display: 'block'}} />
         <ScreenshotScrollSection />

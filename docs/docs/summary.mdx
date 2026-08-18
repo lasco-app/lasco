@@ -30,20 +30,19 @@ Lasco is just a client-side app. All the logic happens on your device. It just p
 
 ### What is stored on the server
 
-The server stores encrypted blobs for media and operations, along with key material. There are three types of files stored in the remote:
+The remote stores encrypted media, compacted CRDT operations, and the metadata needed to open the library. Each remote also has an identity marker, so Lasco can detect a stale or mismatched storage location before syncing. The library data is organized into three areas:
 
 <Panel>
     <SchemaCard title="Media Blobs" description="Your photos and videos, encrypted at rest">
         <Field name="media/YYYY/MM/{UUID}.data" note="Encrypted original media" />
         <Field name="media/YYYY/MM/{UUID}.thumb" note="Encrypted thumbnail" />
     </SchemaCard>
-    <SchemaCard title="Operation Log" description="Tracks every change you made, for example photo names, albums etc. Works in a CRDT way to prevent conflicts">
-        <Field name="operations/{op_uuid}.op" note="Encrypted, immutable operation" />
+    <SchemaCard title="Operation files" description="Encrypted CRDT operations that record every change, such as photo names and album membership">
+        <Field name="operations/{UUID}.op{tier}_{count}" note="Immutable compacted operations" />
     </SchemaCard>
-    <SchemaCard title="Key Material" description="Encrypted keys used to unlock your library">
-        <Field name="salt.bin" note="Argon2id salt" />
-        <Field name="vkk_{user}.enc" note="Encrypted VKK" />
-        <Field name="lmk.enc" note="Encrypted LMK keychain" />
+    <SchemaCard title="Library metadata" description="Library identity, format version, and encrypted master keys">
+        <Field name="library/library_salt" note="Argon2id salt" />
+        <Field name="library/mk_{username}_{UUID}.enc" note="Master key encrypted with the user's password-derived key" />
     </SchemaCard>
 </Panel>
 
@@ -57,14 +56,15 @@ When you import `"IMG_4823.jpg"` and name it `"Beach Sunset"` in the `"Summer 20
   { depth: 2, icon: '📁', name: '04/' },
   { depth: 3, icon: '🔒', name: '3f2a1b4c-9d8e-4f7a-b2c3-1d5e6f7a8b9c.data', note: 'encrypted media' },
   { depth: 3, icon: '🔒', name: '3f2a1b4c-9d8e-4f7a-b2c3-1d5e6f7a8b9c.thumb', note: 'encrypted thumbnail' },
+  { depth: 0, icon: '📁', name: 'library/' },
+  { depth: 1, icon: '🔒', name: 'library_salt', note: 'Argon2id salt' },
+  { depth: 1, icon: '🔒', name: 'mk_pierre_8d2a1b4c-9d8e-4f7a-b2c3-1d5e6f7a8b9c.enc', note: 'encrypted master key' },
   { depth: 0, icon: '📁', name: 'operations/' },
-  { depth: 1, icon: '🔒', name: '9a11c2d3-4e5f-6a7b-8c9d-0e1f2a3b4c5d.op', note: 'MediaCreation' },
-  { depth: 1, icon: '🔒', name: '9a12d3e4-5f6a-7b8c-9d0e-1f2a3b4c5d6e.op', note: 'MediaPropsUpdate: name="Beach Sunset"' },
-  { depth: 1, icon: '🔒', name: '9a14e5f6-7a8b-9c0d-1e2f-3a4b5c6d7e8f.op', note: 'AlbumMediaAdd: album="Summer 2026"' },
+  { depth: 1, icon: '🔒', name: '9a11c2d3-4e5f-6a7b-8c9d-0e1f2a3b4c5d.op1_3', note: 'MediaCreation, rename, and album membership' },
 ]} />
 
 :::note
-Operations are not stored one file per operation like in the example. They are aggregated dynamically into op files.
+Each remote operation file contains one or more CRDT operations. Its filename records the compaction tier and the number of operations it contains.
 :::
 
 ## Remote concept
@@ -76,4 +76,4 @@ Lasco interacts with remote servers through two operations:
 
 This allows you to push to multiple file servers to achieve replication, or back up to a hard drive by simply plugging in your USB drive and pushing to it.
 
-The sync algorithm, and data representing the library, working with CRDT is such that there is no possible conflict. A correct state will always be reconstructed.
+Because changes are CRDT operations, devices converge on the same library state once they have observed the same data.
