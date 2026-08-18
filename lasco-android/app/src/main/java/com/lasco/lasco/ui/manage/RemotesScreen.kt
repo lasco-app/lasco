@@ -22,12 +22,15 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lasco.lasco.data.LibraryRepository
 import com.lasco.lasco.data.Prefs
 import com.lasco.lasco.ui.components.LascoConfirmDialog
 import com.lasco.lasco.ui.components.LascoPrimaryButton
+import com.lasco.lasco.ui.components.LascoSecondaryButton
 import com.lasco.lasco.ui.theme.LascoTheme
 import com.lasco.lasco.ui.theme.lascoPanel
 import kotlinx.coroutines.launch
@@ -59,7 +62,10 @@ fun RemotesScreen(
     var pendingDelete by remember { mutableStateOf<FfiRemote?>(null) }
     var pendingLockRemoval by remember { mutableStateOf<FfiRemote?>(null) }
     var feedback by remember { mutableStateOf<String?>(null) }
+    var isUpdatingMediaSourceOrder by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val remotesById = session.remotes.associateBy { it.remoteId }
+    val orderedMediaSources = session.mediaSourceOrder.mapNotNull(remotesById::get)
 
     Column(
         modifier = modifier
@@ -122,6 +128,32 @@ fun RemotesScreen(
                 )
                 Spacer(modifier = Modifier.height(12.dp))
             }
+
+            if (orderedMediaSources.size > 1) {
+                DownloadPriorityPanel(
+                    remotes = orderedMediaSources,
+                    isUpdating = isUpdatingMediaSourceOrder,
+                    onMove = { index, offset ->
+                        val destination = index + offset
+                        if (destination in orderedMediaSources.indices && !isUpdatingMediaSourceOrder) {
+                            val reorderedIds = orderedMediaSources.map { it.remoteId }.toMutableList()
+                            val source = reorderedIds[index]
+                            reorderedIds[index] = reorderedIds[destination]
+                            reorderedIds[destination] = source
+                            isUpdatingMediaSourceOrder = true
+                            scope.launch {
+                                try {
+                                    manageViewModel.setMediaSourceOrder(reorderedIds).await()
+                                } catch (_: Exception) {
+                                    feedback = "Could not update download priority"
+                                } finally {
+                                    isUpdatingMediaSourceOrder = false
+                                }
+                            }
+                        }
+                    },
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -176,6 +208,83 @@ fun RemotesScreen(
             },
             onCancel = { pendingLockRemoval = null },
         )
+    }
+}
+
+@Composable
+private fun DownloadPriorityPanel(
+    remotes: List<FfiRemote>,
+    isUpdating: Boolean,
+    onMove: (index: Int, offset: Int) -> Unit,
+) {
+    val colors = LascoTheme.colors
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .lascoPanel()
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+    ) {
+        Text(text = "DOWNLOAD PRIORITY", style = LascoTheme.type.mono(), color = colors.inkMuted)
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = "Priority list to download media",
+            style = LascoTheme.type.body(13),
+            color = colors.inkMuted,
+        )
+        remotes.forEachIndexed { index, remote ->
+            Spacer(modifier = Modifier.height(12.dp))
+            DownloadPriorityRow(
+                position = index + 1,
+                remote = remote,
+                canMoveEarlier = index > 0 && !isUpdating,
+                canMoveLater = index < remotes.lastIndex && !isUpdating,
+                onMoveEarlier = { onMove(index, -1) },
+                onMoveLater = { onMove(index, 1) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun DownloadPriorityRow(
+    position: Int,
+    remote: FfiRemote,
+    canMoveEarlier: Boolean,
+    canMoveLater: Boolean,
+    onMoveEarlier: () -> Unit,
+    onMoveLater: () -> Unit,
+) {
+    val colors = LascoTheme.colors
+
+    Row(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = position.toString(),
+            style = LascoTheme.type.mono(),
+            color = colors.pink,
+            modifier = Modifier.width(24.dp),
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = remote.name, style = LascoTheme.type.body(), color = colors.ink)
+            Text(text = remote.kind, style = LascoTheme.type.mono(11), color = colors.inkMuted)
+        }
+        Column {
+            LascoSecondaryButton(
+                text = "↑",
+                onClick = onMoveEarlier,
+                modifier = Modifier.semantics { contentDescription = "Move ${remote.name} earlier" },
+                enabled = canMoveEarlier,
+                fillWidth = false,
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            LascoSecondaryButton(
+                text = "↓",
+                onClick = onMoveLater,
+                modifier = Modifier.semantics { contentDescription = "Move ${remote.name} later" },
+                enabled = canMoveLater,
+                fillWidth = false,
+            )
+        }
     }
 }
 

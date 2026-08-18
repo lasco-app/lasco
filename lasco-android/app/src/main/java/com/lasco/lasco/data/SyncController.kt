@@ -47,7 +47,6 @@ class SyncController(
         data object Mutated : Cmd
         data object StopCountdown : Cmd
         data class Push(val remoteId: FfiRemoteUuid, val ack: CompletableDeferred<PushResult>) : Cmd
-        data class PushFromSource(val targetRemoteId: FfiRemoteUuid, val sourceRemoteId: FfiRemoteUuid, val ack: CompletableDeferred<PushResult>) : Cmd
         data class Fetch(val remoteId: FfiRemoteUuid, val ack: CompletableDeferred<String?>) : Cmd
     }
 
@@ -98,12 +97,6 @@ class SyncController(
                         publishCountdown(null, emptySet())
                         cmd.ack.complete(push(cmd.remoteId))
                     }
-                    is Cmd.PushFromSource -> {
-                        deadline = null
-                        scheduledAutoPushRemoteIds = emptySet()
-                        publishCountdown(null, emptySet())
-                        cmd.ack.complete(push(cmd.targetRemoteId, cmd.sourceRemoteId))
-                    }
                     is Cmd.Fetch -> cmd.ack.complete(fetch(cmd.remoteId))
                 }
             }
@@ -139,12 +132,6 @@ class SyncController(
         return ack.await()
     }
 
-    suspend fun pushRemoteFromSource(targetRemoteId: FfiRemoteUuid, sourceRemoteId: FfiRemoteUuid): PushResult {
-        val ack = CompletableDeferred<PushResult>()
-        commands.send(Cmd.PushFromSource(targetRemoteId, sourceRemoteId, ack))
-        return ack.await()
-    }
-
     /**
      * Fetches one remote, returning an error message or null on success,
      * mirroring Swift's LibraryModel.fetchRemote. Queues behind a push or
@@ -170,11 +157,10 @@ class SyncController(
         }
     }
 
-    private suspend fun push(remoteId: FfiRemoteUuid, sourceRemoteId: FfiRemoteUuid? = null): PushResult {
+    private suspend fun push(remoteId: FfiRemoteUuid): PushResult {
         _syncState.update { it.copy(busyRemoteIds = it.busyRemoteIds + remoteId) }
         return try {
-            if (sourceRemoteId == null) lib.pushRemoteAsync(remoteId, null)
-            else lib.pushRemoteFromRemoteAsync(remoteId, sourceRemoteId, null)
+            lib.pushRemoteUsingConfiguredMediaSourcesAsync(remoteId, null)
             prefs.recordPush(remoteId, success = true)
             PushResult.Success
         } catch (e: LascoException.MissingLocalMedia) {
@@ -219,7 +205,6 @@ class SyncController(
             val cmd = commands.tryReceive().getOrNull() ?: break
             when (cmd) {
                 is Cmd.Push -> cmd.ack.complete(PushResult.Failed("Library closed"))
-                is Cmd.PushFromSource -> cmd.ack.complete(PushResult.Failed("Library closed"))
                 is Cmd.Fetch -> cmd.ack.complete("Library closed")
                 Cmd.Mutated, Cmd.StopCountdown -> {}
             }

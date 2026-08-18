@@ -447,8 +447,8 @@ class LibraryRepository(
         refreshSessionState()
     }
 
-    suspend fun setRemoteMediaFetchPriority(remoteId: FfiRemoteUuid, priority: UInt) {
-        lib.setRemoteMediaFetchPriority(remoteId, priority)
+    suspend fun setMediaSourceOrder(remoteIds: List<FfiRemoteUuid>) {
+        lib.setMediaSourceOrder(remoteIds)
         refreshSessionState()
     }
 
@@ -472,6 +472,7 @@ class LibraryRepository(
         username = username,
         users = lib.userList(),
         remotes = lib.listRemotes(),
+        mediaSourceOrder = lib.getMediaSourceOrder(),
         defaultFetchRemoteId = lib.getDefaultFetchRemote(),
         autoImportDeviceMedia = lib.getAutoImportDeviceMedia(),
     )

@@ -467,46 +467,62 @@ impl FfiLibrary {
         Ok(())
     }
 
+    /// Returns the ordered subset of remotes used to retrieve uncached originals.
+    ///
     /// # Errors
     ///
-    /// Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
+    /// Returns an error if the library configuration cannot be read.
+    pub fn get_media_source_order(&self) -> Result<Vec<FfiRemoteUuid>, LascoError> {
+        let config = self.load_library_json()?;
+        Ok(config
+            .media_source_order
+            .into_iter()
+            .map(Into::into)
+            .collect())
+    }
+
+    /// Replaces the ordered subset of remotes used to retrieve uncached originals.
     ///
-    /// # Panics
+    /// An empty list is valid and disables remote media-source lookups. Every supplied ID must
+    /// belong to a configured remote and may appear only once.
     ///
-    /// Panics if another thread panicked while holding the cached remote-list mutex during the
-    /// in-memory priority update after configuration is saved.
+    /// # Errors
+    ///
+    /// Returns an error if an ID is invalid, unknown, duplicated, or the configuration cannot be
+    /// saved.
     #[allow(
         clippy::needless_pass_by_value,
         reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
     )]
-    pub fn set_remote_media_fetch_priority(
-        &self,
-        remote_id: FfiRemoteUuid,
-        priority: u32,
-    ) -> Result<(), LascoError> {
+    pub fn set_media_source_order(&self, remote_ids: Vec<FfiRemoteUuid>) -> Result<(), LascoError> {
         let library_id = self.inner.library_id();
-        let mut lib_config = self.load_library_json()?;
-        let remote_uuid: RemoteUuid = remote_id.clone().try_into()?;
-        let remote = lib_config
+        let mut config = self.load_library_json()?;
+        let configured: std::collections::HashSet<_> = config
             .remotes
-            .iter_mut()
-            .find(|remote| remote.remote_uuid == remote_uuid)
-            .ok_or_else(|| LascoError::Other {
-                msg: format!("remote '{}' not found", remote_id.value),
-            })?;
-        remote.media_fetch_priority = priority;
-        save_library(&self.app_dir, &library_id, &lib_config)
-            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
-        if let Some(remote) = self
-            .remotes
-            .lock()
-            .unwrap()
-            .iter_mut()
-            .find(|remote| remote.remote_id == remote_id)
-        {
-            remote.media_fetch_priority = priority;
+            .iter()
+            .map(|remote| remote.remote_uuid)
+            .collect();
+        let mut ordered = Vec::with_capacity(remote_ids.len());
+        let mut seen = std::collections::HashSet::with_capacity(remote_ids.len());
+
+        for remote_id in remote_ids {
+            let remote_uuid: RemoteUuid = remote_id.clone().try_into()?;
+            if !configured.contains(&remote_uuid) {
+                return Err(LascoError::Other {
+                    msg: format!("remote '{}' not found", remote_id.value),
+                });
+            }
+            if !seen.insert(remote_uuid) {
+                return Err(LascoError::Other {
+                    msg: format!("remote '{}' appears more than once", remote_id.value),
+                });
+            }
+            ordered.push(remote_uuid);
         }
-        Ok(())
+
+        config.media_source_order = ordered;
+        save_library(&self.app_dir, &library_id, &config)
+            .map_err(|e| LascoError::Other { msg: e.to_string() })
     }
 
     /// # Errors
@@ -944,8 +960,6 @@ pub(super) fn remote_config_to_ffi(r: &RemoteConfig) -> FfiRemote {
         remote_id: r.remote_uuid.into(),
         name: r.name.clone(),
         auto_push: r.auto_push,
-        media_fetch_priority: r.media_fetch_priority,
-        exclude_from_media_fetch: r.exclude_from_media_fetch,
         kind,
         endpoint,
         bucket,

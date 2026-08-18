@@ -16,6 +16,7 @@ data class SessionState(
     val username: String?,
     val users: List<String>,
     val remotes: List<FfiRemote>,
+    val mediaSourceOrder: List<FfiRemoteUuid>,
     val defaultFetchRemoteId: FfiRemoteUuid?,
     val autoImportDeviceMedia: Boolean,
 )

@@ -9,6 +9,7 @@ final class LibrarySessionState {
     private(set) var username: String?
     private(set) var users: [String] = []
     private(set) var remotes: [FfiRemote] = []
+    private(set) var mediaSourceOrder: [FfiRemoteUuid] = []
     private(set) var defaultFetchRemoteID: FfiRemoteUuid?
     private(set) var autoImportDeviceMedia = false
 
@@ -22,6 +23,7 @@ final class LibrarySessionState {
         let snapshot = try await repository.sessionSnapshot()
         users = snapshot.users
         remotes = snapshot.remotes
+        mediaSourceOrder = snapshot.mediaSourceOrder
         defaultFetchRemoteID = snapshot.defaultFetchRemoteID
         autoImportDeviceMedia = snapshot.autoImportDeviceMedia
     }
