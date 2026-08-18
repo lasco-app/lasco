@@ -635,17 +635,7 @@ impl FfiLibrary {
         let library_id = self.inner.library_id();
         let lib_config =
             LibraryJson::load(&self.app_dir, &library_id)?.ok_or(LascoError::NotFound)?;
-        let mut remotes: Vec<_> = lib_config
-            .remotes
-            .into_iter()
-            .filter(|remote| !remote.exclude_from_media_fetch)
-            .enumerate()
-            .collect();
-        remotes.sort_by_key(|(index, remote)| (remote.media_fetch_priority, *index));
-        Ok(remotes
-            .into_iter()
-            .map(|(_, remote)| remote.remote_uuid)
-            .collect())
+        Ok(lib_config.media_source_order)
     }
 }
 

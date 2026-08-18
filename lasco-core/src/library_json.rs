@@ -113,6 +113,9 @@ pub struct LibraryJson {
     pub auto_import_device_media: bool,
     /// Configured remote storage locations
     pub remotes: Vec<RemoteConfig>,
+    /// Ordered subset of remotes allowed to supply uncached originals and relay media.
+    #[serde(default)]
+    pub media_source_order: Vec<RemoteUuid>,
 }
 
 fn default_library_version() -> u32 {
@@ -138,7 +141,7 @@ impl LibraryJson {
         }
         let data = fs::read(&path)
             .with_context(|| format!("failed to read library config from {}", path.display()))?;
-        let config: LibraryJson =
+        let mut config: LibraryJson =
             serde_json::from_slice(&data).context("failed to parse library.json")?;
         if config.version != LIBRARY_JSON_VERSION {
             bail!(
@@ -146,6 +149,27 @@ impl LibraryJson {
                 config.version,
                 LIBRARY_JSON_VERSION
             );
+        }
+        // Old configurations did not carry the ordered subset. Preserve their established
+        // priority semantics on first load; subsequent saves write only the new field.
+        if config.media_source_order.is_empty() {
+            let mut legacy: Vec<_> = config
+                .remotes
+                .iter()
+                .enumerate()
+                .filter(|(_, remote)| !remote.exclude_from_media_fetch)
+                .collect();
+            legacy.sort_by_key(|(index, remote)| (remote.media_fetch_priority, *index));
+            config.media_source_order = legacy
+                .into_iter()
+                .map(|(_, remote)| remote.remote_uuid)
+                .collect();
+        } else {
+            let known: std::collections::HashSet<_> =
+                config.remotes.iter().map(|r| r.remote_uuid).collect();
+            config.media_source_order.retain(|id| known.contains(id));
+            let mut seen = std::collections::HashSet::new();
+            config.media_source_order.retain(|id| seen.insert(*id));
         }
         Ok(Some(config))
     }
@@ -315,6 +339,7 @@ mod tests {
             active_password_uuid: None,
             default_fetch_remote: None,
             auto_import_device_media: false,
+            media_source_order: vec![],
             remotes: vec![RemoteConfig {
                 remote_uuid: RemoteUuid::new(),
                 name: "local".to_string(),

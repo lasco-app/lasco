@@ -184,6 +184,7 @@ pub async fn create_library(
         default_username: Some(username.clone()),
         active_password_uuid: Some(password_uuid),
         remotes: vec![],
+        media_source_order: vec![],
         auto_import_device_media: false,
     };
 
@@ -396,6 +397,7 @@ pub async fn add_existing_library_s3(
         default_fetch_remote: Some(remote_uuid),
         auto_import_device_media: false,
         remotes: vec![remote_config],
+        media_source_order: vec![remote_uuid],
     };
 
     save_library(app_dir, &library_id, &library_config)?;

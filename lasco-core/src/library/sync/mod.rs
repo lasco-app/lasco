@@ -8,12 +8,13 @@ pub(super) mod fetch;
 pub(super) mod push;
 
 use crate::error::{LibraryError, OperationError, SyncError};
-use crate::identifiers::RemoteUuid;
+use crate::identifiers::{MediaUuid, RemoteUuid};
 use crate::library::Library;
 use crate::storage::{AtomicWriteMode, StorageError};
 use fetch::{FetchAccess, fetch_impl};
 use push::PushAccess;
 use remote_access::{StorageRead, StorageReadWrite};
+use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct SyncReportFetch {
@@ -41,6 +42,27 @@ pub enum PushMediaSource<'a> {
         remote_id: RemoteUuid,
         storage: StorageRead<'a>,
     },
+    Plan(PushMediaPlan<'a>),
+}
+
+/// A fully resolved, per-original relay plan. Core never probes sources outside this plan.
+pub struct PushMediaPlan<'a> {
+    pub assignments: HashMap<MediaUuid, PlannedMediaSource>,
+    pub sources: HashMap<RemoteUuid, StorageRead<'a>>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum PlannedMediaSource {
+    Local,
+    Remote(RemoteUuid),
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct PushMediaRequirement {
+    pub media_id: MediaUuid,
+    pub storage_date: crate::operations::StorageDate,
+    pub local: bool,
+    pub target_has_original: bool,
 }
 
 impl std::fmt::Debug for PushMediaSource<'_> {
@@ -51,6 +73,7 @@ impl std::fmt::Debug for PushMediaSource<'_> {
                 .debug_struct("PushMediaSource::FromRemote")
                 .field("remote_id", remote_id)
                 .finish_non_exhaustive(),
+            Self::Plan(_) => formatter.write_str("PushMediaSource::Plan(..)"),
         }
     }
 }

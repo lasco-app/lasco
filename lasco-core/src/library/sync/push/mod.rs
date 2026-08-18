@@ -16,7 +16,10 @@ use super::compaction::{
     self, appropriate_tier, count_tier_files, release_lock, tier_needs_compaction, try_acquire_lock,
 };
 use super::remote_access::StorageReadWrite;
-use super::{PushMediaSource, SyncReportPush, map_op_err, verify_remote_identity};
+use super::{
+    PlannedMediaSource, PushMediaPlan, PushMediaRequirement, PushMediaSource, SyncReportPush,
+    map_op_err, verify_remote_identity,
+};
 
 struct FileToPush {
     media_id: MediaUuid,
@@ -32,6 +35,47 @@ pub(super) struct PushAccess<'a> {
 }
 
 impl Library {
+    /// Returns the immutable input needed by the application layer to resolve relay sources.
+    pub fn prepare_push_media(
+        &self,
+        remote_id: RemoteUuid,
+    ) -> Result<Vec<PushMediaRequirement>, LibraryError> {
+        let remote_media_list = self
+            .inner
+            .local_dirs
+            .remote_media_list(&remote_id.to_string());
+        let media_list = MediaList::load_or_default(&remote_media_list.media_list_path())?;
+        let media_dir = self.inner.local_dirs.local_state_media_dir();
+        Ok(self
+            .inner
+            .state
+            .read()
+            .media_entries()
+            .iter()
+            .map(|entry| PushMediaRequirement {
+                media_id: entry.media_id,
+                storage_date: entry.storage_date,
+                local: media_dir
+                    .data_path(
+                        entry.storage_date.year,
+                        entry.storage_date.month,
+                        &entry.media_id,
+                    )
+                    .exists(),
+                target_has_original: media_list.contains(&entry.media_id),
+            })
+            .collect())
+    }
+
+    pub async fn push_with_media_plan(
+        &self,
+        storage: &dyn crate::storage::Storage,
+        remote_id: RemoteUuid,
+        plan: PushMediaPlan<'_>,
+    ) -> Result<SyncReportPush, LibraryError> {
+        self.push_with_media_source(storage, remote_id, PushMediaSource::Plan(plan))
+            .await
+    }
     /// # Errors
     ///
     /// Returns an error if remote identity verification, operation upload, or required media upload fails.
@@ -96,11 +140,17 @@ impl Library {
         verify_remote_identity(&access.storage.as_read(), remote_id).await?;
         let remote_id_string = remote_id.to_string();
 
-        let relay_source = match media_source {
+        let relay_source = match &media_source {
             PushMediaSource::LocalOnly => None,
             PushMediaSource::FromRemote { remote_id, storage } => {
-                verify_remote_identity(&storage, remote_id).await?;
-                Some((remote_id.to_string(), storage))
+                verify_remote_identity(&storage, *remote_id).await?;
+                Some((*remote_id, storage))
+            }
+            PushMediaSource::Plan(plan) => {
+                for (id, source) in &plan.sources {
+                    verify_remote_identity(source, *id).await?;
+                }
+                None
             }
         };
 
@@ -153,7 +203,7 @@ impl Library {
 
         // Report missing media before uploading operations. The caller can then select a
         // source and retry without a partially completed default Push.
-        if relay_source.is_none() {
+        if relay_source.is_none() && !matches!(media_source, PushMediaSource::Plan(_)) {
             let missing: Vec<_> = {
                 let state = self.inner.state.read();
                 state
@@ -304,25 +354,51 @@ impl Library {
                 item.storage_date.month,
                 &item.media_id,
             );
-            let (bytes, staged_data) = if data_path.exists() {
-                (std::fs::read(&data_path)?, None)
-            } else {
-                let (source_id, source) = relay_source
-                    .as_ref()
-                    .expect("missing local media requires a relay source");
-                let downloaded = source
-                    .get(&data_key)
-                    .await
-                    .map_err(SyncError::RemoteUnreachable)?;
-                let bytes = stage_and_validate_media(
-                    staging_dir.path(),
-                    &downloaded,
-                    item.media_id,
-                    &self.inner.master_key,
-                )?;
-                self.record_remote_media_presence(source_id, item.media_id);
-                (bytes.0, Some(bytes.1))
-            };
+            let (bytes, staged_data) =
+                if data_path.exists() {
+                    (std::fs::read(&data_path)?, None)
+                } else {
+                    let (source_id, source) = match &media_source {
+                        PushMediaSource::Plan(plan) => match plan.assignments.get(&item.media_id) {
+                            Some(PlannedMediaSource::Remote(id)) => (
+                                *id,
+                                plan.sources.get(id).ok_or_else(|| {
+                                    SyncError::MissingMediaOnConfiguredSources(vec![item.media_id])
+                                })?,
+                            ),
+                            _ => {
+                                return Err(SyncError::MissingMediaOnConfiguredSources(vec![
+                                    item.media_id,
+                                ])
+                                .into());
+                            }
+                        },
+                        _ => {
+                            let (id, source) = relay_source
+                                .as_ref()
+                                .expect("missing local media requires a relay source");
+                            (*id, *source)
+                        }
+                    };
+                    let downloaded = source.get(&data_key).await.map_err(|error| {
+                        SyncError::SourceUnavailable {
+                            source_remote_id: source_id,
+                            media_id: item.media_id,
+                            error,
+                        }
+                    })?;
+                    let bytes = stage_and_validate_media(
+                        staging_dir.path(),
+                        &downloaded,
+                        item.media_id,
+                        &self.inner.master_key,
+                    )
+                    .map_err(|_| SyncError::CorruptRemoteMedia {
+                        source_remote_id: source_id,
+                        media_id: item.media_id,
+                    })?;
+                    (bytes.0, Some(bytes.1))
+                };
             let data_uploaded = access
                 .storage
                 .put_atomic(&data_key, &bytes, AtomicWriteMode::CreateIfAbsent)
