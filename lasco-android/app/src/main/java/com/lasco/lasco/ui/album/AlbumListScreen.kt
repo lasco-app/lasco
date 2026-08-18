@@ -336,7 +336,7 @@ fun AlbumListScreen(
         } else if (entries.itemCount == 0) {
             Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                 Text(
-                    text = if (albumId == null) "No albums yet." else "Empty album.",
+                    text = if (albumId == null) "No albums yet" else "Empty album.",
                     style = LascoTheme.type.body(),
                     color = colors.inkMuted,
                 )
