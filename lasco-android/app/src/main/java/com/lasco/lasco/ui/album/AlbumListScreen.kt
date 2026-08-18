@@ -131,6 +131,7 @@ fun AlbumListScreen(
     var showNewAlbumDialog by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
     var showMovePicker by remember { mutableStateOf(false) }
+    var showAddToAlbumPicker by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showMediaPicker by remember { mutableStateOf(false) }
     DisposableEffect(showMediaPicker) {
@@ -206,6 +207,20 @@ fun AlbumListScreen(
         modifier = Modifier.fillMaxSize(),
     )
 
+    if (showAddToAlbumPicker) MoveDestinationPicker(
+        excludedIds = emptySet(),
+        onSelect = { target ->
+            showAddToAlbumPicker = false
+            val mediaIds = selectedMediaIds
+            scope.launch {
+                for (id in mediaIds) repo.addMediaToAlbum(target.albumId, id)
+                clearSelection()
+            }
+        },
+        onCancel = { showAddToAlbumPicker = false },
+        modifier = Modifier.fillMaxSize(),
+    )
+
     if (showDeleteConfirm) {
         LascoConfirmDialog(
             title = "Delete",
@@ -251,6 +266,7 @@ fun AlbumListScreen(
                 count = selectedMediaIds.size + selectedGroupIds.size + selectedAlbumIds.size,
                 canRename = selectedAlbumIds.size == 1,
                 canGroup = albumId != null && selectedMediaIds.size >= 2 && selectedGroupIds.isEmpty() && selectedAlbumIds.isEmpty(),
+                canAddToAlbum = selectedMediaIds.isNotEmpty(),
                 canMove = selectedGroupIds.isEmpty() && (selectedMediaIds.isNotEmpty() || selectedAlbumIds.isNotEmpty()),
                 canRemove = albumId != null && selectedMediaIds.isNotEmpty() && selectedGroupIds.isEmpty() && selectedAlbumIds.isEmpty(),
                 canDelete = selectedAlbumIds.isNotEmpty() || selectedGroupIds.isNotEmpty(),
@@ -263,6 +279,7 @@ fun AlbumListScreen(
                         clearSelection()
                     }
                 },
+                onAddToAlbum = { showAddToAlbumPicker = true },
                 onMove = { showMovePicker = true },
                 onRemove = {
                     if (albumId != null) {
@@ -532,19 +549,21 @@ private fun AlbumSelectionBar(
     count: Int,
     canRename: Boolean,
     canGroup: Boolean,
+    canAddToAlbum: Boolean,
     canMove: Boolean,
     canRemove: Boolean,
     canDelete: Boolean,
     onClose: () -> Unit,
     onRename: () -> Unit,
     onGroup: () -> Unit,
+    onAddToAlbum: () -> Unit,
     onMove: () -> Unit,
     onRemove: () -> Unit,
     onDelete: () -> Unit,
 ) {
     val colors = LascoTheme.colors
     var showActionMenu by remember { mutableStateOf(false) }
-    val hasActions = canRename || canGroup || canMove || canRemove || canDelete
+    val hasActions = canRename || canGroup || canAddToAlbum || canMove || canRemove || canDelete
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -593,6 +612,15 @@ private fun AlbumSelectionBar(
                             onClick = {
                                 showActionMenu = false
                                 onGroup()
+                            },
+                        )
+                    }
+                    if (canAddToAlbum) {
+                        DropdownMenuItem(
+                            text = { Text("Add to album...") },
+                            onClick = {
+                                showActionMenu = false
+                                onAddToAlbum()
                             },
                         )
                     }

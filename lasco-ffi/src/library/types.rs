@@ -129,6 +129,14 @@ pub struct FfiLocalStateStats {
     pub thumb_cached_bytes: u64,
 }
 
+/// Remote compaction-lock metadata. Absence of this record means no lock is held.
+#[derive(uniffi::Record, Debug)]
+pub struct FfiCompactionLockInfo {
+    pub owner_device_id: String,
+    pub created_at: String,
+    pub is_owned_by_current_device: bool,
+}
+
 #[derive(uniffi::Record, Debug)]
 pub struct FfiDot {
     pub lamport_counter: u64,

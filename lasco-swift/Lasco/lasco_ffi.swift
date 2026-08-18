@@ -549,199 +549,576 @@ nonisolated fileprivate struct FfiConverterData: FfiConverterRustBuffer {
 
 nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     
+    /**
+     * # Errors
+     *
+     * Returns an error for invalid or absent IDs, or an unpersistable membership operation.
+     */
     func addMediaToAlbum(albumId: FfiAlbumUuid, mediaId: FfiMediaUuid) throws 
     
+    /**
+     * # Errors
+     *
+     * Returns an error for invalid or absent IDs, or an unpersistable membership operation.
+     */
     func addMediaToGroup(groupId: FfiGroupUuid, mediaId: FfiMediaUuid) throws 
     
+    /**
+     * # Errors
+     *
+     * Returns an error for a duplicate name or failed library-configuration persistence.
+     *
+     * # Panics
+     *
+     * Panics if another thread panicked while holding the cached remote-list mutex during the
+     * in-memory update after configuration is saved.
+     */
     func addRemoteDebugLocalAndroid(name: String) throws  -> FfiRemoteUuid
     
+    /**
+     * # Errors
+     *
+     * Returns an error for a duplicate name or failed library-configuration persistence.
+     *
+     * # Panics
+     *
+     * Panics if another thread panicked while holding the cached remote-list mutex during the
+     * in-memory update after configuration is saved.
+     */
     func addRemoteDebugLocalApple(name: String) throws  -> FfiRemoteUuid
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the name already exists or library configuration cannot be read or saved.
+     *
+     * # Panics
+     *
+     * Panics if another thread panicked while holding the cached remote-list mutex during the
+     * in-memory update after configuration is saved.
+     */
     func addRemoteFixedPath(name: String, path: String) throws  -> FfiRemoteUuid
     
+    /**
+     * # Errors
+     *
+     * Returns an error for a duplicate name, failed secret-key encryption, or failed configuration persistence.
+     *
+     * # Panics
+     *
+     * Panics if another thread panicked while holding the cached remote-list mutex during the
+     * in-memory update after configuration is saved.
+     */
     func addRemoteS3(name: String, endpoint: String, bucket: String, region: String, pathPrefix: String, accessKey: String, secretKey: String) throws  -> FfiRemoteUuid
     
     /**
      * Add a wired USB drive selected through Android's Storage Access
      * Framework. `tree_uri` is an opaque, persistable access grant.
+     *
+     * # Errors
+     *
+     * Returns an error for an empty URI, duplicate name, or failed configuration persistence.
      */
     func addRemoteUsbAndroid(name: String, treeUri: String) throws  -> FfiRemoteUuid
     
     /**
      * Add a wired USB drive selected through Apple's document picker.
      * `bookmark_base64` is an opaque security-scoped bookmark.
+     *
+     * # Errors
+     *
+     * Returns an error for an empty bookmark, duplicate name, or failed configuration persistence.
      */
     func addRemoteUsbApple(name: String, bookmarkBase64: String) throws  -> FfiRemoteUuid
     
-    func albumAlbumsCount(parentAlbumId: FfiAlbumUuid?) throws  -> UInt32
+    /**
+     * # Errors
+     *
+     * Returns an error if `parent_album_id` is not a valid UUID.
+     */
+    func albumAlbumsCount(parentAlbumId: FfiAlbumUuid?) throws  -> UInt64
     
     /**
      * Returns direct albums under `parent_album_id`; `None` means root albums.
      * Positions are zero-based and both ends of the range are inclusive.
+     *
+     * # Errors
+     *
+     * Returns an error for an invalid parent ID or an inverted position range.
      */
     func albumAlbumsRange(parentAlbumId: FfiAlbumUuid?, posStartInclusive: UInt32, posEndInclusive: UInt32) throws  -> [FfiAlbum]
     
     /**
      * Returns the entries immediately surrounding a zero-based album position.
+     *
+     * # Errors
+     *
+     * Returns an error if the album ID is invalid or absent, or `position` is outside its item list.
      */
     func albumItemsByDateNeighbors(albumId: FfiAlbumUuid, ascending: Bool, position: UInt32) throws  -> FfiMediaOrGroupNeighbors
     
     /**
      * Positions are zero-based and both ends of the range are inclusive.
+     *
+     * # Errors
+     *
+     * Returns an error for an invalid or absent album ID, or an inverted position range.
      */
     func albumItemsByDateRange(albumId: FfiAlbumUuid, ascending: Bool, posStartInclusive: UInt32, posEndInclusive: UInt32) throws  -> [FfiAlbumItem]
     
-    func albumItemsCount(albumId: FfiAlbumUuid) throws  -> UInt32
+    /**
+     * # Errors
+     *
+     * Returns an error if `album_id` is invalid or absent.
+     */
+    func albumItemsCount(albumId: FfiAlbumUuid) throws  -> UInt64
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `album_id` is invalid or absent.
+     */
     func albumListGroups(albumId: FfiAlbumUuid) throws  -> [FfiGroup]
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `album_id` is invalid or absent.
+     */
     func albumListItemsSorted(albumId: FfiAlbumUuid, ascending: Bool) throws  -> [FfiAlbumItem]
     
     func allMediaIds()  -> [FfiMediaUuid]
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID/configuration is invalid, storage cannot be built, or remote identity cannot be verified.
+     */
     func connectRemote(remoteId: FfiRemoteUuid, appSupportDir: String?) throws 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the optional parent ID is invalid or absent, or creation cannot be persisted.
+     */
     func createAlbum(name: String, parentAlbumId: FfiAlbumUuid?) throws  -> FfiAlbumUuid
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `album_id` is invalid or absent, or creation cannot be persisted.
+     */
     func createGroup(albumId: FfiAlbumUuid) throws  -> FfiGroupUuid
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `album_id` is invalid or absent, or deletion cannot be persisted.
+     */
     func deleteAlbum(albumId: FfiAlbumUuid) throws 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `group_id` is invalid or absent, or deletion cannot be persisted.
+     */
     func deleteGroup(groupId: FfiGroupUuid) throws 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `media_id` is invalid, absent, or the delete operation cannot be persisted.
+     */
     func deleteMedia(mediaId: FfiMediaUuid) throws 
     
-    func disconnectedAlbumsCount()  -> UInt32
+    func disconnectedAlbumsCount()  -> UInt64
     
     /**
      * Returns disconnected albums in the same order as `list_albums`.
      * Positions are zero-based and both ends of the range are inclusive.
+     *
+     * # Errors
+     *
+     * Returns an error when the start position exceeds the end position.
      */
     func disconnectedAlbumsRange(posStartInclusive: UInt32, posEndInclusive: UInt32) throws  -> [FfiAlbum]
     
+    /**
+     * # Errors
+     *
+     * Returns an error if an ID is invalid or removing a cached media file fails.
+     */
     func evictLocalData(mediaIds: [FfiMediaUuid]) throws 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if an ID is invalid or removing a cached thumbnail fails.
+     */
     func evictLocalThumbnails(mediaIds: [FfiMediaUuid]) throws 
     
-    func fetchRemote(remoteId: FfiRemoteUuid, appSupportDir: String?) throws  -> UInt32
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID/configuration is invalid, storage cannot be built, or remote fetch fails.
+     */
+    func fetchRemote(remoteId: FfiRemoteUuid, appSupportDir: String?) throws  -> UInt64
     
-    func fetchRemoteAsync(remoteId: FfiRemoteUuid, appSupportDir: String?) async throws  -> UInt32
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID/configuration is invalid, storage cannot be built, the task fails, or remote fetch fails.
+     */
+    func fetchRemoteAsync(remoteId: FfiRemoteUuid, appSupportDir: String?) async throws  -> UInt64
     
     func getAutoImportDeviceMedia()  -> Bool
     
     func getDefaultFetchRemote()  -> FfiRemoteUuid?
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID is invalid, no local or configured remote copy is available, or reading, decrypting, or caching it fails.
+     */
     func getMediaBytes(mediaId: FfiMediaUuid, appSupportDir: String?) throws  -> Data
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID is invalid, no local or configured remote blob is available, or a remote read, decryption, or cache write fails.
+     */
     func getMediaBytesAsync(mediaId: FfiMediaUuid, appSupportDir: String?) async throws  -> Data
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID is invalid, no local or configured remote copy is available, or reading, decrypting, or caching it fails.
+     */
     func getMediaThumbnail(mediaId: FfiMediaUuid, appSupportDir: String?) throws  -> Data
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID is invalid, no local or configured remote thumbnail is available, or a remote read or cache write fails.
+     */
     func getMediaThumbnailAsync(mediaId: FfiMediaUuid, appSupportDir: String?) async throws  -> Data
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `group_id` is invalid or absent.
+     */
     func groupListMedia(groupId: FfiGroupUuid) throws  -> [FfiMediaItem]
     
     func hasUnpushedChanges(remoteId: FfiRemoteUuid)  -> Bool
     
+    /**
+     * # Errors
+     *
+     * Returns an error if an ID is invalid, the source cannot be read, media encryption/storage fails, or the creation operation cannot be persisted.
+     */
     func importMedia(path: String, albumId: FfiAlbumUuid?, originalFilename: String?, appleAaeMediaId: FfiMediaUuid?, appleLivePhotoMediaId: FfiMediaUuid?) throws  -> FfiMediaAddResult
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID is invalid or unknown, storage cannot be built, or remote initialization fails.
+     */
     func initializeRemote(remoteId: FfiRemoteUuid, appSupportDir: String?) throws 
+    
+    /**
+     * Returns the owner and creation time of this remote's compaction lock, if held.
+     */
+    func inspectCompactionLock(remoteId: FfiRemoteUuid, appSupportDir: String?) throws  -> FfiCompactionLockInfo?
     
     func libraryId()  -> FfiLibraryId
     
+    /**
+     * # Errors
+     *
+     * This method currently cannot fail; the `Result` preserves the FFI query API.
+     */
     func listAlbums() throws  -> [FfiAlbum]
     
+    /**
+     * # Errors
+     *
+     * This method currently cannot fail; the `Result` preserves the FFI query API.
+     */
     func listMedia() throws  -> [FfiMediaItem]
     
-    func listOperations() throws  -> [FfiCrdtOperation]
+    /**
+     * # Errors
+     *
+     * Returns the newest-first half-open range `[start_pos, end_pos_exclusive)`.
+     *
+     * Returns an error if persisted local operations cannot be read or decoded.
+     */
+    func listOperations(startPos: UInt64, endPosExclusive: UInt64) throws  -> [FfiCrdtOperation]
     
+    /**
+     * # Panics
+     *
+     * Panics if another thread panicked while holding the cached remote-list mutex.
+     */
     func listRemotes()  -> [FfiRemote]
     
+    /**
+     * # Errors
+     *
+     * Views are rebuilt atomically with every state change; retained as a no-op for FFI compatibility.
+     */
     func loadLocalState() throws 
     
     func localStateStats()  -> FfiLocalStateStats
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `media_id` is not a valid UUID.
+     */
     func mediaAlbumIds(mediaId: FfiMediaUuid) throws  -> [FfiAlbumUuid]
     
+    /**
+     * # Errors
+     *
+     * This method currently cannot fail; the `Result` preserves the FFI query API.
+     */
     func mediaByDate() throws  -> [FfiMediaItem]
     
-    func mediaByDateCount()  -> UInt32
+    func mediaByDateCount()  -> UInt64
     
     /**
      * Returns the entries immediately surrounding a zero-based home position.
+     *
+     * # Errors
+     *
+     * Returns an error when `position` is outside the dated-media list.
      */
     func mediaByDateNeighbors(position: UInt32) throws  -> FfiMediaNeighbors
     
     /**
      * Positions are zero-based and both ends of the range are inclusive.
+     *
+     * # Errors
+     *
+     * Returns an error when the start position exceeds the end position.
      */
     func mediaByDateRange(posStartInclusive: UInt32, posEndInclusive: UInt32) throws  -> [FfiMediaItem]
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `media_id` is not a valid UUID.
+     */
     func mediaContainingAlbumIds(mediaId: FfiMediaUuid, includeViaGroups: Bool) throws  -> [FfiAlbumUuid]
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the library configuration cannot be read.
+     */
     func mediaIdsWithoutRemoteBackup() throws  -> [FfiMediaUuid]
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `album_id` is invalid or absent.
+     */
     func mediaInAlbum(albumId: FfiAlbumUuid) throws  -> [FfiMediaItem]
     
+    /**
+     * # Errors
+     *
+     * Returns an error for invalid or absent IDs, missing source membership, or a failed remove/add operation.
+     */
     func moveMediaToAlbum(mediaId: FfiMediaUuid, fromAlbumId: FfiAlbumUuid, toAlbumId: FfiAlbumUuid) throws 
     
+    /**
+     * # Errors
+     *
+     * This method currently cannot fail; the `Result` preserves the FFI query API.
+     */
     func orphanMediaByDate() throws  -> [FfiMediaItem]
     
-    func orphanMediaByDateCount()  -> UInt32
+    func orphanMediaByDateCount()  -> UInt64
     
     /**
      * Returns the entries immediately surrounding a zero-based orphan position.
+     *
+     * # Errors
+     *
+     * Returns an error when `position` is outside the dated orphan-media list.
      */
     func orphanMediaByDateNeighbors(position: UInt32) throws  -> FfiMediaNeighbors
     
     /**
      * Positions are zero-based and both ends of the range are inclusive.
+     *
+     * # Errors
+     *
+     * Returns an error when the start position exceeds the end position.
      */
     func orphanMediaByDateRange(posStartInclusive: UInt32, posEndInclusive: UInt32) throws  -> [FfiMediaItem]
     
-    func pendingMediaCount()  -> UInt32
+    func pendingMediaCount()  -> UInt64
     
-    func pushRemote(remoteId: FfiRemoteUuid, appSupportDir: String?) throws  -> UInt32
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID/configuration is invalid, storage cannot be built, or remote push fails.
+     */
+    func pushRemote(remoteId: FfiRemoteUuid, appSupportDir: String?) throws  -> UInt64
     
-    func pushRemoteAsync(remoteId: FfiRemoteUuid, appSupportDir: String?) async throws  -> UInt32
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID/configuration is invalid, storage cannot be built, the task fails, or remote push fails.
+     */
+    func pushRemoteAsync(remoteId: FfiRemoteUuid, appSupportDir: String?) async throws  -> UInt64
     
     /**
      * Push to `target_remote_id`, relaying absent local media from the selected
      * configured source remote. Callers should only use this after an explicit
      * user choice; ordinary and scheduled pushes remain local-only.
+     *
+     * # Errors
+     *
+     * Returns an error for invalid IDs, unavailable remote storage, failed validation, or failed relay/upload.
      */
-    func pushRemoteFromRemote(targetRemoteId: FfiRemoteUuid, sourceRemoteId: FfiRemoteUuid, appSupportDir: String?) throws  -> UInt32
+    func pushRemoteFromRemote(targetRemoteId: FfiRemoteUuid, sourceRemoteId: FfiRemoteUuid, appSupportDir: String?) throws  -> UInt64
     
-    func pushRemoteFromRemoteAsync(targetRemoteId: FfiRemoteUuid, sourceRemoteId: FfiRemoteUuid, appSupportDir: String?) async throws  -> UInt32
+    /**
+     * # Errors
+     *
+     * Returns an error for invalid IDs, unavailable storage, task failure, failed validation, or failed relay/upload.
+     */
+    func pushRemoteFromRemoteAsync(targetRemoteId: FfiRemoteUuid, sourceRemoteId: FfiRemoteUuid, appSupportDir: String?) async throws  -> UInt64
     
+    /**
+     * # Errors
+     *
+     * Returns an error for invalid or absent IDs, missing membership, or an unpersistable operation.
+     */
     func removeMediaFromAlbum(albumId: FfiAlbumUuid, mediaId: FfiMediaUuid) throws 
     
+    /**
+     * # Errors
+     *
+     * Returns an error for invalid or absent IDs, missing membership, or an unpersistable operation.
+     */
     func removeMediaFromGroup(groupId: FfiGroupUuid, mediaId: FfiMediaUuid) throws 
     
+    /**
+     * Removes a compaction lock only when it still names this local device as its owner.
+     * The caller is responsible for obtaining explicit user confirmation before this call.
+     */
+    func removeOwnCompactionLock(remoteId: FfiRemoteUuid, appSupportDir: String?) throws  -> Bool
+    
+    /**
+     * # Errors
+     *
+     * Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
+     *
+     * # Panics
+     *
+     * Panics if another thread panicked while holding the cached remote-list mutex during the
+     * in-memory removal after configuration is saved.
+     */
     func removeRemote(remoteId: FfiRemoteUuid) throws 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID is invalid or absent, or the rename cannot be persisted.
+     */
     func renameAlbum(albumId: FfiAlbumUuid, name: String) throws 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `media_id` is invalid, absent, or the rename operation cannot be persisted.
+     */
     func renameMedia(mediaId: FfiMediaUuid, name: String?) throws 
     
+    /**
+     * # Errors
+     *
+     * Returns an error for invalid or absent IDs, a cyclic move, or an unpersistable operation.
+     */
     func reparentAlbum(albumId: FfiAlbumUuid, newParentAlbumId: FfiAlbumUuid?) throws 
     
+    /**
+     * # Errors
+     *
+     * Returns an error for invalid or absent album/media IDs, or an unpersistable operation.
+     */
     func setAlbumThumbnail(albumId: FfiAlbumUuid, mediaId: FfiMediaUuid?) throws 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the library configuration is missing, malformed, or cannot be saved.
+     */
     func setAutoImportDeviceMedia(enabled: Bool) throws 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the library config cannot be read or saved, or `remote_id` is invalid or unconfigured.
+     */
     func setDefaultFetchRemote(remoteId: FfiRemoteUuid?) throws 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `media_id` is invalid or the local thumbnail cannot be written.
+     */
     func setMediaThumbnail(mediaId: FfiMediaUuid, data: Data) throws 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
+     *
+     * # Panics
+     *
+     * Panics if another thread panicked while holding the cached remote-list mutex during the
+     * in-memory auto-push update after configuration is saved.
+     */
     func setRemoteAutoPush(remoteId: FfiRemoteUuid, enabled: Bool) throws 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
+     *
+     * # Panics
+     *
+     * Panics if another thread panicked while holding the cached remote-list mutex during the
+     * in-memory priority update after configuration is saved.
+     */
     func setRemoteMediaFetchPriority(remoteId: FfiRemoteUuid, priority: UInt32) throws 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `media_id` is invalid or does not identify media in the local state.
+     */
     func showMedia(mediaId: FfiMediaUuid) throws  -> FfiMediaItem
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the user key or add-user operation cannot be persisted.
+     */
     func userAdd(username: String, password: String) throws 
     
+    /**
+     * # Errors
+     *
+     * Returns an error if user records cannot be read from local library state.
+     */
     func userList() throws  -> [String]
     
 }
@@ -798,6 +1175,10 @@ nonisolated open class FfiLibrary: FfiLibraryProtocol, @unchecked Sendable {
     /**
      * Open a library by nickname. Delegates config loading, storage
      * construction, and session/master-key handling to `lasco_core::client`.
+     *
+     * # Errors
+     *
+     * Returns an error if setup/configuration fails, the nickname is unknown, or credentials cannot open the library.
      */
 nonisolated public static func `open`(nickname: String?, username: String, password: String, appDir: String? = nil)throws  -> FfiLibrary  {
     return try  FfiConverterTypeFfiLibrary_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
@@ -812,6 +1193,11 @@ nonisolated public static func `open`(nickname: String?, username: String, passw
     
 
     
+    /**
+     * # Errors
+     *
+     * Returns an error for invalid or absent IDs, or an unpersistable membership operation.
+     */
 nonisolated open func addMediaToAlbum(albumId: FfiAlbumUuid, mediaId: FfiMediaUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_add_media_to_album(self.uniffiClonePointer(),
         FfiConverterTypeFfiAlbumUuid_lower(albumId),
@@ -820,6 +1206,11 @@ nonisolated open func addMediaToAlbum(albumId: FfiAlbumUuid, mediaId: FfiMediaUu
 }
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error for invalid or absent IDs, or an unpersistable membership operation.
+     */
 nonisolated open func addMediaToGroup(groupId: FfiGroupUuid, mediaId: FfiMediaUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_add_media_to_group(self.uniffiClonePointer(),
         FfiConverterTypeFfiGroupUuid_lower(groupId),
@@ -828,6 +1219,16 @@ nonisolated open func addMediaToGroup(groupId: FfiGroupUuid, mediaId: FfiMediaUu
 }
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error for a duplicate name or failed library-configuration persistence.
+     *
+     * # Panics
+     *
+     * Panics if another thread panicked while holding the cached remote-list mutex during the
+     * in-memory update after configuration is saved.
+     */
 nonisolated open func addRemoteDebugLocalAndroid(name: String)throws  -> FfiRemoteUuid  {
     return try  FfiConverterTypeFfiRemoteUuid_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_debug_local_android(self.uniffiClonePointer(),
@@ -836,6 +1237,16 @@ nonisolated open func addRemoteDebugLocalAndroid(name: String)throws  -> FfiRemo
 })
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error for a duplicate name or failed library-configuration persistence.
+     *
+     * # Panics
+     *
+     * Panics if another thread panicked while holding the cached remote-list mutex during the
+     * in-memory update after configuration is saved.
+     */
 nonisolated open func addRemoteDebugLocalApple(name: String)throws  -> FfiRemoteUuid  {
     return try  FfiConverterTypeFfiRemoteUuid_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_debug_local_apple(self.uniffiClonePointer(),
@@ -844,6 +1255,16 @@ nonisolated open func addRemoteDebugLocalApple(name: String)throws  -> FfiRemote
 })
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the name already exists or library configuration cannot be read or saved.
+     *
+     * # Panics
+     *
+     * Panics if another thread panicked while holding the cached remote-list mutex during the
+     * in-memory update after configuration is saved.
+     */
 nonisolated open func addRemoteFixedPath(name: String, path: String)throws  -> FfiRemoteUuid  {
     return try  FfiConverterTypeFfiRemoteUuid_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_fixed_path(self.uniffiClonePointer(),
@@ -853,6 +1274,16 @@ nonisolated open func addRemoteFixedPath(name: String, path: String)throws  -> F
 })
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error for a duplicate name, failed secret-key encryption, or failed configuration persistence.
+     *
+     * # Panics
+     *
+     * Panics if another thread panicked while holding the cached remote-list mutex during the
+     * in-memory update after configuration is saved.
+     */
 nonisolated open func addRemoteS3(name: String, endpoint: String, bucket: String, region: String, pathPrefix: String, accessKey: String, secretKey: String)throws  -> FfiRemoteUuid  {
     return try  FfiConverterTypeFfiRemoteUuid_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_s3(self.uniffiClonePointer(),
@@ -870,6 +1301,10 @@ nonisolated open func addRemoteS3(name: String, endpoint: String, bucket: String
     /**
      * Add a wired USB drive selected through Android's Storage Access
      * Framework. `tree_uri` is an opaque, persistable access grant.
+     *
+     * # Errors
+     *
+     * Returns an error for an empty URI, duplicate name, or failed configuration persistence.
      */
 nonisolated open func addRemoteUsbAndroid(name: String, treeUri: String)throws  -> FfiRemoteUuid  {
     return try  FfiConverterTypeFfiRemoteUuid_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
@@ -883,6 +1318,10 @@ nonisolated open func addRemoteUsbAndroid(name: String, treeUri: String)throws  
     /**
      * Add a wired USB drive selected through Apple's document picker.
      * `bookmark_base64` is an opaque security-scoped bookmark.
+     *
+     * # Errors
+     *
+     * Returns an error for an empty bookmark, duplicate name, or failed configuration persistence.
      */
 nonisolated open func addRemoteUsbApple(name: String, bookmarkBase64: String)throws  -> FfiRemoteUuid  {
     return try  FfiConverterTypeFfiRemoteUuid_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
@@ -893,8 +1332,13 @@ nonisolated open func addRemoteUsbApple(name: String, bookmarkBase64: String)thr
 })
 }
     
-nonisolated open func albumAlbumsCount(parentAlbumId: FfiAlbumUuid?)throws  -> UInt32  {
-    return try  FfiConverterUInt32.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    /**
+     * # Errors
+     *
+     * Returns an error if `parent_album_id` is not a valid UUID.
+     */
+nonisolated open func albumAlbumsCount(parentAlbumId: FfiAlbumUuid?)throws  -> UInt64  {
+    return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_album_albums_count(self.uniffiClonePointer(),
         FfiConverterOptionTypeFfiAlbumUuid.lower(parentAlbumId),$0
     )
@@ -904,6 +1348,10 @@ nonisolated open func albumAlbumsCount(parentAlbumId: FfiAlbumUuid?)throws  -> U
     /**
      * Returns direct albums under `parent_album_id`; `None` means root albums.
      * Positions are zero-based and both ends of the range are inclusive.
+     *
+     * # Errors
+     *
+     * Returns an error for an invalid parent ID or an inverted position range.
      */
 nonisolated open func albumAlbumsRange(parentAlbumId: FfiAlbumUuid?, posStartInclusive: UInt32, posEndInclusive: UInt32)throws  -> [FfiAlbum]  {
     return try  FfiConverterSequenceTypeFfiAlbum.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
@@ -917,6 +1365,10 @@ nonisolated open func albumAlbumsRange(parentAlbumId: FfiAlbumUuid?, posStartInc
     
     /**
      * Returns the entries immediately surrounding a zero-based album position.
+     *
+     * # Errors
+     *
+     * Returns an error if the album ID is invalid or absent, or `position` is outside its item list.
      */
 nonisolated open func albumItemsByDateNeighbors(albumId: FfiAlbumUuid, ascending: Bool, position: UInt32)throws  -> FfiMediaOrGroupNeighbors  {
     return try  FfiConverterTypeFfiMediaOrGroupNeighbors_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
@@ -930,6 +1382,10 @@ nonisolated open func albumItemsByDateNeighbors(albumId: FfiAlbumUuid, ascending
     
     /**
      * Positions are zero-based and both ends of the range are inclusive.
+     *
+     * # Errors
+     *
+     * Returns an error for an invalid or absent album ID, or an inverted position range.
      */
 nonisolated open func albumItemsByDateRange(albumId: FfiAlbumUuid, ascending: Bool, posStartInclusive: UInt32, posEndInclusive: UInt32)throws  -> [FfiAlbumItem]  {
     return try  FfiConverterSequenceTypeFfiAlbumItem.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
@@ -942,14 +1398,24 @@ nonisolated open func albumItemsByDateRange(albumId: FfiAlbumUuid, ascending: Bo
 })
 }
     
-nonisolated open func albumItemsCount(albumId: FfiAlbumUuid)throws  -> UInt32  {
-    return try  FfiConverterUInt32.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    /**
+     * # Errors
+     *
+     * Returns an error if `album_id` is invalid or absent.
+     */
+nonisolated open func albumItemsCount(albumId: FfiAlbumUuid)throws  -> UInt64  {
+    return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_album_items_count(self.uniffiClonePointer(),
         FfiConverterTypeFfiAlbumUuid_lower(albumId),$0
     )
 })
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `album_id` is invalid or absent.
+     */
 nonisolated open func albumListGroups(albumId: FfiAlbumUuid)throws  -> [FfiGroup]  {
     return try  FfiConverterSequenceTypeFfiGroup.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_album_list_groups(self.uniffiClonePointer(),
@@ -958,6 +1424,11 @@ nonisolated open func albumListGroups(albumId: FfiAlbumUuid)throws  -> [FfiGroup
 })
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `album_id` is invalid or absent.
+     */
 nonisolated open func albumListItemsSorted(albumId: FfiAlbumUuid, ascending: Bool)throws  -> [FfiAlbumItem]  {
     return try  FfiConverterSequenceTypeFfiAlbumItem.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_album_list_items_sorted(self.uniffiClonePointer(),
@@ -974,6 +1445,11 @@ nonisolated open func allMediaIds() -> [FfiMediaUuid]  {
 })
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID/configuration is invalid, storage cannot be built, or remote identity cannot be verified.
+     */
 nonisolated open func connectRemote(remoteId: FfiRemoteUuid, appSupportDir: String?)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_connect_remote(self.uniffiClonePointer(),
         FfiConverterTypeFfiRemoteUuid_lower(remoteId),
@@ -982,6 +1458,11 @@ nonisolated open func connectRemote(remoteId: FfiRemoteUuid, appSupportDir: Stri
 }
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the optional parent ID is invalid or absent, or creation cannot be persisted.
+     */
 nonisolated open func createAlbum(name: String, parentAlbumId: FfiAlbumUuid?)throws  -> FfiAlbumUuid  {
     return try  FfiConverterTypeFfiAlbumUuid_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_create_album(self.uniffiClonePointer(),
@@ -991,6 +1472,11 @@ nonisolated open func createAlbum(name: String, parentAlbumId: FfiAlbumUuid?)thr
 })
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `album_id` is invalid or absent, or creation cannot be persisted.
+     */
 nonisolated open func createGroup(albumId: FfiAlbumUuid)throws  -> FfiGroupUuid  {
     return try  FfiConverterTypeFfiGroupUuid_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_create_group(self.uniffiClonePointer(),
@@ -999,6 +1485,11 @@ nonisolated open func createGroup(albumId: FfiAlbumUuid)throws  -> FfiGroupUuid 
 })
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `album_id` is invalid or absent, or deletion cannot be persisted.
+     */
 nonisolated open func deleteAlbum(albumId: FfiAlbumUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_delete_album(self.uniffiClonePointer(),
         FfiConverterTypeFfiAlbumUuid_lower(albumId),$0
@@ -1006,6 +1497,11 @@ nonisolated open func deleteAlbum(albumId: FfiAlbumUuid)throws   {try rustCallWi
 }
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `group_id` is invalid or absent, or deletion cannot be persisted.
+     */
 nonisolated open func deleteGroup(groupId: FfiGroupUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_delete_group(self.uniffiClonePointer(),
         FfiConverterTypeFfiGroupUuid_lower(groupId),$0
@@ -1013,6 +1509,11 @@ nonisolated open func deleteGroup(groupId: FfiGroupUuid)throws   {try rustCallWi
 }
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `media_id` is invalid, absent, or the delete operation cannot be persisted.
+     */
 nonisolated open func deleteMedia(mediaId: FfiMediaUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_delete_media(self.uniffiClonePointer(),
         FfiConverterTypeFfiMediaUuid_lower(mediaId),$0
@@ -1020,8 +1521,8 @@ nonisolated open func deleteMedia(mediaId: FfiMediaUuid)throws   {try rustCallWi
 }
 }
     
-nonisolated open func disconnectedAlbumsCount() -> UInt32  {
-    return try!  FfiConverterUInt32.lift(try! rustCall() {
+nonisolated open func disconnectedAlbumsCount() -> UInt64  {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
     uniffi_lasco_ffi_fn_method_ffilibrary_disconnected_albums_count(self.uniffiClonePointer(),$0
     )
 })
@@ -1030,6 +1531,10 @@ nonisolated open func disconnectedAlbumsCount() -> UInt32  {
     /**
      * Returns disconnected albums in the same order as `list_albums`.
      * Positions are zero-based and both ends of the range are inclusive.
+     *
+     * # Errors
+     *
+     * Returns an error when the start position exceeds the end position.
      */
 nonisolated open func disconnectedAlbumsRange(posStartInclusive: UInt32, posEndInclusive: UInt32)throws  -> [FfiAlbum]  {
     return try  FfiConverterSequenceTypeFfiAlbum.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
@@ -1040,6 +1545,11 @@ nonisolated open func disconnectedAlbumsRange(posStartInclusive: UInt32, posEndI
 })
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error if an ID is invalid or removing a cached media file fails.
+     */
 nonisolated open func evictLocalData(mediaIds: [FfiMediaUuid])throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_evict_local_data(self.uniffiClonePointer(),
         FfiConverterSequenceTypeFfiMediaUuid.lower(mediaIds),$0
@@ -1047,6 +1557,11 @@ nonisolated open func evictLocalData(mediaIds: [FfiMediaUuid])throws   {try rust
 }
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error if an ID is invalid or removing a cached thumbnail fails.
+     */
 nonisolated open func evictLocalThumbnails(mediaIds: [FfiMediaUuid])throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_evict_local_thumbnails(self.uniffiClonePointer(),
         FfiConverterSequenceTypeFfiMediaUuid.lower(mediaIds),$0
@@ -1054,8 +1569,13 @@ nonisolated open func evictLocalThumbnails(mediaIds: [FfiMediaUuid])throws   {tr
 }
 }
     
-nonisolated open func fetchRemote(remoteId: FfiRemoteUuid, appSupportDir: String?)throws  -> UInt32  {
-    return try  FfiConverterUInt32.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID/configuration is invalid, storage cannot be built, or remote fetch fails.
+     */
+nonisolated open func fetchRemote(remoteId: FfiRemoteUuid, appSupportDir: String?)throws  -> UInt64  {
+    return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_fetch_remote(self.uniffiClonePointer(),
         FfiConverterTypeFfiRemoteUuid_lower(remoteId),
         FfiConverterOptionString.lower(appSupportDir),$0
@@ -1063,7 +1583,12 @@ nonisolated open func fetchRemote(remoteId: FfiRemoteUuid, appSupportDir: String
 })
 }
     
-nonisolated open func fetchRemoteAsync(remoteId: FfiRemoteUuid, appSupportDir: String?)async throws  -> UInt32  {
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID/configuration is invalid, storage cannot be built, the task fails, or remote fetch fails.
+     */
+nonisolated open func fetchRemoteAsync(remoteId: FfiRemoteUuid, appSupportDir: String?)async throws  -> UInt64  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
@@ -1072,10 +1597,10 @@ nonisolated open func fetchRemoteAsync(remoteId: FfiRemoteUuid, appSupportDir: S
                     FfiConverterTypeFfiRemoteUuid_lower(remoteId),FfiConverterOptionString.lower(appSupportDir)
                 )
             },
-            pollFunc: ffi_lasco_ffi_rust_future_poll_u32,
-            completeFunc: ffi_lasco_ffi_rust_future_complete_u32,
-            freeFunc: ffi_lasco_ffi_rust_future_free_u32,
-            liftFunc: FfiConverterUInt32.lift,
+            pollFunc: ffi_lasco_ffi_rust_future_poll_u64,
+            completeFunc: ffi_lasco_ffi_rust_future_complete_u64,
+            freeFunc: ffi_lasco_ffi_rust_future_free_u64,
+            liftFunc: FfiConverterUInt64.lift,
             errorHandler: FfiConverterTypeLascoError_lift
         )
 }
@@ -1094,6 +1619,11 @@ nonisolated open func getDefaultFetchRemote() -> FfiRemoteUuid?  {
 })
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID is invalid, no local or configured remote copy is available, or reading, decrypting, or caching it fails.
+     */
 nonisolated open func getMediaBytes(mediaId: FfiMediaUuid, appSupportDir: String?)throws  -> Data  {
     return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_get_media_bytes(self.uniffiClonePointer(),
@@ -1103,6 +1633,11 @@ nonisolated open func getMediaBytes(mediaId: FfiMediaUuid, appSupportDir: String
 })
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID is invalid, no local or configured remote blob is available, or a remote read, decryption, or cache write fails.
+     */
 nonisolated open func getMediaBytesAsync(mediaId: FfiMediaUuid, appSupportDir: String?)async throws  -> Data  {
     return
         try  await uniffiRustCallAsync(
@@ -1120,6 +1655,11 @@ nonisolated open func getMediaBytesAsync(mediaId: FfiMediaUuid, appSupportDir: S
         )
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID is invalid, no local or configured remote copy is available, or reading, decrypting, or caching it fails.
+     */
 nonisolated open func getMediaThumbnail(mediaId: FfiMediaUuid, appSupportDir: String?)throws  -> Data  {
     return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_get_media_thumbnail(self.uniffiClonePointer(),
@@ -1129,6 +1669,11 @@ nonisolated open func getMediaThumbnail(mediaId: FfiMediaUuid, appSupportDir: St
 })
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID is invalid, no local or configured remote thumbnail is available, or a remote read or cache write fails.
+     */
 nonisolated open func getMediaThumbnailAsync(mediaId: FfiMediaUuid, appSupportDir: String?)async throws  -> Data  {
     return
         try  await uniffiRustCallAsync(
@@ -1146,6 +1691,11 @@ nonisolated open func getMediaThumbnailAsync(mediaId: FfiMediaUuid, appSupportDi
         )
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `group_id` is invalid or absent.
+     */
 nonisolated open func groupListMedia(groupId: FfiGroupUuid)throws  -> [FfiMediaItem]  {
     return try  FfiConverterSequenceTypeFfiMediaItem.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_group_list_media(self.uniffiClonePointer(),
@@ -1162,6 +1712,11 @@ nonisolated open func hasUnpushedChanges(remoteId: FfiRemoteUuid) -> Bool  {
 })
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error if an ID is invalid, the source cannot be read, media encryption/storage fails, or the creation operation cannot be persisted.
+     */
 nonisolated open func importMedia(path: String, albumId: FfiAlbumUuid?, originalFilename: String?, appleAaeMediaId: FfiMediaUuid?, appleLivePhotoMediaId: FfiMediaUuid?)throws  -> FfiMediaAddResult  {
     return try  FfiConverterTypeFfiMediaAddResult_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_import_media(self.uniffiClonePointer(),
@@ -1174,12 +1729,29 @@ nonisolated open func importMedia(path: String, albumId: FfiAlbumUuid?, original
 })
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID is invalid or unknown, storage cannot be built, or remote initialization fails.
+     */
 nonisolated open func initializeRemote(remoteId: FfiRemoteUuid, appSupportDir: String?)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_initialize_remote(self.uniffiClonePointer(),
         FfiConverterTypeFfiRemoteUuid_lower(remoteId),
         FfiConverterOptionString.lower(appSupportDir),$0
     )
 }
+}
+    
+    /**
+     * Returns the owner and creation time of this remote's compaction lock, if held.
+     */
+nonisolated open func inspectCompactionLock(remoteId: FfiRemoteUuid, appSupportDir: String?)throws  -> FfiCompactionLockInfo?  {
+    return try  FfiConverterOptionTypeFfiCompactionLockInfo.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_inspect_compaction_lock(self.uniffiClonePointer(),
+        FfiConverterTypeFfiRemoteUuid_lower(remoteId),
+        FfiConverterOptionString.lower(appSupportDir),$0
+    )
+})
 }
     
 nonisolated open func libraryId() -> FfiLibraryId  {
@@ -1189,6 +1761,11 @@ nonisolated open func libraryId() -> FfiLibraryId  {
 })
 }
     
+    /**
+     * # Errors
+     *
+     * This method currently cannot fail; the `Result` preserves the FFI query API.
+     */
 nonisolated open func listAlbums()throws  -> [FfiAlbum]  {
     return try  FfiConverterSequenceTypeFfiAlbum.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_list_albums(self.uniffiClonePointer(),$0
@@ -1196,6 +1773,11 @@ nonisolated open func listAlbums()throws  -> [FfiAlbum]  {
 })
 }
     
+    /**
+     * # Errors
+     *
+     * This method currently cannot fail; the `Result` preserves the FFI query API.
+     */
 nonisolated open func listMedia()throws  -> [FfiMediaItem]  {
     return try  FfiConverterSequenceTypeFfiMediaItem.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_list_media(self.uniffiClonePointer(),$0
@@ -1203,13 +1785,27 @@ nonisolated open func listMedia()throws  -> [FfiMediaItem]  {
 })
 }
     
-nonisolated open func listOperations()throws  -> [FfiCrdtOperation]  {
+    /**
+     * # Errors
+     *
+     * Returns the newest-first half-open range `[start_pos, end_pos_exclusive)`.
+     *
+     * Returns an error if persisted local operations cannot be read or decoded.
+     */
+nonisolated open func listOperations(startPos: UInt64, endPosExclusive: UInt64)throws  -> [FfiCrdtOperation]  {
     return try  FfiConverterSequenceTypeFfiCrdtOperation.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
-    uniffi_lasco_ffi_fn_method_ffilibrary_list_operations(self.uniffiClonePointer(),$0
+    uniffi_lasco_ffi_fn_method_ffilibrary_list_operations(self.uniffiClonePointer(),
+        FfiConverterUInt64.lower(startPos),
+        FfiConverterUInt64.lower(endPosExclusive),$0
     )
 })
 }
     
+    /**
+     * # Panics
+     *
+     * Panics if another thread panicked while holding the cached remote-list mutex.
+     */
 nonisolated open func listRemotes() -> [FfiRemote]  {
     return try!  FfiConverterSequenceTypeFfiRemote.lift(try! rustCall() {
     uniffi_lasco_ffi_fn_method_ffilibrary_list_remotes(self.uniffiClonePointer(),$0
@@ -1217,6 +1813,11 @@ nonisolated open func listRemotes() -> [FfiRemote]  {
 })
 }
     
+    /**
+     * # Errors
+     *
+     * Views are rebuilt atomically with every state change; retained as a no-op for FFI compatibility.
+     */
 nonisolated open func loadLocalState()throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_load_local_state(self.uniffiClonePointer(),$0
     )
@@ -1230,6 +1831,11 @@ nonisolated open func localStateStats() -> FfiLocalStateStats  {
 })
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `media_id` is not a valid UUID.
+     */
 nonisolated open func mediaAlbumIds(mediaId: FfiMediaUuid)throws  -> [FfiAlbumUuid]  {
     return try  FfiConverterSequenceTypeFfiAlbumUuid.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_media_album_ids(self.uniffiClonePointer(),
@@ -1238,6 +1844,11 @@ nonisolated open func mediaAlbumIds(mediaId: FfiMediaUuid)throws  -> [FfiAlbumUu
 })
 }
     
+    /**
+     * # Errors
+     *
+     * This method currently cannot fail; the `Result` preserves the FFI query API.
+     */
 nonisolated open func mediaByDate()throws  -> [FfiMediaItem]  {
     return try  FfiConverterSequenceTypeFfiMediaItem.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_media_by_date(self.uniffiClonePointer(),$0
@@ -1245,8 +1856,8 @@ nonisolated open func mediaByDate()throws  -> [FfiMediaItem]  {
 })
 }
     
-nonisolated open func mediaByDateCount() -> UInt32  {
-    return try!  FfiConverterUInt32.lift(try! rustCall() {
+nonisolated open func mediaByDateCount() -> UInt64  {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
     uniffi_lasco_ffi_fn_method_ffilibrary_media_by_date_count(self.uniffiClonePointer(),$0
     )
 })
@@ -1254,6 +1865,10 @@ nonisolated open func mediaByDateCount() -> UInt32  {
     
     /**
      * Returns the entries immediately surrounding a zero-based home position.
+     *
+     * # Errors
+     *
+     * Returns an error when `position` is outside the dated-media list.
      */
 nonisolated open func mediaByDateNeighbors(position: UInt32)throws  -> FfiMediaNeighbors  {
     return try  FfiConverterTypeFfiMediaNeighbors_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
@@ -1265,6 +1880,10 @@ nonisolated open func mediaByDateNeighbors(position: UInt32)throws  -> FfiMediaN
     
     /**
      * Positions are zero-based and both ends of the range are inclusive.
+     *
+     * # Errors
+     *
+     * Returns an error when the start position exceeds the end position.
      */
 nonisolated open func mediaByDateRange(posStartInclusive: UInt32, posEndInclusive: UInt32)throws  -> [FfiMediaItem]  {
     return try  FfiConverterSequenceTypeFfiMediaItem.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
@@ -1275,6 +1894,11 @@ nonisolated open func mediaByDateRange(posStartInclusive: UInt32, posEndInclusiv
 })
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `media_id` is not a valid UUID.
+     */
 nonisolated open func mediaContainingAlbumIds(mediaId: FfiMediaUuid, includeViaGroups: Bool)throws  -> [FfiAlbumUuid]  {
     return try  FfiConverterSequenceTypeFfiAlbumUuid.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_media_containing_album_ids(self.uniffiClonePointer(),
@@ -1284,6 +1908,11 @@ nonisolated open func mediaContainingAlbumIds(mediaId: FfiMediaUuid, includeViaG
 })
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the library configuration cannot be read.
+     */
 nonisolated open func mediaIdsWithoutRemoteBackup()throws  -> [FfiMediaUuid]  {
     return try  FfiConverterSequenceTypeFfiMediaUuid.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_media_ids_without_remote_backup(self.uniffiClonePointer(),$0
@@ -1291,6 +1920,11 @@ nonisolated open func mediaIdsWithoutRemoteBackup()throws  -> [FfiMediaUuid]  {
 })
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `album_id` is invalid or absent.
+     */
 nonisolated open func mediaInAlbum(albumId: FfiAlbumUuid)throws  -> [FfiMediaItem]  {
     return try  FfiConverterSequenceTypeFfiMediaItem.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_media_in_album(self.uniffiClonePointer(),
@@ -1299,6 +1933,11 @@ nonisolated open func mediaInAlbum(albumId: FfiAlbumUuid)throws  -> [FfiMediaIte
 })
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error for invalid or absent IDs, missing source membership, or a failed remove/add operation.
+     */
 nonisolated open func moveMediaToAlbum(mediaId: FfiMediaUuid, fromAlbumId: FfiAlbumUuid, toAlbumId: FfiAlbumUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_move_media_to_album(self.uniffiClonePointer(),
         FfiConverterTypeFfiMediaUuid_lower(mediaId),
@@ -1308,6 +1947,11 @@ nonisolated open func moveMediaToAlbum(mediaId: FfiMediaUuid, fromAlbumId: FfiAl
 }
 }
     
+    /**
+     * # Errors
+     *
+     * This method currently cannot fail; the `Result` preserves the FFI query API.
+     */
 nonisolated open func orphanMediaByDate()throws  -> [FfiMediaItem]  {
     return try  FfiConverterSequenceTypeFfiMediaItem.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date(self.uniffiClonePointer(),$0
@@ -1315,8 +1959,8 @@ nonisolated open func orphanMediaByDate()throws  -> [FfiMediaItem]  {
 })
 }
     
-nonisolated open func orphanMediaByDateCount() -> UInt32  {
-    return try!  FfiConverterUInt32.lift(try! rustCall() {
+nonisolated open func orphanMediaByDateCount() -> UInt64  {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
     uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date_count(self.uniffiClonePointer(),$0
     )
 })
@@ -1324,6 +1968,10 @@ nonisolated open func orphanMediaByDateCount() -> UInt32  {
     
     /**
      * Returns the entries immediately surrounding a zero-based orphan position.
+     *
+     * # Errors
+     *
+     * Returns an error when `position` is outside the dated orphan-media list.
      */
 nonisolated open func orphanMediaByDateNeighbors(position: UInt32)throws  -> FfiMediaNeighbors  {
     return try  FfiConverterTypeFfiMediaNeighbors_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
@@ -1335,6 +1983,10 @@ nonisolated open func orphanMediaByDateNeighbors(position: UInt32)throws  -> Ffi
     
     /**
      * Positions are zero-based and both ends of the range are inclusive.
+     *
+     * # Errors
+     *
+     * Returns an error when the start position exceeds the end position.
      */
 nonisolated open func orphanMediaByDateRange(posStartInclusive: UInt32, posEndInclusive: UInt32)throws  -> [FfiMediaItem]  {
     return try  FfiConverterSequenceTypeFfiMediaItem.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
@@ -1345,15 +1997,20 @@ nonisolated open func orphanMediaByDateRange(posStartInclusive: UInt32, posEndIn
 })
 }
     
-nonisolated open func pendingMediaCount() -> UInt32  {
-    return try!  FfiConverterUInt32.lift(try! rustCall() {
+nonisolated open func pendingMediaCount() -> UInt64  {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
     uniffi_lasco_ffi_fn_method_ffilibrary_pending_media_count(self.uniffiClonePointer(),$0
     )
 })
 }
     
-nonisolated open func pushRemote(remoteId: FfiRemoteUuid, appSupportDir: String?)throws  -> UInt32  {
-    return try  FfiConverterUInt32.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID/configuration is invalid, storage cannot be built, or remote push fails.
+     */
+nonisolated open func pushRemote(remoteId: FfiRemoteUuid, appSupportDir: String?)throws  -> UInt64  {
+    return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_push_remote(self.uniffiClonePointer(),
         FfiConverterTypeFfiRemoteUuid_lower(remoteId),
         FfiConverterOptionString.lower(appSupportDir),$0
@@ -1361,7 +2018,12 @@ nonisolated open func pushRemote(remoteId: FfiRemoteUuid, appSupportDir: String?
 })
 }
     
-nonisolated open func pushRemoteAsync(remoteId: FfiRemoteUuid, appSupportDir: String?)async throws  -> UInt32  {
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID/configuration is invalid, storage cannot be built, the task fails, or remote push fails.
+     */
+nonisolated open func pushRemoteAsync(remoteId: FfiRemoteUuid, appSupportDir: String?)async throws  -> UInt64  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
@@ -1370,10 +2032,10 @@ nonisolated open func pushRemoteAsync(remoteId: FfiRemoteUuid, appSupportDir: St
                     FfiConverterTypeFfiRemoteUuid_lower(remoteId),FfiConverterOptionString.lower(appSupportDir)
                 )
             },
-            pollFunc: ffi_lasco_ffi_rust_future_poll_u32,
-            completeFunc: ffi_lasco_ffi_rust_future_complete_u32,
-            freeFunc: ffi_lasco_ffi_rust_future_free_u32,
-            liftFunc: FfiConverterUInt32.lift,
+            pollFunc: ffi_lasco_ffi_rust_future_poll_u64,
+            completeFunc: ffi_lasco_ffi_rust_future_complete_u64,
+            freeFunc: ffi_lasco_ffi_rust_future_free_u64,
+            liftFunc: FfiConverterUInt64.lift,
             errorHandler: FfiConverterTypeLascoError_lift
         )
 }
@@ -1382,9 +2044,13 @@ nonisolated open func pushRemoteAsync(remoteId: FfiRemoteUuid, appSupportDir: St
      * Push to `target_remote_id`, relaying absent local media from the selected
      * configured source remote. Callers should only use this after an explicit
      * user choice; ordinary and scheduled pushes remain local-only.
+     *
+     * # Errors
+     *
+     * Returns an error for invalid IDs, unavailable remote storage, failed validation, or failed relay/upload.
      */
-nonisolated open func pushRemoteFromRemote(targetRemoteId: FfiRemoteUuid, sourceRemoteId: FfiRemoteUuid, appSupportDir: String?)throws  -> UInt32  {
-    return try  FfiConverterUInt32.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+nonisolated open func pushRemoteFromRemote(targetRemoteId: FfiRemoteUuid, sourceRemoteId: FfiRemoteUuid, appSupportDir: String?)throws  -> UInt64  {
+    return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_from_remote(self.uniffiClonePointer(),
         FfiConverterTypeFfiRemoteUuid_lower(targetRemoteId),
         FfiConverterTypeFfiRemoteUuid_lower(sourceRemoteId),
@@ -1393,7 +2059,12 @@ nonisolated open func pushRemoteFromRemote(targetRemoteId: FfiRemoteUuid, source
 })
 }
     
-nonisolated open func pushRemoteFromRemoteAsync(targetRemoteId: FfiRemoteUuid, sourceRemoteId: FfiRemoteUuid, appSupportDir: String?)async throws  -> UInt32  {
+    /**
+     * # Errors
+     *
+     * Returns an error for invalid IDs, unavailable storage, task failure, failed validation, or failed relay/upload.
+     */
+nonisolated open func pushRemoteFromRemoteAsync(targetRemoteId: FfiRemoteUuid, sourceRemoteId: FfiRemoteUuid, appSupportDir: String?)async throws  -> UInt64  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
@@ -1402,14 +2073,19 @@ nonisolated open func pushRemoteFromRemoteAsync(targetRemoteId: FfiRemoteUuid, s
                     FfiConverterTypeFfiRemoteUuid_lower(targetRemoteId),FfiConverterTypeFfiRemoteUuid_lower(sourceRemoteId),FfiConverterOptionString.lower(appSupportDir)
                 )
             },
-            pollFunc: ffi_lasco_ffi_rust_future_poll_u32,
-            completeFunc: ffi_lasco_ffi_rust_future_complete_u32,
-            freeFunc: ffi_lasco_ffi_rust_future_free_u32,
-            liftFunc: FfiConverterUInt32.lift,
+            pollFunc: ffi_lasco_ffi_rust_future_poll_u64,
+            completeFunc: ffi_lasco_ffi_rust_future_complete_u64,
+            freeFunc: ffi_lasco_ffi_rust_future_free_u64,
+            liftFunc: FfiConverterUInt64.lift,
             errorHandler: FfiConverterTypeLascoError_lift
         )
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error for invalid or absent IDs, missing membership, or an unpersistable operation.
+     */
 nonisolated open func removeMediaFromAlbum(albumId: FfiAlbumUuid, mediaId: FfiMediaUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_remove_media_from_album(self.uniffiClonePointer(),
         FfiConverterTypeFfiAlbumUuid_lower(albumId),
@@ -1418,6 +2094,11 @@ nonisolated open func removeMediaFromAlbum(albumId: FfiAlbumUuid, mediaId: FfiMe
 }
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error for invalid or absent IDs, missing membership, or an unpersistable operation.
+     */
 nonisolated open func removeMediaFromGroup(groupId: FfiGroupUuid, mediaId: FfiMediaUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_remove_media_from_group(self.uniffiClonePointer(),
         FfiConverterTypeFfiGroupUuid_lower(groupId),
@@ -1426,6 +2107,29 @@ nonisolated open func removeMediaFromGroup(groupId: FfiGroupUuid, mediaId: FfiMe
 }
 }
     
+    /**
+     * Removes a compaction lock only when it still names this local device as its owner.
+     * The caller is responsible for obtaining explicit user confirmation before this call.
+     */
+nonisolated open func removeOwnCompactionLock(remoteId: FfiRemoteUuid, appSupportDir: String?)throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_remove_own_compaction_lock(self.uniffiClonePointer(),
+        FfiConverterTypeFfiRemoteUuid_lower(remoteId),
+        FfiConverterOptionString.lower(appSupportDir),$0
+    )
+})
+}
+    
+    /**
+     * # Errors
+     *
+     * Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
+     *
+     * # Panics
+     *
+     * Panics if another thread panicked while holding the cached remote-list mutex during the
+     * in-memory removal after configuration is saved.
+     */
 nonisolated open func removeRemote(remoteId: FfiRemoteUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_remove_remote(self.uniffiClonePointer(),
         FfiConverterTypeFfiRemoteUuid_lower(remoteId),$0
@@ -1433,6 +2137,11 @@ nonisolated open func removeRemote(remoteId: FfiRemoteUuid)throws   {try rustCal
 }
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the ID is invalid or absent, or the rename cannot be persisted.
+     */
 nonisolated open func renameAlbum(albumId: FfiAlbumUuid, name: String)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_rename_album(self.uniffiClonePointer(),
         FfiConverterTypeFfiAlbumUuid_lower(albumId),
@@ -1441,6 +2150,11 @@ nonisolated open func renameAlbum(albumId: FfiAlbumUuid, name: String)throws   {
 }
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `media_id` is invalid, absent, or the rename operation cannot be persisted.
+     */
 nonisolated open func renameMedia(mediaId: FfiMediaUuid, name: String?)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_rename_media(self.uniffiClonePointer(),
         FfiConverterTypeFfiMediaUuid_lower(mediaId),
@@ -1449,6 +2163,11 @@ nonisolated open func renameMedia(mediaId: FfiMediaUuid, name: String?)throws   
 }
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error for invalid or absent IDs, a cyclic move, or an unpersistable operation.
+     */
 nonisolated open func reparentAlbum(albumId: FfiAlbumUuid, newParentAlbumId: FfiAlbumUuid?)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_reparent_album(self.uniffiClonePointer(),
         FfiConverterTypeFfiAlbumUuid_lower(albumId),
@@ -1457,6 +2176,11 @@ nonisolated open func reparentAlbum(albumId: FfiAlbumUuid, newParentAlbumId: Ffi
 }
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error for invalid or absent album/media IDs, or an unpersistable operation.
+     */
 nonisolated open func setAlbumThumbnail(albumId: FfiAlbumUuid, mediaId: FfiMediaUuid?)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_set_album_thumbnail(self.uniffiClonePointer(),
         FfiConverterTypeFfiAlbumUuid_lower(albumId),
@@ -1465,6 +2189,11 @@ nonisolated open func setAlbumThumbnail(albumId: FfiAlbumUuid, mediaId: FfiMedia
 }
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the library configuration is missing, malformed, or cannot be saved.
+     */
 nonisolated open func setAutoImportDeviceMedia(enabled: Bool)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_set_auto_import_device_media(self.uniffiClonePointer(),
         FfiConverterBool.lower(enabled),$0
@@ -1472,6 +2201,11 @@ nonisolated open func setAutoImportDeviceMedia(enabled: Bool)throws   {try rustC
 }
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the library config cannot be read or saved, or `remote_id` is invalid or unconfigured.
+     */
 nonisolated open func setDefaultFetchRemote(remoteId: FfiRemoteUuid?)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_set_default_fetch_remote(self.uniffiClonePointer(),
         FfiConverterOptionTypeFfiRemoteUuid.lower(remoteId),$0
@@ -1479,6 +2213,11 @@ nonisolated open func setDefaultFetchRemote(remoteId: FfiRemoteUuid?)throws   {t
 }
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `media_id` is invalid or the local thumbnail cannot be written.
+     */
 nonisolated open func setMediaThumbnail(mediaId: FfiMediaUuid, data: Data)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_set_media_thumbnail(self.uniffiClonePointer(),
         FfiConverterTypeFfiMediaUuid_lower(mediaId),
@@ -1487,6 +2226,16 @@ nonisolated open func setMediaThumbnail(mediaId: FfiMediaUuid, data: Data)throws
 }
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
+     *
+     * # Panics
+     *
+     * Panics if another thread panicked while holding the cached remote-list mutex during the
+     * in-memory auto-push update after configuration is saved.
+     */
 nonisolated open func setRemoteAutoPush(remoteId: FfiRemoteUuid, enabled: Bool)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_set_remote_auto_push(self.uniffiClonePointer(),
         FfiConverterTypeFfiRemoteUuid_lower(remoteId),
@@ -1495,6 +2244,16 @@ nonisolated open func setRemoteAutoPush(remoteId: FfiRemoteUuid, enabled: Bool)t
 }
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
+     *
+     * # Panics
+     *
+     * Panics if another thread panicked while holding the cached remote-list mutex during the
+     * in-memory priority update after configuration is saved.
+     */
 nonisolated open func setRemoteMediaFetchPriority(remoteId: FfiRemoteUuid, priority: UInt32)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_set_remote_media_fetch_priority(self.uniffiClonePointer(),
         FfiConverterTypeFfiRemoteUuid_lower(remoteId),
@@ -1503,6 +2262,11 @@ nonisolated open func setRemoteMediaFetchPriority(remoteId: FfiRemoteUuid, prior
 }
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error if `media_id` is invalid or does not identify media in the local state.
+     */
 nonisolated open func showMedia(mediaId: FfiMediaUuid)throws  -> FfiMediaItem  {
     return try  FfiConverterTypeFfiMediaItem_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_show_media(self.uniffiClonePointer(),
@@ -1511,6 +2275,11 @@ nonisolated open func showMedia(mediaId: FfiMediaUuid)throws  -> FfiMediaItem  {
 })
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error if the user key or add-user operation cannot be persisted.
+     */
 nonisolated open func userAdd(username: String, password: String)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_user_add(self.uniffiClonePointer(),
         FfiConverterString.lower(username),
@@ -1519,6 +2288,11 @@ nonisolated open func userAdd(username: String, password: String)throws   {try r
 }
 }
     
+    /**
+     * # Errors
+     *
+     * Returns an error if user records cannot be read from local library state.
+     */
 nonisolated open func userList()throws  -> [String]  {
     return try  FfiConverterSequenceString.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_user_list(self.uniffiClonePointer(),$0
@@ -1586,14 +2360,14 @@ nonisolated public struct FfiAlbum {
     public var albumId: FfiAlbumUuid
     public var name: String
     public var parentAlbumId: FfiAlbumUuid?
-    public var mediaCount: UInt32
+    public var mediaCount: UInt64
     public var deleted: Bool
     public var isDisconnected: Bool
     public var thumbnailMediaId: FfiMediaUuid?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(albumId: FfiAlbumUuid, name: String, parentAlbumId: FfiAlbumUuid?, mediaCount: UInt32, deleted: Bool, isDisconnected: Bool, thumbnailMediaId: FfiMediaUuid?) {
+    public init(albumId: FfiAlbumUuid, name: String, parentAlbumId: FfiAlbumUuid?, mediaCount: UInt64, deleted: Bool, isDisconnected: Bool, thumbnailMediaId: FfiMediaUuid?) {
         self.albumId = albumId
         self.name = name
         self.parentAlbumId = parentAlbumId
@@ -1658,7 +2432,7 @@ nonisolated public struct FfiConverterTypeFfiAlbum: FfiConverterRustBuffer {
                 albumId: FfiConverterTypeFfiAlbumUuid.read(from: &buf), 
                 name: FfiConverterString.read(from: &buf), 
                 parentAlbumId: FfiConverterOptionTypeFfiAlbumUuid.read(from: &buf), 
-                mediaCount: FfiConverterUInt32.read(from: &buf), 
+                mediaCount: FfiConverterUInt64.read(from: &buf), 
                 deleted: FfiConverterBool.read(from: &buf), 
                 isDisconnected: FfiConverterBool.read(from: &buf), 
                 thumbnailMediaId: FfiConverterOptionTypeFfiMediaUuid.read(from: &buf)
@@ -1669,7 +2443,7 @@ nonisolated public struct FfiConverterTypeFfiAlbum: FfiConverterRustBuffer {
         FfiConverterTypeFfiAlbumUuid.write(value.albumId, into: &buf)
         FfiConverterString.write(value.name, into: &buf)
         FfiConverterOptionTypeFfiAlbumUuid.write(value.parentAlbumId, into: &buf)
-        FfiConverterUInt32.write(value.mediaCount, into: &buf)
+        FfiConverterUInt64.write(value.mediaCount, into: &buf)
         FfiConverterBool.write(value.deleted, into: &buf)
         FfiConverterBool.write(value.isDisconnected, into: &buf)
         FfiConverterOptionTypeFfiMediaUuid.write(value.thumbnailMediaId, into: &buf)
@@ -1837,6 +2611,87 @@ nonisolated public func FfiConverterTypeFfiAlbumUuid_lift(_ buf: RustBuffer) thr
 #endif
 nonisolated public func FfiConverterTypeFfiAlbumUuid_lower(_ value: FfiAlbumUuid) -> RustBuffer {
     return FfiConverterTypeFfiAlbumUuid.lower(value)
+}
+
+
+/**
+ * Remote compaction-lock metadata. Absence of this record means no lock is held.
+ */
+nonisolated public struct FfiCompactionLockInfo {
+    public var ownerDeviceId: String
+    public var createdAt: String
+    public var isOwnedByCurrentDevice: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(ownerDeviceId: String, createdAt: String, isOwnedByCurrentDevice: Bool) {
+        self.ownerDeviceId = ownerDeviceId
+        self.createdAt = createdAt
+        self.isOwnedByCurrentDevice = isOwnedByCurrentDevice
+    }
+}
+
+#if compiler(>=6)
+nonisolated extension FfiCompactionLockInfo: Sendable {}
+#endif
+
+
+nonisolated extension FfiCompactionLockInfo: Equatable, Hashable {
+    public static func ==(lhs: FfiCompactionLockInfo, rhs: FfiCompactionLockInfo) -> Bool {
+        if lhs.ownerDeviceId != rhs.ownerDeviceId {
+            return false
+        }
+        if lhs.createdAt != rhs.createdAt {
+            return false
+        }
+        if lhs.isOwnedByCurrentDevice != rhs.isOwnedByCurrentDevice {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(ownerDeviceId)
+        hasher.combine(createdAt)
+        hasher.combine(isOwnedByCurrentDevice)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public struct FfiConverterTypeFfiCompactionLockInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiCompactionLockInfo {
+        return
+            try FfiCompactionLockInfo(
+                ownerDeviceId: FfiConverterString.read(from: &buf), 
+                createdAt: FfiConverterString.read(from: &buf), 
+                isOwnedByCurrentDevice: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiCompactionLockInfo, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.ownerDeviceId, into: &buf)
+        FfiConverterString.write(value.createdAt, into: &buf)
+        FfiConverterBool.write(value.isOwnedByCurrentDevice, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public func FfiConverterTypeFfiCompactionLockInfo_lift(_ buf: RustBuffer) throws -> FfiCompactionLockInfo {
+    return try FfiConverterTypeFfiCompactionLockInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public func FfiConverterTypeFfiCompactionLockInfo_lower(_ value: FfiCompactionLockInfo) -> RustBuffer {
+    return FfiConverterTypeFfiCompactionLockInfo.lower(value)
 }
 
 
@@ -2937,9 +3792,9 @@ nonisolated public func FfiConverterTypeFfiMediaOrGroupNeighbors_lower(_ value: 
 
 
 /**
- * A media identifier exposed to UniFFI as a record so Swift and Kotlin receive
+ * A media identifier exposed to `UniFFI` as a record so Swift and Kotlin receive
  * a distinct type. Do not replace this with `uniffi::custom_type!` backed by
- * `String`: UniFFI generates custom string types as `String` aliases, allowing
+ * `String`: `UniFFI` generates custom string types as `String` aliases, allowing
  * media IDs to be accidentally passed where another ID kind is required.
  */
 nonisolated public struct FfiMediaUuid {
@@ -3287,6 +4142,7 @@ nonisolated public enum LascoError: Swift.Error {
     case SyncBusy
     case MissingLocalMedia(mediaIds: [FfiMediaId]
     )
+    case CrdtRecoveryAvailable
     case Storage(msg: String
     )
     case Other(msg: String
@@ -3313,10 +4169,11 @@ nonisolated public struct FfiConverterTypeLascoError: FfiConverterRustBuffer {
         case 4: return .MissingLocalMedia(
             mediaIds: try FfiConverterSequenceTypeFfiMediaId.read(from: &buf)
             )
-        case 5: return .Storage(
+        case 5: return .CrdtRecoveryAvailable
+        case 6: return .Storage(
             msg: try FfiConverterString.read(from: &buf)
             )
-        case 6: return .Other(
+        case 7: return .Other(
             msg: try FfiConverterString.read(from: &buf)
             )
 
@@ -3348,13 +4205,17 @@ nonisolated public struct FfiConverterTypeLascoError: FfiConverterRustBuffer {
             FfiConverterSequenceTypeFfiMediaId.write(mediaIds, into: &buf)
             
         
-        case let .Storage(msg):
+        case .CrdtRecoveryAvailable:
             writeInt(&buf, Int32(5))
+        
+        
+        case let .Storage(msg):
+            writeInt(&buf, Int32(6))
             FfiConverterString.write(msg, into: &buf)
             
         
         case let .Other(msg):
-            writeInt(&buf, Int32(6))
+            writeInt(&buf, Int32(7))
             FfiConverterString.write(msg, into: &buf)
             
         }
@@ -3482,6 +4343,30 @@ nonisolated fileprivate struct FfiConverterOptionTypeFfiAlbumUuid: FfiConverterR
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeFfiAlbumUuid.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated fileprivate struct FfiConverterOptionTypeFfiCompactionLockInfo: FfiConverterRustBuffer {
+    typealias SwiftType = FfiCompactionLockInfo?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeFfiCompactionLockInfo.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeFfiCompactionLockInfo.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -3933,6 +4818,10 @@ nonisolated fileprivate func uniffiFutureContinuationCallback(handle: UInt64, po
  * metadata and operations and opening it locally. `username`/`password` must be
  * an existing user on the remote. When `new_username`/`new_password` are both
  * provided, a new user is registered and used as the effective device user.
+ *
+ * # Errors
+ *
+ * Returns an error if runtime/app setup, remote connection or authentication, local persistence, or initial synchronization fails.
  */
 nonisolated public func ffiAddExistingLibraryS3(nickname: String, username: String, password: String, newUsername: String?, newPassword: String?, remoteName: String, endpoint: String, bucket: String, region: String, pathPrefix: String, accessKey: String, secretKey: String, appDir: String? = nil)throws  -> FfiLibrary  {
     return try  FfiConverterTypeFfiLibrary_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
@@ -3953,6 +4842,15 @@ nonisolated public func ffiAddExistingLibraryS3(nickname: String, username: Stri
     )
 })
 }
+/**
+ * # Errors
+ *
+ * Returns an error if the app directory/runtime cannot be created or library state, config, or session key cannot be initialized.
+ *
+ * # Panics
+ *
+ * Panics if Tokio cannot construct the runtime used to initialize the library.
+ */
 nonisolated public func ffiCreateLibrary(nickname: String, username: String, password: String, appDir: String? = nil)throws  -> FfiCreateLibraryResult  {
     return try  FfiConverterTypeFfiCreateLibraryResult_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_func_ffi_create_library(
@@ -3963,6 +4861,11 @@ nonisolated public func ffiCreateLibrary(nickname: String, username: String, pas
     )
 })
 }
+/**
+ * # Errors
+ *
+ * Returns an error if the library ID is invalid or local data, session state, or app configuration cannot be removed or updated.
+ */
 nonisolated public func ffiDeleteLibrary(libraryId: FfiLibraryId, appDir: String? = nil)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_func_ffi_delete_library(
         FfiConverterTypeFfiLibraryId_lower(libraryId),
@@ -3973,6 +4876,10 @@ nonisolated public func ffiDeleteLibrary(libraryId: FfiLibraryId, appDir: String
 /**
  * Try to open a library using a cached session (OS keychain), without a password.
  * Returns `None` if no session is cached — the caller should then prompt for credentials.
+ *
+ * # Errors
+ *
+ * Returns an error if configuration or the session key cannot be read, or opening a cached library fails.
  */
 nonisolated public func ffiOpenCached(nickname: String?, username: String, appDir: String? = nil)throws  -> FfiLibrary?  {
     return try  FfiConverterOptionTypeFfiLibrary.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
@@ -3984,8 +4891,25 @@ nonisolated public func ffiOpenCached(nickname: String?, username: String, appDi
 })
 }
 /**
+ * Rebuild an unreadable local CRDT snapshot from the encrypted local operation log.
+ * This is intentionally separate from opening: clients must obtain explicit user consent first.
+ */
+nonisolated public func ffiRecoverLibraryState(nickname: String, username: String, password: String, appDir: String? = nil)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_func_ffi_recover_library_state(
+        FfiConverterString.lower(nickname),
+        FfiConverterString.lower(username),
+        FfiConverterString.lower(password),
+        FfiConverterOptionString.lower(appDir),$0
+    )
+}
+}
+/**
  * Test connectivity to an S3 remote using the given credentials, without
  * saving anything. Builds an ephemeral client and lists the bucket root.
+ *
+ * # Errors
+ *
+ * Returns an error if the S3 client or runtime cannot be created, or the bucket cannot be listed.
  */
 nonisolated public func ffiTestS3Remote(endpoint: String, bucket: String, region: String, pathPrefix: String, accessKey: String, secretKey: String)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_func_ffi_test_s3_remote(
@@ -3998,6 +4922,11 @@ nonisolated public func ffiTestS3Remote(endpoint: String, bucket: String, region
     )
 }
 }
+/**
+ * # Errors
+ *
+ * Returns an error if the application configuration cannot be read; per-library load failures are returned in each entry.
+ */
 nonisolated public func listLibraries(appDir: String? = nil)throws  -> [FfiLibraryEntry]  {
     return try  FfiConverterSequenceTypeFfiLibraryEntry.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_func_list_libraries(
@@ -4005,6 +4934,11 @@ nonisolated public func listLibraries(appDir: String? = nil)throws  -> [FfiLibra
     )
 })
 }
+/**
+ * # Errors
+ *
+ * Returns an error if the library ID is invalid or its file-based session cannot be cleared.
+ */
 nonisolated public func sessionClear(libraryId: FfiLibraryId, username: String, appDir: String? = nil)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_func_session_clear(
         FfiConverterTypeFfiLibraryId_lower(libraryId),
@@ -4029,109 +4963,112 @@ nonisolated private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if (uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_s3() != 64054) {
+    if (uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_s3() != 45002) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_func_ffi_create_library() != 65253) {
+    if (uniffi_lasco_ffi_checksum_func_ffi_create_library() != 46039) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_func_ffi_delete_library() != 40145) {
+    if (uniffi_lasco_ffi_checksum_func_ffi_delete_library() != 17812) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_func_ffi_open_cached() != 45988) {
+    if (uniffi_lasco_ffi_checksum_func_ffi_open_cached() != 29965) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_func_ffi_test_s3_remote() != 63928) {
+    if (uniffi_lasco_ffi_checksum_func_ffi_recover_library_state() != 5874) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_func_list_libraries() != 48425) {
+    if (uniffi_lasco_ffi_checksum_func_ffi_test_s3_remote() != 38987) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_func_session_clear() != 35874) {
+    if (uniffi_lasco_ffi_checksum_func_list_libraries() != 63304) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_media_to_album() != 55216) {
+    if (uniffi_lasco_ffi_checksum_func_session_clear() != 3068) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_media_to_group() != 5675) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_media_to_album() != 34537) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_debug_local_android() != 7330) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_media_to_group() != 3438) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_debug_local_apple() != 64099) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_debug_local_android() != 10217) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_fixed_path() != 49491) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_debug_local_apple() != 58084) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_s3() != 64944) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_fixed_path() != 50273) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_usb_android() != 42164) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_s3() != 5472) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_usb_apple() != 26312) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_usb_android() != 31100) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_album_albums_count() != 28015) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_usb_apple() != 52226) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_album_albums_range() != 13456) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_album_albums_count() != 36704) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_album_items_by_date_neighbors() != 62753) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_album_albums_range() != 48572) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_album_items_by_date_range() != 47055) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_album_items_by_date_neighbors() != 3643) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_album_items_count() != 2483) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_album_items_by_date_range() != 39515) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_album_list_groups() != 51918) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_album_items_count() != 638) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_album_list_items_sorted() != 47227) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_album_list_groups() != 7) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_album_list_items_sorted() != 10839) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_all_media_ids() != 28671) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_connect_remote() != 49612) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_connect_remote() != 33397) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_create_album() != 61555) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_create_album() != 16703) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_create_group() != 64046) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_create_group() != 60402) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_delete_album() != 1112) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_delete_album() != 11771) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_delete_group() != 35649) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_delete_group() != 44891) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_delete_media() != 63575) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_delete_media() != 3803) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_disconnected_albums_count() != 34428) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_disconnected_albums_count() != 3821) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_disconnected_albums_range() != 48974) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_disconnected_albums_range() != 62195) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_evict_local_data() != 32747) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_evict_local_data() != 58897) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_evict_local_thumbnails() != 3577) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_evict_local_thumbnails() != 60119) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_fetch_remote() != 3271) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_fetch_remote() != 60655) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_fetch_remote_async() != 62501) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_fetch_remote_async() != 58688) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_get_auto_import_device_media() != 41412) {
@@ -4140,151 +5077,157 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_get_default_fetch_remote() != 26534) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_bytes() != 43678) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_bytes() != 47719) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_bytes_async() != 42941) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_bytes_async() != 39230) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_thumbnail() != 9842) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_thumbnail() != 38204) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_thumbnail_async() != 56646) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_thumbnail_async() != 58793) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_group_list_media() != 45492) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_group_list_media() != 51462) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_has_unpushed_changes() != 50625) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_import_media() != 24601) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_import_media() != 49744) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_initialize_remote() != 14967) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_initialize_remote() != 54402) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_inspect_compaction_lock() != 42815) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_library_id() != 29748) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_list_albums() != 29638) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_list_albums() != 20929) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_list_media() != 48443) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_list_media() != 41620) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_list_operations() != 224) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_list_operations() != 36514) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_list_remotes() != 6196) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_list_remotes() != 14789) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_load_local_state() != 3933) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_load_local_state() != 24975) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_local_state_stats() != 38463) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_media_album_ids() != 44766) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_media_album_ids() != 37108) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date() != 16831) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date() != 35684) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date_count() != 56581) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date_count() != 22303) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date_neighbors() != 17050) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date_neighbors() != 13523) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date_range() != 705) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date_range() != 45831) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_media_containing_album_ids() != 61871) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_media_containing_album_ids() != 8372) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_media_ids_without_remote_backup() != 24845) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_media_ids_without_remote_backup() != 14902) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_media_in_album() != 1494) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_media_in_album() != 39680) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_move_media_to_album() != 48351) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_move_media_to_album() != 48107) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date() != 1863) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date() != 25082) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_count() != 51224) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_count() != 18881) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_neighbors() != 28984) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_neighbors() != 26108) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_range() != 37391) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_range() != 61721) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_pending_media_count() != 40879) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_pending_media_count() != 2390) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote() != 55829) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote() != 27651) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_async() != 35115) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_async() != 8987) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_from_remote() != 11414) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_from_remote() != 39422) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_from_remote_async() != 35115) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_from_remote_async() != 41311) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_remove_media_from_album() != 18225) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_remove_media_from_album() != 46585) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_remove_media_from_group() != 64893) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_remove_media_from_group() != 15256) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_remove_remote() != 14102) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_remove_own_compaction_lock() != 13031) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_rename_album() != 31123) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_remove_remote() != 41678) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_rename_media() != 1783) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_rename_album() != 50813) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_reparent_album() != 23412) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_rename_media() != 36270) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_set_album_thumbnail() != 42471) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_reparent_album() != 42959) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_set_auto_import_device_media() != 35965) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_set_album_thumbnail() != 48225) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_set_default_fetch_remote() != 50467) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_set_auto_import_device_media() != 2768) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_set_media_thumbnail() != 40269) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_set_default_fetch_remote() != 3089) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_set_remote_auto_push() != 27320) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_set_media_thumbnail() != 10306) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_set_remote_media_fetch_priority() != 21910) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_set_remote_auto_push() != 52461) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_show_media() != 14090) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_set_remote_media_fetch_priority() != 26777) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_user_add() != 37143) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_show_media() != 45030) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_user_list() != 55837) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_user_add() != 31541) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_constructor_ffilibrary_open() != 15911) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_user_list() != 50139) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_constructor_ffilibrary_open() != 55421) {
         return InitializationResult.apiChecksumMismatch
     }
 

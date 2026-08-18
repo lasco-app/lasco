@@ -43,6 +43,19 @@ impl LocalOpsReadWrite<'_> {
         )?)
     }
 
+    pub(crate) fn read_operations_range(
+        &self,
+        start_pos: u64,
+        end_pos_exclusive: u64,
+    ) -> Result<Vec<CrdtOperation>> {
+        Ok(op_log::read_crdt_operations_range(
+            &self.local_state_operations.operations_log_path(),
+            self.master_key,
+            start_pos,
+            end_pos_exclusive,
+        )?)
+    }
+
     pub(crate) fn append_operation(&mut self, operation: &CrdtOperation) -> Result<()> {
         Ok(op_log::append_crdt_operation(
             &self.local_state_operations.operations_log_path(),

@@ -43,6 +43,7 @@ struct ContentView: View {
     @State private var selection: Set<FfiMediaUuid> = []
     @State private var isSelecting = false
     @State private var albumsForMedia: AlbumList? = nil
+    @State private var showingAddToAlbumPicker = false
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -116,6 +117,16 @@ struct ContentView: View {
                 } onCancel: {
                     albumsForMedia = nil
                 }
+                .environment(\.lascoTheme, .dark)
+                .preferredColorScheme(.dark)
+            }
+            .sheet(isPresented: $showingAddToAlbumPicker) {
+                AlbumPickerView(
+                    repository: repository,
+                    title: "Add to album",
+                    onSelect: addSelectionToAlbum,
+                    onCancel: { showingAddToAlbumPicker = false }
+                )
                 .environment(\.lascoTheme, .dark)
                 .preferredColorScheme(.dark)
             }
@@ -237,18 +248,21 @@ struct ContentView: View {
 
             Spacer()
 
-            if selection.count == 1, let mediaId = selection.first {
+            Menu {
                 Button {
-                    triggerOpenAlbum(for: mediaId)
+                    showingAddToAlbumPicker = true
                 } label: {
-                    Image("folder").renderingMode(.template).resizable().frame(width: 18, height: 18)
-                        .font(.system(size: 18, weight: .medium))
-                        .frame(width: 48, height: 44)
-                        .contentShape(Rectangle())
+                    Label("Add to album", systemImage: "folder.badge.plus")
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(theme.ink)
+            } label: {
+                Text("...")
+                    .font(LascoFont.body())
+                    .frame(width: 48, height: 44)
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .foregroundStyle(theme.ink)
+            .accessibilityLabel("Selection actions")
         }
         .padding(.horizontal, 12)
         .background(theme.pink)
@@ -325,6 +339,23 @@ struct ContentView: View {
                 openAlbum(containing[0])
             } else if let mediaItem = await model.showMedia(id: mediaId) {
                 albumsForMedia = AlbumList(media: mediaItem, albums: containing)
+            }
+        }
+    }
+
+    private func addSelectionToAlbum(_ album: FfiAlbum) {
+        let mediaIds = selection
+        showingAddToAlbumPicker = false
+        Task {
+            do {
+                for mediaId in mediaIds {
+                    try await repository.addMediaToAlbum(albumID: album.albumId, mediaID: mediaId)
+                }
+                selection = []
+                isSelecting = false
+                toastManager.show(ok: "Added \(mediaIds.count) item(s) to \(album.name)")
+            } catch {
+                toastManager.show(error: error.localizedDescription)
             }
         }
     }

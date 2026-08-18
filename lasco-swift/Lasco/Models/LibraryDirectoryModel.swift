@@ -24,6 +24,7 @@ final class LibraryDirectoryModel {
     private(set) var librariesError: String?
     private(set) var activeSession: ActiveLibrarySession?
     private(set) var isOpen = false
+    private(set) var snapshotRecoveryAvailable = false
 
     let onboarding: OnboardingCoordinator
     private let directory: LibraryDirectoryRepository
@@ -70,10 +71,26 @@ final class LibraryDirectoryModel {
     }
 
     func open(nickname: String?, username: String, password: String) async -> Bool {
+        snapshotRecoveryAvailable = false
         do {
             let library = try await directory.open(nickname: nickname, username: username, password: password)
             await install(library: library, nickname: nickname ?? "", username: username)
             return true
+        } catch {
+            if let lascoError = error as? LascoError,
+               case .CrdtRecoveryAvailable = lascoError {
+                snapshotRecoveryAvailable = true
+            }
+            onboarding.setError(error)
+            return false
+        }
+    }
+
+    func recoverCRDTState(nickname: String, username: String, password: String) async -> Bool {
+        do {
+            try await directory.recoverCRDTState(nickname: nickname, username: username, password: password)
+            snapshotRecoveryAvailable = false
+            return await open(nickname: nickname, username: username, password: password)
         } catch {
             onboarding.setError(error)
             return false

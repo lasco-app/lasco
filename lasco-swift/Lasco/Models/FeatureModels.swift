@@ -583,7 +583,11 @@ final class StatusModel {
 @Observable
 final class OperationsModel {
     private(set) var operations: [FfiCrdtOperation] = []
+    private(set) var isLoading = false
+    private(set) var hasMore = true
     private let repository: any LibraryRepositoryProtocol
+    private var nextStartPos: UInt64 = 0
+    private let pageSize: UInt64 = 50
 
     init(repository: any LibraryRepositoryProtocol) {
         self.repository = repository
@@ -591,14 +595,32 @@ final class OperationsModel {
 
     func start() async {
         let stream = await repository.changes()
-        await load()
+        await refresh()
         for await change in stream {
             guard change == .all || change == .localMutation else { continue }
-            await load()
+            await refresh()
         }
     }
 
-    func load() async {
-        operations = (try? await repository.listOperations()) ?? []
+    func refresh() async {
+        operations = []
+        nextStartPos = 0
+        hasMore = true
+        await loadMore()
+    }
+
+    func loadMore() async {
+        guard hasMore, !isLoading else { return }
+        isLoading = true
+        defer { isLoading = false }
+
+        let endPosExclusive = nextStartPos + pageSize
+        let page = (try? await repository.listOperations(
+            startPos: nextStartPos,
+            endPosExclusive: endPosExclusive
+        )) ?? []
+        operations.append(contentsOf: page)
+        nextStartPos = endPosExclusive
+        hasMore = page.count == Int(pageSize)
     }
 }

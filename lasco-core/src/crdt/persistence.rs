@@ -29,6 +29,17 @@ pub enum PersistenceError {
     UnsupportedFormatVersion(u32),
 }
 
+impl PersistenceError {
+    /// Only structural snapshot failures are safe to rebuild from the operation log.
+    #[must_use]
+    pub fn is_recoverable_snapshot_failure(&self) -> bool {
+        matches!(
+            self,
+            Self::Deserialize(_) | Self::UnsupportedFormatVersion(_)
+        )
+    }
+}
+
 /// Reads a complete `CrdtState` snapshot.
 pub(crate) fn load_persisted(
     path: &std::path::Path,
@@ -46,6 +57,7 @@ pub(crate) fn load_persisted(
     match persisted.format_version {
         CRDT_SNAPSHOT_FORMAT_VERSION => {
             let mut state = persisted.state;
+            state.set_device_id(device_id);
             state.rebuild_views();
             Ok(state)
         }
@@ -124,18 +136,18 @@ mod tests {
                 album_id: AlbumUuid::from_uuid(uuid::Uuid::from_u128(1)),
             },
         };
-        let mut persisted = CrdtState::new(DeviceId(3));
+        let mut persisted = CrdtState::new(DeviceId(u128::MAX));
         persisted.apply(&operation);
 
         save_persisted(&path, &master_key, &persisted).unwrap();
         let mut loaded = load_persisted(&path, &master_key, DeviceId(99)).unwrap();
 
-        assert_eq!(loaded, persisted);
+        assert_ne!(loaded.device_id(), persisted.device_id());
         assert_eq!(
             loaded.next_local_dot(),
             Dot {
                 lamport_counter: 8,
-                device_id: DeviceId(3),
+                device_id: DeviceId(99),
             }
         );
     }

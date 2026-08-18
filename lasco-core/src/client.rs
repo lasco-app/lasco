@@ -113,10 +113,14 @@ pub async fn open_library(
         .ok_or_else(|| anyhow::anyhow!("library '{}' not found", library_nickname.0))?;
 
     let local_dirs = LocalDirs::new(app_dir, library_id);
+    let library_config = LibraryJson::load(app_dir, library_id)?
+        .ok_or_else(|| anyhow::anyhow!("library.json not found for '{}'", library_nickname.0))?;
+    let device_id = library_config.device_id;
 
     if let Some(master_key) = session_load_master_key(*library_id, &username, session_dir)? {
-        let library = Library::open_with_master_key(local_dirs, master_key, *library_id, username)
-            .map_err(|e| anyhow::anyhow!("failed to open library: {e}"))?;
+        let library =
+            Library::open_with_master_key(local_dirs, master_key, *library_id, device_id, username)
+                .context("failed to open library")?;
         return Ok(library);
     }
 
@@ -125,12 +129,13 @@ pub async fn open_library(
 
     let library = Library::open(
         local_dirs,
+        device_id,
         crate::library::Credentials {
             username: username.clone(),
             password,
         },
     )
-    .map_err(|e| anyhow::anyhow!("failed to open library: {e}"))?;
+    .context("failed to open library")?;
 
     session_store_master_key(*library_id, &username, library.master_key(), session_dir)?;
 
@@ -153,6 +158,7 @@ pub async fn create_library(
     session_dir: Option<&Path>,
 ) -> Result<(LibraryId, MasterKey)> {
     let library_id = LibraryId::new();
+    let device_id = crate::crdt::DeviceId::random();
 
     let local_dirs = LocalDirs::new(app_dir, &library_id);
     local_dirs
@@ -162,6 +168,7 @@ pub async fn create_library(
     let (lib, password_uuid) = Library::init(
         local_dirs,
         library_id,
+        device_id,
         crate::library::Credentials {
             username: username.clone(),
             password,
@@ -172,6 +179,7 @@ pub async fn create_library(
     let library_config = LibraryJson {
         version: crate::library_json::LIBRARY_JSON_VERSION,
         nickname: LibraryNickname(nickname),
+        device_id,
         default_fetch_remote: None,
         default_username: Some(username.clone()),
         active_password_uuid: Some(password_uuid),
@@ -186,6 +194,32 @@ pub async fn create_library(
         .context("failed to store session key")?;
 
     Ok((library_id, master_key))
+}
+
+/// Rebuild a library's materialized CRDT snapshot after an explicitly confirmed recovery.
+/// Authentication is required because the operation log is encrypted with the master key.
+pub async fn recover_library_state(
+    app_dir: &Path,
+    library_nickname: LibraryNickname,
+    username: LibraryUsername,
+    password: LibraryPassword,
+) -> Result<()> {
+    let config_json =
+        ConfigJson::load(app_dir)?.ok_or_else(|| anyhow::anyhow!("no libraries configured"))?;
+    let library_id = config_json
+        .get_library_id_by_nickname(&library_nickname.0)
+        .ok_or_else(|| anyhow::anyhow!("library '{}' not found", library_nickname.0))?;
+    let library_config = LibraryJson::load(app_dir, library_id)?
+        .ok_or_else(|| anyhow::anyhow!("library.json not found"))?;
+    let local_dirs = LocalDirs::new(app_dir, library_id);
+    let master_key = find_master_key(
+        local_dirs.local_state_library_dir().path(),
+        &username.0,
+        &password.0,
+    )
+    .map(|(key, _)| key)?;
+    Library::recover_persisted_state(&local_dirs, &master_key, library_config.device_id)
+        .context("failed to rebuild CRDT state")
 }
 
 /// Add a library that already exists on an S3 remote.
@@ -250,6 +284,7 @@ pub async fn add_existing_library_s3(
         })
         .ok_or_else(|| anyhow::anyhow!("remote is missing library_id_{{uuid}} file"))?;
     let library_id = LibraryId(remote_library_uuid);
+    let device_id = crate::crdt::DeviceId::random();
 
     let local_dirs = LocalDirs::new(app_dir, &library_id);
     local_dirs
@@ -286,6 +321,7 @@ pub async fn add_existing_library_s3(
         local_dirs.clone(),
         master_key.clone(),
         library_id,
+        device_id,
         username.clone(),
     )
     .map_err(|e| anyhow::anyhow!("failed to open library: {e}"))?;
@@ -316,6 +352,7 @@ pub async fn add_existing_library_s3(
                 local_dirs,
                 master_key.clone(),
                 library_id,
+                device_id,
                 new_username.clone(),
             )
             .map_err(|e| anyhow::anyhow!("failed to reopen library as new user: {e}"))?;
@@ -353,6 +390,7 @@ pub async fn add_existing_library_s3(
     let library_config = LibraryJson {
         version: crate::library_json::LIBRARY_JSON_VERSION,
         nickname: LibraryNickname(nickname),
+        device_id,
         default_username: Some(effective_username.clone()),
         active_password_uuid: Some(active_password_uuid),
         default_fetch_remote: Some(remote_uuid),

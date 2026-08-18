@@ -6,7 +6,7 @@ struct OperationsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.lascoTheme) var theme
 
-    private var operations: [FfiCrdtOperation] { model.operations.reversed() }
+    private var operations: [FfiCrdtOperation] { model.operations }
 
     init(repository: LibraryRepository) {
         self.repository = repository
@@ -46,6 +46,14 @@ struct OperationsView: View {
                         LazyVStack(alignment: .leading, spacing: 12) {
                             ForEach(operations, id: \.dot) { operation in
                                 OperationRow(operation: operation)
+                                    .onAppear {
+                                        guard operation.dot == operations.last?.dot else { return }
+                                        Task { await model.loadMore() }
+                                    }
+                            }
+                            if model.isLoading {
+                                ProgressView()
+                                    .frame(maxWidth: .infinity)
                             }
                         }
                         .padding(.horizontal, 20)

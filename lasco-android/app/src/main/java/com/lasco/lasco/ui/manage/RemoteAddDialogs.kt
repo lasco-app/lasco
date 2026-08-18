@@ -34,6 +34,7 @@ import com.lasco.lasco.ui.components.LascoPrimaryButton
 import com.lasco.lasco.ui.theme.LascoTheme
 import kotlinx.coroutines.launch
 import uniffi.lasco_ffi.LascoException
+import uniffi.lasco_ffi.FfiRemoteUuid
 import uniffi.lasco_ffi.ffiTestS3Remote
 
 @Composable
@@ -110,6 +111,7 @@ fun AddS3RemoteDialog(
     var testing by remember { mutableStateOf(false) }
     var testMessage by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
     var submitting by remember { mutableStateOf(false) }
+    var addError by remember { mutableStateOf<String?>(null) }
 
     val canTest = endpoint.isNotBlank() && bucket.isNotBlank() && accessKey.isNotBlank() && secretKey.isNotBlank() && !testing
     val isValid = name.isNotBlank() && endpoint.isNotBlank() && bucket.isNotBlank() &&
@@ -168,6 +170,9 @@ fun AddS3RemoteDialog(
             testMessage?.let { (ok, msg) ->
                 Text(text = msg, style = LascoTheme.type.body(13), color = if (ok) colors.ok else colors.error)
             }
+            addError?.let { message ->
+                Text(text = message, style = LascoTheme.type.body(13), color = colors.error)
+            }
             Spacer(modifier = Modifier.height(24.dp))
         }
         Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 20.dp)) {
@@ -176,25 +181,22 @@ fun AddS3RemoteDialog(
                 enabled = isValid,
                 onClick = {
                     submitting = true
+                    addError = null
                     scope.launch {
+                        var addedRemoteId: FfiRemoteUuid? = null
                         try {
                             val remoteId = repo.addRemoteS3(name, endpoint, bucket, region, pathPrefix, accessKey, secretKey)
+                            addedRemoteId = remoteId
+                            repo.initializeRemote(remoteId, null)
                             onDismiss()
-                            val error = try {
-                                repo.initializeRemote(remoteId, null)
-                                when (val result = repo.sync.pushRemote(remoteId)) {
-                                    com.lasco.lasco.data.PushResult.Success -> null
-                                    is com.lasco.lasco.data.PushResult.Failed -> result.message
-                                    is com.lasco.lasco.data.PushResult.MissingLocalMedia -> "Some media is not stored on this device. Push from Status and choose another remote as its source."
-                                }
-                            } catch (e: Exception) {
-                                e.message?.ifBlank { null } ?: "Initialization failed"
-                            }
-                            onResult(name, error)
+                            onResult(name, null)
                         } catch (e: Exception) {
-                            submitting = false
-                            onResult(name, e.message?.ifBlank { null } ?: "Failed to add remote")
+                            addedRemoteId?.let { remoteId ->
+                                runCatching { repo.removeRemote(remoteId) }
+                            }
+                            addError = e.message?.ifBlank { null } ?: "Failed to add remote"
                         }
+                        submitting = false
                     }
                 },
             )
@@ -219,6 +221,7 @@ fun AddLocalFSRemoteDialog(
 
     var name by remember { mutableStateOf("") }
     var submitting by remember { mutableStateOf(false) }
+    var addError by remember { mutableStateOf<String?>(null) }
     val isValid = name.isNotBlank() && !submitting
 
     FullSheet(onDismiss = onDismiss) {
@@ -233,6 +236,9 @@ fun AddLocalFSRemoteDialog(
                 color = colors.inkMuted,
             )
             LascoField(label = "Remote name", value = name, onValueChange = { name = it }, placeholder = "local-test")
+            addError?.let { message ->
+                Text(text = message, style = LascoTheme.type.body(13), color = colors.error)
+            }
         }
         Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 20.dp)) {
             LascoPrimaryButton(
@@ -240,25 +246,22 @@ fun AddLocalFSRemoteDialog(
                 enabled = isValid,
                 onClick = {
                     submitting = true
+                    addError = null
                     scope.launch {
+                        var addedRemoteId: FfiRemoteUuid? = null
                         try {
                             val remoteId = repo.addRemoteDebugLocalAndroid(name)
+                            addedRemoteId = remoteId
+                            repo.initializeRemote(remoteId, null)
                             onDismiss()
-                            val error = try {
-                                repo.initializeRemote(remoteId, null)
-                                when (val result = repo.sync.pushRemote(remoteId)) {
-                                    com.lasco.lasco.data.PushResult.Success -> null
-                                    is com.lasco.lasco.data.PushResult.Failed -> result.message
-                                    is com.lasco.lasco.data.PushResult.MissingLocalMedia -> "Some media is not stored on this device. Push from Status and choose another remote as its source."
-                                }
-                            } catch (e: Exception) {
-                                e.message?.ifBlank { null } ?: "Initialization failed"
-                            }
-                            onResult(name, error)
+                            onResult(name, null)
                         } catch (e: Exception) {
-                            submitting = false
-                            onResult(name, e.message?.ifBlank { null } ?: "Failed to add remote")
+                            addedRemoteId?.let { remoteId ->
+                                runCatching { repo.removeRemote(remoteId) }
+                            }
+                            addError = e.message?.ifBlank { null } ?: "Failed to add remote"
                         }
+                        submitting = false
                     }
                 },
             )

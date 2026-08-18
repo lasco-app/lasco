@@ -24,6 +24,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lasco.lasco.ui.components.ErrorBanner
 import com.lasco.lasco.ui.components.LascoField
 import com.lasco.lasco.ui.components.LascoPrimaryButton
+import com.lasco.lasco.ui.components.LascoConfirmDialog
 import com.lasco.lasco.ui.theme.LascoTheme
 
 /**
@@ -64,6 +65,7 @@ fun LibraryOpenScreen(
 
     var username by remember(entry.libraryId) { mutableStateOf(entry.username ?: "") }
     var password by remember { mutableStateOf("") }
+    var showRecoveryConfirm by remember { mutableStateOf(false) }
 
     LaunchedEffect(entry.libraryId) {
         viewModel.tryOpenCached(entry.nickname, entry.username)
@@ -110,6 +112,14 @@ fun LibraryOpenScreen(
             LascoField("Password", password, { password = it }, secure = true)
 
             state.error?.let { ErrorBanner(it) }
+            if (state.recoveryAvailable) {
+                Text(
+                    text = "Recover from operation log",
+                    style = LascoTheme.type.body(14),
+                    color = colors.inkMuted,
+                    modifier = Modifier.clickable { showRecoveryConfirm = true },
+                )
+            }
         }
 
         Column(
@@ -123,5 +133,18 @@ fun LibraryOpenScreen(
                 enabled = canSubmit,
             )
         }
+    }
+
+    if (showRecoveryConfirm) {
+        LascoConfirmDialog(
+            title = "Recover library state?",
+            message = "This rebuilds the local library state from its encrypted operation log. Your photos and remote storage are not changed.",
+            confirmLabel = "Recover",
+            onConfirm = {
+                showRecoveryConfirm = false
+                viewModel.recover(entry.nickname, username, password)
+            },
+            onCancel = { showRecoveryConfirm = false },
+        )
     }
 }

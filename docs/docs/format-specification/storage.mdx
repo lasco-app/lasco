@@ -102,6 +102,7 @@ An empty `remotes` list is valid: the library is local-only and has no remote st
 {
   "version": 1,
   "nickname": "my-photos",
+  "device_id": "0123456789abcdef0123456789abcdef",
   "default_username": "alice",
   "active_password_uuid": "c3d4e5f6-7890-12gh-ijkl-mnopqrstuvwx",
   "default_fetch_remote": "a1b2c3d4-0000-0000-0000-000000000001",
@@ -137,6 +138,8 @@ An empty `remotes` list is valid: the library is local-only and has no remote st
 ```
 
 `remote_uuid` is the remote's stable identity. It is checked against the `remote_id_{uuid}` marker on the remote's storage on every connect, and never changes even if the human-readable `name` is later renamed. `name` is how the CLI and app let a user refer to the remote. It must be unique within a library but can be changed freely without affecting sync.
+
+`device_id` is the stable, local-only CRDT author identity for this installation of the library. It is never uploaded to a remote. The encrypted `crdt-state.enc` is a rebuildable materialized cache and deliberately does not persist this identity; a recovery replays `operations.log` using `library.json.device_id`.
 
 The `kind` field's own `kind` tag selects the remote's storage type:
 

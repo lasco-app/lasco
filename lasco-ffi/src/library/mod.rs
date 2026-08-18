@@ -83,6 +83,27 @@ pub fn ffi_delete_library(
     Ok(())
 }
 
+/// Rebuild an unreadable local CRDT snapshot from the encrypted local operation log.
+/// This is intentionally separate from opening: clients must obtain explicit user consent first.
+#[uniffi::export(default(app_dir = None))]
+pub fn ffi_recover_library_state(
+    nickname: String,
+    username: String,
+    password: String,
+    app_dir: Option<String>,
+) -> Result<(), LascoError> {
+    let app_dir = crate::resolve_app_dir(app_dir)?;
+    let rt =
+        tokio::runtime::Runtime::new().map_err(|e| LascoError::Other { msg: e.to_string() })?;
+    rt.block_on(lasco_core::client::recover_library_state(
+        &app_dir,
+        LibraryNickname(nickname),
+        LibraryUsername(username),
+        LibraryPassword(password),
+    ))?;
+    Ok(())
+}
+
 #[uniffi::export(default(app_dir = None))]
 /// # Errors
 ///

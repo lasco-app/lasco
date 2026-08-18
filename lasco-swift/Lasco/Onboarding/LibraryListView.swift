@@ -155,6 +155,7 @@ struct LibraryOpenSheet: View {
     @State private var username: String
     @State private var password = ""
     @State private var isLoading = false
+    @State private var showRecoveryConfirmation = false
     @FocusState private var passwordFocused: Bool
 
     init(entry: FfiLibraryEntry) {
@@ -201,6 +202,15 @@ struct LibraryOpenSheet: View {
                         ErrorBanner(message: error)
                     }
 
+                    if directory.snapshotRecoveryAvailable {
+                        Button("Recover from operation log") {
+                            showRecoveryConfirmation = true
+                        }
+                        .buttonStyle(.plain)
+                        .font(LascoFont.body(15))
+                        .foregroundStyle(Color.Lasco.inkMuted)
+                    }
+
                     Button {
                         isLoading = true
                         Task {
@@ -231,6 +241,23 @@ struct LibraryOpenSheet: View {
             if entry.username != nil {
                 passwordFocused = true
             }
+        }
+        .alert("Recover library state?", isPresented: $showRecoveryConfirmation) {
+            Button("Recover", role: .destructive) {
+                isLoading = true
+                Task {
+                    _ = await directory.recoverCRDTState(
+                        nickname: entry.nickname,
+                        username: username,
+                        password: password
+                    )
+                    isLoading = false
+                    if directory.isOpen { dismiss() }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This rebuilds the local library state from its encrypted operation log. Your photos and remote storage are not changed.")
         }
     }
 }

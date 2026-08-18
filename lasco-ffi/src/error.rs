@@ -11,6 +11,8 @@ pub enum LascoError {
     SyncBusy,
     #[error("media missing from local cache")]
     MissingLocalMedia { media_ids: Vec<FfiMediaId> },
+    #[error("the local CRDT snapshot cannot be read; recovery from the operation log is available")]
+    CrdtRecoveryAvailable,
     #[error("storage error: {msg}")]
     Storage { msg: String },
     #[error("{msg}")]
@@ -35,6 +37,13 @@ impl From<LibraryError> for LascoError {
 
 impl From<anyhow::Error> for LascoError {
     fn from(e: anyhow::Error) -> Self {
+        if e.chain().any(|cause| {
+            cause
+                .downcast_ref::<lasco_core::crdt::PersistenceError>()
+                .is_some_and(lasco_core::crdt::PersistenceError::is_recoverable_snapshot_failure)
+        }) {
+            return LascoError::CrdtRecoveryAvailable;
+        }
         LascoError::Other { msg: e.to_string() }
     }
 }

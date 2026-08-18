@@ -38,54 +38,65 @@ struct RemotesView: View {
                 .padding(.top, 16)
                 .padding(.bottom, 32)
 
-                VStack(alignment: .leading, spacing: 12) {
-                    if session.remotes.isEmpty {
-                        Text("No remotes configured.")
-                            .font(LascoFont.body())
-                            .foregroundStyle(theme.inkMuted)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 20)
-                            .lascoPanel()
-                    } else {
-                        ForEach(session.remotes, id: \.remoteId) { remote in
-                            RemoteCard(
-                                remote: remote,
-                                isDefaultFetch: remote.remoteId == session.defaultFetchRemoteID,
-                                onDelete: { Task { try? await repository.removeRemote(id: remote.remoteId) } },
-                                onTestConnection: {
-                                    Task {
-                                        do {
-                                            try await repository.connectRemote(id: remote.remoteId)
-                                            toastManager.show(ok: "\(remote.name): reachable")
-                                        } catch {
-                                            toastManager.show(error: "\(remote.name): unreachable")
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        if session.remotes.isEmpty {
+                            Text("No remotes configured.")
+                                .font(LascoFont.body())
+                                .foregroundStyle(theme.inkMuted)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 20)
+                                .lascoPanel()
+                        } else {
+                            ForEach(session.remotes, id: \.remoteId) { remote in
+                                RemoteCard(
+                                    remote: remote,
+                                    isDefaultFetch: remote.remoteId == session.defaultFetchRemoteID,
+                                    onDelete: { Task { try? await repository.removeRemote(id: remote.remoteId) } },
+                                    onTestConnection: {
+                                        Task {
+                                            do {
+                                                try await repository.connectRemote(id: remote.remoteId)
+                                                toastManager.show(ok: "\(remote.name): reachable")
+                                            } catch {
+                                                toastManager.show(error: "\(remote.name): unreachable")
+                                            }
                                         }
+                                    },
+                                    onSetDefaultFetch: {
+                                        Task { try? await repository.setDefaultFetchRemote(remoteID: remote.remoteId) }
+                                    },
+                                    onSetAutoPush: { enabled in
+                                        Task { try? await repository.setRemoteAutoPush(remoteID: remote.remoteId, enabled: enabled) }
+                                    },
+                                    onInspectCompactionLock: {
+                                        try? await repository.inspectCompactionLock(remoteID: remote.remoteId)
+                                    },
+                                    onRemoveOwnCompactionLock: {
+                                        (try? await repository.removeOwnCompactionLock(remoteID: remote.remoteId)) ?? false
                                     }
-                                },
-                                onSetDefaultFetch: {
-                                    Task { try? await repository.setDefaultFetchRemote(remoteID: remote.remoteId) }
-                                },
-                                onSetAutoPush: { enabled in
-                                    Task { try? await repository.setRemoteAutoPush(remoteID: remote.remoteId, enabled: enabled) }
-                                }
-                            )
+                                )
+                            }
                         }
                     }
-
-                    Button("Add remote") { showRemotePicker = true }
-                        .buttonStyle(LascoPrimaryButtonStyle())
-                        .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 32)
+                    .padding(.bottom, 20)
                 }
-                .padding(.horizontal, 32)
 
-                Spacer()
+                Button("Add remote") { showRemotePicker = true }
+                    .buttonStyle(LascoPrimaryButtonStyle())
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 32)
+                    .padding(.top, 12)
+                    .padding(.bottom, 48)
             }
         }
         .navigationBarBackButtonHidden(true)
         .navigationTitle("")
         .hideSystemNavigationBar()
         .toolbarBackButton(action: { dismiss() })
+        .preference(key: HideTabBarKey.self, value: true)
         .sheet(isPresented: $showRemotePicker) {
             RemoteTypePickerSheet(
                 expertMode: expertMode,
@@ -171,8 +182,12 @@ private struct RemoteCard: View {
     let onTestConnection: () -> Void
     let onSetDefaultFetch: () -> Void
     let onSetAutoPush: (Bool) -> Void
+    let onInspectCompactionLock: () async -> FfiCompactionLockInfo?
+    let onRemoveOwnCompactionLock: () async -> Bool
 
     @State private var showDeleteConfirm = false
+    @State private var lockInfo: FfiCompactionLockInfo?
+    @State private var showRemoveLockConfirm = false
     @Environment(\.lascoTheme) var theme
 
     var body: some View {
@@ -240,6 +255,34 @@ private struct RemoteCard: View {
                     Button("Set as default fetch", action: onSetDefaultFetch)
                         .buttonStyle(LascoSecondaryButtonStyle())
                 }
+            }
+
+            if let lockInfo {
+                Text("Compaction lock: \(lockInfo.ownerDeviceId.prefix(8))… since \(lockInfo.createdAt)")
+                    .font(LascoFont.mono())
+                    .foregroundStyle(theme.inkMuted)
+                    .lineLimit(2)
+                if lockInfo.isOwnedByCurrentDevice {
+                    Button("Remove my compaction lock") {
+                        showRemoveLockConfirm = true
+                    }
+                    .buttonStyle(LascoSecondaryButtonStyle())
+                    .confirmationDialog("Remove your compaction lock?", isPresented: $showRemoveLockConfirm, titleVisibility: .visible) {
+                        Button("Remove Lock", role: .destructive) {
+                            Task {
+                                if await onRemoveOwnCompactionLock() { self.lockInfo = nil }
+                            }
+                        }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("Only remove this after confirming that this device is no longer compacting this remote.")
+                    }
+                }
+            } else {
+                Button("Check compaction lock") {
+                    Task { lockInfo = await onInspectCompactionLock() }
+                }
+                .buttonStyle(LascoSecondaryButtonStyle())
             }
         }
         .padding(.horizontal, 16)

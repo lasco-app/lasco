@@ -104,6 +104,7 @@ mod tests {
         let (lib, _password_uuid) = Library::init(
             local_dirs,
             library_id,
+            crate::crdt::DeviceId(1),
             Credentials {
                 username: LibraryUsername(username.to_string()),
                 password: LibraryPassword(password.to_string()),
@@ -122,6 +123,7 @@ mod tests {
         let local_dirs = make_local_dirs(tmp, &library_id);
         Library::open(
             local_dirs,
+            crate::crdt::DeviceId(1),
             Credentials {
                 username: LibraryUsername(username.to_string()),
                 password: LibraryPassword(password.to_string()),

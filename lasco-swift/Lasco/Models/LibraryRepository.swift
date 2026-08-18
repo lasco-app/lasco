@@ -52,7 +52,7 @@ protocol LibraryRepositoryProtocol: Sendable {
     func mediaAlbumIDs(mediaID: FfiMediaUuid) async throws -> [FfiAlbumUuid]
     func albumGroups(albumID: FfiAlbumUuid) async throws -> [FfiGroup]
     func groupMedia(groupID: FfiGroupUuid) async throws -> [FfiMediaItem]
-    func listOperations() async throws -> [FfiCrdtOperation]
+    func listOperations(startPos: UInt64, endPosExclusive: UInt64) async throws -> [FfiCrdtOperation]
 
     func thumbnail(mediaID: FfiMediaUuid) async throws -> Data
     func mediaBytes(mediaID: FfiMediaUuid) async throws -> Data
@@ -99,10 +99,12 @@ protocol LibraryRepositoryProtocol: Sendable {
     func initializeRemote(id: FfiRemoteUuid) async throws
     func connectRemote(id: FfiRemoteUuid) async throws
     func hasUnpushedChanges(remoteID: FfiRemoteUuid) async -> Bool
+    func inspectCompactionLock(remoteID: FfiRemoteUuid) async throws -> FfiCompactionLockInfo?
+    func removeOwnCompactionLock(remoteID: FfiRemoteUuid) async throws -> Bool
 
-    func push(remoteID: FfiRemoteUuid) async throws -> UInt32
-    func push(remoteID: FfiRemoteUuid, sourceRemoteID: FfiRemoteUuid) async throws -> UInt32
-    func fetch(remoteID: FfiRemoteUuid) async throws -> UInt32
+    func push(remoteID: FfiRemoteUuid) async throws -> UInt64
+    func push(remoteID: FfiRemoteUuid, sourceRemoteID: FfiRemoteUuid) async throws -> UInt64
+    func fetch(remoteID: FfiRemoteUuid) async throws -> UInt64
     func close() async
 }
 
@@ -326,9 +328,9 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         return try library.groupListMedia(groupId: groupID)
     }
 
-    func listOperations() async throws -> [FfiCrdtOperation] {
+    func listOperations(startPos: UInt64, endPosExclusive: UInt64) async throws -> [FfiCrdtOperation] {
         try ensureOpen()
-        return try library.listOperations()
+        return try library.listOperations(startPos: startPos, endPosExclusive: endPosExclusive)
     }
 
     func thumbnail(mediaID: FfiMediaUuid) async throws -> Data {
@@ -597,7 +599,17 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         return library.hasUnpushedChanges(remoteId: remoteID)
     }
 
-    func push(remoteID: FfiRemoteUuid) async throws -> UInt32 {
+    func inspectCompactionLock(remoteID: FfiRemoteUuid) async throws -> FfiCompactionLockInfo? {
+        try ensureOpen()
+        return try library.inspectCompactionLock(remoteId: remoteID, appSupportDir: appSupportDirectory)
+    }
+
+    func removeOwnCompactionLock(remoteID: FfiRemoteUuid) async throws -> Bool {
+        try ensureOpen()
+        return try library.removeOwnCompactionLock(remoteId: remoteID, appSupportDir: appSupportDirectory)
+    }
+
+    func push(remoteID: FfiRemoteUuid) async throws -> UInt64 {
         try ensureOpen()
         let result = try await library.pushRemoteAsync(remoteId: remoteID, appSupportDir: appSupportDirectory)
         // A successful push changes the per-remote local/remote state. Publish it
@@ -606,7 +618,7 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         return result
     }
 
-    func push(remoteID: FfiRemoteUuid, sourceRemoteID: FfiRemoteUuid) async throws -> UInt32 {
+    func push(remoteID: FfiRemoteUuid, sourceRemoteID: FfiRemoteUuid) async throws -> UInt64 {
         try ensureOpen()
         let result = try await library.pushRemoteFromRemoteAsync(
             targetRemoteId: remoteID,
@@ -617,7 +629,7 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         return result
     }
 
-    func fetch(remoteID: FfiRemoteUuid) async throws -> UInt32 {
+    func fetch(remoteID: FfiRemoteUuid) async throws -> UInt64 {
         try ensureOpen()
         let result = try await library.fetchRemoteAsync(remoteId: remoteID, appSupportDir: appSupportDirectory)
         await notify(.all)
@@ -714,7 +726,9 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     func mediaAlbumIDs(mediaID: FfiMediaUuid) async throws -> [FfiAlbumUuid] { try await storage.mediaAlbumIDs(mediaID: mediaID) }
     func albumGroups(albumID: FfiAlbumUuid) async throws -> [FfiGroup] { try await storage.albumGroups(albumID: albumID) }
     func groupMedia(groupID: FfiGroupUuid) async throws -> [FfiMediaItem] { try await storage.groupMedia(groupID: groupID) }
-    func listOperations() async throws -> [FfiCrdtOperation] { try await storage.listOperations() }
+    func listOperations(startPos: UInt64, endPosExclusive: UInt64) async throws -> [FfiCrdtOperation] {
+        try await storage.listOperations(startPos: startPos, endPosExclusive: endPosExclusive)
+    }
     func thumbnail(mediaID: FfiMediaUuid) async throws -> Data { try await storage.thumbnail(mediaID: mediaID) }
     func mediaBytes(mediaID: FfiMediaUuid) async throws -> Data { try await storage.mediaBytes(mediaID: mediaID) }
     func thumbnailAsync(mediaID: FfiMediaUuid) async throws -> Data { try await storage.thumbnailAsync(mediaID: mediaID) }
@@ -757,9 +771,10 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     func initializeRemote(id: FfiRemoteUuid) async throws { try await storage.initializeRemote(id: id) }
     func connectRemote(id: FfiRemoteUuid) async throws { try await storage.connectRemote(id: id) }
     func hasUnpushedChanges(remoteID: FfiRemoteUuid) async -> Bool { await storage.hasUnpushedChanges(remoteID: remoteID) }
-    func push(remoteID: FfiRemoteUuid) async throws -> UInt32 { try await storage.push(remoteID: remoteID) }
-    func push(remoteID: FfiRemoteUuid, sourceRemoteID: FfiRemoteUuid) async throws -> UInt32 { try await storage.push(remoteID: remoteID, sourceRemoteID: sourceRemoteID) }
-    func fetch(remoteID: FfiRemoteUuid) async throws -> UInt32 { try await storage.fetch(remoteID: remoteID) }
-    func sync() async throws -> FfiSyncResult { try await storage.sync() }
+    func inspectCompactionLock(remoteID: FfiRemoteUuid) async throws -> FfiCompactionLockInfo? { try await storage.inspectCompactionLock(remoteID: remoteID) }
+    func removeOwnCompactionLock(remoteID: FfiRemoteUuid) async throws -> Bool { try await storage.removeOwnCompactionLock(remoteID: remoteID) }
+    func push(remoteID: FfiRemoteUuid) async throws -> UInt64 { try await storage.push(remoteID: remoteID) }
+    func push(remoteID: FfiRemoteUuid, sourceRemoteID: FfiRemoteUuid) async throws -> UInt64 { try await storage.push(remoteID: remoteID, sourceRemoteID: sourceRemoteID) }
+    func fetch(remoteID: FfiRemoteUuid) async throws -> UInt64 { try await storage.fetch(remoteID: remoteID) }
     func close() async { await storage.close() }
 }

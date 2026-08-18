@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 use crate::config_json::{ConfigJson, LibraryNickname, library_data_dir};
+use crate::crdt::DeviceId;
 use crate::identifiers::{LibraryId, RemoteUuid};
 use crate::operations::LibraryUsername;
 
@@ -97,6 +98,8 @@ pub struct LibraryJson {
     pub version: u32,
     /// User-friendly nickname for the library
     pub nickname: LibraryNickname,
+    /// Stable local CRDT author identity. This configuration is never uploaded to remotes.
+    pub device_id: DeviceId,
     /// Default username for this library
     #[serde(default)]
     pub default_username: Option<LibraryUsername>,
@@ -307,6 +310,7 @@ mod tests {
         LibraryJson {
             version: LIBRARY_JSON_VERSION,
             nickname: LibraryNickname("test".to_string()),
+            device_id: DeviceId(1),
             default_username: None,
             active_password_uuid: None,
             default_fetch_remote: None,

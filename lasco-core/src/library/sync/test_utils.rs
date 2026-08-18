@@ -3,6 +3,7 @@ use std::path::Path;
 use tempfile::TempDir;
 use uuid::Uuid;
 
+use crate::crdt::DeviceId;
 use crate::identifiers::{LibraryId, RemoteUuid};
 use crate::library::local_dirs::LocalDirs;
 use crate::library::{Credentials, Library};
@@ -21,6 +22,7 @@ pub async fn make_library(tmp: &TempDir) -> Library {
     Library::init(
         local_dirs,
         library_id,
+        DeviceId(1),
         Credentials {
             username: "alice".into(),
             password: "secret".into(),
@@ -45,6 +47,7 @@ pub async fn make_library_with_same_keys(tmp: &TempDir, source: &Library) -> Lib
         local_dirs,
         source.master_key().clone(),
         library_id,
+        DeviceId(2),
         source.username().clone(),
     )
     .unwrap()

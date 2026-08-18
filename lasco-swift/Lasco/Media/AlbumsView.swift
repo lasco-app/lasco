@@ -194,6 +194,7 @@ struct AlbumContentView: View {
     @State private var mediaLayout: MediaLayout = .grid
     @State private var selection: ContentSelection = .none
     @State private var showingMovePicker = false
+    @State private var showingAddToAlbumPicker = false
     @State private var showingDeleteConfirm = false
     @State private var isDropTargeted = false
     @State private var showingThumbnailPicker = false
@@ -358,6 +359,11 @@ struct AlbumContentView: View {
         }
         .sheet(isPresented: $showingMovePicker) {
             movePickerSheet
+                .environment(\.lascoTheme, .dark)
+                .preferredColorScheme(.dark)
+        }
+        .sheet(isPresented: $showingAddToAlbumPicker) {
+            addToAlbumPickerSheet
                 .environment(\.lascoTheme, .dark)
                 .preferredColorScheme(.dark)
         }
@@ -695,10 +701,11 @@ struct AlbumContentView: View {
         let canRename = selectedAlbumIds.count == 1
         let canGroup = mediaIds.count > 1 && groupIds.isEmpty && album != nil
         let canAddToGroup = groupIds.count == 1 && !mediaIds.isEmpty
+        let canAddToAlbum = !mediaIds.isEmpty
         let canMove = groupIds.isEmpty && (!mediaIds.isEmpty || !selectedAlbumIds.isEmpty)
         let canRemove = !mediaIds.isEmpty || !groupIds.isEmpty || !selectedAlbumIds.isEmpty
 
-        if canRename || canGroup || canAddToGroup || canMove || canRemove {
+        if canRename || canGroup || canAddToGroup || canAddToAlbum || canMove || canRemove {
             Menu {
                 if canRename,
                    let albumId = selectedAlbumIds.first,
@@ -724,6 +731,9 @@ struct AlbumContentView: View {
                         }
                         selection = .none
                     }
+                }
+                if canAddToAlbum {
+                    Button("Add to album…") { showingAddToAlbumPicker = true }
                 }
                 if canMove {
                     Button("Move to…") { showingMovePicker = true }
@@ -797,6 +807,17 @@ struct AlbumContentView: View {
         .environment(repository)
     }
 
+    private var addToAlbumPickerSheet: some View {
+        AlbumPickerView(repository: repository, title: "Add to album", onSelect: { targetAlbum in
+            addSelectionToAlbum(targetAlbumId: targetAlbum.albumId)
+            showingAddToAlbumPicker = false
+        }, onCancel: {
+            showingAddToAlbumPicker = false
+        })
+        .environment(albumModel)
+        .environment(repository)
+    }
+
     // MARK: Actions
 
     private func handleRemove() {
@@ -832,6 +853,20 @@ struct AlbumContentView: View {
                 albumModel.reparentAlbum(id: id, parentID: targetAlbumId)
             }
             selection = .none
+        }
+    }
+
+    private func addSelectionToAlbum(targetAlbumId: FfiAlbumUuid) {
+        guard case .items(let mediaIds, _) = selection else { return }
+        Task {
+            do {
+                for id in mediaIds {
+                    try await repository.addMediaToAlbum(albumID: targetAlbumId, mediaID: id)
+                }
+                selection = .none
+            } catch {
+                toastManager.show(error: error.localizedDescription)
+            }
         }
     }
 

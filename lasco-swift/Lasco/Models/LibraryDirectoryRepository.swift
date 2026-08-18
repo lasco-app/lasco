@@ -34,6 +34,10 @@ actor LibraryDirectoryRepository {
         return library
     }
 
+    func recoverCRDTState(nickname: String, username: String, password: String) throws {
+        try ffiRecoverLibraryState(nickname: nickname, username: username, password: password, appDir: appSupportDirectory)
+    }
+
     func create(name: String, username: String, password: String) throws -> (library: FfiLibrary, result: FfiCreateLibraryResult) {
         let result = try ffiCreateLibrary(nickname: name, username: username, password: password, appDir: appSupportDirectory)
         let library = try open(nickname: name, username: username, password: password)

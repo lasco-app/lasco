@@ -135,6 +135,7 @@ mod tests {
         Library::init(
             local_dirs,
             library_id,
+            crate::crdt::DeviceId(1),
             Credentials {
                 username: LibraryUsername("alice".into()),
                 password: LibraryPassword("pass".into()),

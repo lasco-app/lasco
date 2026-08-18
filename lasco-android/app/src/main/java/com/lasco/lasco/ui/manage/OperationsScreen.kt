@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -41,9 +41,26 @@ fun OperationsScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val repo = remember { LibraryRepository.from(context) }
     var operations by remember { mutableStateOf<List<FfiCrdtOperation>>(emptyList()) }
+    var nextStartPos by remember { mutableStateOf(0uL) }
+    var hasMore by remember { mutableStateOf(true) }
+    var isLoading by remember { mutableStateOf(false) }
+
+    suspend fun loadMore() {
+        if (isLoading || !hasMore) return
+        isLoading = true
+        try {
+            val endPosExclusive = nextStartPos + 50uL
+            val page = repo.listOperations(nextStartPos, endPosExclusive)
+            operations = operations + page
+            nextStartPos = endPosExclusive
+            hasMore = page.size == 50
+        } finally {
+            isLoading = false
+        }
+    }
 
     LaunchedEffect(Unit) {
-        operations = repo.listOperations().reversed()
+        loadMore()
     }
 
     Column(
@@ -63,7 +80,7 @@ fun OperationsScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
         Text(text = "OPERATIONS", style = LascoTheme.type.categoryLarge(), color = colors.ink)
         Spacer(modifier = Modifier.height(16.dp))
 
-        if (operations.isEmpty()) {
+        if (operations.isEmpty() && !isLoading) {
             Column(
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 verticalArrangement = Arrangement.Center,
@@ -80,9 +97,13 @@ fun OperationsScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                items(operations, key = { "${it.dot.deviceId}:${it.dot.lamportCounter}" }) { operation ->
+                itemsIndexed(operations, key = { _, operation -> "${operation.dot.deviceId}:${operation.dot.lamportCounter}" }) { index, operation ->
                     OperationCard(operation)
+                    if (index == operations.lastIndex) {
+                        LaunchedEffect(operation.dot) { loadMore() }
+                    }
                 }
+                if (isLoading) item { androidx.compose.material3.CircularProgressIndicator(color = colors.ink) }
             }
         }
     }
