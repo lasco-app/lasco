@@ -193,10 +193,11 @@ impl FfiLibrary {
                             continue;
                         }
                     };
-                    match self.rt.block_on(
-                        self.inner
-                            .media_get_bytes(media_uuid, Some(storage.as_ref())),
-                    ) {
+                    match self.rt.block_on(self.inner.media_get_bytes_from_remote(
+                        media_uuid,
+                        &remote_id.to_string(),
+                        storage.as_ref(),
+                    )) {
                         Ok(bytes) => return Ok(bytes),
                         Err(error) => last_error = Some(LascoError::from(error)),
                     }
@@ -283,7 +284,11 @@ impl FfiLibrary {
                         .rt
                         .spawn(async move {
                             inner
-                                .media_get_bytes(media_uuid, Some(storage.as_ref()))
+                                .media_get_bytes_from_remote(
+                                    media_uuid,
+                                    &remote_id.to_string(),
+                                    storage.as_ref(),
+                                )
                                 .await
                         })
                         .await
