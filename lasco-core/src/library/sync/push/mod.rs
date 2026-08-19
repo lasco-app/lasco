@@ -491,3 +491,6 @@ fn stage_and_validate_media(
         .map_err(crate::error::OperationError::Crypto)?;
     Ok((staged, path))
 }
+
+#[cfg(test)]
+mod tests;

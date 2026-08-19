@@ -9,6 +9,34 @@ use super::super::test_utils::{
     REMOTE_ID, make_library, make_library_with_same_keys, remote_uuid, write_file,
 };
 
+/// Writes `operations` to the remote as a single tier 1 compaction file, the same
+/// encoding Push produces.
+async fn write_compaction_file(
+    storage: &StorageMockMemory,
+    master_key: &crate::encryption::master_key::MasterKey,
+    operations: Vec<crate::crdt::CrdtOperation>,
+) {
+    use crate::operations::CompactionFile;
+
+    let file_uuid = crate::identifiers::CompactedOpId::new();
+    let op_count = operations.len();
+    let comp_file = CompactionFile {
+        tier: 1,
+        operations,
+    };
+    let bytes = crate::operations::encrypt_compaction_file(master_key, &file_uuid, &comp_file)
+        .unwrap()
+        .to_bytes();
+    let key = format!("operations/{file_uuid}.op1_{op_count}");
+    crate::operations::remote_ops::write_compaction_bytes(
+        &StorageReadWrite::new(storage),
+        &key,
+        &bytes,
+    )
+    .await
+    .unwrap();
+}
+
 #[tokio::test]
 // fetch is idempotent. A second fetch downloads nothing new.
 async fn fetch_idempotent() {
@@ -40,7 +68,8 @@ async fn fetch_idempotent() {
     let r1 = lib_b.fetch(&storage, REMOTE_ID).await.unwrap();
     let r2 = lib_b.fetch(&storage, REMOTE_ID).await.unwrap();
 
-    assert_eq!(r1.ops_downloaded, 1);
+    // media_add into an album records two operations, MediaCreation then AlbumMediaAdd.
+    assert_eq!(r1.ops_downloaded, 2);
     assert_eq!(r2.ops_downloaded, 0, "second fetch must download nothing");
 }
 
@@ -130,12 +159,9 @@ async fn fetch_sees_externally_modified_remote() {
 }
 
 #[tokio::test]
-// A compaction file on the remote carries an op that B has never seen.
-// B's fetch must decrypt the compaction file and absorb the op.
+// A compaction file on the remote carries operations that B has never seen.
+// B's fetch must decrypt the compaction file and absorb them.
 async fn fetch_absorbs_op_from_compaction_file() {
-    use crate::operations::remote_ops::write_compaction_file;
-    use crate::operations::{CompactionEntry, CompactionFile};
-
     let storage = StorageMockMemory::new();
     let tmp_a = TempDir::new().unwrap();
     let tmp_b = TempDir::new().unwrap();
@@ -161,40 +187,15 @@ async fn fetch_absorbs_op_from_compaction_file() {
         .unwrap()
         .id();
 
-    let group = crate::operations::local_ops::read_pending_op_group(
-        &lib_a
-            .inner
-            .local_dirs
-            .local_state_operations()
-            .pending_op_path(),
-        &lib_a.inner.master_key,
-    )
-    .unwrap()
-    .expect("pending group must exist after media_add");
-
-    let comp_uuid = crate::identifiers::CompactedOpId::new();
-    let comp_file = CompactionFile {
-        tier: 1,
-        contents: vec![CompactionEntry {
-            op_id: group.op_id,
-            group,
-        }],
-    };
-    let comp_key = format!("operations/{comp_uuid}.op1_{}", comp_file.contents.len());
-    write_compaction_file(
-        &StorageReadWrite::new(&storage),
-        &lib_a.inner.master_key,
-        &comp_key,
-        &comp_uuid,
-        &comp_file,
-    )
-    .await
-    .unwrap();
+    let operations = lib_a.list_operations().unwrap();
+    assert!(!operations.is_empty(), "media_add must record operations");
+    let op_count = operations.len();
+    write_compaction_file(&storage, &lib_a.inner.master_key, operations).await;
 
     let report = lib_b.fetch(&storage, REMOTE_ID).await.unwrap();
     assert_eq!(
-        report.ops_downloaded, 1,
-        "B must absorb the op from the compaction file"
+        report.ops_downloaded, op_count,
+        "B must absorb the ops from the compaction file"
     );
     lib_b
         .media_show(mid)
@@ -205,9 +206,6 @@ async fn fetch_absorbs_op_from_compaction_file() {
 // An op present in two separate compaction files (e.g. after concurrent pushes) is not
 // double-appended to the local log.
 async fn fetch_does_not_double_append_op_in_two_compaction_files() {
-    use crate::operations::remote_ops::write_compaction_file;
-    use crate::operations::{CompactionEntry, CompactionFile};
-
     let storage = StorageMockMemory::new();
     let tmp_a = TempDir::new().unwrap();
     let tmp_b = TempDir::new().unwrap();
@@ -233,41 +231,19 @@ async fn fetch_does_not_double_append_op_in_two_compaction_files() {
         .unwrap()
         .id();
 
-    let group = crate::operations::local_ops::read_pending_op_group(
-        &lib_a
-            .inner
-            .local_dirs
-            .local_state_operations()
-            .pending_op_path(),
-        &lib_a.inner.master_key,
-    )
-    .unwrap()
-    .expect("pending group must exist after media_add");
+    let operations = lib_a.list_operations().unwrap();
+    let op_count = operations.len();
 
-    // Write the same op group into two different compaction files.
-    for i in 0u32..2 {
-        let comp_uuid = crate::identifiers::CompactedOpId::new();
-        let comp_file = CompactionFile {
-            tier: 1,
-            contents: vec![CompactionEntry {
-                op_id: group.op_id,
-                group: group.clone(),
-            }],
-        };
-        let comp_key = format!("operations/{comp_uuid}.op1_{i}");
-        write_compaction_file(
-            &StorageReadWrite::new(&storage),
-            &lib_a.inner.master_key,
-            &comp_key,
-            &comp_uuid,
-            &comp_file,
-        )
-        .await
-        .unwrap();
+    // Write the same operations into two different compaction files.
+    for _ in 0u32..2 {
+        write_compaction_file(&storage, &lib_a.inner.master_key, operations.clone()).await;
     }
 
     let report = lib_b.fetch(&storage, REMOTE_ID).await.unwrap();
-    assert_eq!(report.ops_downloaded, 1, "op must be appended exactly once");
+    assert_eq!(
+        report.ops_downloaded, op_count,
+        "each op must be appended exactly once"
+    );
     lib_b.media_show(mid).expect("B must have the media");
 
     let report2 = lib_b.fetch(&storage, REMOTE_ID).await.unwrap();
@@ -292,41 +268,19 @@ async fn fetch_converges_after_compaction_push() {
         .unwrap();
     let lib_b = make_library_with_same_keys(&tmp_b, &lib_a).await;
 
-    // Inject 20 op groups directly into A's main log (bypassing pending).
-    for _ in 0..20usize {
-        let op_id = crate::identifiers::OpUuid::new();
-        let media_id = crate::identifiers::MediaUuid::from_uuid(uuid::Uuid::new_v4());
-        let group = crate::operations::OperationGroup {
-            op_id,
-            parent_op_id: None,
-            author: lib_a.inner.username.clone(),
-            operations: vec![crate::operations::Operation::MediaCreation {
-                timestamp: chrono::Utc::now(),
-                media_id,
-                filename_original: crate::operations::MediaFilename("x.jpg".into()),
-                date: chrono::Utc::now(),
-                storage_date: crate::operations::StorageDate {
-                    year: 2024,
-                    month: 1,
-                },
-                size_bytes: 100,
-                content_hash: crate::library::media::MediaHash::zeroed(),
-                modified_at: None,
-                gps: None,
-                apple_aae_media_id: None,
-                apple_live_photo_media_id: None,
-            }],
-        };
-        crate::operations::local_ops::append_op_group(
-            &lib_a
-                .inner
-                .local_dirs
-                .local_state_operations()
-                .operations_log_path(),
-            &lib_a.inner.master_key,
-            &group,
-        )
-        .unwrap();
+    // Twenty media, each added outside any album so each records exactly one operation.
+    for i in 0..20usize {
+        let src = write_file(tmp_a.path(), &format!("x{i}.jpg"), format!("data-{i}").as_bytes());
+        lib_a
+            .media_add(
+                crate::library::media::upload::MediaAddSource::CopyFrom(src),
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap();
     }
 
     let report = lib_a.push(&storage, REMOTE_ID).await.unwrap();
@@ -375,7 +329,7 @@ async fn fetch_updates_media_list_from_ops() {
     let media_list_path = lib_b
         .inner
         .local_dirs
-        .remote_media_list(REMOTE_ID)
+        .remote_media_list(&REMOTE_ID.to_string())
         .media_list_path();
     let media_list =
         crate::remote::local_state::media_list_json::MediaList::load_or_default(&media_list_path)
@@ -544,7 +498,7 @@ async fn fetch_errors_on_remote_id_mismatch() {
     // Corrupt the remote's remote_id_{uuid} marker to simulate a different remote.
     let wrong_marker = format!("remote_id_{}", Uuid::new_v4());
     storage
-        .delete(&format!("remote_id_{}", REMOTE_ID))
+        .delete(&format!("remote_id_{REMOTE_ID}"))
         .await
         .unwrap();
     storage

@@ -405,3 +405,6 @@ fn reconcile_snapshot_with_operation_log(
     )?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests;
