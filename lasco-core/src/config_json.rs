@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::fs;
@@ -27,8 +27,6 @@ impl fmt::Display for LibraryNickname {
         write!(f, "{}", self.0)
     }
 }
-
-pub const APP_CONFIG_VERSION: u32 = 1;
 
 /// Returns the platform-default application data directory for lasco.
 ///
@@ -60,9 +58,6 @@ pub fn library_data_dir(app_dir: &Path, library_id: &LibraryId) -> PathBuf {
 /// Library names, remotes, and credentials live in each library's `library.json`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConfigJson {
-    /// Configuration version
-    #[serde(default = "default_version")]
-    pub version: u32,
     /// ID of the default library
     pub default_library_id: Option<LibraryId>,
     /// All registered library IDs
@@ -72,15 +67,10 @@ pub struct ConfigJson {
 impl Default for ConfigJson {
     fn default() -> Self {
         Self {
-            version: APP_CONFIG_VERSION,
             default_library_id: None,
             libraries: vec![],
         }
     }
-}
-
-fn default_version() -> u32 {
-    APP_CONFIG_VERSION
 }
 
 impl ConfigJson {
@@ -88,7 +78,7 @@ impl ConfigJson {
     ///
     /// # Errors
     ///
-    /// Returns an error if the file cannot be read, is invalid JSON, or has an unsupported version.
+    /// Returns an error if the file cannot be read or is invalid JSON.
     pub fn load(app_dir: &Path) -> Result<Option<Self>> {
         let path = app_config_path(app_dir);
         if !path.exists() {
@@ -98,13 +88,6 @@ impl ConfigJson {
             .with_context(|| format!("failed to read app config from {}", path.display()))?;
         let config: ConfigJson =
             serde_json::from_slice(&data).context("failed to parse config.json")?;
-        if config.version != APP_CONFIG_VERSION {
-            bail!(
-                "unsupported config version {} (expected {})",
-                config.version,
-                APP_CONFIG_VERSION
-            );
-        }
         Ok(Some(config))
     }
 

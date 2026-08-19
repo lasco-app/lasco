@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -8,8 +8,6 @@ use crate::config_json::{ConfigJson, LibraryNickname, library_data_dir};
 use crate::crdt::DeviceId;
 use crate::identifiers::{LibraryId, RemoteUuid};
 use crate::operations::LibraryUsername;
-
-pub const LIBRARY_JSON_VERSION: u32 = 1;
 
 // Remote storage configuration types
 
@@ -93,9 +91,6 @@ pub struct DebugLocalAndroidConfig {
 /// It holds the library preferences and the ordered list of remotes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LibraryJson {
-    /// Configuration version
-    #[serde(default = "default_library_version")]
-    pub version: u32,
     /// User-friendly nickname for the library.
     pub library_nickname: LibraryNickname,
     /// Stable local CRDT author identity. This configuration is never uploaded to remotes.
@@ -118,10 +113,6 @@ pub struct LibraryJson {
     pub media_source_order: Vec<RemoteUuid>,
 }
 
-fn default_library_version() -> u32 {
-    LIBRARY_JSON_VERSION
-}
-
 /// Path to a library's `library.json`
 #[must_use]
 pub fn library_json_path(app_dir: &Path, library_id: &LibraryId) -> PathBuf {
@@ -133,7 +124,7 @@ impl LibraryJson {
     ///
     /// # Errors
     ///
-    /// Returns an error if the file cannot be read, is invalid JSON, or has an unsupported version.
+    /// Returns an error if the file cannot be read or is invalid JSON.
     pub fn load(app_dir: &Path, library_id: &LibraryId) -> Result<Option<Self>> {
         let path = library_json_path(app_dir, library_id);
         if !path.exists() {
@@ -143,13 +134,6 @@ impl LibraryJson {
             .with_context(|| format!("failed to read library config from {}", path.display()))?;
         let mut config: LibraryJson =
             serde_json::from_slice(&data).context("failed to parse library.json")?;
-        if config.version != LIBRARY_JSON_VERSION {
-            bail!(
-                "unsupported library config version {} (expected {})",
-                config.version,
-                LIBRARY_JSON_VERSION
-            );
-        }
         // Old configurations did not carry the ordered subset. Preserve their established
         // priority semantics on first load; subsequent saves write only the new field.
         if config.media_source_order.is_empty() {
@@ -400,7 +384,6 @@ mod tests {
 
     fn make_test_library(remote_path: PathBuf) -> LibraryJson {
         LibraryJson {
-            version: LIBRARY_JSON_VERSION,
             library_nickname: LibraryNickname("test".to_string()),
             device_id: DeviceId(1),
             default_username: None,

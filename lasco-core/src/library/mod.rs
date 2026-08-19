@@ -36,10 +36,14 @@ pub use crate::identifiers::LibraryId;
 pub const PROTOCOL_VERSION: u32 = 1;
 
 /// Library format version written as a sentinel file (`local_state/library/version_{i}`) on init.
+/// Increment it when the on-disk layout changes in a way an older build must not open.
 pub const LIBRARY_FORMAT_VERSION: u32 = 1;
 
 /// Sentinel filename for the current library format version.
-pub const LIBRARY_FORMAT_SENTINEL: &str = "version_1";
+#[must_use]
+pub fn library_format_sentinel() -> String {
+    format!("version_{LIBRARY_FORMAT_VERSION}")
+}
 
 #[derive(Debug)]
 pub struct Credentials {
@@ -115,7 +119,7 @@ impl Library {
         let salt = generate_salt();
         write_salt_file(lib_dir.path(), salt)?;
 
-        std::fs::write(lib_dir.path().join(LIBRARY_FORMAT_SENTINEL), b"")?;
+        std::fs::write(lib_dir.path().join(library_format_sentinel()), b"")?;
         std::fs::write(
             lib_dir.path().join(format!("library_id_{}", library_id.0)),
             b"",
@@ -162,11 +166,11 @@ impl Library {
         credentials: Credentials,
     ) -> Result<Library> {
         let lib_dir = local_dirs.local_state_library_dir();
-        let sentinel_path = lib_dir.path().join(LIBRARY_FORMAT_SENTINEL);
+        let sentinel_path = lib_dir.path().join(library_format_sentinel());
         if !sentinel_path.exists() {
             return Err(LibraryError::UnsupportedFormatVersion {
                 found: "(unknown)".to_string(),
-                expected: LIBRARY_FORMAT_SENTINEL.to_string(),
+                expected: library_format_sentinel(),
             });
         }
 

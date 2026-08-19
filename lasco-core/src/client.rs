@@ -175,7 +175,6 @@ pub async fn create_library(
     .context("failed to initialise library")?;
 
     let library_config = LibraryJson {
-        version: crate::library_json::LIBRARY_JSON_VERSION,
         library_nickname: LibraryNickname(nickname),
         device_id,
         default_fetch_remote: None,
@@ -383,7 +382,6 @@ pub async fn add_existing_library_s3(
     };
 
     let library_config = LibraryJson {
-        version: crate::library_json::LIBRARY_JSON_VERSION,
         library_nickname: LibraryNickname(nickname),
         device_id,
         default_username: Some(effective_username.clone()),
