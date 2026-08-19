@@ -80,6 +80,26 @@ fun StatusScreen(modifier: Modifier = Modifier) {
     var showClearThumbsConfirm by remember { mutableStateOf(false) }
     var cleanBlockedCount by remember { mutableStateOf<Int?>(null) }
     var feedback by remember { mutableStateOf<String?>(null) }
+    var pushBlocked by remember { mutableStateOf<PushBlockedState?>(null) }
+
+    // A manual push offers the recovery dialog when preparation could not place some media. An
+    // automatic push has no one to ask, so SyncController reports its failure as a plain error.
+    suspend fun runPush(remote: FfiRemote) {
+        when (val result = statusViewModel.pushRemote(remote.remoteId)) {
+            PushResult.Success -> feedback = "${remote.name}: pushed"
+            is PushResult.Failed -> feedback = result.message
+            is PushResult.MissingLocalMedia ->
+                feedback = "Some media is not stored on this device or in the configured download sources."
+            is PushResult.MissingMediaOnConfiguredSources ->
+                pushBlocked = PushBlockedState(
+                    target = remote,
+                    sources = session.mediaSourceOrder
+                        .filter { it != remote.remoteId }
+                        .mapNotNull { id -> session.remotes.firstOrNull { it.remoteId == id } },
+                    mediaCount = result.mediaIds.size,
+                )
+        }
+    }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) { statusViewModel.refreshLocalStateStats() }
@@ -201,16 +221,7 @@ fun StatusScreen(modifier: Modifier = Modifier) {
                         lastFetch = fetchRecords[remote.remoteId],
                         pushEnabled = remote.remoteId !in syncState.busyRemoteIds,
                         fetchEnabled = remote.remoteId !in syncState.busyRemoteIds && !syncState.fetchInProgress,
-                        onPush = {
-                            scope.launch {
-                                when (val result = statusViewModel.pushRemote(remote.remoteId)) {
-                                    PushResult.Success -> feedback = "${remote.name}: pushed"
-                                    is PushResult.Failed -> feedback = result.message
-                                    is PushResult.MissingLocalMedia ->
-                                        feedback = "Some media is not stored on this device or in the configured download sources."
-                                }
-                            }
-                        },
+                        onPush = { scope.launch { runPush(remote) } },
                         onFetch = {
                             scope.launch {
                                 val err = statusViewModel.fetchRemote(remote.remoteId)
@@ -224,6 +235,21 @@ fun StatusScreen(modifier: Modifier = Modifier) {
 
             Spacer(modifier = Modifier.height(100.dp))
         }
+    }
+
+    pushBlocked?.let { blocked ->
+        PushBlockedDialog(
+            targetRemote = blocked.target,
+            sourceRemotes = blocked.sources,
+            mediaCount = blocked.mediaCount,
+            onConfirm = { statusViewModel.confirmRemoteMedia(it) },
+            onRetry = {
+                val target = blocked.target
+                pushBlocked = null
+                scope.launch { runPush(target) }
+            },
+            onCancel = { pushBlocked = null },
+        )
     }
 
     if (showRemotePicker) {
@@ -415,3 +441,13 @@ private fun SyncStatusRow(
         Text(text = dateLabel, style = LascoTheme.type.mono(), color = colors.inkMuted)
     }
 }
+
+/**
+ * What the push recovery dialog needs: the blocked push's target, the remotes that could hold
+ * the media, and how many media are concerned.
+ */
+private data class PushBlockedState(
+    val target: FfiRemote,
+    val sources: List<FfiRemote>,
+    val mediaCount: Int,
+)

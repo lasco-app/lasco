@@ -17,20 +17,22 @@ use super::remote_access::StorageRead;
 /// instead of one existence check per blob.
 ///
 /// Every error is ignored. This is opportunistic bookkeeping and must never fail its caller.
-/// An unconfirmed media stays absent from the inventory, which only means unconfirmed.
+/// An unconfirmed blob stays absent from the inventory, which only means unconfirmed.
+///
+/// Returns how many blobs it newly confirmed.
 pub(crate) async fn confirm_known_media(
     storage: &StorageRead<'_>,
     known_media: &[(MediaUuid, StorageDate)],
     remote_id: &str,
     remote_media_list: &RemoteMediaList,
     remote_media_list_lock: &RemoteMediaListLock,
-) {
+) -> usize {
     let Ok(media_list) =
         remote_media_list_lock.with_lock(remote_id, remote_media_list, |remote_media_list| {
             MediaList::load_or_default(&remote_media_list.media_list_path())
         })
     else {
-        return;
+        return 0;
     };
 
     let mut candidates_by_folder: BTreeMap<(u16, u8), Vec<MediaUuid>> = BTreeMap::new();
@@ -44,7 +46,7 @@ pub(crate) async fn confirm_known_media(
             .push(*media_id);
     }
     if candidates_by_folder.is_empty() {
-        return;
+        return 0;
     }
 
     let mut confirmed = Vec::new();
@@ -65,7 +67,7 @@ pub(crate) async fn confirm_known_media(
         }
     }
     if confirmed.is_empty() {
-        return;
+        return 0;
     }
 
     // Reload under the lock so this write preserves any observation made by another remote's
@@ -73,14 +75,17 @@ pub(crate) async fn confirm_known_media(
     remote_media_list_lock.with_lock(remote_id, remote_media_list, |remote_media_list| {
         let path = remote_media_list.media_list_path();
         let Ok(mut media_list) = MediaList::load_or_default(&path) else {
-            return;
+            return 0;
         };
-        let mut changed = false;
+        let mut newly_confirmed = 0;
         for (media_id, full, thumb) in confirmed {
-            changed |= media_list.record(media_id, full, thumb);
+            if media_list.record(media_id, full, thumb) {
+                newly_confirmed += 1;
+            }
         }
-        if changed {
-            let _ = media_list.save(&path);
+        if newly_confirmed > 0 && media_list.save(&path).is_err() {
+            return 0;
         }
-    });
+        newly_confirmed
+    })
 }

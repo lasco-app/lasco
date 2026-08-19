@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.lasco.lasco.data.Change
+import com.lasco.lasco.data.ConfirmMediaResult
 import com.lasco.lasco.data.LibraryRepository
 import com.lasco.lasco.data.Prefs
 import com.lasco.lasco.data.SessionState
@@ -71,6 +72,9 @@ class StatusViewModel(
     }
 
     suspend fun pushRemote(remoteId: FfiRemoteUuid): PushResult = repo.sync.pushRemote(remoteId)
+
+    suspend fun confirmRemoteMedia(remoteId: FfiRemoteUuid): ConfirmMediaResult =
+        repo.sync.confirmRemoteMedia(remoteId)
 
     suspend fun fetchRemote(remoteId: FfiRemoteUuid): String? {
         val result = repo.sync.fetchRemoteWithResult(remoteId)

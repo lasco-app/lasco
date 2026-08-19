@@ -690,6 +690,17 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     func allMediaIds()  -> [FfiMediaUuid]
     
     /**
+     * Confirms which media blobs a remote holds and records them in its media inventory,
+     * without fetching. Returns how many blobs it newly confirmed.
+     *
+     * # Errors
+     *
+     * Returns an error if the ID is invalid, storage cannot be built, a sync is already
+     * running for this remote, or the remote does not belong to this library.
+     */
+    func confirmRemoteMediaAsync(remoteId: FfiRemoteUuid, appSupportDir: String?) async throws  -> UInt64
+    
+    /**
      * # Errors
      *
      * Returns an error if the ID/configuration is invalid, storage cannot be built, or remote identity cannot be verified.
@@ -1005,7 +1016,13 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     func pushRemoteFromRemoteAsync(targetRemoteId: FfiRemoteUuid, sourceRemoteId: FfiRemoteUuid, appSupportDir: String?) async throws  -> UInt64
     
     /**
-     * Push using the ordered configured media sources. Resolution completes before core push starts.
+     * Push using the ordered configured media sources. Preparation completes before core push
+     * starts, and reads nothing but local files: the media cache and the media inventories.
+     *
+     * # Errors
+     *
+     * Returns an error if the ID or configuration is invalid, storage cannot be built, some
+     * data blob has no known place to be read from, or the push itself fails.
      */
     func pushRemoteUsingConfiguredMediaSourcesAsync(targetRemoteId: FfiRemoteUuid, appSupportDir: String?) async throws  -> UInt64
     
@@ -1458,6 +1475,32 @@ nonisolated open func allMediaIds() -> [FfiMediaUuid]  {
     uniffi_lasco_ffi_fn_method_ffilibrary_all_media_ids(self.uniffiClonePointer(),$0
     )
 })
+}
+    
+    /**
+     * Confirms which media blobs a remote holds and records them in its media inventory,
+     * without fetching. Returns how many blobs it newly confirmed.
+     *
+     * # Errors
+     *
+     * Returns an error if the ID is invalid, storage cannot be built, a sync is already
+     * running for this remote, or the remote does not belong to this library.
+     */
+nonisolated open func confirmRemoteMediaAsync(remoteId: FfiRemoteUuid, appSupportDir: String?)async throws  -> UInt64  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_lasco_ffi_fn_method_ffilibrary_confirm_remote_media_async(
+                    self.uniffiClonePointer(),
+                    FfiConverterTypeFfiRemoteUuid_lower(remoteId),FfiConverterOptionString.lower(appSupportDir)
+                )
+            },
+            pollFunc: ffi_lasco_ffi_rust_future_poll_u64,
+            completeFunc: ffi_lasco_ffi_rust_future_complete_u64,
+            freeFunc: ffi_lasco_ffi_rust_future_free_u64,
+            liftFunc: FfiConverterUInt64.lift,
+            errorHandler: FfiConverterTypeLascoError_lift
+        )
 }
     
     /**
@@ -2111,7 +2154,13 @@ nonisolated open func pushRemoteFromRemoteAsync(targetRemoteId: FfiRemoteUuid, s
 }
     
     /**
-     * Push using the ordered configured media sources. Resolution completes before core push starts.
+     * Push using the ordered configured media sources. Preparation completes before core push
+     * starts, and reads nothing but local files: the media cache and the media inventories.
+     *
+     * # Errors
+     *
+     * Returns an error if the ID or configuration is invalid, storage cannot be built, some
+     * data blob has no known place to be read from, or the push itself fails.
      */
 nonisolated open func pushRemoteUsingConfiguredMediaSourcesAsync(targetRemoteId: FfiRemoteUuid, appSupportDir: String?)async throws  -> UInt64  {
     return
@@ -4175,6 +4224,8 @@ nonisolated public enum LascoError: Swift.Error {
     case SyncBusy
     case MissingLocalMedia(mediaIds: [FfiMediaId]
     )
+    case MissingMediaOnConfiguredSources(mediaIds: [FfiMediaId]
+    )
     case CrdtRecoveryAvailable
     case Storage(msg: String
     )
@@ -4202,11 +4253,14 @@ nonisolated public struct FfiConverterTypeLascoError: FfiConverterRustBuffer {
         case 4: return .MissingLocalMedia(
             mediaIds: try FfiConverterSequenceTypeFfiMediaId.read(from: &buf)
             )
-        case 5: return .CrdtRecoveryAvailable
-        case 6: return .Storage(
+        case 5: return .MissingMediaOnConfiguredSources(
+            mediaIds: try FfiConverterSequenceTypeFfiMediaId.read(from: &buf)
+            )
+        case 6: return .CrdtRecoveryAvailable
+        case 7: return .Storage(
             msg: try FfiConverterString.read(from: &buf)
             )
-        case 7: return .Other(
+        case 8: return .Other(
             msg: try FfiConverterString.read(from: &buf)
             )
 
@@ -4238,17 +4292,22 @@ nonisolated public struct FfiConverterTypeLascoError: FfiConverterRustBuffer {
             FfiConverterSequenceTypeFfiMediaId.write(mediaIds, into: &buf)
             
         
-        case .CrdtRecoveryAvailable:
+        case let .MissingMediaOnConfiguredSources(mediaIds):
             writeInt(&buf, Int32(5))
+            FfiConverterSequenceTypeFfiMediaId.write(mediaIds, into: &buf)
+            
+        
+        case .CrdtRecoveryAvailable:
+            writeInt(&buf, Int32(6))
         
         
         case let .Storage(msg):
-            writeInt(&buf, Int32(6))
+            writeInt(&buf, Int32(7))
             FfiConverterString.write(msg, into: &buf)
             
         
         case let .Other(msg):
-            writeInt(&buf, Int32(7))
+            writeInt(&buf, Int32(8))
             FfiConverterString.write(msg, into: &buf)
             
         }
@@ -5093,6 +5152,9 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_all_media_ids() != 28671) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_confirm_remote_media_async() != 59085) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_connect_remote() != 33397) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -5240,7 +5302,7 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_from_remote_async() != 41311) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_using_configured_media_sources_async() != 15476) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_using_configured_media_sources_async() != 9550) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_remove_media_from_album() != 46585) {

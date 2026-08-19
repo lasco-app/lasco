@@ -16,11 +16,48 @@ use super::compaction::{
     self, appropriate_tier, count_tier_files, release_lock, tier_needs_compaction, try_acquire_lock,
 };
 use super::media_inventory::confirm_known_media;
-use super::remote_access::StorageReadWrite;
+use super::remote_access::{StorageRead, StorageReadWrite};
 use super::{
-    PlannedMediaSource, PushMediaPlan, PushMediaRequirement, PushMediaSource, SyncReportPush,
-    map_op_err, verify_remote_identity, verify_remote_library_format,
+    MediaBlob, PlannedMediaSource, PushMediaPlan, PushMediaResolution, PushMediaSource,
+    SyncReportPush, map_op_err, verify_remote_identity, verify_remote_library_format,
 };
+
+/// Where to read one thumbnail that is not cached locally.
+///
+/// A plan names a source per blob, so a thumbnail can come from a different remote than its
+/// original. Returning `None` leaves the thumbnail unconfirmed on the target, which is never an
+/// error: nothing records whether a media ever had a thumbnail.
+fn thumb_source<'a>(
+    media_source: &'a PushMediaSource<'a>,
+    relay_source: &Option<(RemoteUuid, &'a StorageRead<'a>)>,
+    media_id: MediaUuid,
+) -> Option<&'a StorageRead<'a>> {
+    match media_source {
+        PushMediaSource::Plan(plan) => {
+            match plan.assignments.get(&(media_id, MediaBlob::Thumb))? {
+                PlannedMediaSource::Local => None,
+                PlannedMediaSource::Remote(id) => plan.sources.get(id),
+            }
+        }
+        _ => relay_source.as_ref().map(|(_, source)| *source),
+    }
+}
+
+/// The local cache first, since using it costs no download, then the first candidate whose own
+/// inventory confirms the blob.
+fn resolve_blob(
+    cached_locally: bool,
+    candidates: &[(RemoteUuid, MediaList)],
+    confirmed: impl Fn(&MediaList) -> bool,
+) -> Option<PlannedMediaSource> {
+    if cached_locally {
+        return Some(PlannedMediaSource::Local);
+    }
+    candidates
+        .iter()
+        .find(|(_, inventory)| confirmed(inventory))
+        .map(|(remote_id, _)| PlannedMediaSource::Remote(*remote_id))
+}
 
 struct FileToPush {
     media_id: MediaUuid,
@@ -38,36 +75,83 @@ pub(super) struct PushAccess<'a> {
 }
 
 impl Library {
-    /// Returns the immutable input needed by the application layer to resolve relay sources.
-    pub fn prepare_push_media(
+    /// Resolves, for every blob the target is missing, where to get it.
+    ///
+    /// This is push preparation. It reads the local media cache and the media inventories of
+    /// the target and of the candidate sources, in `source_priority` order, and contacts no
+    /// remote at all, so it works offline and always terminates immediately.
+    ///
+    /// A blob the target's own inventory already confirms is left out of the plan, since push
+    /// has nothing to do for it.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a media inventory exists but cannot be read.
+    pub fn resolve_push_media(
         &self,
-        remote_id: RemoteUuid,
-    ) -> Result<Vec<PushMediaRequirement>, LibraryError> {
-        let remote_media_list = self
-            .inner
-            .local_dirs
-            .remote_media_list(&remote_id.to_string());
-        let media_list = MediaList::load_or_default(&remote_media_list.media_list_path())?;
+        target: RemoteUuid,
+        source_priority: &[RemoteUuid],
+    ) -> Result<PushMediaResolution, LibraryError> {
+        let load_inventory = |remote_id: RemoteUuid| -> Result<MediaList, LibraryError> {
+            let remote_id = remote_id.to_string();
+            let remote_media_list = self.inner.local_dirs.remote_media_list(&remote_id);
+            Ok(self.inner.remote_media_list_lock.with_lock(
+                &remote_id,
+                &remote_media_list,
+                |remote_media_list| {
+                    MediaList::load_or_default(&remote_media_list.media_list_path())
+                },
+            )?)
+        };
+
+        let target_inventory = load_inventory(target)?;
+        let mut candidates = Vec::new();
+        for candidate in source_priority {
+            if *candidate == target {
+                continue;
+            }
+            candidates.push((*candidate, load_inventory(*candidate)?));
+        }
+
         let media_dir = self.inner.local_dirs.local_state_media_dir();
-        Ok(self
-            .inner
-            .state
-            .read()
-            .media_entries()
-            .iter()
-            .map(|entry| PushMediaRequirement {
-                media_id: entry.media_id,
-                storage_date: entry.storage_date,
-                local: media_dir
-                    .data_path(
-                        entry.storage_date.year,
-                        entry.storage_date.month,
-                        &entry.media_id,
-                    )
-                    .exists(),
-                target_has_original: media_list.has_full(&entry.media_id),
-            })
-            .collect())
+        let mut resolution = PushMediaResolution::default();
+        for entry in self.inner.state.read().media_entries() {
+            let year = entry.storage_date.year;
+            let month = entry.storage_date.month;
+
+            if !target_inventory.has_full(&entry.media_id) {
+                let cached = media_dir.data_path(year, month, &entry.media_id).exists();
+                let source = resolve_blob(cached, &candidates, |inventory| {
+                    inventory.has_full(&entry.media_id)
+                });
+                match source {
+                    Some(source) => {
+                        resolution
+                            .assignments
+                            .insert((entry.media_id, MediaBlob::Data), source);
+                    }
+                    // Uploading the library without the original would lose the media.
+                    None => resolution.unresolved_data.push(entry.media_id),
+                }
+            }
+
+            if !target_inventory.has_thumb(&entry.media_id) {
+                let cached = media_dir.thumb_path(year, month, &entry.media_id).exists();
+                let source = resolve_blob(cached, &candidates, |inventory| {
+                    inventory.has_thumb(&entry.media_id)
+                });
+                // A thumbnail nobody can provide is left out rather than reported. Nothing
+                // records whether a media ever had one, so failing here would let a media
+                // without a thumbnail block every push of the library.
+                if let Some(source) = source {
+                    resolution
+                        .assignments
+                        .insert((entry.media_id, MediaBlob::Thumb), source);
+                }
+            }
+        }
+
+        Ok(resolution)
     }
 
     pub async fn push_with_media_plan(
@@ -394,20 +478,24 @@ impl Library {
                     (std::fs::read(&data_path)?, None)
                 } else {
                     let (source_id, source) = match &media_source {
-                        PushMediaSource::Plan(plan) => match plan.assignments.get(&item.media_id) {
-                            Some(PlannedMediaSource::Remote(id)) => (
-                                *id,
-                                plan.sources.get(id).ok_or_else(|| {
-                                    SyncError::MissingMediaOnConfiguredSources(vec![item.media_id])
-                                })?,
-                            ),
-                            _ => {
-                                return Err(SyncError::MissingMediaOnConfiguredSources(vec![
-                                    item.media_id,
-                                ])
-                                .into());
+                        PushMediaSource::Plan(plan) => {
+                            match plan.assignments.get(&(item.media_id, MediaBlob::Data)) {
+                                Some(PlannedMediaSource::Remote(id)) => (
+                                    *id,
+                                    plan.sources.get(id).ok_or_else(|| {
+                                        SyncError::MissingMediaOnConfiguredSources(vec![
+                                            item.media_id,
+                                        ])
+                                    })?,
+                                ),
+                                _ => {
+                                    return Err(SyncError::MissingMediaOnConfiguredSources(vec![
+                                        item.media_id,
+                                    ])
+                                    .into());
+                                }
                             }
-                        },
+                        }
                         _ => {
                             let (id, source) = relay_source
                                 .as_ref()
@@ -462,7 +550,9 @@ impl Library {
                         .await
                         .map_err(SyncError::RemoteUnreachable)?;
                     thumb_present = true;
-                } else if let Some((_, source)) = relay_source.as_ref() {
+                } else if let Some(source) =
+                    thumb_source(&media_source, &relay_source, item.media_id)
+                {
                     match source.get(&thumb_key).await {
                         Ok(downloaded) => match stage_and_validate_media(
                             staging_dir.path(),

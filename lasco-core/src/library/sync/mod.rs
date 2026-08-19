@@ -47,9 +47,17 @@ pub enum PushMediaSource<'a> {
     Plan(PushMediaPlan<'a>),
 }
 
-/// A fully resolved, per-original relay plan. Core never probes sources outside this plan.
+/// The two blobs of one media. They are resolved, relayed and confirmed separately, since a
+/// remote pushed to before a thumbnail existed holds the original without it.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum MediaBlob {
+    Data,
+    Thumb,
+}
+
+/// A fully resolved, per-blob relay plan. Core never reads a source outside this plan.
 pub struct PushMediaPlan<'a> {
-    pub assignments: HashMap<MediaUuid, PlannedMediaSource>,
+    pub assignments: HashMap<(MediaUuid, MediaBlob), PlannedMediaSource>,
     pub sources: HashMap<RemoteUuid, StorageRead<'a>>,
 }
 
@@ -59,12 +67,29 @@ pub enum PlannedMediaSource {
     Remote(RemoteUuid),
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct PushMediaRequirement {
-    pub media_id: MediaUuid,
-    pub storage_date: crate::operations::StorageDate,
-    pub local: bool,
-    pub target_has_original: bool,
+/// What push preparation resolved, from local knowledge alone.
+///
+/// A data blob with nowhere to read it from is reported in `unresolved_data` and must fail the
+/// push before anything is uploaded. A thumbnail with nowhere to read it from is simply absent
+/// from `assignments`, because nothing records whether a media ever had one.
+#[derive(Debug, Default)]
+pub struct PushMediaResolution {
+    pub assignments: HashMap<(MediaUuid, MediaBlob), PlannedMediaSource>,
+    pub unresolved_data: Vec<MediaUuid>,
+}
+
+impl PushMediaResolution {
+    /// The remotes the plan names, which are the only ones the caller must build storage for.
+    #[must_use]
+    pub fn source_remote_ids(&self) -> std::collections::HashSet<RemoteUuid> {
+        self.assignments
+            .values()
+            .filter_map(|source| match source {
+                PlannedMediaSource::Local => None,
+                PlannedMediaSource::Remote(id) => Some(*id),
+            })
+            .collect()
+    }
 }
 
 impl std::fmt::Debug for PushMediaSource<'_> {
@@ -87,6 +112,49 @@ pub struct SyncReport {
 }
 
 impl Library {
+    /// Confirms which media blobs `remote_id` holds and records them in its media inventory.
+    ///
+    /// This is media availability confirmation run on its own, which is how a client repairs
+    /// incomplete knowledge of a remote without performing a full fetch. It lists media folders
+    /// only, so it never reads an operation file and cannot become an implicit fetch.
+    ///
+    /// Returns how many blobs it newly confirmed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a sync is already running for this remote, or if the remote does not
+    /// identify as belonging to this library.
+    pub async fn confirm_remote_media(
+        &self,
+        storage: &dyn crate::storage::Storage,
+        remote_id: RemoteUuid,
+    ) -> Result<usize, LibraryError> {
+        let remote_id_string = remote_id.to_string();
+        let _remote_guard = self
+            .try_acquire_remote_sync(&remote_id_string)
+            .ok_or(SyncError::AlreadyRunning)?;
+        let remote = StorageRead::new(storage);
+        verify_remote_identity(&remote, remote_id).await?;
+
+        let known_media: Vec<(MediaUuid, crate::operations::StorageDate)> = {
+            let state = self.inner.state.read();
+            state
+                .media_entries()
+                .iter()
+                .map(|entry| (entry.media_id, entry.storage_date))
+                .collect()
+        };
+        let remote_media_list = self.inner.local_dirs.remote_media_list(&remote_id_string);
+        Ok(media_inventory::confirm_known_media(
+            &remote,
+            &known_media,
+            &remote_id_string,
+            &remote_media_list,
+            &self.inner.remote_media_list_lock,
+        )
+        .await)
+    }
+
     /// Copy local crypto files (`library/`) to the remote if not already present.
     /// Idempotent. Does nothing if `library/` already exists on the remote.
     ///

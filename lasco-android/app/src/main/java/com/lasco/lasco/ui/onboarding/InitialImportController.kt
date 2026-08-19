@@ -229,6 +229,8 @@ class InitialImportController(
                 is com.lasco.lasco.data.PushResult.Success -> return
                 is com.lasco.lasco.data.PushResult.Failed -> result.message
                 is com.lasco.lasco.data.PushResult.MissingLocalMedia -> "Media missing from local cache"
+                is com.lasco.lasco.data.PushResult.MissingMediaOnConfiguredSources ->
+                    "Some media have no known place to be copied from"
             }
             lastError = error
             Log.w(TAG, "push attempt ${attempt + 1} of $PUSH_ATTEMPTS failed: $error")

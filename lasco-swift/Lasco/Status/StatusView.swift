@@ -12,6 +12,7 @@ struct StatusView: View {
     @State private var showCleanConfirm = false
     @State private var cleanBlockedCount: Int? = nil
     @State private var showClearThumbsConfirm = false
+    @State private var pushBlocked: PushBlockedContext?
     let repository: LibraryRepository
     let session: LibrarySessionState
     let syncCoordinator: SyncCoordinator
@@ -52,6 +53,22 @@ struct StatusView: View {
                 }
                 .task { await model.start() }
             }
+        }
+        .sheet(item: $pushBlocked) { context in
+            PushBlockedSheet(
+                targetRemote: context.target,
+                sourceRemotes: context.sources,
+                mediaCount: context.mediaCount,
+                onConfirm: { await syncCoordinator.confirmRemoteMedia(remoteID: $0) },
+                onRetry: {
+                    let target = context.target
+                    pushBlocked = nil
+                    Task { await push(target) }
+                },
+                onCancel: { pushBlocked = nil }
+            )
+            .environment(\.lascoTheme, .dark)
+            .preferredColorScheme(.dark)
         }
         .sheet(isPresented: $showRemotePicker) {
             RemoteTypePickerSheet(
@@ -226,18 +243,7 @@ struct StatusView: View {
                         nextPushDate: remote.autoPush ? syncCoordinator.nextPushDate : nil,
                         pushEnabled: syncCoordinator.isPushAllowed(remote.remoteId),
                         fetchEnabled: syncCoordinator.isFetchAllowed(remote.remoteId),
-                        onPush: {
-                            Task {
-                                switch await syncCoordinator.push(remoteID: remote.remoteId) {
-                                case .success:
-                                    toastManager.show(ok: "\(remote.name): pushed")
-                                case .failed(let message):
-                                    toastManager.show(error: message)
-                                case .missingLocalMedia:
-                                    toastManager.show(error: "Some media is not stored on this device or in the configured download sources.")
-                                }
-                            }
-                        },
+                        onPush: { Task { await push(remote) } },
                         onFetch: {
                             Task {
                                 if let err = await syncCoordinator.fetch(remoteID: remote.remoteId) {
@@ -250,6 +256,27 @@ struct StatusView: View {
                     )
                 }
             }
+        }
+    }
+
+    /// A manual push offers the recovery sheet when preparation could not place some media.
+    /// An automatic push has no one to ask, so `SyncCoordinator` reports its failure as is.
+    private func push(_ remote: FfiRemote) async {
+        switch await syncCoordinator.push(remoteID: remote.remoteId) {
+        case .success:
+            toastManager.show(ok: "\(remote.name): pushed")
+        case .failed(let message):
+            toastManager.show(error: message)
+        case .missingLocalMedia:
+            toastManager.show(error: "Some media is not stored on this device or in the configured download sources.")
+        case .missingMediaOnConfiguredSources(let mediaIds):
+            pushBlocked = PushBlockedContext(
+                target: remote,
+                sources: session.mediaSourceOrder
+                    .filter { $0 != remote.remoteId }
+                    .compactMap { id in session.remotes.first { $0.remoteId == id } },
+                mediaCount: mediaIds.count
+            )
         }
     }
 
@@ -379,4 +406,14 @@ private struct SyncStatusRow: View {
         .disabled(!enabled)
         .opacity(enabled ? 1 : 0.4)
     }
+}
+
+/// What the push recovery sheet needs: the blocked push's target, the remotes that could hold
+/// the media, and how many media are concerned.
+struct PushBlockedContext: Identifiable {
+    let target: FfiRemote
+    let sources: [FfiRemote]
+    let mediaCount: Int
+
+    var id: String { target.remoteId.value }
 }

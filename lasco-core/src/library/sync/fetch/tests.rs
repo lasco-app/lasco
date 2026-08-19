@@ -270,7 +270,11 @@ async fn fetch_converges_after_compaction_push() {
 
     // Twenty media, each added outside any album so each records exactly one operation.
     for i in 0..20usize {
-        let src = write_file(tmp_a.path(), &format!("x{i}.jpg"), format!("data-{i}").as_bytes());
+        let src = write_file(
+            tmp_a.path(),
+            &format!("x{i}.jpg"),
+            format!("data-{i}").as_bytes(),
+        );
         lib_a
             .media_add(
                 crate::library::media::upload::MediaAddSource::CopyFrom(src),
@@ -587,4 +591,98 @@ async fn fetch_errors_on_remote_id_mismatch() {
         ),
         "fetch must fail with RemoteIdMismatch, got: {err}"
     );
+}
+
+#[tokio::test]
+// Confirmation run on its own records what a fetch would, without merging any operation.
+async fn confirm_remote_media_records_without_fetching() {
+    let storage = StorageMockMemory::new();
+    let tmp_a = TempDir::new().unwrap();
+    let tmp_b = TempDir::new().unwrap();
+
+    let lib_a = make_library(&tmp_a).await;
+    lib_a
+        .initialize_remote(&storage, remote_uuid())
+        .await
+        .unwrap();
+    let lib_b = make_library_with_same_keys(&tmp_b, &lib_a).await;
+
+    let album_id = AlbumUuid::from_uuid(Uuid::new_v4());
+    let src = write_file(tmp_a.path(), "photo.jpg", b"data");
+    let media_id = lib_a
+        .media_add(
+            crate::library::media::upload::MediaAddSource::CopyFrom(src),
+            Some(album_id),
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap()
+        .id();
+    lib_a.push(&storage, REMOTE_ID).await.unwrap();
+
+    // B learns the media exists, while the blob is not yet on the remote.
+    let data_key = {
+        let entry = lib_a.media_show(media_id).unwrap();
+        format!(
+            "media/{}/{:02}/{}.data",
+            entry.storage_date.year, entry.storage_date.month, media_id
+        )
+    };
+    let blob = storage.get(&data_key).await.unwrap();
+    storage.delete(&data_key).await.unwrap();
+    lib_b.fetch(&storage, REMOTE_ID).await.unwrap();
+
+    let media_list_path = lib_b
+        .inner
+        .local_dirs
+        .remote_media_list(&REMOTE_ID.to_string())
+        .media_list_path();
+    assert!(
+        !crate::remote::local_state::media_list_json::MediaList::load_or_default(&media_list_path)
+            .unwrap()
+            .has_full(&media_id)
+    );
+
+    storage
+        .put_atomic(&data_key, &blob, AtomicWriteMode::CreateIfAbsent)
+        .await
+        .unwrap();
+
+    let confirmed = lib_b
+        .confirm_remote_media(&storage, REMOTE_ID)
+        .await
+        .unwrap();
+
+    assert_eq!(confirmed, 1);
+    assert!(
+        crate::remote::local_state::media_list_json::MediaList::load_or_default(&media_list_path)
+            .unwrap()
+            .has_full(&media_id)
+    );
+}
+
+#[tokio::test]
+// Confirmation takes the same per-remote slot as fetch and push, so it cannot run while one of
+// them is working on that remote.
+async fn confirm_remote_media_refuses_while_the_remote_slot_is_held() {
+    let storage = StorageMockMemory::new();
+    let tmp = TempDir::new().unwrap();
+    let lib = make_library(&tmp).await;
+    lib.initialize_remote(&storage, remote_uuid())
+        .await
+        .unwrap();
+
+    let guard = lib.try_acquire_remote_sync(&REMOTE_ID.to_string()).unwrap();
+    let error = lib
+        .confirm_remote_media(&storage, REMOTE_ID)
+        .await
+        .unwrap_err();
+    drop(guard);
+
+    assert!(matches!(
+        error,
+        crate::error::LibraryError::Sync(crate::error::SyncError::AlreadyRunning)
+    ));
 }
