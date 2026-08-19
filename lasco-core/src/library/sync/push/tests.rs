@@ -1155,3 +1155,155 @@ async fn push_with_plan_relays_a_thumbnail_from_its_assigned_source() {
         "the thumbnail must be relayed from the source the plan names"
     );
 }
+
+/// Records a live photo pair and returns the still id and the companion video id. The still
+/// carries a thumbnail, the companion carries none, which is how the importers create them.
+async fn add_live_photo_pair(
+    lib: &crate::library::Library,
+    tmp: &TempDir,
+) -> (MediaUuid, MediaUuid) {
+    let video_id = lib
+        .media_add(
+            crate::library::media::upload::MediaAddSource::CopyFrom(write_file(
+                tmp.path(),
+                "live.mov",
+                b"motion",
+            )),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap()
+        .id();
+    let still_id = lib
+        .media_add(
+            crate::library::media::upload::MediaAddSource::CopyFrom(write_file(
+                tmp.path(),
+                "live.jpg",
+                b"pixels",
+            )),
+            None,
+            None,
+            None,
+            Some(video_id),
+        )
+        .await
+        .unwrap()
+        .id();
+    lib.media_set_thumbnail(still_id, b"thumb pixels").unwrap();
+    (still_id, video_id)
+}
+
+#[tokio::test]
+// A companion resource has no thumbnail, so push planning must not look for one. Reporting it
+// as a blob to place would ask every configured source for a file that cannot exist.
+async fn resolve_push_media_plans_no_thumbnail_for_a_companion() {
+    let tmp = TempDir::new().unwrap();
+    let lib = make_library(&tmp).await;
+    let (still_id, video_id) = add_live_photo_pair(&lib, &tmp).await;
+
+    let resolution = lib.resolve_push_media(REMOTE_ID, &[]).unwrap();
+
+    assert!(
+        !resolution
+            .assignments
+            .contains_key(&(video_id, MediaBlob::Thumb)),
+        "a companion must never be planned for a thumbnail"
+    );
+    assert!(
+        resolution
+            .assignments
+            .contains_key(&(video_id, MediaBlob::Data)),
+        "the companion's own data blob is still pushed"
+    );
+    assert!(
+        resolution
+            .assignments
+            .contains_key(&(still_id, MediaBlob::Thumb)),
+        "the still it belongs to keeps its thumbnail"
+    );
+}
+
+#[tokio::test]
+// Relaying a companion must not ask the source for a thumbnail. Before this, every push asked
+// and took a NotFound back, once per companion per push, for as long as the media existed.
+async fn push_relay_does_not_request_a_companion_thumbnail() {
+    let source = StorageMockMemory::new();
+    stamp_source_remote(&source).await;
+    let target = StorageMockMemory::new();
+    stamp_remote_id(&target).await;
+    let tmp = TempDir::new().unwrap();
+    let lib = make_library(&tmp).await;
+    let (still_id, video_id) = add_live_photo_pair(&lib, &tmp).await;
+    lib.push(&source, SOURCE_REMOTE_ID).await.unwrap();
+    remove_local_media(&lib, still_id);
+    remove_local_media(&lib, video_id);
+
+    let entry = lib.inner.state.read().media(video_id).unwrap();
+    let companion_thumb_key = format!(
+        "media/{}/{:02}/{video_id}.thumb",
+        entry.storage_date.year, entry.storage_date.month
+    );
+    let gets_before = source.get_call_count();
+    lib.push_with_media_source(
+        &target,
+        REMOTE_ID,
+        PushMediaSource::FromRemote {
+            remote_id: SOURCE_REMOTE_ID,
+            storage: StorageRead::new(&source),
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        source.get_call_count() - gets_before,
+        3,
+        "two data blobs and the still's thumbnail, never the companion's"
+    );
+    assert!(!target.exists(&companion_thumb_key).await.unwrap());
+}
+
+#[tokio::test]
+// A companion whose data blob is confirmed is fully accounted for, so a later confirmation
+// pass has nothing left to probe and lists no media folder at all.
+async fn confirming_media_stops_probing_once_a_companion_holds_its_data() {
+    let target = StorageMockMemory::new();
+    stamp_remote_id(&target).await;
+    let tmp = TempDir::new().unwrap();
+    let lib = make_library(&tmp).await;
+    let (still_id, _video_id) = add_live_photo_pair(&lib, &tmp).await;
+    lib.push(&target, REMOTE_ID).await.unwrap();
+
+    // Both runs below verify the remote identity, which lists the remote root. Comparing the
+    // two deltas isolates the media folder listing from that fixed cost.
+    let lists_before = target.list_call_count();
+    let confirmed = lib.confirm_remote_media(&target, REMOTE_ID).await.unwrap();
+    let settled_lists = target.list_call_count() - lists_before;
+    assert_eq!(confirmed, 0);
+
+    // Withdraw the still's thumbnail confirmation so exactly one blob is unsettled again.
+    let media_list_path = lib
+        .inner
+        .local_dirs
+        .remote_media_list(&REMOTE_ID.to_string())
+        .media_list_path();
+    let mut media_list =
+        crate::remote::local_state::media_list_json::MediaList::load_or_default(&media_list_path)
+            .unwrap();
+    media_list.media.get_mut(&still_id).unwrap().thumb = None;
+    media_list.save(&media_list_path).unwrap();
+
+    let lists_before = target.list_call_count();
+    lib.confirm_remote_media(&target, REMOTE_ID).await.unwrap();
+    let unsettled_lists = target.list_call_count() - lists_before;
+
+    assert_eq!(
+        unsettled_lists,
+        settled_lists + 1,
+        "a companion holding its data must not keep a media folder listed the way a media \
+         still missing its thumbnail does"
+    );
+}

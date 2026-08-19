@@ -17,6 +17,14 @@ use crate::operations::{
 };
 use crate::state::{ComputedViews, build_computed_views};
 
+/// Why a media is a companion resource of another media rather than an item of its own.
+/// The referencing media is not recorded, only the fact that some media references this one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CompanionKind {
+    AppleAae,
+    AppleLivePhoto,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct MediaEntry {
     pub media_id: MediaUuid,
@@ -32,6 +40,9 @@ pub struct MediaEntry {
     pub gps: Option<GpsCoords>,
     pub apple_aae_media_id: Option<MediaUuid>,
     pub apple_live_photo_media_id: Option<MediaUuid>,
+    /// Set when another media references this one as its companion resource. It is derived
+    /// from the creation payloads of every other media, never stored.
+    pub companion_kind: Option<CompanionKind>,
     pub group_ids: Vec<GroupUuid>,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -582,6 +593,23 @@ impl CrdtState {
     )]
     pub(crate) fn resolve_entries(&self) -> ResolvedEntries {
         let projection = self.album_projection();
+        // A media is a companion when another media names it in one of its companion fields.
+        // Creation payloads are immutable, so this reverse index only needs one pass.
+        let mut companion_kinds: HashMap<MediaUuid, CompanionKind> = HashMap::new();
+        for media in self.media.values() {
+            let Some(creation) = &media.creation else {
+                continue;
+            };
+            if let Some(live_photo_id) = creation.value.apple_live_photo_media_id {
+                companion_kinds.insert(live_photo_id, CompanionKind::AppleLivePhoto);
+            }
+            // An AAE sidecar referenced by one media and named as the live photo video of
+            // another is reported as a sidecar. Only the fact of being a companion matters
+            // downstream, so the tie is broken deterministically and nothing else changes.
+            if let Some(aae_id) = creation.value.apple_aae_media_id {
+                companion_kinds.insert(aae_id, CompanionKind::AppleAae);
+            }
+        }
         let mut media_entries = Vec::new();
         for media in self.media.values() {
             let Some(creation) = &media.creation else {
@@ -612,6 +640,7 @@ impl CrdtState {
                 gps: value.gps,
                 apple_aae_media_id: value.apple_aae_media_id,
                 apple_live_photo_media_id: value.apple_live_photo_media_id,
+                companion_kind: companion_kinds.get(&value.media_id).copied(),
                 group_ids: Vec::new(),
             });
         }

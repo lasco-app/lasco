@@ -15,7 +15,7 @@ use crate::storage::AtomicWriteMode;
 use super::compaction::{
     self, appropriate_tier, count_tier_files, release_lock, tier_needs_compaction, try_acquire_lock,
 };
-use super::media_inventory::confirm_known_media;
+use super::media_inventory::{KnownMedia, confirm_known_media};
 use super::remote_access::{StorageRead, StorageReadWrite};
 use super::{
     MediaBlob, PlannedMediaSource, PushMediaPlan, PushMediaResolution, PushMediaSource,
@@ -135,7 +135,9 @@ impl Library {
                 }
             }
 
-            if !target_inventory.has_thumb(&entry.media_id) {
+            // A companion resource has no thumbnail to place, so it is left out of the plan
+            // entirely once its data blob is resolved.
+            if entry.companion_kind.is_none() && !target_inventory.has_thumb(&entry.media_id) {
                 let cached = media_dir.thumb_path(year, month, &entry.media_id).exists();
                 let source = resolve_blob(cached, &candidates, |inventory| {
                     inventory.has_thumb(&entry.media_id)
@@ -288,12 +290,16 @@ impl Library {
         // another client uploaded is neither reported missing nor sent a second time. This
         // lists media folders only, never operation files, so push still cannot turn into an
         // implicit fetch.
-        let known_media: Vec<(MediaUuid, StorageDate)> = {
+        let known_media: Vec<KnownMedia> = {
             let state = self.inner.state.read();
             state
                 .media_entries()
                 .iter()
-                .map(|entry| (entry.media_id, entry.storage_date))
+                .map(|entry| KnownMedia {
+                    media_id: entry.media_id,
+                    storage_date: entry.storage_date,
+                    expects_thumb: entry.companion_kind.is_none(),
+                })
                 .collect()
         };
         confirm_known_media(
@@ -440,15 +446,16 @@ impl Library {
             state
                 .media_entries()
                 .iter()
-                .filter(|entry| {
-                    !media_list.has_full(&entry.media_id) || !media_list.has_thumb(&entry.media_id)
-                })
                 .map(|entry| FileToPush {
                     media_id: entry.media_id,
                     storage_date: entry.storage_date,
                     needs_data: !media_list.has_full(&entry.media_id),
-                    needs_thumb: !media_list.has_thumb(&entry.media_id),
+                    // A companion resource never has a thumbnail, so asking a source for one
+                    // would fail on every push for as long as the media exists.
+                    needs_thumb: entry.companion_kind.is_none()
+                        && !media_list.has_thumb(&entry.media_id),
                 })
+                .filter(|item| item.needs_data || item.needs_thumb)
                 .collect()
         };
 

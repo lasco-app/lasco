@@ -8,6 +8,14 @@ use crate::remote::MediaList;
 
 use super::remote_access::StorageRead;
 
+/// One media to look for on a remote. `expects_thumb` is false for a companion resource,
+/// which never has a thumbnail, so its inventory entry is complete without one.
+pub(crate) struct KnownMedia {
+    pub(crate) media_id: MediaUuid,
+    pub(crate) storage_date: StorageDate,
+    pub(crate) expects_thumb: bool,
+}
+
 /// Confirms which of the media known to the reconstructed state are present on a remote and
 /// records them in that remote's positive-only inventory.
 ///
@@ -22,7 +30,7 @@ use super::remote_access::StorageRead;
 /// Returns how many blobs it newly confirmed.
 pub(crate) async fn confirm_known_media(
     storage: &StorageRead<'_>,
-    known_media: &[(MediaUuid, StorageDate)],
+    known_media: &[KnownMedia],
     remote_id: &str,
     remote_media_list: &RemoteMediaList,
     remote_media_list_lock: &RemoteMediaListLock,
@@ -36,14 +44,15 @@ pub(crate) async fn confirm_known_media(
     };
 
     let mut candidates_by_folder: BTreeMap<(u16, u8), Vec<MediaUuid>> = BTreeMap::new();
-    for (media_id, storage_date) in known_media {
-        if media_list.has_full(media_id) && media_list.has_thumb(media_id) {
+    for known in known_media {
+        let thumb_settled = !known.expects_thumb || media_list.has_thumb(&known.media_id);
+        if media_list.has_full(&known.media_id) && thumb_settled {
             continue;
         }
         candidates_by_folder
-            .entry((storage_date.year, storage_date.month))
+            .entry((known.storage_date.year, known.storage_date.month))
             .or_default()
-            .push(*media_id);
+            .push(known.media_id);
     }
     if candidates_by_folder.is_empty() {
         return 0;

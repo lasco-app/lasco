@@ -90,13 +90,8 @@ pub fn build_computed_views(state: &CrdtState) -> ComputedViews {
 
     // Home and orphan browsing operate on primary media only. Store their
     // canonical order directly so a range read only resolves its requested IDs.
-    let companion_ids: std::collections::HashSet<_> = media
-        .values()
-        .flat_map(|entry| [entry.apple_aae_media_id, entry.apple_live_photo_media_id])
-        .flatten()
-        .collect();
     for entry in media.values() {
-        if companion_ids.contains(&entry.media_id) {
+        if entry.companion_kind.is_some() {
             continue;
         }
         views.home_visible_newest.push(entry.media_id);
