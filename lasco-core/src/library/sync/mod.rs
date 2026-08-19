@@ -302,3 +302,5 @@ mod crdt_tests;
 mod format_tests;
 #[cfg(test)]
 mod test_utils;
+#[cfg(test)]
+mod tests;

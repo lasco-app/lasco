@@ -273,3 +273,6 @@ async fn update_media_list_from_group(
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

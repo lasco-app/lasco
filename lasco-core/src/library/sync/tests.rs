@@ -3,16 +3,17 @@ use std::collections::HashSet;
 use tempfile::TempDir;
 use uuid::Uuid;
 
-use chrono::{TimeZone, Utc};
-
-use crate::identifiers::{AlbumUuid, GroupUuid, MediaUuid, OpUuid};
+use crate::identifiers::AlbumUuid;
 use crate::library::Library;
 use crate::library::media::query::MediaListScope;
-use crate::operations::{LibraryUsername, Operation, OperationGroup};
+use crate::operations::LibraryUsername;
 use crate::storage::StorageMockMemory;
 
+use crate::crdt::DeviceId;
+
 use super::test_utils::{
-    REMOTE_ID, make_library, make_library_with_same_keys, remote_uuid, write_file,
+    REMOTE_ID, make_library, make_library_with_same_keys, make_library_with_same_keys_as_device,
+    remote_uuid, write_file,
 };
 
 #[tokio::test]
@@ -178,7 +179,7 @@ async fn fetch_rejects_across_different_remotes() {
 
     // Meanwhile a push against a distinct remote is unaffected.
     assert!(
-        lib.try_acquire_remote_sync(REMOTE_ID).is_some(),
+        lib.try_acquire_remote_sync(&REMOTE_ID.to_string()).is_some(),
         "push/fetch against a different remote must still be allowed"
     );
 }
@@ -191,7 +192,7 @@ async fn media_add_not_blocked_by_sync_lock() {
 
     // Acquire the sync lock manually to simulate a sync in progress.
     let _guard = lib
-        .try_acquire_remote_sync(REMOTE_ID)
+        .try_acquire_remote_sync(&REMOTE_ID.to_string())
         .expect("sync lock must be free");
 
     // media_add should still succeed while the sync lock is held.
@@ -288,8 +289,8 @@ async fn three_clients_converge_with_albums() {
         .initialize_remote(&storage, remote_uuid())
         .await
         .unwrap();
-    let lib_b = make_library_with_same_keys(&tmp_b, &lib_a).await;
-    let lib_c = make_library_with_same_keys(&tmp_c, &lib_a).await;
+    let lib_b = make_library_with_same_keys_as_device(&tmp_b, &lib_a, DeviceId(2)).await;
+    let lib_c = make_library_with_same_keys_as_device(&tmp_c, &lib_a, DeviceId(3)).await;
 
     let album_a = AlbumUuid::from_uuid(Uuid::new_v4());
     let album_b = AlbumUuid::from_uuid(Uuid::new_v4());
@@ -406,6 +407,8 @@ async fn sync_round_trip_both_have_all_ops() {
 // Reachability convergence where A removes a file from its last album while B removes it from
 // its last group. After both fetch, the file is unreachable on both sides.
 async fn reachability_convergence_file_removed_from_last_album_and_group() {
+    use crate::operations::AlbumName;
+
     let storage = StorageMockMemory::new();
     let tmp_a = TempDir::new().unwrap();
     let tmp_b = TempDir::new().unwrap();
@@ -417,77 +420,25 @@ async fn reachability_convergence_file_removed_from_last_album_and_group() {
         .unwrap();
     let lib_b = make_library_with_same_keys(&tmp_b, &lib_a).await;
 
-    let media_id = MediaUuid::from_uuid(Uuid::new_v4());
-    let group_id = GroupUuid::from_uuid(Uuid::new_v4());
-    let date = Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap();
-
-    async fn write_op(lib: &Library, ops: Vec<Operation>) -> OpUuid {
-        let op_id = OpUuid::new();
-        let op_group = OperationGroup {
-            op_id,
-            parent_op_id: None,
-            author: LibraryUsername("test".to_string()),
-            operations: ops,
-        };
-        crate::operations::local_ops::append_op_group(
-            &lib.inner
-                .local_dirs
-                .local_state_operations()
-                .operations_log_path(),
-            &lib.inner.master_key,
-            &op_group,
-        )
-        .unwrap();
-        lib.load_local_state().await.unwrap();
-        op_id
-    }
-
-    use crate::operations::{AlbumName, MediaFilename};
     let album_id = lib_a
         .album_create(AlbumName("Album".into()), None)
         .await
         .unwrap();
-    write_op(
-        &lib_a,
-        vec![Operation::GroupCreation {
-            timestamp: Utc::now(),
-            group_id,
-            album_id_parent: album_id,
-        }],
-    )
-    .await;
+    let group_id = lib_a.group_create(album_id).await.unwrap();
 
-    write_op(
-        &lib_a,
-        vec![Operation::MediaCreation {
-            timestamp: Utc::now(),
-            media_id,
-            filename_original: MediaFilename("photo.jpg".into()),
-            date,
-            storage_date: crate::operations::StorageDate {
-                year: 2024,
-                month: 1,
-            },
-            size_bytes: 1024,
-            content_hash: crate::library::media::MediaHash::zeroed(),
-            modified_at: None,
-            gps: None,
-            apple_aae_media_id: None,
-            apple_live_photo_media_id: None,
-        }],
-    )
-    .await;
-
-    lib_a.album_add_media(album_id, media_id).await.unwrap();
-    write_op(
-        &lib_a,
-        vec![Operation::GroupMediaAdd {
-            timestamp: Utc::now(),
-            group_id,
-            media_id,
-        }],
-    )
-    .await;
+    let src = write_file(tmp_a.path(), "photo.jpg", b"image data");
+    let media_id = lib_a
+        .media_add(
+            crate::library::media::upload::MediaAddSource::CopyFrom(src),
+            Some(album_id),
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap()
+        .id();
+    lib_a.group_add_media(group_id, media_id).await.unwrap();
 
     lib_a.push(&storage, REMOTE_ID).await.unwrap();
     lib_b.fetch(&storage, REMOTE_ID).await.unwrap();
@@ -511,18 +462,11 @@ async fn reachability_convergence_file_removed_from_last_album_and_group() {
         "media must be reachable on B"
     );
 
+    // A drops the media from its last album while B drops it from its last group.
     lib_a.album_remove_media(album_id, media_id).await.unwrap();
     lib_a.push(&storage, REMOTE_ID).await.unwrap();
 
-    write_op(
-        &lib_b,
-        vec![Operation::GroupMediaRemove {
-            timestamp: Utc::now(),
-            group_id,
-            media_id,
-        }],
-    )
-    .await;
+    lib_b.group_remove_media(group_id, media_id).await.unwrap();
     lib_b.push(&storage, REMOTE_ID).await.unwrap();
 
     lib_a.fetch(&storage, REMOTE_ID).await.unwrap();
@@ -588,7 +532,8 @@ async fn offline_add_later_sync_push_succeeds() {
     storage.set_offline(false);
 
     let report = lib.push(&storage, REMOTE_ID).await.unwrap();
-    assert_eq!(report.ops_uploaded, 1, "should upload 1 op");
+    // media_add into an album records two operations, MediaCreation then AlbumMediaAdd.
+    assert_eq!(report.ops_uploaded, 2, "should upload 2 ops");
     assert_eq!(report.media_uploaded, 1, "should upload 1 file");
 
     let tmp2 = TempDir::new().unwrap();
@@ -647,14 +592,13 @@ async fn batched_push_survives_close_and_reopen() {
     let local_dirs = LocalDirs::new(tmp.path(), &library_id);
     let reopened = Library::open(
         local_dirs,
+        crate::crdt::DeviceId(1),
         Credentials {
             username: LibraryUsername("alice".into()),
             password: LibraryPassword("secret".into()),
         },
     )
-    .await
     .unwrap();
-    reopened.load_local_state().await.unwrap();
 
     reopened.fetch(&storage, REMOTE_ID).await.unwrap();
     reopened.push(&storage, REMOTE_ID).await.unwrap();
