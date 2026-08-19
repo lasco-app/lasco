@@ -355,8 +355,9 @@ impl Library {
         album_ids
     }
 
-    /// Returns the ids of local media not confirmed by the positive media inventory of any of
-    /// `remote_ids`. If `remote_ids` is empty, returns all local media.
+    /// Returns the ids of local media whose original is not confirmed by the positive media
+    /// inventory of any of `remote_ids`. A thumbnail alone is not a backup, so only the full
+    /// media file counts here. If `remote_ids` is empty, returns all local media.
     #[must_use]
     pub fn media_ids_without_remote_backup(&self, remote_ids: &[String]) -> Vec<MediaUuid> {
         let mut backed_up = std::collections::HashSet::new();
@@ -369,7 +370,12 @@ impl Library {
                     MediaList::load_or_default(&remote_media_list.media_list_path())
                 },
             ) {
-                backed_up.extend(list.media.into_keys());
+                backed_up.extend(
+                    list.media
+                        .into_iter()
+                        .filter(|(_, entry)| entry.full.is_some())
+                        .map(|(media_id, _)| media_id),
+                );
             }
         }
 
@@ -653,7 +659,7 @@ mod tests {
                 .media_list_path(),
         )
         .unwrap();
-        assert!(!media_list.contains(&media_id));
+        assert!(!media_list.has_full(&media_id));
     }
 
     #[tokio::test]

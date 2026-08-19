@@ -25,6 +25,8 @@ use super::{
 struct FileToPush {
     media_id: MediaUuid,
     storage_date: StorageDate,
+    needs_data: bool,
+    needs_thumb: bool,
 }
 
 pub(super) struct PushAccess<'a> {
@@ -63,7 +65,7 @@ impl Library {
                         &entry.media_id,
                     )
                     .exists(),
-                target_has_original: media_list.contains(&entry.media_id),
+                target_has_original: media_list.has_full(&entry.media_id),
             })
             .collect())
     }
@@ -234,7 +236,7 @@ impl Library {
                 state
                     .media_entries()
                     .iter()
-                    .filter(|entry| !media_list.contains(&entry.media_id))
+                    .filter(|entry| !media_list.has_full(&entry.media_id))
                     .filter_map(|entry| {
                         (!access
                             .local_state_media_dir
@@ -354,10 +356,14 @@ impl Library {
             state
                 .media_entries()
                 .iter()
-                .filter(|entry| !media_list.contains(&entry.media_id))
+                .filter(|entry| {
+                    !media_list.has_full(&entry.media_id) || !media_list.has_thumb(&entry.media_id)
+                })
                 .map(|entry| FileToPush {
                     media_id: entry.media_id,
                     storage_date: entry.storage_date,
+                    needs_data: !media_list.has_full(&entry.media_id),
+                    needs_thumb: !media_list.has_thumb(&entry.media_id),
                 })
                 .collect()
         };
@@ -374,13 +380,17 @@ impl Library {
                 item.storage_date.year, item.storage_date.month, item.media_id
             );
 
-            let data_path = access.local_state_media_dir.data_path(
-                item.storage_date.year,
-                item.storage_date.month,
-                &item.media_id,
-            );
-            let (bytes, staged_data) =
-                if data_path.exists() {
+            // A media whose data blob is already confirmed but whose thumbnail is not reaches
+            // this loop for the thumbnail alone, so each blob is handled on its own.
+            let mut data_uploaded = false;
+            let mut data_present = false;
+            if item.needs_data {
+                let data_path = access.local_state_media_dir.data_path(
+                    item.storage_date.year,
+                    item.storage_date.month,
+                    &item.media_id,
+                );
+                let (bytes, staged_data) = if data_path.exists() {
                     (std::fs::read(&data_path)?, None)
                 } else {
                     let (source_id, source) = match &media_source {
@@ -424,59 +434,70 @@ impl Library {
                     })?;
                     (bytes.0, Some(bytes.1))
                 };
-            let data_uploaded = access
-                .storage
-                .put_atomic(&data_key, &bytes, AtomicWriteMode::CreateIfAbsent)
-                .await
-                .map_err(SyncError::RemoteUnreachable)?;
-            if let Some(path) = staged_data {
-                std::fs::remove_file(path)?;
-            }
-
-            let thumb_path = access.local_state_media_dir.thumb_path(
-                item.storage_date.year,
-                item.storage_date.month,
-                &item.media_id,
-            );
-            if thumb_path.exists() {
-                let bytes = std::fs::read(&thumb_path)?;
-                access
+                data_uploaded = access
                     .storage
-                    .put_atomic(&thumb_key, &bytes, AtomicWriteMode::CreateIfAbsent)
+                    .put_atomic(&data_key, &bytes, AtomicWriteMode::CreateIfAbsent)
                     .await
                     .map_err(SyncError::RemoteUnreachable)?;
-            } else if let Some((_, source)) = relay_source.as_ref() {
-                match source.get(&thumb_key).await {
-                    Ok(downloaded) => match stage_and_validate_media(
-                        staging_dir.path(),
-                        &downloaded,
-                        item.media_id,
-                        &self.inner.master_key,
-                    ) {
-                        Ok((bytes, path)) => {
-                            access
-                                .storage
-                                .put_atomic(&thumb_key, &bytes, AtomicWriteMode::CreateIfAbsent)
-                                .await
-                                .map_err(SyncError::RemoteUnreachable)?;
-                            std::fs::remove_file(path)?;
-                        }
-                        Err(error) => return Err(error),
-                    },
-                    Err(crate::storage::StorageError::NotFound) => {}
-                    Err(error) => return Err(SyncError::RemoteUnreachable(error).into()),
+                // A non-overwriting write that published nothing means the blob was already
+                // there, so the target holds it either way.
+                data_present = true;
+                if let Some(path) = staged_data {
+                    std::fs::remove_file(path)?;
                 }
             }
 
-            // Reload under the lock so this write preserves any concurrent fetch or on-demand
-            // download observations made while the upload was in progress.
+            let mut thumb_present = false;
+            if item.needs_thumb {
+                let thumb_path = access.local_state_media_dir.thumb_path(
+                    item.storage_date.year,
+                    item.storage_date.month,
+                    &item.media_id,
+                );
+                if thumb_path.exists() {
+                    let bytes = std::fs::read(&thumb_path)?;
+                    access
+                        .storage
+                        .put_atomic(&thumb_key, &bytes, AtomicWriteMode::CreateIfAbsent)
+                        .await
+                        .map_err(SyncError::RemoteUnreachable)?;
+                    thumb_present = true;
+                } else if let Some((_, source)) = relay_source.as_ref() {
+                    match source.get(&thumb_key).await {
+                        Ok(downloaded) => match stage_and_validate_media(
+                            staging_dir.path(),
+                            &downloaded,
+                            item.media_id,
+                            &self.inner.master_key,
+                        ) {
+                            Ok((bytes, path)) => {
+                                access
+                                    .storage
+                                    .put_atomic(&thumb_key, &bytes, AtomicWriteMode::CreateIfAbsent)
+                                    .await
+                                    .map_err(SyncError::RemoteUnreachable)?;
+                                std::fs::remove_file(path)?;
+                                thumb_present = true;
+                            }
+                            Err(error) => return Err(error),
+                        },
+                        // A media with no thumbnail anywhere stays unconfirmed for its
+                        // thumbnail, which costs nothing beyond this pass.
+                        Err(crate::storage::StorageError::NotFound) => {}
+                        Err(error) => return Err(SyncError::RemoteUnreachable(error).into()),
+                    }
+                }
+            }
+
+            // Reload under the lock so this write preserves any observation made by another
+            // remote's sync while the upload was in progress.
             self.inner.remote_media_list_lock.with_lock(
                 &remote_id_string,
                 access.remote_media_list,
                 |remote_media_list| {
                     let path = remote_media_list.media_list_path();
                     let mut media_list = MediaList::load_or_default(&path)?;
-                    if media_list.insert_present(item.media_id) {
+                    if media_list.record(item.media_id, data_present, thumb_present) {
                         media_list.save(&path)?;
                     }
                     Ok::<_, std::io::Error>(())

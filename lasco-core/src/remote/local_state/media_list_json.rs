@@ -12,17 +12,21 @@ pub enum BlobStatus {
     OnRemote,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// The two blobs of one media are confirmed independently. `None` means unconfirmed, so an
+/// entry written before a media had a thumbnail does not claim that thumbnail is on the remote.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MediaListEntry {
-    pub full: BlobStatus,
-    pub thumb: BlobStatus,
+    #[serde(default)]
+    pub full: Option<BlobStatus>,
+    #[serde(default)]
+    pub thumb: Option<BlobStatus>,
 }
 
 /// Positive-only inventory of media blobs confirmed present at a known remote
 /// (`remotes/{remote_id}/state/media/media_list.json`). It is intentionally allowed to be
 /// incomplete: absence means unconfirmed, not absent from the remote.
 ///
-/// All entries use `BlobStatus::OnRemote` (via `insert_present`).
+/// All confirmed blobs use `BlobStatus::OnRemote` (via `record`).
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct MediaList {
     pub media: FxHashMap<MediaUuid, MediaListEntry>,
@@ -47,22 +51,33 @@ impl MediaList {
         crate::atomic_file::write(path, &data)
     }
 
-    pub fn contains(&self, media_id: &MediaUuid) -> bool {
-        self.media.contains_key(media_id)
+    /// Whether the full media file is confirmed on the remote.
+    pub fn has_full(&self, media_id: &MediaUuid) -> bool {
+        self.media
+            .get(media_id)
+            .is_some_and(|entry| entry.full.is_some())
     }
 
-    /// Inserts a `Cached` entry for `media_id`. Returns `true` if newly inserted.
-    pub fn insert_present(&mut self, media_id: MediaUuid) -> bool {
-        if self.media.contains_key(&media_id) {
-            return false;
+    /// Whether the thumbnail is confirmed on the remote.
+    pub fn has_thumb(&self, media_id: &MediaUuid) -> bool {
+        self.media
+            .get(media_id)
+            .is_some_and(|entry| entry.thumb.is_some())
+    }
+
+    /// Confirms the blobs passed as `true`. A confirmation is never withdrawn, so passing
+    /// `false` leaves that blob as it was. Returns `true` if the inventory changed.
+    pub fn record(&mut self, media_id: MediaUuid, full: bool, thumb: bool) -> bool {
+        let entry = self.media.entry(media_id).or_default();
+        let mut changed = false;
+        if full && entry.full.is_none() {
+            entry.full = Some(BlobStatus::OnRemote);
+            changed = true;
         }
-        self.media.insert(
-            media_id,
-            MediaListEntry {
-                full: BlobStatus::OnRemote,
-                thumb: BlobStatus::OnRemote,
-            },
-        );
-        true
+        if thumb && entry.thumb.is_none() {
+            entry.thumb = Some(BlobStatus::OnRemote);
+            changed = true;
+        }
+        changed
     }
 }

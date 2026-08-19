@@ -77,11 +77,11 @@ The sibling path accessors enforce ownership within the shared `state/` parent:
 `RemoteLastKnownStateDir` owns only the remote's last-known operation state, `RemoteCompactOpIdMergedToLocal` owns only the
 merge marker, and `RemoteMediaList` owns only the media inventory.
 
-`media_list.json` is a positive-only inventory: an entry means the client has confirmed a media
-blob on that remote through one of its two writers, both of them sync procedures: fetch and push
-after listing the `media/YYYY/MM/` folders holding a media the inventory has not confirmed yet,
-and push again after a successful ensure-present upload. Its absence means unconfirmed, not
-absent from the remote.
+`media_list.json` is a positive-only inventory: an entry confirms a media's data blob, its
+thumbnail, or both, independently of each other. A blob is confirmed through one of the two
+writers, both of them sync procedures: fetch and push after listing the `media/YYYY/MM/` folders
+holding a blob the inventory has not confirmed yet, and push again after a successful
+ensure-present upload. An unconfirmed blob means unconfirmed, not absent from the remote.
 
 Downloading a blob on demand to display it is not a writer. It proves only that the blob was
 readable at that moment, and the confirmation step of the next sync with that remote establishes

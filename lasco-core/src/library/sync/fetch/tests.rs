@@ -335,7 +335,7 @@ async fn fetch_updates_media_list_from_ops() {
         crate::remote::local_state::media_list_json::MediaList::load_or_default(&media_list_path)
             .unwrap();
     assert!(
-        media_list.contains(&media_id),
+        media_list.has_full(&media_id),
         "media_list.json must contain media_id after fetch"
     );
 }
@@ -391,7 +391,7 @@ async fn fetch_confirms_media_uploaded_after_its_op_was_merged() {
         crate::remote::local_state::media_list_json::MediaList::load_or_default(&media_list_path)
             .unwrap();
     assert!(
-        !media_list.contains(&media_id),
+        !media_list.has_full(&media_id),
         "an absent blob must stay unconfirmed"
     );
 
@@ -408,7 +408,7 @@ async fn fetch_confirms_media_uploaded_after_its_op_was_merged() {
         crate::remote::local_state::media_list_json::MediaList::load_or_default(&media_list_path)
             .unwrap();
     assert!(
-        media_list.contains(&media_id),
+        media_list.has_full(&media_id),
         "the late blob must be confirmed by a later fetch"
     );
 }

@@ -575,7 +575,7 @@ async fn push_writes_media_list_after_upload() {
         crate::remote::local_state::media_list_json::MediaList::load_or_default(&media_list_path)
             .unwrap();
     assert!(
-        media_list.contains(&media_id),
+        media_list.has_full(&media_id),
         "media_list.json must contain the uploaded media_id"
     );
 }
@@ -720,7 +720,71 @@ async fn push_confirms_media_already_on_target_before_uploading() {
             .media_list_path(),
     )
     .unwrap();
-    assert!(media_list.contains(&media_id));
+    assert!(media_list.has_full(&media_id));
+}
+
+#[tokio::test]
+// A target holding the data blob but not the thumbnail gets the thumbnail. The two blobs are
+// confirmed and uploaded independently, so a data blob on the target cannot mask a missing
+// thumbnail.
+async fn push_uploads_thumbnail_when_only_the_data_blob_is_on_target() {
+    let target = StorageMockMemory::new();
+    stamp_remote_id(&target).await;
+    let tmp = TempDir::new().unwrap();
+    let lib = make_library(&tmp).await;
+    let media_id = lib
+        .media_add(
+            crate::library::media::upload::MediaAddSource::CopyFrom(write_file(
+                tmp.path(),
+                "thumbed.jpg",
+                b"pixels",
+            )),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap()
+        .id();
+    lib.media_set_thumbnail(media_id, b"thumb pixels").unwrap();
+
+    let entry = lib.media_show(media_id).unwrap();
+    let data_key = format!(
+        "media/{}/{:02}/{}.data",
+        entry.storage_date.year, entry.storage_date.month, media_id
+    );
+    let thumb_key = format!(
+        "media/{}/{:02}/{}.thumb",
+        entry.storage_date.year, entry.storage_date.month, media_id
+    );
+    let media_dir = lib.inner.local_dirs.local_state_media_dir();
+    let data_blob = std::fs::read(media_dir.data_path(
+        entry.storage_date.year,
+        entry.storage_date.month,
+        &media_id,
+    ))
+    .unwrap();
+    target
+        .put_atomic(&data_key, &data_blob, AtomicWriteMode::CreateIfAbsent)
+        .await
+        .unwrap();
+
+    lib.push(&target, REMOTE_ID).await.unwrap();
+
+    assert!(
+        target.exists(&thumb_key).await.unwrap(),
+        "the missing thumbnail must be uploaded"
+    );
+    let media_list = crate::remote::local_state::media_list_json::MediaList::load_or_default(
+        &lib.inner
+            .local_dirs
+            .remote_media_list(&REMOTE_ID.to_string())
+            .media_list_path(),
+    )
+    .unwrap();
+    assert!(media_list.has_full(&media_id));
+    assert!(media_list.has_thumb(&media_id));
 }
 
 #[tokio::test]

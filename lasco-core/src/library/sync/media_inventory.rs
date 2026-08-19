@@ -11,9 +11,10 @@ use super::remote_access::StorageRead;
 /// Confirms which of the media known to the reconstructed state are present on a remote and
 /// records them in that remote's positive-only inventory.
 ///
-/// Only media missing from the inventory are probed. Candidates are grouped by their
-/// `media/YYYY/MM/` folder so one listing covers every candidate stored in that folder,
-/// instead of one existence check per media.
+/// Only the blobs missing from the inventory are probed, and the data blob and the thumbnail
+/// of one media are confirmed independently. Candidates are grouped by their `media/YYYY/MM/`
+/// folder so one listing covers every candidate stored in that folder, both blobs included,
+/// instead of one existence check per blob.
 ///
 /// Every error is ignored. This is opportunistic bookkeeping and must never fail its caller.
 /// An unconfirmed media stays absent from the inventory, which only means unconfirmed.
@@ -34,7 +35,7 @@ pub(crate) async fn confirm_known_media(
 
     let mut candidates_by_folder: BTreeMap<(u16, u8), Vec<MediaUuid>> = BTreeMap::new();
     for (media_id, storage_date) in known_media {
-        if media_list.contains(media_id) {
+        if media_list.has_full(media_id) && media_list.has_thumb(media_id) {
             continue;
         }
         candidates_by_folder
@@ -56,8 +57,10 @@ pub(crate) async fn confirm_known_media(
         };
         let present: HashSet<String> = keys.into_iter().collect();
         for media_id in candidates {
-            if present.contains(&format!("{prefix}{media_id}.data")) {
-                confirmed.push(media_id);
+            let full = present.contains(&format!("{prefix}{media_id}.data"));
+            let thumb = present.contains(&format!("{prefix}{media_id}.thumb"));
+            if full || thumb {
+                confirmed.push((media_id, full, thumb));
             }
         }
     }
@@ -73,8 +76,8 @@ pub(crate) async fn confirm_known_media(
             return;
         };
         let mut changed = false;
-        for media_id in confirmed {
-            changed |= media_list.insert_present(media_id);
+        for (media_id, full, thumb) in confirmed {
+            changed |= media_list.record(media_id, full, thumb);
         }
         if changed {
             let _ = media_list.save(&path);
