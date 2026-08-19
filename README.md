@@ -1,4 +1,10 @@
-# Lasco
+<p align="center">
+  <img src="docs/static/img/logo_black_0_5.png" alt="Lasco" width="200">
+</p>
+
+<p align="center">
+  <img src="docs/static/img/lasco-screenshots.png" alt="Lasco screenshots">
+</p>
 
 Lasco is a client-side app to back up and sync your photo library to multiple storage solutions like S3 and soon, NAS, USB drives, or any file server.
 
@@ -16,13 +22,9 @@ Learn more at [getlasco.app](https://getlasco.app).
 
 All logic runs on your device. Lasco encrypts your photos and videos locally, then pushes them to whichever remote storage you configure. Fetch from any of them to restore or get modifications made by other users of your library.
 
-## Push safety
-
-Push uploads each locally held `mk_*.enc` master-key file only when that file is absent from the remote; an existing remote key file is left unchanged. Media relay is opt-in: a normal push reports media missing from the local cache, while a caller can explicitly select one identity-verified, read-only source remote. Relayed encrypted blobs are staged in a unique operating-system temporary directory, decrypted before upload, and removed immediately after a successful target upload. Push never reads remote operation files; operation upload and compaction use only the target remote's local last-known state.
-
 ## Format specification
 
-The Lasco format is fully documented: [getlasco.app/docs/format-specification/motivations](https://getlasco.app/docs/format-specification/motivations)
+I am trying to document in a useful way the way it works and the way it is implemented: [getlasco.app/docs/format-specification/motivations](https://getlasco.app/docs/format-specification/motivations)
 
 ## License
 
