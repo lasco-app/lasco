@@ -1,17 +1,4 @@
-use serde::{Deserialize, Serialize};
-
 use super::{CrdtState, DeviceId};
-
-const CRDT_SNAPSHOT_FORMAT_VERSION: u32 = 1;
-
-/// Versioned on-disk representation of [`CrdtState`]. The version applies only to the
-/// local snapshot encoding; it does not alter CRDT operation semantics.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-struct VersionedCrdtState {
-    #[serde(default)]
-    format_version: u32,
-    state: CrdtState,
-}
 
 #[derive(Debug, thiserror::Error)]
 pub enum PersistenceError {
@@ -25,18 +12,13 @@ pub enum PersistenceError {
     Crypto(#[from] crate::encryption::error::CryptoError),
     #[error("encrypted CRDT state blob is invalid: {0}")]
     Blob(#[from] crate::encryption::error::BlobError),
-    #[error("unsupported CRDT snapshot format version {0}")]
-    UnsupportedFormatVersion(u32),
 }
 
 impl PersistenceError {
     /// Only structural snapshot failures are safe to rebuild from the operation log.
     #[must_use]
     pub fn is_recoverable_snapshot_failure(&self) -> bool {
-        matches!(
-            self,
-            Self::Deserialize(_) | Self::UnsupportedFormatVersion(_)
-        )
+        matches!(self, Self::Deserialize(_))
     }
 }
 
@@ -52,17 +34,11 @@ pub(crate) fn load_persisted(
     let encrypted = crate::encryption::blob::BlobEncrypted::from_bytes(&std::fs::read(path)?)?;
     let key = crate::encryption::blob_key::derive_blob_key(master_key, &CRDT_STATE_KEY_ID);
     let bytes = crate::encryption::blob::decrypt_blob(&key, &encrypted)?;
-    let persisted: VersionedCrdtState = ciborium::de::from_reader(bytes.as_slice())
+    let mut state: CrdtState = ciborium::de::from_reader(bytes.as_slice())
         .map_err(|error| PersistenceError::Deserialize(error.to_string()))?;
-    match persisted.format_version {
-        CRDT_SNAPSHOT_FORMAT_VERSION => {
-            let mut state = persisted.state;
-            state.set_device_id(device_id);
-            state.rebuild_views();
-            Ok(state)
-        }
-        version => Err(PersistenceError::UnsupportedFormatVersion(version)),
-    }
+    state.set_device_id(device_id);
+    state.rebuild_views();
+    Ok(state)
 }
 
 /// Atomically encrypts and replaces the `CrdtState` snapshot.
@@ -72,11 +48,7 @@ pub(crate) fn save_persisted(
     state: &CrdtState,
 ) -> Result<(), PersistenceError> {
     let mut bytes = Vec::new();
-    let on_disk = VersionedCrdtState {
-        format_version: CRDT_SNAPSHOT_FORMAT_VERSION,
-        state: state.clone(),
-    };
-    ciborium::ser::into_writer(&on_disk, &mut bytes)
+    ciborium::ser::into_writer(state, &mut bytes)
         .map_err(|error| PersistenceError::Serialize(error.to_string()))?;
     let key = crate::encryption::blob_key::derive_blob_key(master_key, &CRDT_STATE_KEY_ID);
     let encrypted = crate::encryption::blob::encrypt_blob(&key, &bytes);
@@ -99,25 +71,17 @@ mod tests {
     use chrono::Utc;
 
     #[test]
-    fn snapshot_rejects_an_unknown_format_version() {
+    fn snapshot_that_cannot_be_parsed_is_a_recoverable_failure() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("crdt-state.enc");
         let key = crate::encryption::master_key::generate_master_key();
-        let unsupported = VersionedCrdtState {
-            format_version: CRDT_SNAPSHOT_FORMAT_VERSION + 1,
-            state: CrdtState::new(DeviceId(1)),
-        };
-        let mut plaintext = Vec::new();
-        ciborium::ser::into_writer(&unsupported, &mut plaintext).unwrap();
         let blob_key = crate::encryption::blob_key::derive_blob_key(&key, &CRDT_STATE_KEY_ID);
-        let encrypted = crate::encryption::blob::encrypt_blob(&blob_key, &plaintext);
+        let encrypted = crate::encryption::blob::encrypt_blob(&blob_key, b"not a crdt snapshot");
         std::fs::write(&path, encrypted.to_bytes()).unwrap();
 
-        assert!(matches!(
-            load_persisted(&path, &key, DeviceId(2)),
-            Err(PersistenceError::UnsupportedFormatVersion(version))
-                if version == CRDT_SNAPSHOT_FORMAT_VERSION + 1
-        ));
+        let error = load_persisted(&path, &key, DeviceId(2)).unwrap_err();
+        assert!(matches!(error, PersistenceError::Deserialize(_)));
+        assert!(error.is_recoverable_snapshot_failure());
     }
 
     #[test]

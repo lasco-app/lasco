@@ -175,7 +175,6 @@ pub async fn create_library(
     .context("failed to initialise library")?;
 
     let library_config = LibraryJson {
-        version: crate::library_json::LIBRARY_JSON_VERSION,
         library_nickname: LibraryNickname(nickname),
         device_id,
         default_fetch_remote: None,
@@ -278,6 +277,7 @@ pub async fn add_existing_library_s3(
                 .and_then(|s| s.parse::<uuid::Uuid>().ok())
         })
         .ok_or_else(|| anyhow::anyhow!("remote is missing library_id_{{uuid}} file"))?;
+    crate::library::sync::verify_remote_library_format_with_keys(&remote_library_dir)?;
     let library_id = LibraryId(remote_library_uuid);
     let device_id = crate::crdt::DeviceId::random();
 
@@ -383,7 +383,6 @@ pub async fn add_existing_library_s3(
     };
 
     let library_config = LibraryJson {
-        version: crate::library_json::LIBRARY_JSON_VERSION,
         library_nickname: LibraryNickname(nickname),
         device_id,
         default_username: Some(effective_username.clone()),

@@ -127,7 +127,7 @@ impl Storage for StorageS3 {
     async fn list(&self, prefix: &str) -> Result<Vec<String>> {
         let results = self
             .bucket
-            .list(self.prefixed_key(prefix), None)
+            .list(self.prefixed_key(prefix), Some("/".to_string()))
             .await
             .map_err(|e| StorageError::Other(Box::new(e)))?;
 

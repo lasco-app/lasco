@@ -172,9 +172,10 @@ pub(super) async fn fetch_impl(
     Ok(SyncReportFetch { ops_downloaded })
 }
 
-/// Step 1 of fetch. Verifies the remote's `library/library_id_{uuid}` matches this
-/// library, then downloads any `mk_*.enc` file present on the remote but missing
-/// locally, so users added from another device become available on this one.
+/// Step 1 of fetch. Verifies the remote's `library/library_id_{uuid}` matches this library
+/// and that its format sentinel is one this build understands, then downloads any `mk_*.enc`
+/// file present on the remote but missing locally, so users added from another device become
+/// available on this one.
 async fn fetch_library_dir(
     storage: &StorageRead<'_>,
     local_state_library_dir: &LocalStateLibraryDir,
@@ -202,6 +203,8 @@ async fn fetch_library_dir(
         ))
         .into());
     }
+
+    crate::library::sync::verify_remote_library_format_with_keys(&remote_files)?;
 
     let remote_mk_names: Vec<&str> = remote_files
         .iter()

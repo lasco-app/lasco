@@ -18,7 +18,7 @@ use super::compaction::{
 use super::remote_access::StorageReadWrite;
 use super::{
     PlannedMediaSource, PushMediaPlan, PushMediaRequirement, PushMediaSource, SyncReportPush,
-    map_op_err, verify_remote_identity,
+    map_op_err, verify_remote_identity, verify_remote_library_format,
 };
 
 struct FileToPush {
@@ -138,17 +138,20 @@ impl Library {
         let master_key = &self.inner.master_key;
 
         verify_remote_identity(&access.storage.as_read(), remote_id).await?;
+        verify_remote_library_format(&access.storage.as_read()).await?;
         let remote_id_string = remote_id.to_string();
 
         let relay_source = match &media_source {
             PushMediaSource::LocalOnly => None,
             PushMediaSource::FromRemote { remote_id, storage } => {
                 verify_remote_identity(&storage, *remote_id).await?;
+                verify_remote_library_format(storage).await?;
                 Some((*remote_id, storage))
             }
             PushMediaSource::Plan(plan) => {
                 for (id, source) in &plan.sources {
                     verify_remote_identity(source, *id).await?;
+                    verify_remote_library_format(source).await?;
                 }
                 None
             }

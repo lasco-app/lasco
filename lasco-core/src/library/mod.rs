@@ -36,10 +36,26 @@ pub use crate::identifiers::LibraryId;
 pub const PROTOCOL_VERSION: u32 = 1;
 
 /// Library format version written as a sentinel file (`local_state/library/version_{i}`) on init.
+/// Increment it when the on-disk layout changes in a way an older build must not open.
 pub const LIBRARY_FORMAT_VERSION: u32 = 1;
 
 /// Sentinel filename for the current library format version.
-pub const LIBRARY_FORMAT_SENTINEL: &str = "version_1";
+#[must_use]
+pub fn library_format_sentinel() -> String {
+    format!("version_{LIBRARY_FORMAT_VERSION}")
+}
+
+/// Verifies that a local library directory carries the sentinel this build writes.
+fn verify_local_library_format(local_dirs: &LocalDirs) -> Result<()> {
+    let lib_dir = local_dirs.local_state_library_dir();
+    if lib_dir.path().join(library_format_sentinel()).exists() {
+        return Ok(());
+    }
+    Err(LibraryError::UnsupportedFormatVersion {
+        found: "(unknown)".to_string(),
+        expected: library_format_sentinel(),
+    })
+}
 
 #[derive(Debug)]
 pub struct Credentials {
@@ -115,7 +131,7 @@ impl Library {
         let salt = generate_salt();
         write_salt_file(lib_dir.path(), salt)?;
 
-        std::fs::write(lib_dir.path().join(LIBRARY_FORMAT_SENTINEL), b"")?;
+        std::fs::write(lib_dir.path().join(library_format_sentinel()), b"")?;
         std::fs::write(
             lib_dir.path().join(format!("library_id_{}", library_id.0)),
             b"",
@@ -161,15 +177,8 @@ impl Library {
         device_id: crate::crdt::DeviceId,
         credentials: Credentials,
     ) -> Result<Library> {
+        verify_local_library_format(&local_dirs)?;
         let lib_dir = local_dirs.local_state_library_dir();
-        let sentinel_path = lib_dir.path().join(LIBRARY_FORMAT_SENTINEL);
-        if !sentinel_path.exists() {
-            return Err(LibraryError::UnsupportedFormatVersion {
-                found: "(unknown)".to_string(),
-                expected: LIBRARY_FORMAT_SENTINEL.to_string(),
-            });
-        }
-
         let (master_key, _password_uuid) = find_master_key(
             lib_dir.path(),
             &credentials.username.0,
@@ -212,6 +221,7 @@ impl Library {
         device_id: crate::crdt::DeviceId,
         username: LibraryUsername,
     ) -> Result<Library> {
+        verify_local_library_format(&local_dirs)?;
         let local_ops_read_write_lock =
             LocalOpsReadWriteLock::new(local_dirs.local_state_operations());
         let mut loaded_crdt = crate::crdt::load_persisted(

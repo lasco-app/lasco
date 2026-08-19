@@ -121,6 +121,8 @@ impl Storage for StorageLocalFs {
         }
         let mut keys = Vec::new();
         for entry in WalkDir::new(&base)
+            .min_depth(1)
+            .max_depth(1)
             .into_iter()
             .filter_map(std::result::Result::ok)
         {
@@ -213,6 +215,20 @@ mod tests {
         let mut keys = s.list("operations/").await.unwrap();
         keys.sort();
         assert_eq!(keys, vec!["operations/a", "operations/b"]);
+    }
+
+    #[tokio::test]
+    async fn list_does_not_descend_into_nested_prefixes() {
+        let (s, _dir) = store();
+        s.put_atomic("remote_id_1", b"", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
+        s.put_atomic("media/2026/08/a.data", b"1", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
+
+        assert_eq!(s.list("").await.unwrap(), vec!["remote_id_1"]);
+        assert!(s.list("media/").await.unwrap().is_empty());
     }
 
     #[tokio::test]

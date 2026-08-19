@@ -34,6 +34,10 @@ pub trait Storage: Send + Sync {
     async fn put_atomic(&self, key: &str, data: &[u8], mode: AtomicWriteMode) -> Result<bool>;
     async fn get(&self, key: &str) -> Result<Vec<u8>>;
     async fn delete(&self, key: &str) -> Result<()>;
+    /// Returns the keys of the objects directly under `prefix`, without descending into
+    /// nested prefixes. A key whose remainder after `prefix` still contains a separator is
+    /// left out, so subdirectories are invisible rather than reported as entries. Listing
+    /// `media/` therefore yields nothing, since every media key sits under `YYYY/MM/`.
     async fn list(&self, prefix: &str) -> Result<Vec<String>>;
     async fn exists(&self, key: &str) -> Result<bool>;
 }
