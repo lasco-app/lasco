@@ -10,6 +10,7 @@ struct RemotesView: View {
     @State private var showRemotePicker = false
     @State private var showAddS3 = false
     @State private var showAddLocalFS = false
+    @State private var isUpdatingMediaSourceOrder = false
     let repository: LibraryRepository
     let session: LibrarySessionState
 
@@ -78,6 +79,10 @@ struct RemotesView: View {
                                     }
                                 )
                             }
+
+                            if orderedMediaSources.count > 1 {
+                                downloadPrioritySection
+                            }
                         }
                     }
                     .padding(.horizontal, 32)
@@ -119,6 +124,56 @@ struct RemotesView: View {
                 .environment(repository)
                 .environment(\.lascoTheme, .dark)
                 .preferredColorScheme(.dark)
+        }
+    }
+
+    private var orderedMediaSources: [FfiRemote] {
+        let remotesByID = Dictionary(uniqueKeysWithValues: session.remotes.map { ($0.remoteId, $0) })
+        return session.mediaSourceOrder.compactMap { remotesByID[$0] }
+    }
+
+    private var downloadPrioritySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("DOWNLOAD PRIORITY")
+                .font(LascoFont.mono())
+                .foregroundStyle(theme.inkMuted)
+
+            Text("Priority list to download media")
+                .font(LascoFont.body())
+                .foregroundStyle(theme.inkMuted)
+
+            ForEach(Array(orderedMediaSources.enumerated()), id: \.element.remoteId) { index, remote in
+                DownloadPriorityRow(
+                    position: index + 1,
+                    remote: remote,
+                    canMoveEarlier: index > 0 && !isUpdatingMediaSourceOrder,
+                    canMoveLater: index < orderedMediaSources.count - 1 && !isUpdatingMediaSourceOrder,
+                    onMoveEarlier: { moveMediaSource(at: index, by: -1) },
+                    onMoveLater: { moveMediaSource(at: index, by: 1) }
+                )
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .lascoPanelHard()
+    }
+
+    private func moveMediaSource(at index: Int, by offset: Int) {
+        let destination = index + offset
+        guard orderedMediaSources.indices.contains(index), orderedMediaSources.indices.contains(destination) else {
+            return
+        }
+
+        var reorderedIDs = orderedMediaSources.map(\.remoteId)
+        reorderedIDs.swapAt(index, destination)
+        isUpdatingMediaSourceOrder = true
+        Task {
+            do {
+                try await repository.setMediaSourceOrder(remoteIDs: reorderedIDs)
+            } catch {
+                toastManager.show(error: "Could not update download priority")
+            }
+            isUpdatingMediaSourceOrder = false
         }
     }
 }
@@ -172,6 +227,54 @@ struct RemoteTypePickerSheet: View {
                 Spacer()
             }
         }
+    }
+}
+
+private struct DownloadPriorityRow: View {
+    let position: Int
+    let remote: FfiRemote
+    let canMoveEarlier: Bool
+    let canMoveLater: Bool
+    let onMoveEarlier: () -> Void
+    let onMoveLater: () -> Void
+
+    @Environment(\.lascoTheme) private var theme
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 8) {
+            Text("\(position)")
+                .font(LascoFont.mono())
+                .foregroundStyle(theme.pink)
+                .frame(width: 20, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(remote.name)
+                    .font(LascoFont.body())
+                    .foregroundStyle(theme.ink)
+                Text(remote.kind)
+                    .font(LascoFont.mono())
+                    .foregroundStyle(theme.inkMuted)
+            }
+
+            Spacer()
+
+            VStack(spacing: 4) {
+                Button(action: onMoveEarlier) {
+                    Text("↑")
+                }
+                    .buttonStyle(LascoSecondaryButtonStyle())
+                    .disabled(!canMoveEarlier)
+                    .accessibilityLabel("Move \(remote.name) earlier")
+                Button(action: onMoveLater) {
+                    Text("↓")
+                }
+                    .buttonStyle(LascoSecondaryButtonStyle())
+                    .disabled(!canMoveLater)
+                    .accessibilityLabel("Move \(remote.name) later")
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Priority \(position), \(remote.name), \(remote.kind)")
     }
 }
 

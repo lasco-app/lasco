@@ -12,6 +12,8 @@ import com.lasco.lasco.data.Prefs
 import com.lasco.lasco.data.SessionState
 import com.lasco.lasco.data.SyncState
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.async
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.launch
 
 /**
@@ -48,6 +50,11 @@ class ManageViewModel(
             repo.setRemoteAutoPush(remoteId, enabled)
         }
     }
+
+    fun setMediaSourceOrder(remoteIds: List<uniffi.lasco_ffi.FfiRemoteUuid>): Deferred<Unit> =
+        viewModelScope.async {
+            repo.setMediaSourceOrder(remoteIds)
+        }
 
     companion object {
         val Factory: ViewModelProvider.Factory = viewModelFactory {

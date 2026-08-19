@@ -103,27 +103,6 @@ final class SyncCoordinator {
         }
     }
 
-    func push(remoteID: FfiRemoteUuid, sourceRemoteID: FfiRemoteUuid) async -> PushResult {
-        cancelScheduledPush()
-        busyRemotes.insert(remoteID)
-        defer { busyRemotes.remove(remoteID) }
-        do {
-            _ = try await gate.run { [repository] in
-                try await repository.push(remoteID: remoteID, sourceRemoteID: sourceRemoteID)
-            }
-            record(key: "lasco.lastPush", remoteID: remoteID, success: true, in: &lastPushRecords)
-            return .success
-        } catch is CancellationError {
-            return .failed("Push cancelled")
-        } catch LascoError.MissingLocalMedia(let mediaIds) {
-            record(key: "lasco.lastPush", remoteID: remoteID, success: false, in: &lastPushRecords)
-            return .missingLocalMedia(mediaIds)
-        } catch {
-            record(key: "lasco.lastPush", remoteID: remoteID, success: false, in: &lastPushRecords)
-            return .failed(error.localizedDescription)
-        }
-    }
-
     func fetch(remoteID: FfiRemoteUuid) async -> String? {
         busyRemotes.insert(remoteID)
         fetchInProgress = true

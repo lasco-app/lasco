@@ -155,6 +155,31 @@ impl Library {
         media_id: MediaUuid,
         storage: Option<&dyn Storage>,
     ) -> Result<Vec<u8>> {
+        self.media_get_bytes_from_storage(media_id, storage, None)
+            .await
+    }
+
+    /// Decrypts and returns a full media file, recording a positive source-inventory
+    /// observation when it had to be downloaded from `remote_id`.
+    ///
+    /// The observation is deliberately made only for full media files: a thumbnail
+    /// does not prove that the corresponding original is available for a later push.
+    pub async fn media_get_bytes_from_remote(
+        &self,
+        media_id: MediaUuid,
+        remote_id: &str,
+        storage: &dyn Storage,
+    ) -> Result<Vec<u8>> {
+        self.media_get_bytes_from_storage(media_id, Some(storage), Some(remote_id))
+            .await
+    }
+
+    async fn media_get_bytes_from_storage(
+        &self,
+        media_id: MediaUuid,
+        storage: Option<&dyn Storage>,
+        remote_id: Option<&str>,
+    ) -> Result<Vec<u8>> {
         let (year, month) = self.media_year_month(media_id)?;
 
         let local_state_media_dir = self.inner.local_dirs.local_state_media_dir();
@@ -175,6 +200,9 @@ impl Library {
             std::fs::create_dir_all(parent)?;
         }
         crate::atomic_file::write(&data_path, &blob_bytes)?;
+        if let Some(remote_id) = remote_id {
+            self.record_remote_media_presence(remote_id, media_id);
+        }
 
         Ok(plaintext)
     }
@@ -440,6 +468,7 @@ mod tests {
     use crate::library::Credentials;
     use crate::library::local_dirs::LocalDirs;
     use crate::operations::MediaFilename;
+    use crate::storage::{AtomicWriteMode, Storage, StorageMockMemory};
     use tempfile::TempDir;
     use uuid::Uuid;
 
@@ -624,6 +653,44 @@ mod tests {
         let dest = tmp.path().join("out.jpg");
         lib.media_get(media_id, &dest, None).await.unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), content);
+    }
+
+    #[tokio::test]
+    async fn original_download_records_source_media_presence() {
+        let tmp = TempDir::new().unwrap();
+        let (lib, _) = make_library(&tmp);
+        let (media_id, _) = add_media_to_album(&lib, &tmp, "img.jpg", b"photo data").await;
+        let entry = lib.media_show(media_id).unwrap();
+        let media_dir = lib.inner.local_dirs.local_state_media_dir();
+        let data_path =
+            media_dir.data_path(entry.storage_date.year, entry.storage_date.month, &media_id);
+        let encrypted = std::fs::read(&data_path).unwrap();
+        let storage = StorageMockMemory::new();
+        let key = format!(
+            "media/{}/{:02}/{}.data",
+            entry.storage_date.year, entry.storage_date.month, media_id
+        );
+        storage
+            .put_atomic(&key, &encrypted, AtomicWriteMode::Replace)
+            .await
+            .unwrap();
+        std::fs::remove_file(&data_path).unwrap();
+
+        assert_eq!(
+            lib.media_get_bytes_from_remote(media_id, "source-remote", &storage)
+                .await
+                .unwrap(),
+            b"photo data"
+        );
+
+        let media_list = MediaList::load_or_default(
+            &lib.inner
+                .local_dirs
+                .remote_media_list("source-remote")
+                .media_list_path(),
+        )
+        .unwrap();
+        assert!(media_list.contains(&media_id));
     }
 
     #[tokio::test]

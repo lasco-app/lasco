@@ -4,6 +4,7 @@ import Observation
 struct LibrarySessionSnapshot: Sendable, Equatable {
     let users: [String]
     let remotes: [FfiRemote]
+    let mediaSourceOrder: [FfiRemoteUuid]
     let defaultFetchRemoteID: FfiRemoteUuid?
     let autoImportDeviceMedia: Bool
 }
@@ -89,7 +90,7 @@ protocol LibraryRepositoryProtocol: Sendable {
 
     func setDefaultFetchRemote(remoteID: FfiRemoteUuid?) async throws
     func setRemoteAutoPush(remoteID: FfiRemoteUuid, enabled: Bool) async throws
-    func setRemoteMediaFetchPriority(remoteID: FfiRemoteUuid, priority: UInt32) async throws
+    func setMediaSourceOrder(remoteIDs: [FfiRemoteUuid]) async throws
     func setAutoImportDeviceMedia(enabled: Bool) async throws
     func addUser(username: String, password: String) async throws
     func addRemoteFixedPath(name: String, path: String) async throws -> FfiRemoteUuid
@@ -103,7 +104,6 @@ protocol LibraryRepositoryProtocol: Sendable {
     func removeOwnCompactionLock(remoteID: FfiRemoteUuid) async throws -> Bool
 
     func push(remoteID: FfiRemoteUuid) async throws -> UInt64
-    func push(remoteID: FfiRemoteUuid, sourceRemoteID: FfiRemoteUuid) async throws -> UInt64
     func fetch(remoteID: FfiRemoteUuid) async throws -> UInt64
     func close() async
 }
@@ -298,6 +298,7 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         return LibrarySessionSnapshot(
             users: try library.userList(),
             remotes: library.listRemotes(),
+            mediaSourceOrder: try library.getMediaSourceOrder(),
             defaultFetchRemoteID: library.getDefaultFetchRemote(),
             autoImportDeviceMedia: library.getAutoImportDeviceMedia()
         )
@@ -539,9 +540,9 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         await notify(.session)
     }
 
-    func setRemoteMediaFetchPriority(remoteID: FfiRemoteUuid, priority: UInt32) async throws {
+    func setMediaSourceOrder(remoteIDs: [FfiRemoteUuid]) async throws {
         try ensureOpen()
-        try library.setRemoteMediaFetchPriority(remoteId: remoteID, priority: priority)
+        try library.setMediaSourceOrder(remoteIds: remoteIDs)
         await notify(.session)
     }
 
@@ -611,20 +612,12 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
 
     func push(remoteID: FfiRemoteUuid) async throws -> UInt64 {
         try ensureOpen()
-        let result = try await library.pushRemoteAsync(remoteId: remoteID, appSupportDir: appSupportDirectory)
-        // A successful push changes the per-remote local/remote state. Publish it
-        // so status consumers don't have to be recreated before showing it.
-        await notify(.all)
-        return result
-    }
-
-    func push(remoteID: FfiRemoteUuid, sourceRemoteID: FfiRemoteUuid) async throws -> UInt64 {
-        try ensureOpen()
-        let result = try await library.pushRemoteFromRemoteAsync(
+        let result = try await library.pushRemoteUsingConfiguredMediaSourcesAsync(
             targetRemoteId: remoteID,
-            sourceRemoteId: sourceRemoteID,
             appSupportDir: appSupportDirectory
         )
+        // A successful push changes the per-remote local/remote state. Publish it
+        // so status consumers don't have to be recreated before showing it.
         await notify(.all)
         return result
     }
@@ -761,7 +754,7 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     func allMediaIDs() async -> [FfiMediaUuid] { await storage.allMediaIDs() }
     func setDefaultFetchRemote(remoteID: FfiRemoteUuid?) async throws { try await storage.setDefaultFetchRemote(remoteID: remoteID) }
     func setRemoteAutoPush(remoteID: FfiRemoteUuid, enabled: Bool) async throws { try await storage.setRemoteAutoPush(remoteID: remoteID, enabled: enabled) }
-    func setRemoteMediaFetchPriority(remoteID: FfiRemoteUuid, priority: UInt32) async throws { try await storage.setRemoteMediaFetchPriority(remoteID: remoteID, priority: priority) }
+    func setMediaSourceOrder(remoteIDs: [FfiRemoteUuid]) async throws { try await storage.setMediaSourceOrder(remoteIDs: remoteIDs) }
     func setAutoImportDeviceMedia(enabled: Bool) async throws { try await storage.setAutoImportDeviceMedia(enabled: enabled) }
     func addUser(username: String, password: String) async throws { try await storage.addUser(username: username, password: password) }
     func addRemoteFixedPath(name: String, path: String) async throws -> FfiRemoteUuid { try await storage.addRemoteFixedPath(name: name, path: path) }
@@ -774,7 +767,6 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     func inspectCompactionLock(remoteID: FfiRemoteUuid) async throws -> FfiCompactionLockInfo? { try await storage.inspectCompactionLock(remoteID: remoteID) }
     func removeOwnCompactionLock(remoteID: FfiRemoteUuid) async throws -> Bool { try await storage.removeOwnCompactionLock(remoteID: remoteID) }
     func push(remoteID: FfiRemoteUuid) async throws -> UInt64 { try await storage.push(remoteID: remoteID) }
-    func push(remoteID: FfiRemoteUuid, sourceRemoteID: FfiRemoteUuid) async throws -> UInt64 { try await storage.push(remoteID: remoteID, sourceRemoteID: sourceRemoteID) }
     func fetch(remoteID: FfiRemoteUuid) async throws -> UInt64 { try await storage.fetch(remoteID: remoteID) }
     func close() async { await storage.close() }
 }

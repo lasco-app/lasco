@@ -1015,14 +1015,9 @@ struct AlbumContentView: View {
     private var emptyState: some View {
         Group {
             if isRoot {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("No albums yet.")
-                        .font(LascoFont.title())
-                        .foregroundStyle(theme.inkSub)
-                    Text("Albums will appear here once your library is synced.")
-                        .font(LascoFont.body())
-                        .foregroundStyle(theme.inkMuted)
-                }
+                Text("No albums yet")
+                    .font(LascoFont.title())
+                    .foregroundStyle(theme.inkSub)
                 .padding(20)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .lascoPanel()

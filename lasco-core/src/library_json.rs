@@ -96,8 +96,8 @@ pub struct LibraryJson {
     /// Configuration version
     #[serde(default = "default_library_version")]
     pub version: u32,
-    /// User-friendly nickname for the library
-    pub nickname: LibraryNickname,
+    /// User-friendly nickname for the library.
+    pub library_nickname: LibraryNickname,
     /// Stable local CRDT author identity. This configuration is never uploaded to remotes.
     pub device_id: DeviceId,
     /// Default username for this library
@@ -113,6 +113,9 @@ pub struct LibraryJson {
     pub auto_import_device_media: bool,
     /// Configured remote storage locations
     pub remotes: Vec<RemoteConfig>,
+    /// Ordered subset of remotes allowed to supply uncached originals and relay media.
+    #[serde(default)]
+    pub media_source_order: Vec<RemoteUuid>,
 }
 
 fn default_library_version() -> u32 {
@@ -138,7 +141,7 @@ impl LibraryJson {
         }
         let data = fs::read(&path)
             .with_context(|| format!("failed to read library config from {}", path.display()))?;
-        let config: LibraryJson =
+        let mut config: LibraryJson =
             serde_json::from_slice(&data).context("failed to parse library.json")?;
         if config.version != LIBRARY_JSON_VERSION {
             bail!(
@@ -146,6 +149,27 @@ impl LibraryJson {
                 config.version,
                 LIBRARY_JSON_VERSION
             );
+        }
+        // Old configurations did not carry the ordered subset. Preserve their established
+        // priority semantics on first load; subsequent saves write only the new field.
+        if config.media_source_order.is_empty() {
+            let mut legacy: Vec<_> = config
+                .remotes
+                .iter()
+                .enumerate()
+                .filter(|(_, remote)| !remote.exclude_from_media_fetch)
+                .collect();
+            legacy.sort_by_key(|(index, remote)| (remote.media_fetch_priority, *index));
+            config.media_source_order = legacy
+                .into_iter()
+                .map(|(_, remote)| remote.remote_uuid)
+                .collect();
+        } else {
+            let known: std::collections::HashSet<_> =
+                config.remotes.iter().map(|r| r.remote_uuid).collect();
+            config.media_source_order.retain(|id| known.contains(id));
+            let mut seen = std::collections::HashSet::new();
+            config.media_source_order.retain(|id| seen.insert(*id));
         }
         Ok(Some(config))
     }
@@ -167,7 +191,60 @@ impl LibraryJson {
     }
 }
 
-/// Persist a library's configuration and register it in the global index.
+/// Owns the mutex that serializes access to one library's on-disk configuration.
+pub struct LibraryJsonReadWriteLock {
+    mutex: parking_lot::Mutex<()>,
+}
+
+impl LibraryJsonReadWriteLock {
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            mutex: parking_lot::Mutex::new(()),
+        }
+    }
+
+    pub(crate) fn lock<'a>(
+        &'a self,
+        app_dir: &'a Path,
+        library_id: LibraryId,
+    ) -> LibraryJsonReadWrite<'a> {
+        LibraryJsonReadWrite {
+            app_dir,
+            library_id,
+            lock_guard: self.mutex.lock(),
+        }
+    }
+}
+
+/// Exclusive access to one library's on-disk configuration.
+///
+/// This object keeps the library configuration mutex locked from construction through its drop.
+/// Do not hold it across an `.await`.
+pub struct LibraryJsonReadWrite<'a> {
+    app_dir: &'a Path,
+    library_id: LibraryId,
+    #[allow(
+        dead_code,
+        reason = "Keeping this RAII guard alive grants this object exclusive access until it is dropped."
+    )]
+    lock_guard: parking_lot::MutexGuard<'a, ()>,
+}
+
+impl<'a> LibraryJsonReadWrite<'a> {
+    /// Read the current library configuration while holding exclusive access.
+    pub fn read(&self) -> Result<LibraryJson> {
+        LibraryJson::load(self.app_dir, &self.library_id)?
+            .ok_or_else(|| anyhow::anyhow!("library.json not found"))
+    }
+
+    /// Persist a library configuration while holding exclusive access.
+    pub fn write(&self, library_json: &LibraryJson) -> Result<()> {
+        library_json.save(self.app_dir, &self.library_id)
+    }
+}
+
+/// Persist a library's configuration and register its ID in the global index.
 ///
 /// # Errors
 ///
@@ -175,9 +252,28 @@ impl LibraryJson {
 pub fn save_library(app_dir: &Path, library_id: &LibraryId, library: &LibraryJson) -> Result<()> {
     library.save(app_dir, library_id)?;
     let mut config = ConfigJson::load(app_dir)?.unwrap_or_default();
-    config.add_or_update_library(*library_id, library.nickname.clone());
+    config.add_library(*library_id);
     config.save(app_dir)?;
     Ok(())
+}
+
+/// Find a registered library by its nickname.
+///
+/// # Errors
+///
+/// Returns an error if the global index or a registered library configuration cannot be read,
+/// or if no library has the requested nickname.
+pub fn find_library_id_by_nickname(app_dir: &Path, nickname: &str) -> Result<LibraryId> {
+    let config =
+        ConfigJson::load(app_dir)?.ok_or_else(|| anyhow::anyhow!("no libraries configured"))?;
+    for library_id in config.libraries {
+        let library = LibraryJson::load(app_dir, &library_id)?
+            .ok_or_else(|| anyhow::anyhow!("library.json not found for '{library_id}'"))?;
+        if library.library_nickname.0 == nickname {
+            return Ok(library_id);
+        }
+    }
+    anyhow::bail!("library '{nickname}' not found")
 }
 
 /// Load the configuration for the library with the given nickname.
@@ -190,11 +286,7 @@ pub fn save_library(app_dir: &Path, library_id: &LibraryId, library: &LibraryJso
     reason = "Retained for nickname-based library selection in the CLI."
 )]
 fn load_library_by_nickname(app_dir: &Path, nickname: &str) -> Result<(LibraryId, LibraryJson)> {
-    let config =
-        ConfigJson::load(app_dir)?.ok_or_else(|| anyhow::anyhow!("no libraries configured"))?;
-    let library_id = *config
-        .get_library_id_by_nickname(nickname)
-        .ok_or_else(|| anyhow::anyhow!("library '{nickname}' not found"))?;
+    let library_id = find_library_id_by_nickname(app_dir, nickname)?;
     let library = LibraryJson::load(app_dir, &library_id)?
         .ok_or_else(|| anyhow::anyhow!("library.json not found for '{nickname}'"))?;
     Ok((library_id, library))
@@ -309,12 +401,13 @@ mod tests {
     fn make_test_library(remote_path: PathBuf) -> LibraryJson {
         LibraryJson {
             version: LIBRARY_JSON_VERSION,
-            nickname: LibraryNickname("test".to_string()),
+            library_nickname: LibraryNickname("test".to_string()),
             device_id: DeviceId(1),
             default_username: None,
             active_password_uuid: None,
             default_fetch_remote: None,
             auto_import_device_media: false,
+            media_source_order: vec![],
             remotes: vec![RemoteConfig {
                 remote_uuid: RemoteUuid::new(),
                 name: "local".to_string(),
@@ -338,7 +431,7 @@ mod tests {
 
         let (loaded_id, loaded) = load_library_by_nickname(dir.path(), "test").unwrap();
         assert_eq!(loaded_id, library_id);
-        assert_eq!(loaded.nickname.0, "test");
+        assert_eq!(loaded.library_nickname.0, "test");
         assert_eq!(loaded.remotes[0].name, "local");
     }
 
@@ -347,7 +440,7 @@ mod tests {
         let library = make_test_library(PathBuf::from("/tmp/remote"));
         let json = serde_json::to_string(&library).unwrap();
         let deserialized: LibraryJson = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized.nickname.0, "test");
+        assert_eq!(deserialized.library_nickname.0, "test");
         assert!(!json.contains("upload_album"));
     }
 

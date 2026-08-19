@@ -899,6 +899,10 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -994,6 +998,8 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_bytes(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_bytes_async(
 ): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_source_order(
+): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_thumbnail(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_thumbnail_async(
@@ -1058,6 +1064,8 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_from_remote(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_from_remote_async(
 ): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_using_configured_media_sources_async(
+): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_remove_media_from_album(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_remove_media_from_group(
@@ -1078,11 +1086,11 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_set_auto_import_device_media(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_set_default_fetch_remote(
 ): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_set_media_source_order(
+): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_set_media_thumbnail(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_set_remote_auto_push(
-): Short
-fun uniffi_lasco_ffi_checksum_method_ffilibrary_set_remote_media_fetch_priority(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_show_media(
 ): Short
@@ -1211,6 +1219,8 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_get_media_bytes(`ptr`: Pointer,`mediaI
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_get_media_bytes_async(`ptr`: Pointer,`mediaId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,
 ): Long
+fun uniffi_lasco_ffi_fn_method_ffilibrary_get_media_source_order(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_get_media_thumbnail(`ptr`: Pointer,`mediaId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_get_media_thumbnail_async(`ptr`: Pointer,`mediaId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,
@@ -1275,6 +1285,8 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_from_remote(`ptr`: Pointer
 ): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_from_remote_async(`ptr`: Pointer,`targetRemoteId`: RustBuffer.ByValue,`sourceRemoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,
 ): Long
+fun uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_using_configured_media_sources_async(`ptr`: Pointer,`targetRemoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,
+): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_remove_media_from_album(`ptr`: Pointer,`albumId`: RustBuffer.ByValue,`mediaId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_remove_media_from_group(`ptr`: Pointer,`groupId`: RustBuffer.ByValue,`mediaId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1295,11 +1307,11 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_set_auto_import_device_media(`ptr`: Po
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_set_default_fetch_remote(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_lasco_ffi_fn_method_ffilibrary_set_media_source_order(`ptr`: Pointer,`remoteIds`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_set_media_thumbnail(`ptr`: Pointer,`mediaId`: RustBuffer.ByValue,`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_set_remote_auto_push(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`enabled`: Byte,uniffi_out_err: UniffiRustCallStatus, 
-): Unit
-fun uniffi_lasco_ffi_fn_method_ffilibrary_set_remote_media_fetch_priority(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`priority`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_show_media(`ptr`: Pointer,`mediaId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -1569,6 +1581,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_bytes_async() != 39230.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_source_order() != 6486.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_thumbnail() != 38204.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1665,6 +1680,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_from_remote_async() != 41311.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_using_configured_media_sources_async() != 15476.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_remove_media_from_album() != 46585.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1695,13 +1713,13 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_set_default_fetch_remote() != 3089.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_set_media_source_order() != 64738.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_set_media_thumbnail() != 10306.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_set_remote_auto_push() != 52461.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_set_remote_media_fetch_priority() != 26777.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_show_media() != 45030.toShort()) {
@@ -2432,6 +2450,15 @@ public interface FfiLibraryInterface {
     suspend fun `getMediaBytesAsync`(`mediaId`: FfiMediaUuid, `appSupportDir`: kotlin.String?): kotlin.ByteArray
     
     /**
+     * Returns the ordered subset of remotes used to retrieve uncached originals.
+     *
+     * # Errors
+     *
+     * Returns an error if the library configuration cannot be read.
+     */
+    fun `getMediaSourceOrder`(): List<FfiRemoteUuid>
+    
+    /**
      * # Errors
      *
      * Returns an error if the ID is invalid, no local or configured remote copy is available, or reading, decrypting, or caching it fails.
@@ -2638,6 +2665,11 @@ public interface FfiLibraryInterface {
     suspend fun `pushRemoteFromRemoteAsync`(`targetRemoteId`: FfiRemoteUuid, `sourceRemoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): kotlin.ULong
     
     /**
+     * Push using the ordered configured media sources. Resolution completes before core push starts.
+     */
+    suspend fun `pushRemoteUsingConfiguredMediaSourcesAsync`(`targetRemoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): kotlin.ULong
+    
+    /**
      * # Errors
      *
      * Returns an error for invalid or absent IDs, missing membership, or an unpersistable operation.
@@ -2712,6 +2744,19 @@ public interface FfiLibraryInterface {
     fun `setDefaultFetchRemote`(`remoteId`: FfiRemoteUuid?)
     
     /**
+     * Replaces the ordered subset of remotes used to retrieve uncached originals.
+     *
+     * An empty list is valid and disables remote media-source lookups. Every supplied ID must
+     * belong to a configured remote and may appear only once.
+     *
+     * # Errors
+     *
+     * Returns an error if an ID is invalid, unknown, duplicated, or the configuration cannot be
+     * saved.
+     */
+    fun `setMediaSourceOrder`(`remoteIds`: List<FfiRemoteUuid>)
+    
+    /**
      * # Errors
      *
      * Returns an error if `media_id` is invalid or the local thumbnail cannot be written.
@@ -2729,18 +2774,6 @@ public interface FfiLibraryInterface {
      * in-memory auto-push update after configuration is saved.
      */
     fun `setRemoteAutoPush`(`remoteId`: FfiRemoteUuid, `enabled`: kotlin.Boolean)
-    
-    /**
-     * # Errors
-     *
-     * Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
-     *
-     * # Panics
-     *
-     * Panics if another thread panicked while holding the cached remote-list mutex during the
-     * in-memory priority update after configuration is saved.
-     */
-    fun `setRemoteMediaFetchPriority`(`remoteId`: FfiRemoteUuid, `priority`: kotlin.UInt)
     
     /**
      * # Errors
@@ -3446,6 +3479,26 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
 
     
     /**
+     * Returns the ordered subset of remotes used to retrieve uncached originals.
+     *
+     * # Errors
+     *
+     * Returns an error if the library configuration cannot be read.
+     */
+    @Throws(LascoException::class)override fun `getMediaSourceOrder`(): List<FfiRemoteUuid> {
+            return FfiConverterSequenceTypeFfiRemoteUuid.lift(
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_get_media_source_order(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * # Errors
      *
      * Returns an error if the ID is invalid, no local or configured remote copy is available, or reading, decrypting, or caching it fails.
@@ -4018,6 +4071,30 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
 
     
     /**
+     * Push using the ordered configured media sources. Resolution completes before core push starts.
+     */
+    @Throws(LascoException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `pushRemoteUsingConfiguredMediaSourcesAsync`(`targetRemoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?) : kotlin.ULong {
+        return uniffiRustCallAsync(
+        callWithPointer { thisPtr ->
+            UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_using_configured_media_sources_async(
+                thisPtr,
+                FfiConverterTypeFfiRemoteUuid.lower(`targetRemoteId`),FfiConverterOptionalString.lower(`appSupportDir`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_poll_u64(future, callback, continuation) },
+        { future, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_complete_u64(future, continuation) },
+        { future -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_free_u64(future) },
+        // lift function
+        { FfiConverterULong.lift(it) },
+        // Error FFI converter
+        LascoException.ErrorHandler,
+    )
+    }
+
+    
+    /**
      * # Errors
      *
      * Returns an error for invalid or absent IDs, missing membership, or an unpersistable operation.
@@ -4193,6 +4270,29 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
 
     
     /**
+     * Replaces the ordered subset of remotes used to retrieve uncached originals.
+     *
+     * An empty list is valid and disables remote media-source lookups. Every supplied ID must
+     * belong to a configured remote and may appear only once.
+     *
+     * # Errors
+     *
+     * Returns an error if an ID is invalid, unknown, duplicated, or the configuration cannot be
+     * saved.
+     */
+    @Throws(LascoException::class)override fun `setMediaSourceOrder`(`remoteIds`: List<FfiRemoteUuid>)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_set_media_source_order(
+        it, FfiConverterSequenceTypeFfiRemoteUuid.lower(`remoteIds`),_status)
+}
+    }
+    
+    
+
+    
+    /**
      * # Errors
      *
      * Returns an error if `media_id` is invalid or the local thumbnail cannot be written.
@@ -4225,28 +4325,6 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     uniffiRustCallWithError(LascoException) { _status ->
     UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_set_remote_auto_push(
         it, FfiConverterTypeFfiRemoteUuid.lower(`remoteId`),FfiConverterBoolean.lower(`enabled`),_status)
-}
-    }
-    
-    
-
-    
-    /**
-     * # Errors
-     *
-     * Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
-     *
-     * # Panics
-     *
-     * Panics if another thread panicked while holding the cached remote-list mutex during the
-     * in-memory priority update after configuration is saved.
-     */
-    @Throws(LascoException::class)override fun `setRemoteMediaFetchPriority`(`remoteId`: FfiRemoteUuid, `priority`: kotlin.UInt)
-        = 
-    callWithPointer {
-    uniffiRustCallWithError(LascoException) { _status ->
-    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_set_remote_media_fetch_priority(
-        it, FfiConverterTypeFfiRemoteUuid.lower(`remoteId`),FfiConverterUInt.lower(`priority`),_status)
 }
     }
     
@@ -5104,8 +5182,6 @@ data class FfiRemote (
     var `remoteId`: FfiRemoteUuid, 
     var `name`: kotlin.String, 
     var `autoPush`: kotlin.Boolean, 
-    var `mediaFetchPriority`: kotlin.UInt, 
-    var `excludeFromMediaFetch`: kotlin.Boolean, 
     var `kind`: kotlin.String, 
     var `endpoint`: kotlin.String?, 
     var `bucket`: kotlin.String?, 
@@ -5125,8 +5201,6 @@ public object FfiConverterTypeFfiRemote: FfiConverterRustBuffer<FfiRemote> {
             FfiConverterTypeFfiRemoteUuid.read(buf),
             FfiConverterString.read(buf),
             FfiConverterBoolean.read(buf),
-            FfiConverterUInt.read(buf),
-            FfiConverterBoolean.read(buf),
             FfiConverterString.read(buf),
             FfiConverterOptionalString.read(buf),
             FfiConverterOptionalString.read(buf),
@@ -5139,8 +5213,6 @@ public object FfiConverterTypeFfiRemote: FfiConverterRustBuffer<FfiRemote> {
             FfiConverterTypeFfiRemoteUuid.allocationSize(value.`remoteId`) +
             FfiConverterString.allocationSize(value.`name`) +
             FfiConverterBoolean.allocationSize(value.`autoPush`) +
-            FfiConverterUInt.allocationSize(value.`mediaFetchPriority`) +
-            FfiConverterBoolean.allocationSize(value.`excludeFromMediaFetch`) +
             FfiConverterString.allocationSize(value.`kind`) +
             FfiConverterOptionalString.allocationSize(value.`endpoint`) +
             FfiConverterOptionalString.allocationSize(value.`bucket`) +
@@ -5152,8 +5224,6 @@ public object FfiConverterTypeFfiRemote: FfiConverterRustBuffer<FfiRemote> {
             FfiConverterTypeFfiRemoteUuid.write(value.`remoteId`, buf)
             FfiConverterString.write(value.`name`, buf)
             FfiConverterBoolean.write(value.`autoPush`, buf)
-            FfiConverterUInt.write(value.`mediaFetchPriority`, buf)
-            FfiConverterBoolean.write(value.`excludeFromMediaFetch`, buf)
             FfiConverterString.write(value.`kind`, buf)
             FfiConverterOptionalString.write(value.`endpoint`, buf)
             FfiConverterOptionalString.write(value.`bucket`, buf)
@@ -5971,6 +6041,34 @@ public object FfiConverterSequenceTypeFfiRemote: FfiConverterRustBuffer<List<Ffi
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeFfiRemote.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeFfiRemoteUuid: FfiConverterRustBuffer<List<FfiRemoteUuid>> {
+    override fun read(buf: ByteBuffer): List<FfiRemoteUuid> {
+        val len = buf.getInt()
+        return List<FfiRemoteUuid>(len) {
+            FfiConverterTypeFfiRemoteUuid.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<FfiRemoteUuid>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeFfiRemoteUuid.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<FfiRemoteUuid>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeFfiRemoteUuid.write(it, buf)
         }
     }
 }

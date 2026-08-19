@@ -12,7 +12,6 @@ struct StatusView: View {
     @State private var showCleanConfirm = false
     @State private var cleanBlockedCount: Int? = nil
     @State private var showClearThumbsConfirm = false
-    @State private var pendingRelay: PendingRelayRequest?
     let repository: LibraryRepository
     let session: LibrarySessionState
     let syncCoordinator: SyncCoordinator
@@ -109,32 +108,6 @@ struct StatusView: View {
             if let count = cleanBlockedCount {
                 Text("\(count) item\(count == 1 ? "" : "s") not backed up on any remote. Push to a remote before cleaning local media.")
             }
-        }
-        .confirmationDialog(
-            "Choose media source",
-            isPresented: Binding(get: { pendingRelay != nil }, set: { if !$0 { pendingRelay = nil } }),
-            titleVisibility: .visible
-        ) {
-            if let request = pendingRelay {
-                ForEach(request.candidates, id: \.remoteId) { source in
-                    Button(source.name) {
-                        pendingRelay = nil
-                        Task {
-                            switch await syncCoordinator.push(remoteID: request.target.remoteId, sourceRemoteID: source.remoteId) {
-                            case .success:
-                                toastManager.show(ok: "\(request.target.name): pushed")
-                            case .failed(let message):
-                                toastManager.show(error: message)
-                            case .missingLocalMedia:
-                                toastManager.show(error: "The selected remote does not contain all missing media.")
-                            }
-                        }
-                    }
-                }
-            }
-            Button("Cancel", role: .cancel) { pendingRelay = nil }
-        } message: {
-            Text("Some media is not stored on this device. Choose a remote to download it from before continuing this backup.")
         }
     }
 
@@ -260,13 +233,8 @@ struct StatusView: View {
                                     toastManager.show(ok: "\(remote.name): pushed")
                                 case .failed(let message):
                                     toastManager.show(error: message)
-                                case .missingLocalMedia(let mediaIDs):
-                                    let candidates = session.remotes.filter { $0.remoteId != remote.remoteId }
-                                    if candidates.isEmpty {
-                                        toastManager.show(error: "Some media is not stored on this device, and no other remote is available to retrieve it from.")
-                                    } else {
-                                        pendingRelay = PendingRelayRequest(target: remote, mediaIDs: mediaIDs, candidates: candidates)
-                                    }
+                                case .missingLocalMedia:
+                                    toastManager.show(error: "Some media is not stored on this device or in the configured download sources.")
                                 }
                             }
                         },
@@ -295,11 +263,6 @@ struct StatusView: View {
     }
 }
 
-private struct PendingRelayRequest {
-    let target: FfiRemote
-    let mediaIDs: [FfiMediaId]
-    let candidates: [FfiRemote]
-}
 
 private struct RemoteStatusCard: View {
     @Environment(\.lascoTheme) var theme

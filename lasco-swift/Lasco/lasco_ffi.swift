@@ -790,6 +790,15 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     func getMediaBytesAsync(mediaId: FfiMediaUuid, appSupportDir: String?) async throws  -> Data
     
     /**
+     * Returns the ordered subset of remotes used to retrieve uncached originals.
+     *
+     * # Errors
+     *
+     * Returns an error if the library configuration cannot be read.
+     */
+    func getMediaSourceOrder() throws  -> [FfiRemoteUuid]
+    
+    /**
      * # Errors
      *
      * Returns an error if the ID is invalid, no local or configured remote copy is available, or reading, decrypting, or caching it fails.
@@ -996,6 +1005,11 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     func pushRemoteFromRemoteAsync(targetRemoteId: FfiRemoteUuid, sourceRemoteId: FfiRemoteUuid, appSupportDir: String?) async throws  -> UInt64
     
     /**
+     * Push using the ordered configured media sources. Resolution completes before core push starts.
+     */
+    func pushRemoteUsingConfiguredMediaSourcesAsync(targetRemoteId: FfiRemoteUuid, appSupportDir: String?) async throws  -> UInt64
+    
+    /**
      * # Errors
      *
      * Returns an error for invalid or absent IDs, missing membership, or an unpersistable operation.
@@ -1070,6 +1084,19 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     func setDefaultFetchRemote(remoteId: FfiRemoteUuid?) throws 
     
     /**
+     * Replaces the ordered subset of remotes used to retrieve uncached originals.
+     *
+     * An empty list is valid and disables remote media-source lookups. Every supplied ID must
+     * belong to a configured remote and may appear only once.
+     *
+     * # Errors
+     *
+     * Returns an error if an ID is invalid, unknown, duplicated, or the configuration cannot be
+     * saved.
+     */
+    func setMediaSourceOrder(remoteIds: [FfiRemoteUuid]) throws 
+    
+    /**
      * # Errors
      *
      * Returns an error if `media_id` is invalid or the local thumbnail cannot be written.
@@ -1087,18 +1114,6 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * in-memory auto-push update after configuration is saved.
      */
     func setRemoteAutoPush(remoteId: FfiRemoteUuid, enabled: Bool) throws 
-    
-    /**
-     * # Errors
-     *
-     * Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
-     *
-     * # Panics
-     *
-     * Panics if another thread panicked while holding the cached remote-list mutex during the
-     * in-memory priority update after configuration is saved.
-     */
-    func setRemoteMediaFetchPriority(remoteId: FfiRemoteUuid, priority: UInt32) throws 
     
     /**
      * # Errors
@@ -1656,6 +1671,20 @@ nonisolated open func getMediaBytesAsync(mediaId: FfiMediaUuid, appSupportDir: S
 }
     
     /**
+     * Returns the ordered subset of remotes used to retrieve uncached originals.
+     *
+     * # Errors
+     *
+     * Returns an error if the library configuration cannot be read.
+     */
+nonisolated open func getMediaSourceOrder()throws  -> [FfiRemoteUuid]  {
+    return try  FfiConverterSequenceTypeFfiRemoteUuid.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_get_media_source_order(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
      * # Errors
      *
      * Returns an error if the ID is invalid, no local or configured remote copy is available, or reading, decrypting, or caching it fails.
@@ -2082,6 +2111,26 @@ nonisolated open func pushRemoteFromRemoteAsync(targetRemoteId: FfiRemoteUuid, s
 }
     
     /**
+     * Push using the ordered configured media sources. Resolution completes before core push starts.
+     */
+nonisolated open func pushRemoteUsingConfiguredMediaSourcesAsync(targetRemoteId: FfiRemoteUuid, appSupportDir: String?)async throws  -> UInt64  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_using_configured_media_sources_async(
+                    self.uniffiClonePointer(),
+                    FfiConverterTypeFfiRemoteUuid_lower(targetRemoteId),FfiConverterOptionString.lower(appSupportDir)
+                )
+            },
+            pollFunc: ffi_lasco_ffi_rust_future_poll_u64,
+            completeFunc: ffi_lasco_ffi_rust_future_complete_u64,
+            freeFunc: ffi_lasco_ffi_rust_future_free_u64,
+            liftFunc: FfiConverterUInt64.lift,
+            errorHandler: FfiConverterTypeLascoError_lift
+        )
+}
+    
+    /**
      * # Errors
      *
      * Returns an error for invalid or absent IDs, missing membership, or an unpersistable operation.
@@ -2214,6 +2263,24 @@ nonisolated open func setDefaultFetchRemote(remoteId: FfiRemoteUuid?)throws   {t
 }
     
     /**
+     * Replaces the ordered subset of remotes used to retrieve uncached originals.
+     *
+     * An empty list is valid and disables remote media-source lookups. Every supplied ID must
+     * belong to a configured remote and may appear only once.
+     *
+     * # Errors
+     *
+     * Returns an error if an ID is invalid, unknown, duplicated, or the configuration cannot be
+     * saved.
+     */
+nonisolated open func setMediaSourceOrder(remoteIds: [FfiRemoteUuid])throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_set_media_source_order(self.uniffiClonePointer(),
+        FfiConverterSequenceTypeFfiRemoteUuid.lower(remoteIds),$0
+    )
+}
+}
+    
+    /**
      * # Errors
      *
      * Returns an error if `media_id` is invalid or the local thumbnail cannot be written.
@@ -2240,24 +2307,6 @@ nonisolated open func setRemoteAutoPush(remoteId: FfiRemoteUuid, enabled: Bool)t
     uniffi_lasco_ffi_fn_method_ffilibrary_set_remote_auto_push(self.uniffiClonePointer(),
         FfiConverterTypeFfiRemoteUuid_lower(remoteId),
         FfiConverterBool.lower(enabled),$0
-    )
-}
-}
-    
-    /**
-     * # Errors
-     *
-     * Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
-     *
-     * # Panics
-     *
-     * Panics if another thread panicked while holding the cached remote-list mutex during the
-     * in-memory priority update after configuration is saved.
-     */
-nonisolated open func setRemoteMediaFetchPriority(remoteId: FfiRemoteUuid, priority: UInt32)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
-    uniffi_lasco_ffi_fn_method_ffilibrary_set_remote_media_fetch_priority(self.uniffiClonePointer(),
-        FfiConverterTypeFfiRemoteUuid_lower(remoteId),
-        FfiConverterUInt32.lower(priority),$0
     )
 }
 }
@@ -3941,8 +3990,6 @@ nonisolated public struct FfiRemote {
     public var remoteId: FfiRemoteUuid
     public var name: String
     public var autoPush: Bool
-    public var mediaFetchPriority: UInt32
-    public var excludeFromMediaFetch: Bool
     public var kind: String
     public var endpoint: String?
     public var bucket: String?
@@ -3951,12 +3998,10 @@ nonisolated public struct FfiRemote {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(remoteId: FfiRemoteUuid, name: String, autoPush: Bool, mediaFetchPriority: UInt32, excludeFromMediaFetch: Bool, kind: String, endpoint: String?, bucket: String?, region: String?, path: String?) {
+    public init(remoteId: FfiRemoteUuid, name: String, autoPush: Bool, kind: String, endpoint: String?, bucket: String?, region: String?, path: String?) {
         self.remoteId = remoteId
         self.name = name
         self.autoPush = autoPush
-        self.mediaFetchPriority = mediaFetchPriority
-        self.excludeFromMediaFetch = excludeFromMediaFetch
         self.kind = kind
         self.endpoint = endpoint
         self.bucket = bucket
@@ -3981,12 +4026,6 @@ nonisolated extension FfiRemote: Equatable, Hashable {
         if lhs.autoPush != rhs.autoPush {
             return false
         }
-        if lhs.mediaFetchPriority != rhs.mediaFetchPriority {
-            return false
-        }
-        if lhs.excludeFromMediaFetch != rhs.excludeFromMediaFetch {
-            return false
-        }
         if lhs.kind != rhs.kind {
             return false
         }
@@ -4009,8 +4048,6 @@ nonisolated extension FfiRemote: Equatable, Hashable {
         hasher.combine(remoteId)
         hasher.combine(name)
         hasher.combine(autoPush)
-        hasher.combine(mediaFetchPriority)
-        hasher.combine(excludeFromMediaFetch)
         hasher.combine(kind)
         hasher.combine(endpoint)
         hasher.combine(bucket)
@@ -4031,8 +4068,6 @@ nonisolated public struct FfiConverterTypeFfiRemote: FfiConverterRustBuffer {
                 remoteId: FfiConverterTypeFfiRemoteUuid.read(from: &buf), 
                 name: FfiConverterString.read(from: &buf), 
                 autoPush: FfiConverterBool.read(from: &buf), 
-                mediaFetchPriority: FfiConverterUInt32.read(from: &buf), 
-                excludeFromMediaFetch: FfiConverterBool.read(from: &buf), 
                 kind: FfiConverterString.read(from: &buf), 
                 endpoint: FfiConverterOptionString.read(from: &buf), 
                 bucket: FfiConverterOptionString.read(from: &buf), 
@@ -4045,8 +4080,6 @@ nonisolated public struct FfiConverterTypeFfiRemote: FfiConverterRustBuffer {
         FfiConverterTypeFfiRemoteUuid.write(value.remoteId, into: &buf)
         FfiConverterString.write(value.name, into: &buf)
         FfiConverterBool.write(value.autoPush, into: &buf)
-        FfiConverterUInt32.write(value.mediaFetchPriority, into: &buf)
-        FfiConverterBool.write(value.excludeFromMediaFetch, into: &buf)
         FfiConverterString.write(value.kind, into: &buf)
         FfiConverterOptionString.write(value.endpoint, into: &buf)
         FfiConverterOptionString.write(value.bucket, into: &buf)
@@ -4767,6 +4800,31 @@ nonisolated fileprivate struct FfiConverterSequenceTypeFfiRemote: FfiConverterRu
         return seq
     }
 }
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated fileprivate struct FfiConverterSequenceTypeFfiRemoteUuid: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiRemoteUuid]
+
+    public static func write(_ value: [FfiRemoteUuid], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiRemoteUuid.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiRemoteUuid] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiRemoteUuid]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiRemoteUuid.read(from: &buf))
+        }
+        return seq
+    }
+}
 nonisolated private let UNIFFI_RUST_FUTURE_POLL_READY: Int8 = 0
 nonisolated private let UNIFFI_RUST_FUTURE_POLL_MAYBE_READY: Int8 = 1
 
@@ -5083,6 +5141,9 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_bytes_async() != 39230) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_source_order() != 6486) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_thumbnail() != 38204) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -5179,6 +5240,9 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_from_remote_async() != 41311) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_using_configured_media_sources_async() != 15476) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_remove_media_from_album() != 46585) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -5209,13 +5273,13 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_set_default_fetch_remote() != 3089) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_set_media_source_order() != 64738) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_set_media_thumbnail() != 10306) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_set_remote_auto_push() != 52461) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_set_remote_media_fetch_priority() != 26777) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_show_media() != 45030) {

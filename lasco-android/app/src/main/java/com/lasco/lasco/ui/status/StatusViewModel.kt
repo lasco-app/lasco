@@ -72,9 +72,6 @@ class StatusViewModel(
 
     suspend fun pushRemote(remoteId: FfiRemoteUuid): PushResult = repo.sync.pushRemote(remoteId)
 
-    suspend fun pushRemoteFromSource(targetRemoteId: FfiRemoteUuid, sourceRemoteId: FfiRemoteUuid): PushResult =
-        repo.sync.pushRemoteFromSource(targetRemoteId, sourceRemoteId)
-
     suspend fun fetchRemote(remoteId: FfiRemoteUuid): String? {
         val result = repo.sync.fetchRemoteWithResult(remoteId)
         refreshUnpushed(listOf(remoteId))

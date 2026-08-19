@@ -1,6 +1,7 @@
 use thiserror::Error;
 
 use crate::identifiers::MediaUuid;
+use crate::identifiers::RemoteUuid;
 use crate::operations::error::OperationError;
 
 #[derive(Error, Debug)]
@@ -25,4 +26,17 @@ pub enum SyncError {
     RemoteIdMismatch(String),
     #[error("media missing from local cache: {0:?}")]
     MissingLocalMedia(Vec<MediaUuid>),
+    #[error("media missing from configured sources: {0:?}")]
+    MissingMediaOnConfiguredSources(Vec<MediaUuid>),
+    #[error("assigned source {source_remote_id} became unavailable for media {media_id}: {error}")]
+    SourceUnavailable {
+        source_remote_id: RemoteUuid,
+        media_id: MediaUuid,
+        error: crate::storage::StorageError,
+    },
+    #[error("source {source_remote_id} returned corrupt media {media_id}")]
+    CorruptRemoteMedia {
+        source_remote_id: RemoteUuid,
+        media_id: MediaUuid,
+    },
 }

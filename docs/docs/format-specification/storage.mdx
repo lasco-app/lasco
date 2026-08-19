@@ -69,7 +69,7 @@ The root can be overridden via the `--data-dir` CLI flag.
                         └── media_list.json  last known remote media availability
 ```
 
-Each library directory is self-describing. Its configuration lives in `library.json` next to the library data, so the whole directory can be copied or moved as a unit. The global `config.json` is only a thin index used to discover libraries.
+Each library directory is self-describing. Its configuration, including `library_nickname`, lives in `library.json` next to the library data, so the whole directory can be copied or moved as a unit. The global `config.json` is only a thin index used to discover libraries and select the default one.
 
 `remotes/{remote_id}/state/compact_op_id_merged_to_local.json` is a local Fetch-progress marker. It stores
 the UUIDs (`CompactedOpId`) of immutable `operations/{uuid}.op{tier}_{count}` files whose operations
@@ -78,30 +78,28 @@ individual operation dots, operation contents, or remote file ciphertext.
 
 ### config.json
 
-The global index. It maps each library id to its nickname and records the default library. It holds no remote or credential data.
+The global index. It records library IDs and the default library ID. It holds no names, remote, or credential data.
 
 ```json
 {
   "version": 1,
-  "default_library": "my-photos",
-  "libraries": {
-    "a1b2c3d4-5678-90ef-ghij-klmnopqrstuv": {
-      "nickname": "my-photos"
-    }
-  }
+  "default_library_id": "a1b2c3d4-5678-90ef-ghij-klmnopqrstuv",
+  "libraries": [
+    "a1b2c3d4-5678-90ef-ghij-klmnopqrstuv"
+  ]
 }
 ```
 
 ### library.json
 
-Per-library configuration stored at `{app dir}/libraries/{library_id}/library.json`. It holds the library preferences and the ordered list of remotes. Each remote entry carries a stable `remote_uuid`, a human-readable `name`, and a `kind` object with that kind's connection details, including, for credentialed remotes, the encrypted secret key.
+Per-library configuration stored at `{app dir}/libraries/{library_id}/library.json`. It holds the library nickname, preferences, and ordered list of remotes. Each remote entry carries a stable `remote_uuid`, a human-readable `name`, and a `kind` object with that kind's connection details, including, for credentialed remotes, the encrypted secret key.
 
 An empty `remotes` list is valid: the library is local-only and has no remote storage layout. The `library/`, `media/`, and `operations/` server layout is created only after a configured remote is initialized.
 
 ```json
 {
   "version": 1,
-  "nickname": "my-photos",
+  "library_nickname": "my-photos",
   "device_id": "0123456789abcdef0123456789abcdef",
   "default_username": "alice",
   "active_password_uuid": "c3d4e5f6-7890-12gh-ijkl-mnopqrstuvwx",
