@@ -6,9 +6,9 @@ import React from 'react';
 
 export const Field = ({ name, type, example, note }) => (
   <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', padding: '0 20px 8px 0' }}>
-    <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--ink)' }}>{name}</span>
-    {type && <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '11px', color: 'var(--ink-muted)' }}>{type}</span>}
-    {(note || example) && <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '12px', color: 'var(--accent)', marginTop: '1px' }}>{note || example}</span>}
+    <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#1a1a1a' }}>{name}</span>
+    {type && <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '11px', color: '#8a8682' }}>{type}</span>}
+    {(note || example) && <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '12px', color: '#0a0f2e', marginTop: '1px' }}>{note || example}</span>}
   </div>
 );
 
@@ -17,10 +17,10 @@ export const CardGrid = ({ children }) => (
 );
 
 export const SchemaCard = ({ title, description, children }) => (
-  <div style={{ border: '2px solid var(--line)', padding: '16px 20px', margin: '0 0 14px', background: 'var(--surface)' }}>
-    <div style={{ marginBottom: '10px', paddingBottom: '10px', borderBottom: '1px solid var(--line-soft)' }}>
-      <span style={{ fontFamily: 'Jersey 10, monospace', fontSize: '20px', fontWeight: 400, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--ink)', lineHeight: 1 }}>{title}</span>
-      {description && <div style={{ fontFamily: 'Space Grotesk, sans-serif', fontSize: '16px', color: 'var(--ink)', marginTop: '5px' }}>{description}</div>}
+  <div style={{ border: '2px solid #000000', padding: '16px 20px', margin: '0 0 14px', background: '#ffffff' }}>
+    <div style={{ marginBottom: '10px', paddingBottom: '10px', borderBottom: '1px solid #b8b3a4' }}>
+      <span style={{ fontFamily: 'Jersey 10, monospace', fontSize: '20px', fontWeight: 400, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#1a1a1a', lineHeight: 1 }}>{title}</span>
+      {description && <div style={{ fontFamily: 'Space Grotesk, sans-serif', fontSize: '16px', color: '#1a1a1a', marginTop: '5px' }}>{description}</div>}
     </div>
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 0', paddingTop: '4px' }}>{children}</div>
   </div>
@@ -68,10 +68,124 @@ CrdtOperation {
 operation content. Receivers may apply a duplicate operation: each affected CRDT substate is
 idempotent using its own stored dots.
 
-`OperationContent` includes media creation, rename and properties; album creation, membership,
-rename, reparent, thumbnail, and permanent deletion; and group creation, membership, and permanent
-deletion. Membership adds use their own dot. A remove carries the set of add dots it observed, so
-concurrent unseen adds win.
+`OperationContent` is one of the fourteen operations listed below. `MediaCreation` carries a
+struct of its own; every other variant carries its fields inline.
+
+## Operation list
+
+The materialized library is derived from CRDT state, not from replaying this list in a particular
+order. Every entity can have a placeholder state, because an operation may arrive before the
+creation it refers to. A placeholder is never visible; only the creation operation makes the
+entity exist.
+
+### Media
+
+<CardGrid>
+<SchemaCard title="MediaCreation" description="Adds a new media item to the library.">
+  <Field name="media_id" type="MediaUuid" />
+  <Field name="filename_original" type="MediaFilename" note="Newtype over String, the name the file had when it was imported." />
+  <Field name="date" type="DateTime<Utc>" note="Capture date (EXIF DateTimeOriginal / PHAsset.creationDate)." />
+  <Field name="storage_date" type="StorageDate" note="StorageDate { year: u16, month: u8 } determines the storage path. Usually matches date but can differ." />
+  <Field name="size_bytes" type="u64" />
+  <Field name="content_hash" type="MediaHash" note="Newtype over [u8; 32], the BLAKE3 hash of the unencrypted file bytes." />
+  <Field name="modified_at" type="Option<DateTime<Utc>>" note="Last modification date (PHAsset.modificationDate or file mtime). None if unknown." />
+  <Field name="gps" type="Option<GpsCoords>" note="GPS position at capture time. GpsCoords { latitude: f64, longitude: f64 } in WGS84 decimal degrees." />
+  <Field name="apple_aae_media_id" type="Option<MediaUuid>" note="Points at another MediaCreation's media_id, the Apple .AAE edit sidecar for this media item." />
+  <Field name="apple_live_photo_media_id" type="Option<MediaUuid>" note="Points at another MediaCreation's media_id, the video component of this Live Photo." />
+</SchemaCard>
+<SchemaCard title="MediaRename" description="Sets or clears the user-facing display name.">
+  <Field name="media_id" type="MediaUuid" />
+  <Field name="name" type="Option<MediaName>" note="None clears the name and is an ordinary written value, never an omitted operation." />
+</SchemaCard>
+<SchemaCard title="MediaPropsUpdate" description="Attaches or updates a single key/value property.">
+  <Field name="media_id" type="MediaUuid" />
+  <Field name="key" type="String" />
+  <Field name="value" type="String" note="Opaque to the format, which imposes no encoding. No client emits this operation yet; clients merge and display it." />
+</SchemaCard>
+</CardGrid>
+
+A media referenced by another media's `apple_aae_media_id` or `apple_live_photo_media_id` is a
+companion. Companions are stored as ordinary media, but they are never added to an album or a
+group, so they never appear in listings on their own.
+
+There is intentionally no `MediaDeletion`. Media may leave albums and groups, but it remains in
+the library.
+
+### Albums
+
+<CardGrid>
+<SchemaCard title="AlbumCreation" description="Creates a new album with an optional parent.">
+  <Field name="album_id" type="AlbumUuid" />
+  <Field name="name" type="AlbumName" note="Newtype over String." />
+  <Field name="parent_id" type="Option<AlbumUuid>" note="None makes the album a root." />
+</SchemaCard>
+<SchemaCard title="AlbumMediaAdd" description="Adds a media item to an album.">
+  <Field name="album_id" type="AlbumUuid" />
+  <Field name="media_id" type="MediaUuid" />
+</SchemaCard>
+<SchemaCard title="AlbumMediaRemove" description="Removes a media item from an album.">
+  <Field name="album_id" type="AlbumUuid" />
+  <Field name="media_id" type="MediaUuid" />
+  <Field name="observed" type="HashSet<Dot>" note="The membership add dots this remove observed and cancels. An add it did not observe survives." />
+</SchemaCard>
+<SchemaCard title="AlbumDeletion" description="Permanently tombstones an album.">
+  <Field name="album_id" type="AlbumUuid" />
+</SchemaCard>
+<SchemaCard title="AlbumRename" description="Sets or clears the album name.">
+  <Field name="album_id" type="AlbumUuid" />
+  <Field name="name" type="Option<AlbumName>" />
+</SchemaCard>
+<SchemaCard title="AlbumReparent" description="Moves an album to a new parent.">
+  <Field name="album_id" type="AlbumUuid" />
+  <Field name="parent_id" type="Option<AlbumUuid>" />
+</SchemaCard>
+<SchemaCard title="AlbumThumbnailSet" description="Sets or removes the thumbnail for an album.">
+  <Field name="album_id" type="AlbumUuid" />
+  <Field name="media_id" type="Option<MediaUuid>" />
+</SchemaCard>
+</CardGrid>
+
+### Groups
+
+Groups are leaf collections. They hold media items directly, cannot have child albums, and each
+belongs to exactly one parent album fixed at creation. Groups cannot be reparented, which is a
+product constraint rather than an implementation accident.
+
+<CardGrid>
+<SchemaCard title="GroupCreation" description="Creates a group inside an album. Its parent is permanent.">
+  <Field name="group_id" type="GroupUuid" />
+  <Field name="parent_id" type="AlbumUuid" />
+</SchemaCard>
+<SchemaCard title="GroupMediaAdd" description="Adds a media item to a group.">
+  <Field name="group_id" type="GroupUuid" />
+  <Field name="media_id" type="MediaUuid" />
+</SchemaCard>
+<SchemaCard title="GroupMediaRemove" description="Removes a media item from a group.">
+  <Field name="group_id" type="GroupUuid" />
+  <Field name="media_id" type="MediaUuid" />
+  <Field name="observed" type="HashSet<Dot>" note="The membership add dots this remove observed and cancels." />
+</SchemaCard>
+<SchemaCard title="GroupDeletion" description="Permanently tombstones a group. No cascade operations are emitted.">
+  <Field name="group_id" type="GroupUuid" />
+</SchemaCard>
+</CardGrid>
+
+### Merge representation
+
+| Operation | Merge representation |
+| --- | --- |
+| `MediaCreation` | Immutable creation record keyed by `media_id`, with a deterministic dot tie-break for the same-ID conflict that normal use cannot produce. |
+| `MediaRename` | LWW register of `Option<MediaName>`. |
+| `MediaPropsUpdate` | Per-key LWW `String` register. |
+| `AlbumCreation` | Marks the entity created and writes `name` and desired parent to their LWW registers using the creation dot. |
+| `AlbumMediaAdd` / `AlbumMediaRemove` | Add-wins observed-remove set. An add stores its dot; a remove carries the exact `observed` set of add dots it cancels. |
+| `AlbumDeletion` | Permanent tombstone. It hides the album and its contents without erasing their CRDT metadata. |
+| `AlbumRename` | LWW register of `Option<AlbumName>`. |
+| `AlbumReparent` | LWW desired-parent register, followed by deterministic acyclic parent projection. |
+| `AlbumThumbnailSet` | LWW register of `Option<MediaUuid>`. |
+| `GroupCreation` | Immutable creation record keyed by `group_id`; its parent is permanently fixed. |
+| `GroupMediaAdd` / `GroupMediaRemove` | Add-wins observed-remove set, as for albums. |
+| `GroupDeletion` | Permanent tombstone. |
 
 ## Local durable state
 
