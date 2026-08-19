@@ -8,6 +8,7 @@ use rustc_hash::FxHashMap;
 
 use chrono::{DateTime, Utc};
 
+use crate::crdt::CompanionKind;
 use crate::identifiers::{GroupUuid, MediaUuid};
 use crate::operations::{GpsCoords, MediaFilename, MediaName, StorageDate};
 
@@ -29,6 +30,9 @@ pub struct MediaEntry {
     pub gps: Option<GpsCoords>,
     pub apple_aae_media_id: Option<MediaUuid>,
     pub apple_live_photo_media_id: Option<MediaUuid>,
+    /// Set when another media references this one as its companion resource. A companion is
+    /// never browsed on its own and never has a thumbnail.
+    pub companion_kind: Option<CompanionKind>,
 }
 
 impl MediaEntry {
@@ -48,6 +52,7 @@ impl MediaEntry {
             gps: entry.gps,
             apple_aae_media_id: entry.apple_aae_media_id,
             apple_live_photo_media_id: entry.apple_live_photo_media_id,
+            companion_kind: entry.companion_kind,
         }
     }
 }

@@ -92,37 +92,21 @@ impl Library {
                         .map(|entry| MediaEntry::from_state(&entry, entry.group_ids.clone()))
                 })
                 .collect(),
-            MediaListScope::Visible => {
-                let entries = state.media_entries();
-                let companion_ids: std::collections::HashSet<_> = entries
-                    .iter()
-                    .flat_map(|entry| [entry.apple_aae_media_id, entry.apple_live_photo_media_id])
-                    .flatten()
-                    .collect();
-
-                entries
-                    .iter()
-                    .filter(|entry| !companion_ids.contains(&entry.media_id))
-                    .map(|entry| MediaEntry::from_state(entry, entry.group_ids.clone()))
-                    .collect()
-            }
-            MediaListScope::Orphaned => {
-                let entries = state.media_entries();
-                let companion_ids: std::collections::HashSet<_> = entries
-                    .iter()
-                    .flat_map(|entry| [entry.apple_aae_media_id, entry.apple_live_photo_media_id])
-                    .flatten()
-                    .collect();
-
-                entries
-                    .iter()
-                    .filter(|entry| {
-                        !state.views.reachable_media_ids.contains(&entry.media_id)
-                            && !companion_ids.contains(&entry.media_id)
-                    })
-                    .map(|entry| MediaEntry::from_state(entry, entry.group_ids.clone()))
-                    .collect()
-            }
+            MediaListScope::Visible => state
+                .media_entries()
+                .iter()
+                .filter(|entry| entry.companion_kind.is_none())
+                .map(|entry| MediaEntry::from_state(entry, entry.group_ids.clone()))
+                .collect(),
+            MediaListScope::Orphaned => state
+                .media_entries()
+                .iter()
+                .filter(|entry| {
+                    entry.companion_kind.is_none()
+                        && !state.views.reachable_media_ids.contains(&entry.media_id)
+                })
+                .map(|entry| MediaEntry::from_state(entry, entry.group_ids.clone()))
+                .collect(),
             MediaListScope::All => state
                 .media_entries()
                 .iter()
