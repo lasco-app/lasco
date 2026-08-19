@@ -45,6 +45,18 @@ pub fn library_format_sentinel() -> String {
     format!("version_{LIBRARY_FORMAT_VERSION}")
 }
 
+/// Verifies that a local library directory carries the sentinel this build writes.
+fn verify_local_library_format(local_dirs: &LocalDirs) -> Result<()> {
+    let lib_dir = local_dirs.local_state_library_dir();
+    if lib_dir.path().join(library_format_sentinel()).exists() {
+        return Ok(());
+    }
+    Err(LibraryError::UnsupportedFormatVersion {
+        found: "(unknown)".to_string(),
+        expected: library_format_sentinel(),
+    })
+}
+
 #[derive(Debug)]
 pub struct Credentials {
     pub username: LibraryUsername,
@@ -165,15 +177,8 @@ impl Library {
         device_id: crate::crdt::DeviceId,
         credentials: Credentials,
     ) -> Result<Library> {
+        verify_local_library_format(&local_dirs)?;
         let lib_dir = local_dirs.local_state_library_dir();
-        let sentinel_path = lib_dir.path().join(library_format_sentinel());
-        if !sentinel_path.exists() {
-            return Err(LibraryError::UnsupportedFormatVersion {
-                found: "(unknown)".to_string(),
-                expected: library_format_sentinel(),
-            });
-        }
-
         let (master_key, _password_uuid) = find_master_key(
             lib_dir.path(),
             &credentials.username.0,
@@ -216,6 +221,7 @@ impl Library {
         device_id: crate::crdt::DeviceId,
         username: LibraryUsername,
     ) -> Result<Library> {
+        verify_local_library_format(&local_dirs)?;
         let local_ops_read_write_lock =
             LocalOpsReadWriteLock::new(local_dirs.local_state_operations());
         let mut loaded_crdt = crate::crdt::load_persisted(

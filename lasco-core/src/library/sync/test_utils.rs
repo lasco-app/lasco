@@ -43,6 +43,15 @@ pub async fn make_library_with_same_keys(tmp: &TempDir, source: &Library) -> Lib
     let library_id = source.library_id();
     let local_dirs = LocalDirs::new(tmp.path(), &library_id);
     local_dirs.ensure_state_dirs().unwrap();
+    // A second device receives its library directory from a remote, sentinel included.
+    std::fs::write(
+        local_dirs
+            .local_state_library_dir()
+            .path()
+            .join(crate::library::library_format_sentinel()),
+        b"",
+    )
+    .unwrap();
     Library::open_with_master_key(
         local_dirs,
         source.master_key().clone(),

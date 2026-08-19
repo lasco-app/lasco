@@ -277,6 +277,7 @@ pub async fn add_existing_library_s3(
                 .and_then(|s| s.parse::<uuid::Uuid>().ok())
         })
         .ok_or_else(|| anyhow::anyhow!("remote is missing library_id_{{uuid}} file"))?;
+    crate::library::sync::verify_remote_library_format_with_keys(&remote_library_dir)?;
     let library_id = LibraryId(remote_library_uuid);
     let device_id = crate::crdt::DeviceId::random();
 

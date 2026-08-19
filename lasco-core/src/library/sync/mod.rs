@@ -109,6 +109,7 @@ impl Library {
             Err(e) => return Err(LibraryError::Io(std::io::Error::other(e.to_string()))),
         };
         if !existing.is_empty() {
+            verify_remote_library_format_with_keys(&existing)?;
             return Ok(());
         }
         let lib_dir = self.inner.local_dirs.local_state_library_dir();
@@ -222,6 +223,49 @@ pub(crate) async fn discover_remote_uuid(
         })
 }
 
+/// Verifies that the remote's `library/` directory carries the format sentinel this build
+/// writes, given a listing of that directory.
+///
+/// # Errors
+///
+/// Returns an error if the sentinel is absent or names a different format version.
+pub(crate) fn verify_remote_library_format_with_keys(keys: &[String]) -> Result<(), SyncError> {
+    let expected = crate::library::library_format_sentinel();
+    let basename = |key: &str| key.rsplit('/').next().unwrap_or(key).to_string();
+    if keys.iter().any(|key| basename(key) == expected) {
+        return Ok(());
+    }
+    let found = keys
+        .iter()
+        .map(|key| basename(key))
+        .find(|name| name.starts_with("version_"))
+        .unwrap_or_else(|| "(none)".to_string());
+    Err(SyncError::UnsupportedRemoteFormat { found, expected })
+}
+
+/// Verifies that the remote's `library/` directory carries the format sentinel this build
+/// writes, reading the remote directly.
+///
+/// # Errors
+///
+/// Returns an error if the remote is unreachable or the sentinel is absent.
+pub(crate) async fn verify_remote_library_format(
+    storage: &StorageRead<'_>,
+) -> Result<(), SyncError> {
+    let expected = crate::library::library_format_sentinel();
+    let present = storage
+        .exists(&format!("library/{expected}"))
+        .await
+        .map_err(SyncError::RemoteUnreachable)?;
+    if present {
+        return Ok(());
+    }
+    Err(SyncError::UnsupportedRemoteFormat {
+        found: "(none)".to_string(),
+        expected,
+    })
+}
+
 /// Verifies that the remote's `remote_id_{uuid}` marker file matches `expected`.
 ///
 /// # Errors
@@ -254,5 +298,7 @@ pub(super) fn map_op_err(error: OperationError) -> SyncError {
 
 #[cfg(test)]
 mod crdt_tests;
+#[cfg(test)]
+mod format_tests;
 #[cfg(test)]
 mod test_utils;
