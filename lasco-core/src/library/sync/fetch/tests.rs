@@ -341,6 +341,79 @@ async fn fetch_updates_media_list_from_ops() {
 }
 
 #[tokio::test]
+// A blob uploaded to the remote after its creation op was already merged locally is still
+// discovered, because fetch confirms every media the reconstructed state knows about and
+// not only the ones created by the operations merged in this run.
+async fn fetch_confirms_media_uploaded_after_its_op_was_merged() {
+    let storage = StorageMockMemory::new();
+    let tmp_a = TempDir::new().unwrap();
+    let tmp_b = TempDir::new().unwrap();
+
+    let lib_a = make_library(&tmp_a).await;
+    lib_a
+        .initialize_remote(&storage, remote_uuid())
+        .await
+        .unwrap();
+    let lib_b = make_library_with_same_keys(&tmp_b, &lib_a).await;
+
+    let album_id = AlbumUuid::from_uuid(Uuid::new_v4());
+    let src = write_file(tmp_a.path(), "photo.jpg", b"data");
+    let media_id = lib_a
+        .media_add(
+            crate::library::media::upload::MediaAddSource::CopyFrom(src),
+            Some(album_id),
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap()
+        .id();
+    lib_a.push(&storage, REMOTE_ID).await.unwrap();
+
+    let entry = lib_a.media_show(media_id).unwrap();
+    let data_key = format!(
+        "media/{}/{:02}/{}.data",
+        entry.storage_date.year, entry.storage_date.month, media_id
+    );
+    let blob = storage.get(&data_key).await.unwrap();
+
+    // The op file is on the remote but the blob is not there yet.
+    storage.delete(&data_key).await.unwrap();
+    lib_b.fetch(&storage, REMOTE_ID).await.unwrap();
+
+    let media_list_path = lib_b
+        .inner
+        .local_dirs
+        .remote_media_list(&REMOTE_ID.to_string())
+        .media_list_path();
+    let media_list =
+        crate::remote::local_state::media_list_json::MediaList::load_or_default(&media_list_path)
+            .unwrap();
+    assert!(
+        !media_list.contains(&media_id),
+        "an absent blob must stay unconfirmed"
+    );
+
+    storage
+        .put_atomic(&data_key, &blob, AtomicWriteMode::CreateIfAbsent)
+        .await
+        .unwrap();
+
+    // This fetch merges no new operation file at all.
+    let report = lib_b.fetch(&storage, REMOTE_ID).await.unwrap();
+    assert_eq!(report.ops_downloaded, 0);
+
+    let media_list =
+        crate::remote::local_state::media_list_json::MediaList::load_or_default(&media_list_path)
+            .unwrap();
+    assert!(
+        media_list.contains(&media_id),
+        "the late blob must be confirmed by a later fetch"
+    );
+}
+
+#[tokio::test]
 // A user added on another device (its mk file uploaded to the remote's library/ dir)
 // becomes available on this one after fetch.
 async fn fetch_downloads_new_user_mk_file() {

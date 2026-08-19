@@ -21,7 +21,7 @@ export const AccessCard = ({ children }) => (
 
 ### Summary
 
-Fetch lists and downloads remote operation files missing from the remote's last-known state, verifies that the remote has not lost any previously known CRDT dots, then applies their operations to `CrdtState` and appends them to the local log before rebuilding derived state. It only adds missing `mk_*.enc` files and does not download media or thumbnails. Fetch never modifies or removes a remote file.
+Fetch lists and downloads remote operation files missing from the remote's last-known state, verifies that the remote has not lost any previously known CRDT dots, then applies their operations to `CrdtState` and appends them to the local log before rebuilding derived state. It then confirms which media the remote holds and records them in that remote's media inventory. It only adds missing `mk_*.enc` files and does not download media or thumbnails. Fetch never modifies or removes a remote file.
 
 ### Required access
 
@@ -33,7 +33,7 @@ Fetch lists and downloads remote operation files missing from the remote's last-
   - Read and append to the local operation log.
   - Read and atomically write the remote's last-known operation state (`remotes/{remote_id}/state/operations/`).
   - Read and atomically write the merge marker (`remotes/{remote_id}/state/compact_op_id_merged_to_local.json`).
-  - Read and opportunistically atomically update the media inventory (`remotes/{remote_id}/state/media/media_list.json`) under its per-remote mutex.
+  - Read and opportunistically atomically update the media inventory (`remotes/{remote_id}/state/media/media_list.json`) under its per-remote mutex, from one listing per `media/YYYY/MM/` folder holding an unconfirmed media.
   - Atomically write missing `mk_*.enc` files in the library directory.
 - **In-memory local state:** Rebuild derived state from `CrdtState`.
 
@@ -72,8 +72,13 @@ Fetch lists and downloads remote operation files missing from the remote's last-
     </tr>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>5</td>
-      <td>Apply individual operations from compacted files not already recorded in `remotes/{remote_id}/state/compact_op_id_merged_to_local.json` to `crdt-state.enc` and append them to the local log. Applying a duplicate is safe because each CRDT substate is idempotent. Fetch may record media blobs whose remote existence it successfully confirms in `media_list.json`; this positive-only inventory may be incomplete. Update `compact_op_id_merged_to_local.json`, then rebuild derived state once.</td>
+      <td>Apply individual operations from compacted files not already recorded in `remotes/{remote_id}/state/compact_op_id_merged_to_local.json` to `crdt-state.enc` and append them to the local log. Applying a duplicate is safe because each CRDT substate is idempotent. Update `compact_op_id_merged_to_local.json`, then rebuild derived state once.</td>
       <td><span className="tag tag-ok">Read remote</span> <span className="tag tag-warn">Append local log</span> <span className="tag tag-warn">Write local state</span> <span className="tag tag-warn">Rebuild in-memory state</span></td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: 'nowrap' }}>6</td>
+      <td>Confirm remote media availability: take every media known to the reconstructed state that `media_list.json` does not already confirm, group those candidates by their `media/YYYY/MM/` folder, list each of those folders once, and record the media whose data blob is present. This covers all known media, not only the ones created by the operations merged in this run, so a blob uploaded after its creation operation was merged is still discovered. This positive-only inventory may be incomplete, and every error here is ignored so it cannot fail an otherwise valid fetch.</td>
+      <td><span className="tag tag-ok">List remote media folders</span> <span className="tag tag-warn">Write local media list</span></td>
     </tr>
   </tbody>
 </table>
@@ -136,7 +141,12 @@ For operation files, the client selects operations from the complete local opera
     </tr>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>5</td>
-      <td>For each reconstructed media item not yet confirmed in the target's media inventory and available locally, ensure its data blob and thumbnail when present exist with non-overwriting writes, then record the media ID in that inventory.</td>
+      <td>Confirm remote media availability against the target with the same folder listing fetch performs, so a blob another client uploaded is neither reported missing nor uploaded again. Only media folders are listed, never operation files, so this cannot make push an implicit fetch.</td>
+      <td><span className="tag tag-ok">List remote media folders</span> <span className="tag tag-warn">Write local media list</span></td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: 'nowrap' }}>6</td>
+      <td>For each reconstructed media item still not confirmed in the target's media inventory and available locally, ensure its data blob and thumbnail when present exist with non-overwriting writes, then record the media ID in that inventory.</td>
       <td><span className="tag tag-ok">Read local media</span> <span className="tag tag-warn">Write remote media and thumbnail</span> <span className="tag tag-warn">Write local media list</span></td>
     </tr>
   </tbody>

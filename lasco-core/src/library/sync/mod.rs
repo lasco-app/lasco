@@ -4,6 +4,8 @@ pub mod error;
 
 pub mod remote_access;
 
+pub(crate) mod media_inventory;
+
 pub(super) mod fetch;
 pub(super) mod push;
 

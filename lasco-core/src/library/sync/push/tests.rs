@@ -669,6 +669,61 @@ async fn push_without_relay_reports_missing_local_media() {
 }
 
 #[tokio::test]
+// A blob another client already uploaded to the target is confirmed by push itself, so push
+// neither reports it missing nor sends it again, even with no local copy and no prior fetch.
+async fn push_confirms_media_already_on_target_before_uploading() {
+    let source = StorageMockMemory::new();
+    stamp_source_remote(&source).await;
+    let target = StorageMockMemory::new();
+    stamp_remote_id(&target).await;
+    let tmp = TempDir::new().unwrap();
+    let lib = make_library(&tmp).await;
+    let media_id = lib
+        .media_add(
+            crate::library::media::upload::MediaAddSource::CopyFrom(write_file(
+                tmp.path(),
+                "relay.jpg",
+                b"pixels",
+            )),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap()
+        .id();
+    lib.push(&source, SOURCE_REMOTE_ID).await.unwrap();
+
+    let entry = lib.media_show(media_id).unwrap();
+    let data_key = format!(
+        "media/{}/{:02}/{}.data",
+        entry.storage_date.year, entry.storage_date.month, media_id
+    );
+    let blob = source.get(&data_key).await.unwrap();
+    target
+        .put_atomic(&data_key, &blob, AtomicWriteMode::CreateIfAbsent)
+        .await
+        .unwrap();
+    remove_local_media(&lib, media_id);
+
+    let report = lib.push(&target, REMOTE_ID).await.unwrap();
+    assert_eq!(
+        report.media_uploaded, 0,
+        "the blob is already on the target, nothing to upload"
+    );
+
+    let media_list = crate::remote::local_state::media_list_json::MediaList::load_or_default(
+        &lib.inner
+            .local_dirs
+            .remote_media_list(&REMOTE_ID.to_string())
+            .media_list_path(),
+    )
+    .unwrap();
+    assert!(media_list.contains(&media_id));
+}
+
+#[tokio::test]
 async fn push_relays_selected_source_without_caching_media_locally() {
     let source = StorageMockMemory::new();
     stamp_source_remote(&source).await;

@@ -15,6 +15,7 @@ use crate::storage::AtomicWriteMode;
 use super::compaction::{
     self, appropriate_tier, count_tier_files, release_lock, tier_needs_compaction, try_acquire_lock,
 };
+use super::media_inventory::confirm_known_media;
 use super::remote_access::StorageReadWrite;
 use super::{
     PlannedMediaSource, PushMediaPlan, PushMediaRequirement, PushMediaSource, SyncReportPush,
@@ -196,6 +197,27 @@ impl Library {
         let mut last_known_state = LastKnownState::open(access.remote_last_known_state_dir)?;
         let remote_covered =
             collect_dots_from_dir(&ops_dir, master_key).map_err(SyncError::LocalCacheCorrupt)?;
+
+        // Confirm what the target already holds before deciding what to upload, so a blob
+        // another client uploaded is neither reported missing nor sent a second time. This
+        // lists media folders only, never operation files, so push still cannot turn into an
+        // implicit fetch.
+        let known_media: Vec<(MediaUuid, StorageDate)> = {
+            let state = self.inner.state.read();
+            state
+                .media_entries()
+                .iter()
+                .map(|entry| (entry.media_id, entry.storage_date))
+                .collect()
+        };
+        confirm_known_media(
+            &access.storage.as_read(),
+            &known_media,
+            &remote_id_string,
+            access.remote_media_list,
+            &self.inner.remote_media_list_lock,
+        )
+        .await;
 
         // Only the snapshot read is locked. Network storage awaits below must remain unlocked.
         let media_list = self.inner.remote_media_list_lock.with_lock(

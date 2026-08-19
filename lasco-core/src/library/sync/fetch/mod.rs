@@ -1,9 +1,9 @@
 use std::collections::HashSet;
 
-use crate::crdt::{CrdtOperation, CrdtState, OperationContent};
+use crate::crdt::CrdtState;
 use crate::encryption::master_key::{MasterKey, parse_mk_filename};
 use crate::error::{LibraryError, SyncError};
-use crate::identifiers::{LibraryId, RemoteUuid};
+use crate::identifiers::{LibraryId, MediaUuid, RemoteUuid};
 use crate::library::Library;
 use crate::library::local_dirs::{
     LocalStateCrdt, LocalStateLibraryDir, RemoteCompactOpIdMergedToLocal, RemoteLastKnownStateDir,
@@ -11,9 +11,11 @@ use crate::library::local_dirs::{
 };
 use crate::library::local_ops_read_write::LocalOpsReadWriteLock;
 use crate::library::remote_media_list_lock::RemoteMediaListLock;
+use crate::operations::StorageDate;
 use crate::operations::remote_ops::RemoteOpFile;
-use crate::remote::{CompactOpIdMergedToLocal, LastKnownState, MediaList};
+use crate::remote::{CompactOpIdMergedToLocal, LastKnownState};
 
+use super::media_inventory::confirm_known_media;
 use super::remote_access::StorageRead;
 use super::{SyncReportFetch, verify_remote_identity};
 
@@ -113,9 +115,9 @@ pub(super) async fn fetch_impl(
         .local_ops_read_write_lock
         .lock(master_key)
         .known_dots()?;
-    let inventory_operations = {
+    {
         let mut state = state_lock.write();
-        let mut inventory_operations = Vec::new();
+        let mut merged_operations = Vec::new();
         for file in last_known_state.files() {
             let file_uuid = LastKnownState::file_uuid(file);
             if merged_files.contains(&file_uuid) {
@@ -137,7 +139,7 @@ pub(super) async fn fetch_impl(
                                 .append_operation(operation)?;
                             ops_downloaded += 1;
                         }
-                        inventory_operations.push(operation.clone());
+                        merged_operations.push(operation.clone());
                     }
                     merged_files.insert(file_uuid);
                     merged_files_changed = true;
@@ -149,25 +151,30 @@ pub(super) async fn fetch_impl(
             merged_files.save(&merged_files_path)?;
         }
         if merged_files_changed {
-            state.apply_batch(inventory_operations.iter());
-            crate::crdt::save_persisted(
-                &local_state_crdt.snapshot_path(),
-                master_key,
-                &state,
-            )?;
+            state.apply_batch(merged_operations.iter());
+            crate::crdt::save_persisted(&local_state_crdt.snapshot_path(), master_key, &state)?;
         }
-        inventory_operations
-    };
-    for operation in &inventory_operations {
-        update_media_list_from_group(
-            access.storage,
-            operation,
-            &remote_id_string,
-            access.remote_media_list,
-            access.remote_media_list_lock,
-        )
-        .await;
     }
+    // Confirm the remote presence of every media the reconstructed state knows about and that
+    // the inventory has not confirmed yet, not only the ones created by the operations merged
+    // in this run. A blob uploaded by another client after its creation operation was merged
+    // here would otherwise never be discovered.
+    let known_media: Vec<(MediaUuid, StorageDate)> = {
+        let state = state_lock.read();
+        state
+            .media_entries()
+            .iter()
+            .map(|entry| (entry.media_id, entry.storage_date))
+            .collect()
+    };
+    confirm_known_media(
+        access.storage,
+        &known_media,
+        &remote_id_string,
+        access.remote_media_list,
+        access.remote_media_list_lock,
+    )
+    .await;
 
     Ok(SyncReportFetch { ops_downloaded })
 }
@@ -240,38 +247,6 @@ async fn fetch_library_dir(
     }
 
     Ok(())
-}
-
-/// For each `MediaCreation` operation, checks if the file exists on the remote and
-/// records it in `media_list` if so. Inventory errors are intentionally ignored.
-async fn update_media_list_from_group(
-    storage: &StorageRead<'_>,
-    operation: &CrdtOperation,
-    remote_id: &str,
-    remote_media_list: &RemoteMediaList,
-    remote_media_list_lock: &RemoteMediaListLock,
-) {
-    if let OperationContent::MediaCreation(creation) = &operation.content {
-        let media_id = creation.media_id;
-        let storage_date = creation.storage_date;
-        let key = format!(
-            "media/{}/{:02}/{}.data",
-            storage_date.year, storage_date.month, media_id.0
-        );
-        if matches!(storage.exists(&key).await, Ok(true)) {
-            remote_media_list_lock.with_lock(remote_id, remote_media_list, |remote_media_list| {
-                let path = remote_media_list.media_list_path();
-                // This is a positive-only, opportunistic inventory. Its absence or corruption
-                // must not prevent fetch from establishing the last-known operation state and local log.
-                let Ok(mut media_list) = MediaList::load_or_default(&path) else {
-                    return;
-                };
-                if media_list.insert_present(media_id) {
-                    let _ = media_list.save(&path);
-                }
-            });
-        }
-    }
 }
 
 #[cfg(test)]

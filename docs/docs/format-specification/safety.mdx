@@ -67,7 +67,7 @@ instance.
 | `local_state/library/` | `LocalStateLibraryDir` | Not used | Not used | Not used | <span className="tag tag-ok">Safe</span> Only one fetch per library |
 | `remotes/{remote_id}/state/operations/` | `RemoteLastKnownStateDir` | `RemoteLastKnownStateDir` | Not used | Not used | <span className="tag tag-ok">Safe</span> Only one sync operation per remote |
 | `remotes/{remote_id}/state/compact_op_id_merged_to_local.json` | `RemoteCompactOpIdMergedToLocal` | Not used | Not used | Not used | <span className="tag tag-ok">Safe</span> Fetch-exclusive; corruption intentionally fails fetch |
-| `remotes/{remote_id}/state/media/media_list.json` | `RemoteMediaList` | `RemoteMediaList` | `RemoteMediaList` | Not used | <span className="tag tag-ok">Safe</span> Per-remote inventory mutex plus atomic writes |
+| `remotes/{remote_id}/state/media/media_list.json` | `RemoteMediaList` | `RemoteMediaList` | Not used | Not used | <span className="tag tag-ok">Safe</span> Per-remote inventory mutex plus atomic writes |
 | `local_state/media/` | Not used | `LocalStateMediaDir` | `LocalStateMediaDir` (through `Library`) | `LocalStateMediaDir` (through `Library`) | <span className="tag tag-ok">Safe</span> Atomic write; immutable file with a 1-to-1 filename/content relation |
 | `operations.log` | `LocalOpsReadWriteLock` | `LocalOpsReadWriteLock` (through `Library`) | Not used | `LocalOpsReadWriteLock` (through `Library`) | <span className="tag tag-ok">Safe</span> Mutex |
 
@@ -78,13 +78,18 @@ The sibling path accessors enforce ownership within the shared `state/` parent:
 merge marker, and `RemoteMediaList` owns only the media inventory.
 
 `media_list.json` is a positive-only inventory: an entry means the client has confirmed a media
-blob on that remote through one of its three writers: fetch after a successful remote existence
-check, push after a successful ensure-present upload, or an on-demand media download after the
-blob has been validated. Its absence means unconfirmed, not absent from the remote.
+blob on that remote through one of its two writers, both of them sync procedures: fetch and push
+after listing the `media/YYYY/MM/` folders holding a media the inventory has not confirmed yet,
+and push again after a successful ensure-present upload. Its absence means unconfirmed, not
+absent from the remote.
 
-Fetch checks are optional bookkeeping, so an inventory write failure cannot prevent a validated
-operation fetch. The three writers use a per-remote non-async mutex, held only for synchronous
-local load-modify-save work and never across `exists`, `get`, or `put_if_absent` awaits. Atomic
+Downloading a blob on demand to display it is not a writer. It proves only that the blob was
+readable at that moment, and the confirmation step of the next sync with that remote establishes
+the same fact, so the download path leaves the inventory alone.
+
+Confirmation is optional bookkeeping, so an inventory write failure cannot prevent a validated
+operation fetch. Both writers use a per-remote non-async mutex, held only for synchronous
+local load-modify-save work and never across `list`, `get`, or `put_if_absent` awaits. Atomic
 file replacement prevents partial JSON contents; the mutex prevents lost concurrent updates.
 
 `compact_op_id_merged_to_local.json` is written only by fetch. The global fetch slot makes it fetch-exclusive

@@ -155,30 +155,13 @@ impl Library {
         media_id: MediaUuid,
         storage: Option<&dyn Storage>,
     ) -> Result<Vec<u8>> {
-        self.media_get_bytes_from_storage(media_id, storage, None)
-            .await
-    }
-
-    /// Decrypts and returns a full media file, recording a positive source-inventory
-    /// observation when it had to be downloaded from `remote_id`.
-    ///
-    /// The observation is deliberately made only for full media files: a thumbnail
-    /// does not prove that the corresponding original is available for a later push.
-    pub async fn media_get_bytes_from_remote(
-        &self,
-        media_id: MediaUuid,
-        remote_id: &str,
-        storage: &dyn Storage,
-    ) -> Result<Vec<u8>> {
-        self.media_get_bytes_from_storage(media_id, Some(storage), Some(remote_id))
-            .await
+        self.media_get_bytes_from_storage(media_id, storage).await
     }
 
     async fn media_get_bytes_from_storage(
         &self,
         media_id: MediaUuid,
         storage: Option<&dyn Storage>,
-        remote_id: Option<&str>,
     ) -> Result<Vec<u8>> {
         let (year, month) = self.media_year_month(media_id)?;
 
@@ -200,9 +183,6 @@ impl Library {
             std::fs::create_dir_all(parent)?;
         }
         crate::atomic_file::write(&data_path, &blob_bytes)?;
-        if let Some(remote_id) = remote_id {
-            self.record_remote_media_presence(remote_id, media_id);
-        }
 
         Ok(plaintext)
     }
@@ -324,23 +304,6 @@ impl Library {
             .get(&key)
             .await
             .map_err(|_remote_media_error| LibraryError::MediaNotFound(media_id))
-    }
-
-    pub(crate) fn record_remote_media_presence(&self, remote_id: &str, media_id: MediaUuid) {
-        let remote_media_list = self.inner.local_dirs.remote_media_list(remote_id);
-        self.inner.remote_media_list_lock.with_lock(
-            remote_id,
-            &remote_media_list,
-            |remote_media_list| {
-                let path = remote_media_list.media_list_path();
-                let Ok(mut media_list) = MediaList::load_or_default(&path) else {
-                    return;
-                };
-                if media_list.insert_present(media_id) {
-                    let _ = media_list.save(&path);
-                }
-            },
-        );
     }
 
     /// Returns IDs of all non-deleted albums that directly contain `media_id`.
@@ -656,7 +619,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn original_download_records_source_media_presence() {
+    async fn original_download_does_not_record_source_media_presence() {
         let tmp = TempDir::new().unwrap();
         let (lib, _) = make_library(&tmp);
         let (media_id, _) = add_media_to_album(&lib, &tmp, "img.jpg", b"photo data").await;
@@ -677,12 +640,12 @@ mod tests {
         std::fs::remove_file(&data_path).unwrap();
 
         assert_eq!(
-            lib.media_get_bytes_from_remote(media_id, "source-remote", &storage)
-                .await
-                .unwrap(),
+            lib.media_get_bytes(media_id, Some(&storage)).await.unwrap(),
             b"photo data"
         );
 
+        // Downloading a blob to display it is not a sync procedure, so it leaves the
+        // remote inventory untouched. Fetch and push are the only writers.
         let media_list = MediaList::load_or_default(
             &lib.inner
                 .local_dirs
@@ -690,7 +653,7 @@ mod tests {
                 .media_list_path(),
         )
         .unwrap();
-        assert!(media_list.contains(&media_id));
+        assert!(!media_list.contains(&media_id));
     }
 
     #[tokio::test]
