@@ -105,6 +105,7 @@ protocol LibraryRepositoryProtocol: Sendable {
 
     func push(remoteID: FfiRemoteUuid) async throws -> UInt64
     func fetch(remoteID: FfiRemoteUuid) async throws -> UInt64
+    func confirmRemoteMedia(remoteID: FfiRemoteUuid) async throws -> UInt64
     func close() async
 }
 
@@ -629,6 +630,19 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         return result
     }
 
+    /// Refreshes what this client knows of the media a remote holds, without fetching.
+    /// Returns how many blobs it newly confirmed.
+    func confirmRemoteMedia(remoteID: FfiRemoteUuid) async throws -> UInt64 {
+        try ensureOpen()
+        let result = try await library.confirmRemoteMediaAsync(
+            remoteId: remoteID,
+            appSupportDir: appSupportDirectory
+        )
+        // The inventory drives push planning and the backup-coverage figures.
+        await notify(.all)
+        return result
+    }
+
     func close() async {
         guard !closed else { return }
         closed = true
@@ -768,5 +782,6 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     func removeOwnCompactionLock(remoteID: FfiRemoteUuid) async throws -> Bool { try await storage.removeOwnCompactionLock(remoteID: remoteID) }
     func push(remoteID: FfiRemoteUuid) async throws -> UInt64 { try await storage.push(remoteID: remoteID) }
     func fetch(remoteID: FfiRemoteUuid) async throws -> UInt64 { try await storage.fetch(remoteID: remoteID) }
+    func confirmRemoteMedia(remoteID: FfiRemoteUuid) async throws -> UInt64 { try await storage.confirmRemoteMedia(remoteID: remoteID) }
     func close() async { await storage.close() }
 }

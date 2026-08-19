@@ -9,6 +9,14 @@ struct SyncRecord: Sendable, Equatable {
 enum PushResult: Sendable {
     case success
     case missingLocalMedia([FfiMediaId])
+    /// Push preparation found no place to get some media from. The remedy is confirming one or
+    /// more remotes, so a manual push offers that instead of only reporting the failure.
+    case missingMediaOnConfiguredSources([FfiMediaId])
+    case failed(String)
+}
+
+enum ConfirmMediaResult: Sendable {
+    case confirmed(UInt64)
     case failed(String)
 }
 
@@ -97,8 +105,28 @@ final class SyncCoordinator {
         } catch LascoError.MissingLocalMedia(let mediaIds) {
             record(key: "lasco.lastPush", remoteID: remoteID, success: false, in: &lastPushRecords)
             return .missingLocalMedia(mediaIds)
+        } catch LascoError.MissingMediaOnConfiguredSources(let mediaIds) {
+            record(key: "lasco.lastPush", remoteID: remoteID, success: false, in: &lastPushRecords)
+            return .missingMediaOnConfiguredSources(mediaIds)
         } catch {
             record(key: "lasco.lastPush", remoteID: remoteID, success: false, in: &lastPushRecords)
+            return .failed(error.localizedDescription)
+        }
+    }
+
+    /// Refreshes what this client knows of the media one remote holds, without fetching. This is
+    /// how a user resolves a push blocked by an out-of-date media list.
+    func confirmRemoteMedia(remoteID: FfiRemoteUuid) async -> ConfirmMediaResult {
+        busyRemotes.insert(remoteID)
+        defer { busyRemotes.remove(remoteID) }
+        do {
+            let confirmed = try await gate.run { [repository] in
+                try await repository.confirmRemoteMedia(remoteID: remoteID)
+            }
+            return .confirmed(confirmed)
+        } catch is CancellationError {
+            return .failed("Confirmation cancelled")
+        } catch {
             return .failed(error.localizedDescription)
         }
     }

@@ -742,6 +742,7 @@ struct NewLibraryWizard: View {
                 case .success: nil
                 case .failed(let message): message
                 case .missingLocalMedia: "Media missing from local cache"
+                case .missingMediaOnConfiguredSources: "Some media have no known place to be copied from"
                 }
             }
         )

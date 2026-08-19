@@ -67,14 +67,14 @@ instance.
 
 #### Local state
 
-| Resource | Fetch implementation input | Push implementation input | On-demand media download input | Local-edit implementation input | Safe? |
-| --- | --- | --- | --- | --- | --- |
-| `local_state/library/` | `LocalStateLibraryDir` | Not used | Not used | Not used | <span className="tag tag-ok">Safe</span> Only one fetch per library |
-| `remotes/{remote_id}/state/operations/` | `RemoteLastKnownStateDir` | `RemoteLastKnownStateDir` | Not used | Not used | <span className="tag tag-ok">Safe</span> Only one sync operation per remote |
-| `remotes/{remote_id}/state/compact_op_id_merged_to_local.json` | `RemoteCompactOpIdMergedToLocal` | Not used | Not used | Not used | <span className="tag tag-ok">Safe</span> Fetch-exclusive; corruption intentionally fails fetch |
-| `remotes/{remote_id}/state/media/media_list.json` | `RemoteMediaList` | `RemoteMediaList` | Not used | Not used | <span className="tag tag-ok">Safe</span> Per-remote inventory mutex plus atomic writes |
-| `local_state/media/` | Not used | `LocalStateMediaDir` | `LocalStateMediaDir` (through `Library`) | `LocalStateMediaDir` (through `Library`) | <span className="tag tag-ok">Safe</span> Atomic write; immutable file with a 1-to-1 filename/content relation |
-| `operations.log` | `LocalOpsReadWriteLock` | `LocalOpsReadWriteLock` (through `Library`) | Not used | `LocalOpsReadWriteLock` (through `Library`) | <span className="tag tag-ok">Safe</span> Mutex |
+| Resource | Fetch implementation input | Push implementation input | Confirmation input | On-demand media download input | Local-edit implementation input | Safe? |
+| --- | --- | --- | --- | --- | --- | --- |
+| `local_state/library/` | `LocalStateLibraryDir` | Not used | Not used | Not used | Not used | <span className="tag tag-ok">Safe</span> Only one fetch per library |
+| `remotes/{remote_id}/state/operations/` | `RemoteLastKnownStateDir` | `RemoteLastKnownStateDir` | Not used | Not used | Not used | <span className="tag tag-ok">Safe</span> Only one sync operation per remote |
+| `remotes/{remote_id}/state/compact_op_id_merged_to_local.json` | `RemoteCompactOpIdMergedToLocal` | Not used | Not used | Not used | Not used | <span className="tag tag-ok">Safe</span> Fetch-exclusive; corruption intentionally fails fetch |
+| `remotes/{remote_id}/state/media/media_list.json` | `RemoteMediaList` | `RemoteMediaList` | `RemoteMediaList` | Not used | Not used | <span className="tag tag-ok">Safe</span> Per-remote inventory mutex plus atomic writes |
+| `local_state/media/` | Not used | `LocalStateMediaDir` | Not used | `LocalStateMediaDir` (through `Library`) | `LocalStateMediaDir` (through `Library`) | <span className="tag tag-ok">Safe</span> Atomic write; immutable file with a 1-to-1 filename/content relation |
+| `operations.log` | `LocalOpsReadWriteLock` | `LocalOpsReadWriteLock` (through `Library`) | Not used | Not used | `LocalOpsReadWriteLock` (through `Library`) | <span className="tag tag-ok">Safe</span> Mutex |
 
 #### Remote media inventory
 

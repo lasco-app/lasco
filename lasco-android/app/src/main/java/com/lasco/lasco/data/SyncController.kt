@@ -20,7 +20,18 @@ import uniffi.lasco_ffi.FfiRemoteUuid
 sealed interface PushResult {
     data object Success : PushResult
     data class MissingLocalMedia(val mediaIds: List<FfiMediaId>) : PushResult
+    /**
+     * Push preparation found no place to get some media from. The remedy is confirming one or
+     * more remotes, so a manual push offers that instead of only reporting the failure. An
+     * automatic push has no one to ask and reports Failed instead.
+     */
+    data class MissingMediaOnConfiguredSources(val mediaIds: List<FfiMediaId>) : PushResult
     data class Failed(val message: String) : PushResult
+}
+
+sealed interface ConfirmMediaResult {
+    data class Confirmed(val newlyConfirmed: ULong) : ConfirmMediaResult
+    data class Failed(val message: String) : ConfirmMediaResult
 }
 
 /**
@@ -48,6 +59,10 @@ class SyncController(
         data object StopCountdown : Cmd
         data class Push(val remoteId: FfiRemoteUuid, val ack: CompletableDeferred<PushResult>) : Cmd
         data class Fetch(val remoteId: FfiRemoteUuid, val ack: CompletableDeferred<String?>) : Cmd
+        data class ConfirmMedia(
+            val remoteId: FfiRemoteUuid,
+            val ack: CompletableDeferred<ConfirmMediaResult>,
+        ) : Cmd
     }
 
     private val commands = Channel<Cmd>(Channel.UNLIMITED)
@@ -95,9 +110,10 @@ class SyncController(
                         deadline = null
                         scheduledAutoPushRemoteIds = emptySet()
                         publishCountdown(null, emptySet())
-                        cmd.ack.complete(push(cmd.remoteId))
+                        cmd.ack.complete(push(cmd.remoteId, isAutomatic = false))
                     }
                     is Cmd.Fetch -> cmd.ack.complete(fetch(cmd.remoteId))
+                    is Cmd.ConfirmMedia -> cmd.ack.complete(confirmMedia(cmd.remoteId))
                 }
             }
         } finally {
@@ -137,6 +153,16 @@ class SyncController(
      * mirroring Swift's LibraryModel.fetchRemote. Queues behind a push or
      * fetch already running.
      */
+    /**
+     * Updates one remote's media list without fetching, which is how a user resolves a push
+     * blocked by an out-of-date media list. Queues behind a push or fetch already running.
+     */
+    suspend fun confirmRemoteMedia(remoteId: FfiRemoteUuid): ConfirmMediaResult {
+        val ack = CompletableDeferred<ConfirmMediaResult>()
+        commands.send(Cmd.ConfirmMedia(remoteId, ack))
+        return ack.await()
+    }
+
     suspend fun fetchRemoteWithResult(remoteId: FfiRemoteUuid): String? {
         val ack = CompletableDeferred<String?>()
         commands.send(Cmd.Fetch(remoteId, ack))
@@ -153,11 +179,11 @@ class SyncController(
 
     private suspend fun pushScheduledRemotes(candidateRemoteIds: Set<FfiRemoteUuid>) {
         for (remote in lib.listRemotes().filter { it.remoteId in candidateRemoteIds && it.autoPush }) {
-            push(remote.remoteId)
+            push(remote.remoteId, isAutomatic = true)
         }
     }
 
-    private suspend fun push(remoteId: FfiRemoteUuid): PushResult {
+    private suspend fun push(remoteId: FfiRemoteUuid, isAutomatic: Boolean): PushResult {
         _syncState.update { it.copy(busyRemoteIds = it.busyRemoteIds + remoteId) }
         return try {
             lib.pushRemoteUsingConfiguredMediaSourcesAsync(remoteId, null)
@@ -166,9 +192,29 @@ class SyncController(
         } catch (e: LascoException.MissingLocalMedia) {
             prefs.recordPush(remoteId, success = false)
             PushResult.MissingLocalMedia(e.mediaIds)
+        } catch (e: LascoException.MissingMediaOnConfiguredSources) {
+            prefs.recordPush(remoteId, success = false)
+            // Only a manual push can offer the remedy, since it is the one a user is watching.
+            if (isAutomatic) {
+                PushResult.Failed("Some media have no known place to be copied from")
+            } else {
+                PushResult.MissingMediaOnConfiguredSources(e.mediaIds)
+            }
         } catch (e: Exception) {
             prefs.recordPush(remoteId, success = false)
             PushResult.Failed(e.message?.ifBlank { null } ?: "Push failed")
+        } finally {
+            _syncState.update { it.copy(busyRemoteIds = it.busyRemoteIds - remoteId) }
+        }
+    }
+
+    // Refreshes what this client knows of the media one remote holds, without fetching.
+    private suspend fun confirmMedia(remoteId: FfiRemoteUuid): ConfirmMediaResult {
+        _syncState.update { it.copy(busyRemoteIds = it.busyRemoteIds + remoteId) }
+        return try {
+            ConfirmMediaResult.Confirmed(lib.confirmRemoteMediaAsync(remoteId, null))
+        } catch (e: Exception) {
+            ConfirmMediaResult.Failed(e.message?.ifBlank { null } ?: "Could not update the media list")
         } finally {
             _syncState.update { it.copy(busyRemoteIds = it.busyRemoteIds - remoteId) }
         }
@@ -206,6 +252,7 @@ class SyncController(
             when (cmd) {
                 is Cmd.Push -> cmd.ack.complete(PushResult.Failed("Library closed"))
                 is Cmd.Fetch -> cmd.ack.complete("Library closed")
+                is Cmd.ConfirmMedia -> cmd.ack.complete(ConfirmMediaResult.Failed("Library closed"))
                 Cmd.Mutated, Cmd.StopCountdown -> {}
             }
         }
