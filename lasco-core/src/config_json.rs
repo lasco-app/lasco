@@ -56,21 +56,12 @@ pub fn library_data_dir(app_dir: &Path, library_id: &LibraryId) -> PathBuf {
 /// Global index of libraries.
 /// Stored at `{app_dir}/config.json`. It records library IDs and the default library ID.
 /// Library names, remotes, and credentials live in each library's `library.json`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ConfigJson {
     /// ID of the default library
     pub default_library_id: Option<LibraryId>,
     /// All registered library IDs
     pub libraries: Vec<LibraryId>,
-}
-
-impl Default for ConfigJson {
-    fn default() -> Self {
-        Self {
-            default_library_id: None,
-            libraries: vec![],
-        }
-    }
 }
 
 impl ConfigJson {
