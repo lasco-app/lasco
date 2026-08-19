@@ -26,13 +26,18 @@ returns; a conflicting acquisition fails with `AlreadyRunning`.
 | Fetch + fetch | <span className="safety-denied">Denied</span> | <span className="safety-denied">Denied</span> |
 | Fetch + push | <span className="safety-denied">Denied</span> | <span className="safety-allowed">Allowed</span> |
 | Push + push | <span className="safety-denied">Denied</span> | <span className="safety-allowed">Allowed</span> |
+| Confirmation + fetch or push | <span className="safety-denied">Denied</span> | <span className="safety-allowed">Allowed</span> |
+
+A standalone confirmation takes the same per-remote slot as fetch and push, so it cannot run
+while one of them is working on that remote. Push preparation takes no slot at all: it reads
+local files only and contacts no remote.
 
 ### Existing resource restrictions
 
 | Restriction | Protects | Effect |
 | --- | --- | --- |
 | Local operation-log mutex | `operations.log` | Serializes one synchronous operation-log access at a time. The guard is released before an `await`. |
-| Per-remote media-inventory mutex | `remotes/{remote_id}/state/media/media_list.json` | Serializes synchronous inventory read-modify-write work. It is never held across a network await. |
+| Per-remote media-inventory mutex | `remotes/{remote_id}/state/media/media_list.json` | Serializes synchronous inventory read-modify-write work. It is never held across a network await, including the folder listings of a confirmation. |
 | In-memory operation-state `RwLock` | Reconstructed in-memory state | Multiple readers may coexist; rebuilding installs state under the exclusive write lock. |
 | Remote compaction lock file | `operations/LOCK.op` | Only the client that created the lock with `put_if_absent` may compact. A client that cannot create it skips compaction. A stale lock requires manual removal. |
 
@@ -78,10 +83,14 @@ The sibling path accessors enforce ownership within the shared `state/` parent:
 merge marker, and `RemoteMediaList` owns only the media inventory.
 
 `media_list.json` is a positive-only inventory: an entry confirms a media's data blob, its
-thumbnail, or both, independently of each other. A blob is confirmed through one of the two
-writers, both of them sync procedures: fetch and push after listing the `media/YYYY/MM/` folders
-holding a blob the inventory has not confirmed yet, and push again after a successful
-ensure-present upload. An unconfirmed blob means unconfirmed, not absent from the remote.
+thumbnail, or both, independently of each other. A blob is confirmed by media availability
+confirmation, which runs inside fetch, inside push, and on its own when a user asks for it, or
+by push after a successful ensure-present upload. An unconfirmed blob means unconfirmed, not
+absent from the remote.
+
+Push preparation is the main reader. It resolves where each blob the target is missing can be
+read from, using nothing but these inventories and the local media cache, which is why an
+incomplete inventory shows up as an unresolved media rather than as a wrong upload.
 
 Downloading a blob on demand to display it is not a writer. It proves only that the blob was
 readable at that moment, and the confirmation step of the next sync with that remote establishes

@@ -11,6 +11,8 @@ extension LascoError {
             return "A sync is already in progress."
         case .MissingLocalMedia:
             return "Some media are not available locally."
+        case .MissingMediaOnConfiguredSources:
+            return "Some media have no known place to be copied from."
         case .CrdtRecoveryAvailable:
             return "The local library state needs recovery from its operation log."
         case .Storage(let msg), .Other(let msg):

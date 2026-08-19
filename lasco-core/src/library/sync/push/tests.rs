@@ -6,8 +6,10 @@ use crate::identifiers::{AlbumUuid, MediaUuid, RemoteUuid};
 use crate::storage::{AtomicWriteMode, Storage, StorageMockMemory};
 
 use super::super::remote_access::{StorageRead, StorageReadWrite};
-use super::super::test_utils::{REMOTE_ID, make_library, stamp_remote, stamp_remote_id, write_file};
-use super::super::{PushMediaSource, SyncError};
+use super::super::test_utils::{
+    REMOTE_ID, make_library, stamp_remote, stamp_remote_id, write_file,
+};
+use super::super::{MediaBlob, PlannedMediaSource, PushMediaPlan, PushMediaSource, SyncError};
 
 const SOURCE_REMOTE_ID: RemoteUuid =
     RemoteUuid(Uuid::from_u128(0x2222_2222_2222_2222_2222_2222_2222_2222));
@@ -50,6 +52,24 @@ async fn add_media(lib: &crate::library::Library, tmp: &TempDir, count: usize) {
         .await
         .unwrap();
     }
+}
+
+/// Records one media outside any album and returns its id. Its bytes land in the local cache.
+async fn add_one_media(lib: &crate::library::Library, tmp: &TempDir, filename: &str) -> MediaUuid {
+    lib.media_add(
+        crate::library::media::upload::MediaAddSource::CopyFrom(write_file(
+            tmp.path(),
+            filename,
+            filename.as_bytes(),
+        )),
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .unwrap()
+    .id()
 }
 
 /// Builds `count` synthetic operations that no client has ever pushed. They only
@@ -126,7 +146,11 @@ async fn seed_compaction_file(
 /// Writes `count` fresh `.op1` compaction files (20 synthetic operations each) to the
 /// remote and to `lib`'s last known state. Used by tests that need tier 1 already close
 /// to its file limit.
-async fn seed_tier1_files(lib: &crate::library::Library, storage: &StorageMockMemory, count: usize) {
+async fn seed_tier1_files(
+    lib: &crate::library::Library,
+    storage: &StorageMockMemory,
+    count: usize,
+) {
     for _ in 0..count {
         seed_compaction_file(lib, storage, synthetic_operations(20)).await;
     }
@@ -294,9 +318,10 @@ async fn push_small_batch_writes_compaction_file() {
     assert_eq!(report.ops_uploaded, 5);
     assert_eq!(report.compactions_run, 0, "no compaction for small batch");
 
-    let remote_files = crate::operations::remote_ops::list_remote_op_files(&StorageRead::new(&storage))
-        .await
-        .unwrap();
+    let remote_files =
+        crate::operations::remote_ops::list_remote_op_files(&StorageRead::new(&storage))
+            .await
+            .unwrap();
     let comp1_count = remote_files
         .iter()
         .filter(|f| {
@@ -322,9 +347,10 @@ async fn push_large_batch_writes_single_compaction_file() {
     let report = lib.push(&storage, REMOTE_ID).await.unwrap();
     assert_eq!(report.ops_uploaded, 20);
 
-    let remote_files = crate::operations::remote_ops::list_remote_op_files(&StorageRead::new(&storage))
-        .await
-        .unwrap();
+    let remote_files =
+        crate::operations::remote_ops::list_remote_op_files(&StorageRead::new(&storage))
+            .await
+            .unwrap();
     let comp1_count = remote_files
         .iter()
         .filter(|f| {
@@ -351,9 +377,10 @@ async fn push_large_batch_writes_op2_file() {
     let report = lib.push(&storage, REMOTE_ID).await.unwrap();
     assert_eq!(report.ops_uploaded, 200);
 
-    let remote_files = crate::operations::remote_ops::list_remote_op_files(&StorageRead::new(&storage))
-        .await
-        .unwrap();
+    let remote_files =
+        crate::operations::remote_ops::list_remote_op_files(&StorageRead::new(&storage))
+            .await
+            .unwrap();
     let comp1_count = remote_files
         .iter()
         .filter(|f| {
@@ -406,9 +433,10 @@ async fn compaction_cascades_across_two_tiers() {
         "at least one compaction must run"
     );
 
-    let remote_files = crate::operations::remote_ops::list_remote_op_files(&StorageRead::new(&storage))
-        .await
-        .unwrap();
+    let remote_files =
+        crate::operations::remote_ops::list_remote_op_files(&StorageRead::new(&storage))
+            .await
+            .unwrap();
     let op1_count = remote_files
         .iter()
         .filter(|f| {
@@ -433,7 +461,9 @@ async fn compaction_cascades_across_two_tiers() {
     // The last known state cache must exactly mirror the remote after compaction: no
     // leftover tier-1 entries, and the merged tier-2 file recorded.
     let cached_files = LastKnownState::list_cached_files(
-        &lib.inner.local_dirs.remote_last_known_state_dir(&REMOTE_ID.to_string()),
+        &lib.inner
+            .local_dirs
+            .remote_last_known_state_dir(&REMOTE_ID.to_string()),
     )
     .unwrap();
     let cached_op1_count = cached_files
@@ -476,11 +506,14 @@ async fn push_records_uploaded_file_in_last_known_state() {
     add_media(&lib, &tmp, 5).await;
     lib.push(&storage, REMOTE_ID).await.unwrap();
 
-    let remote_files = crate::operations::remote_ops::list_remote_op_files(&StorageRead::new(&storage))
-        .await
-        .unwrap();
+    let remote_files =
+        crate::operations::remote_ops::list_remote_op_files(&StorageRead::new(&storage))
+            .await
+            .unwrap();
     let mut cached_files = crate::remote::LastKnownState::list_cached_files(
-        &lib.inner.local_dirs.remote_last_known_state_dir(&REMOTE_ID.to_string()),
+        &lib.inner
+            .local_dirs
+            .remote_last_known_state_dir(&REMOTE_ID.to_string()),
     )
     .unwrap();
     let mut remote_files = remote_files;
@@ -530,9 +563,10 @@ async fn push_skips_cascade_when_lock_held() {
         "the other client's lock must still be present"
     );
 
-    let remote_files = crate::operations::remote_ops::list_remote_op_files(&StorageRead::new(&storage))
-        .await
-        .unwrap();
+    let remote_files =
+        crate::operations::remote_ops::list_remote_op_files(&StorageRead::new(&storage))
+            .await
+            .unwrap();
     let op1_count = remote_files
         .iter()
         .filter(|f| matches!(f, RemoteOpFile::Compaction { tier: 1, .. }))
@@ -945,5 +979,179 @@ async fn push_propagates_master_key_files_without_overwriting() {
     assert_eq!(
         fresh_target.get(&format!("library/{name}")).await.unwrap(),
         local
+    );
+}
+
+/// Writes `remote_id`'s media inventory as if a confirmation had found these blobs.
+fn write_inventory(
+    lib: &crate::library::Library,
+    remote_id: RemoteUuid,
+    entries: &[(MediaUuid, bool, bool)],
+) {
+    let path = lib
+        .inner
+        .local_dirs
+        .remote_media_list(&remote_id.to_string())
+        .media_list_path();
+    let mut media_list = crate::remote::local_state::media_list_json::MediaList::default();
+    for (media_id, full, thumb) in entries {
+        media_list.record(*media_id, *full, *thumb);
+    }
+    media_list.save(&path).unwrap();
+}
+
+#[tokio::test]
+// Preparation prefers the local cache, which costs no download, over any remote.
+async fn resolve_push_media_prefers_the_local_cache() {
+    let tmp = TempDir::new().unwrap();
+    let lib = make_library(&tmp).await;
+    let media_id = add_one_media(&lib, &tmp, "local.jpg").await;
+    lib.media_set_thumbnail(media_id, b"thumb").unwrap();
+
+    let resolution = lib
+        .resolve_push_media(REMOTE_ID, &[SOURCE_REMOTE_ID])
+        .unwrap();
+
+    assert!(resolution.unresolved_data.is_empty());
+    assert!(matches!(
+        resolution.assignments.get(&(media_id, MediaBlob::Data)),
+        Some(PlannedMediaSource::Local)
+    ));
+    assert!(matches!(
+        resolution.assignments.get(&(media_id, MediaBlob::Thumb)),
+        Some(PlannedMediaSource::Local)
+    ));
+}
+
+#[tokio::test]
+// What the target already holds is not planned at all, since push has nothing to do for it.
+async fn resolve_push_media_skips_what_the_target_confirms() {
+    let tmp = TempDir::new().unwrap();
+    let lib = make_library(&tmp).await;
+    let media_id = add_one_media(&lib, &tmp, "known.jpg").await;
+    lib.media_set_thumbnail(media_id, b"thumb").unwrap();
+    write_inventory(&lib, REMOTE_ID, &[(media_id, true, true)]);
+
+    let resolution = lib
+        .resolve_push_media(REMOTE_ID, &[SOURCE_REMOTE_ID])
+        .unwrap();
+
+    assert!(resolution.assignments.is_empty());
+    assert!(resolution.unresolved_data.is_empty());
+}
+
+#[tokio::test]
+// A blob absent locally is taken from the first remote in priority order whose own inventory
+// confirms it, and the two blobs of one media resolve to different remotes independently.
+async fn resolve_push_media_follows_source_priority_per_blob() {
+    let tmp = TempDir::new().unwrap();
+    let lib = make_library(&tmp).await;
+    let media_id = add_one_media(&lib, &tmp, "relayed.jpg").await;
+    lib.media_set_thumbnail(media_id, b"thumb").unwrap();
+    remove_local_media(&lib, media_id);
+
+    let second_source = RemoteUuid(Uuid::from_u128(0x3333_3333_3333_3333_3333_3333_3333_3333));
+    // The first source in priority order holds only the thumbnail.
+    write_inventory(&lib, SOURCE_REMOTE_ID, &[(media_id, false, true)]);
+    write_inventory(&lib, second_source, &[(media_id, true, true)]);
+
+    let resolution = lib
+        .resolve_push_media(REMOTE_ID, &[SOURCE_REMOTE_ID, second_source])
+        .unwrap();
+
+    assert!(resolution.unresolved_data.is_empty());
+    assert!(matches!(
+        resolution.assignments.get(&(media_id, MediaBlob::Data)),
+        Some(PlannedMediaSource::Remote(id)) if *id == second_source
+    ));
+    assert!(matches!(
+        resolution.assignments.get(&(media_id, MediaBlob::Thumb)),
+        Some(PlannedMediaSource::Remote(id)) if *id == SOURCE_REMOTE_ID
+    ));
+}
+
+#[tokio::test]
+// A data blob nobody can provide fails preparation, while a thumbnail nobody can provide is
+// only left out of the plan. Nothing records whether a media ever had a thumbnail, so failing
+// on one would block every push of the library.
+async fn resolve_push_media_fails_on_data_but_not_on_thumbnails() {
+    let tmp = TempDir::new().unwrap();
+    let lib = make_library(&tmp).await;
+    let with_data = add_one_media(&lib, &tmp, "has_source.jpg").await;
+    let lost = add_one_media(&lib, &tmp, "lost.jpg").await;
+    remove_local_media(&lib, with_data);
+    remove_local_media(&lib, lost);
+    write_inventory(&lib, SOURCE_REMOTE_ID, &[(with_data, true, false)]);
+
+    let resolution = lib
+        .resolve_push_media(REMOTE_ID, &[SOURCE_REMOTE_ID])
+        .unwrap();
+
+    assert_eq!(resolution.unresolved_data, vec![lost]);
+    assert!(matches!(
+        resolution.assignments.get(&(with_data, MediaBlob::Data)),
+        Some(PlannedMediaSource::Remote(id)) if *id == SOURCE_REMOTE_ID
+    ));
+    assert!(
+        !resolution
+            .assignments
+            .contains_key(&(with_data, MediaBlob::Thumb)),
+        "an unplaceable thumbnail is left out, not reported"
+    );
+}
+
+#[tokio::test]
+// A plan names a source per blob, so a thumbnail is relayed even when the target already holds
+// the original and nothing is cached locally.
+async fn push_with_plan_relays_a_thumbnail_from_its_assigned_source() {
+    let source = StorageMockMemory::new();
+    stamp_source_remote(&source).await;
+    let target = StorageMockMemory::new();
+    stamp_remote_id(&target).await;
+    let tmp = TempDir::new().unwrap();
+    let lib = make_library(&tmp).await;
+    let media_id = add_one_media(&lib, &tmp, "relayed.jpg").await;
+    lib.media_set_thumbnail(media_id, b"thumb pixels").unwrap();
+
+    // The source holds both blobs, the target holds only the original.
+    lib.push(&source, SOURCE_REMOTE_ID).await.unwrap();
+    let entry = lib.media_show(media_id).unwrap();
+    let data_key = format!(
+        "media/{}/{:02}/{}.data",
+        entry.storage_date.year, entry.storage_date.month, media_id
+    );
+    let thumb_key = format!(
+        "media/{}/{:02}/{}.thumb",
+        entry.storage_date.year, entry.storage_date.month, media_id
+    );
+    let data_blob = source.get(&data_key).await.unwrap();
+    target
+        .put_atomic(&data_key, &data_blob, AtomicWriteMode::CreateIfAbsent)
+        .await
+        .unwrap();
+    remove_local_media(&lib, media_id);
+
+    let source_read = StorageRead::new(&source);
+    let mut assignments = std::collections::HashMap::new();
+    assignments.insert(
+        (media_id, MediaBlob::Thumb),
+        PlannedMediaSource::Remote(SOURCE_REMOTE_ID),
+    );
+    let mut sources = std::collections::HashMap::new();
+    sources.insert(SOURCE_REMOTE_ID, source_read);
+    lib.push_with_media_plan(
+        &target,
+        REMOTE_ID,
+        PushMediaPlan {
+            assignments,
+            sources,
+        },
+    )
+    .await
+    .unwrap();
+
+    assert!(
+        target.exists(&thumb_key).await.unwrap(),
+        "the thumbnail must be relayed from the source the plan names"
     );
 }

@@ -77,11 +77,157 @@ Fetch lists and downloads remote operation files missing from the remote's last-
     </tr>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>6</td>
-      <td>Confirm remote media availability: take every media known to the reconstructed state whose data blob or thumbnail `media_list.json` does not already confirm, group those candidates by their `media/YYYY/MM/` folder, list each of those folders once, and record each blob found there. The two blobs of one media are confirmed independently, from the same listing. This covers all known media, not only the ones created by the operations merged in this run, so a blob uploaded after its creation operation was merged is still discovered. This positive-only inventory may be incomplete, and every error here is ignored so it cannot fail an otherwise valid fetch.</td>
+      <td>Run the media availability confirmation described below against this remote. It covers all known media, not only the ones created by the operations merged in this run, so a blob uploaded after its creation operation was merged is still discovered. Every error there is ignored, so it cannot fail an otherwise valid fetch.</td>
       <td><span className="tag tag-ok">List remote media folders</span> <span className="tag tag-warn">Write local media list</span></td>
     </tr>
   </tbody>
 </table>
+
+## Media Availability Confirmation
+
+### Summary
+
+Confirmation establishes which media blobs a remote holds and records them in that remote's
+media inventory (`remotes/{remote_id}/state/media/media_list.json`). It is the only way a blob
+becomes confirmed without this client having uploaded it.
+
+It runs as the last step of fetch and as the first step of the media stage of push, and it can
+also be run on its own for one remote, which is how a user repairs incomplete knowledge without
+performing a full fetch.
+
+Confirmation reads nothing but media folder listings. It never reads an operation file, so it
+cannot become an implicit fetch.
+
+### Required access
+
+<AccessCard>
+
+- **Sync policy:** Uses the calling procedure's per-remote sync slot. When run on its own, acquire the per-remote sync slot.
+- **Remote:** List access to `media/YYYY/MM/` folders.
+- **Local:**
+  - Read the reconstructed media state.
+  - Read and atomically update the media inventory under its per-remote mutex.
+- **In-memory local state:** Not modified.
+
+</AccessCard>
+
+### Behavior
+
+<table className="behavior-table" style={{ width: '100%', tableLayout: 'fixed' }}>
+  <thead>
+    <tr>
+      <th style={{ width: '1%', whiteSpace: 'nowrap' }}>#</th>
+      <th>Behavior</th>
+      <th>Required authorization</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style={{ whiteSpace: 'nowrap' }}>1</td>
+      <td>Select every data blob and every thumbnail known to the reconstructed state that the inventory does not already confirm. A blob stays a candidate until it is confirmed once, and is never probed again after that.</td>
+      <td><span className="tag tag-ok">Read local state</span></td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: 'nowrap' }}>2</td>
+      <td>Group those candidates by the `media/YYYY/MM/` folder holding them and list each of those folders once. One listing covers every candidate stored in that folder, so the cost is one remote call per folder rather than one per blob.</td>
+      <td><span className="tag tag-ok">List remote media folders</span></td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: 'nowrap' }}>3</td>
+      <td>Record each blob found in the listings. The data blob and the thumbnail of one media are confirmed independently, so a data blob present on the remote never implies its thumbnail is.</td>
+      <td><span className="tag tag-warn">Write local media list</span></td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: 'nowrap' }}>4</td>
+      <td>Ignore every error. A folder that cannot be listed leaves its candidates unconfirmed, which is the same as never having looked. Confirmation is opportunistic bookkeeping and never fails its caller.</td>
+      <td></td>
+    </tr>
+  </tbody>
+</table>
+
+Confirmation only ever adds. It never records a blob as absent and never withdraws a
+confirmation, so an unconfirmed blob means unconfirmed, not absent from the remote.
+
+## Push Preparation
+
+### Summary
+
+Push never searches for media. Everything it needs must be decided before it starts, so a
+separate preparation resolves, for every blob the target is missing, where to get it: from the
+local media cache, or from one remote already known to hold it. It resolves data blobs and
+thumbnails separately, so one media can take its original from one place and its thumbnail
+from another.
+
+The two are not equally required. A data blob it cannot place fails preparation, because
+uploading the library without it would lose the media. A thumbnail it cannot place is simply
+left out of the plan, because a thumbnail is derived data and nothing records whether a media
+ever had one. Blocking a push on a thumbnail would let a media that never had one block every
+push of the library forever.
+
+Resolution uses only local knowledge, the local media cache and the media inventories of the
+known remotes. It performs no remote access at all, so it is instant, deterministic, and
+usable offline.
+
+### Required access
+
+<AccessCard>
+
+- **Sync policy:** None. Preparation touches no remote and no shared local state.
+- **Remote:** None.
+- **Local:**
+  - Read the reconstructed media state and the local media cache.
+  - Read the media inventory of the target and of each candidate source remote.
+  - Read the configured media source priority order.
+- **In-memory local state:** Not modified.
+
+</AccessCard>
+
+### Behavior
+
+<table className="behavior-table" style={{ width: '100%', tableLayout: 'fixed' }}>
+  <thead>
+    <tr>
+      <th style={{ width: '1%', whiteSpace: 'nowrap' }}>#</th>
+      <th>Behavior</th>
+      <th>Required authorization</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style={{ whiteSpace: 'nowrap' }}>1</td>
+      <td>Take the data blob and the thumbnail of every media known to the reconstructed state as two separate items, and drop the ones the target's own inventory already confirms. Everything below resolves one blob, never a media: the two blobs of one media are missing, found, and fetched from independently.</td>
+      <td><span className="tag tag-ok">Read local state</span> <span className="tag tag-ok">Read local media list</span></td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: 'nowrap' }}>2</td>
+      <td>For every remaining blob the local media cache holds, that cache is where to get it. A local copy is always preferred, since using it costs no download.</td>
+      <td><span className="tag tag-ok">Read local media cache</span></td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: 'nowrap' }}>3</td>
+      <td>For a blob that is not cached locally, where to get it is the first remote in the configured source priority order, other than the target, whose own media inventory confirms that blob.</td>
+      <td><span className="tag tag-ok">Read local media lists</span></td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: 'nowrap' }}>4</td>
+      <td>If there is one data blob for which preparation does not know where to get it, fail before push starts and report the media it belongs to. Nothing is uploaded and no remote is contacted.</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: 'nowrap' }}>5</td>
+      <td>Leave out any thumbnail for which preparation does not know where to get it, and carry on. That thumbnail stays unconfirmed on the target, and a later push retries it once some remote's inventory confirms it.</td>
+      <td></td>
+    </tr>
+  </tbody>
+</table>
+
+### Unresolved media
+
+Preparation fails as soon as there is one data blob it does not know where to get. This is not
+necessarily a lost media: some remote's `media_list.json` may simply be out of date.
+
+The client then asks the user which remotes to confirm, which updates those inventories without
+fetching, and preparation is retried. An automatic push has no one to ask and fails immediately.
 
 ## Push
 
@@ -93,12 +239,42 @@ Push uploads all files that are considered missing on the target remote, based o
 
 For operation files, the client selects operations from the complete local operation log whose dots are not covered by the target remote's cached operation files, then writes them as one immutable compaction file. For media and thumbnail files, since they are downloaded lazily, the client may not have them on disk. Because the last known state of all remotes is stored locally, the push procedure can download the needed files directly from another remote and immediately upload them to the target, without performing a full fetch.
 
+### Media source
+
+Besides the target, push takes one media source, which is the complete description of where it
+may read a blob it does not have locally. Push never looks anywhere else, and never searches:
+it cannot decide on its own to try a remote, which is what keeps it from turning into an
+implicit fetch.
+
+<table className="behavior-table" style={{ width: '100%', tableLayout: 'fixed' }}>
+  <thead>
+    <tr>
+      <th style={{ width: '1%', whiteSpace: 'nowrap' }}>Media source</th>
+      <th>Meaning</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style={{ whiteSpace: 'nowrap' }}>None</td>
+      <td>Upload only what the local media cache holds. A blob missing from the target and absent locally fails the push, which reports the media concerned without uploading anything. This is the default, so a push can never quietly download from a remote the caller did not name.</td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: 'nowrap' }}>One relay remote</td>
+      <td>One read-only remote storage, used for every blob absent locally. Its identity and library format are verified before anything is read from it.</td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: 'nowrap' }}>A resolved plan</td>
+      <td>A map from each missing blob, a data blob or a thumbnail, to where to get it, either the local cache or one named remote, together with a read-only storage for each named remote. Push reads no remote absent from that map. A data blob the map does not cover fails the push rather than being searched for, while a thumbnail it does not cover is simply not uploaded. The map is produced by push preparation, described above.</td>
+    </tr>
+  </tbody>
+</table>
+
 ### Required access
 
 <AccessCard>
 
 - **Sync policy:** Acquire the per-remote sync slot.
-- **Remote:** List, read, write, and delete access.
+- **Remote:** List, read, write, and delete access on the target. Read access on each remote named by the media source, and on no other.
 - **Local:**
   - Read local master-key files, reconstructed derived state, and media files.
   - Read the remote's last-known operation state (`remotes/{remote_id}/state/operations/`) and the media inventory (`remotes/{remote_id}/state/media/media_list.json`).
@@ -141,12 +317,12 @@ For operation files, the client selects operations from the complete local opera
     </tr>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>5</td>
-      <td>Confirm remote media availability against the target with the same folder listing fetch performs, so a blob another client uploaded is neither reported missing nor uploaded again. Only media folders are listed, never operation files, so this cannot make push an implicit fetch.</td>
+      <td>Run the media availability confirmation described above against the target, so a blob another client uploaded is neither reported missing nor uploaded again.</td>
       <td><span className="tag tag-ok">List remote media folders</span> <span className="tag tag-warn">Write local media list</span></td>
     </tr>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>6</td>
-      <td>For each reconstructed media item with a blob still unconfirmed in the target's media inventory, ensure that blob exists with a non-overwriting write, then record what the target now holds. A media whose data blob is already confirmed is still visited for its thumbnail alone, and a media with no thumbnail anywhere simply stays unconfirmed for it.</td>
+      <td>For each blob still unconfirmed in the target's media inventory, read it from the local cache or from the remote the media source names for it, then ensure it exists on the target with a non-overwriting write and record what the target now holds. Each blob is handled on its own, so a media whose data blob is already confirmed is still visited for its thumbnail alone, and a media whose thumbnail is nowhere to be found simply stays unconfirmed for it.</td>
       <td><span className="tag tag-ok">Read local media</span> <span className="tag tag-warn">Write remote media and thumbnail</span> <span className="tag tag-warn">Write local media list</span></td>
     </tr>
   </tbody>

@@ -11,6 +11,8 @@ pub enum LascoError {
     SyncBusy,
     #[error("media missing from local cache")]
     MissingLocalMedia { media_ids: Vec<FfiMediaId> },
+    #[error("no known place to get some media from")]
+    MissingMediaOnConfiguredSources { media_ids: Vec<FfiMediaId> },
     #[error("the local CRDT snapshot cannot be read; recovery from the operation log is available")]
     CrdtRecoveryAvailable,
     #[error("storage error: {msg}")]
@@ -27,6 +29,11 @@ impl From<LibraryError> for LascoError {
             LibraryError::Sync(SyncError::AlreadyRunning) => LascoError::SyncBusy,
             LibraryError::Sync(SyncError::MissingLocalMedia(ids)) => {
                 LascoError::MissingLocalMedia {
+                    media_ids: ids.into_iter().map(FfiMediaId::from).collect(),
+                }
+            }
+            LibraryError::Sync(SyncError::MissingMediaOnConfiguredSources(ids)) => {
+                LascoError::MissingMediaOnConfiguredSources {
                     media_ids: ids.into_iter().map(FfiMediaId::from).collect(),
                 }
             }
@@ -62,6 +69,19 @@ mod tests {
             error,
             LascoError::MissingLocalMedia { media_ids }
                 if media_ids.len() == 1 && media_ids[0].value == uuid::Uuid::nil().to_string()
+        ));
+    }
+
+    #[test]
+    fn missing_media_on_configured_sources_keeps_typed_ids() {
+        let id = MediaUuid::from_uuid(uuid::Uuid::nil());
+        let error = LascoError::from(LibraryError::Sync(
+            SyncError::MissingMediaOnConfiguredSources(vec![id]),
+        ));
+        assert!(matches!(
+            error,
+            LascoError::MissingMediaOnConfiguredSources { media_ids }
+                if media_ids.len() == 1
         ));
     }
 }

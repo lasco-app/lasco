@@ -635,7 +635,13 @@ impl FfiLibrary {
         Ok(ffi_count(report.ops_uploaded))
     }
 
-    /// Push using the ordered configured media sources. Resolution completes before core push starts.
+    /// Push using the ordered configured media sources. Preparation completes before core push
+    /// starts, and reads nothing but local files: the media cache and the media inventories.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the ID or configuration is invalid, storage cannot be built, some
+    /// data blob has no known place to be read from, or the push itself fails.
     pub async fn push_remote_using_configured_media_sources_async(
         &self,
         target_remote_id: FfiRemoteUuid,
@@ -643,78 +649,27 @@ impl FfiLibrary {
     ) -> Result<u64, LascoError> {
         let target: RemoteUuid = target_remote_id.try_into()?;
         let config = self.load_library_json()?;
-        let requirements = self.inner.prepare_push_media(target)?;
-        let mut assignments = HashMap::new();
-        let mut missing = Vec::new();
-        let mut sources: HashMap<RemoteUuid, Box<dyn lasco_core::storage::Storage + Send + Sync>> =
-            HashMap::new();
-        for requirement in requirements {
-            if requirement.target_has_original {
-                continue;
-            }
-            if requirement.local {
-                assignments.insert(
-                    requirement.media_id,
-                    lasco_core::library::sync::PlannedMediaSource::Local,
-                );
-                continue;
-            }
-            let key = format!(
-                "media/{}/{:02}/{}.data",
-                requirement.storage_date.year, requirement.storage_date.month, requirement.media_id
-            );
-            let mut selected = None;
-            for candidate in &config.media_source_order {
-                if *candidate == target {
-                    continue;
-                }
-                if !sources.contains_key(candidate) {
-                    let Ok(storage) =
-                        self.build_storage_for_remote(candidate, app_support_dir.as_deref())
-                    else {
-                        continue;
-                    };
-                    if self
-                        .rt
-                        .block_on(lasco_core::library::sync::verify_remote_identity(
-                            &StorageRead::new(storage.as_ref()),
-                            *candidate,
-                        ))
-                        .is_err()
-                    {
-                        continue;
-                    }
-                    sources.insert(*candidate, storage);
-                }
-                if let Some(storage) = sources.get(candidate) {
-                    if self.rt.block_on(storage.get(&key)).is_ok() {
-                        selected = Some(*candidate);
-                        break;
-                    }
-                }
-            }
-            if let Some(source) = selected {
-                assignments.insert(
-                    requirement.media_id,
-                    lasco_core::library::sync::PlannedMediaSource::Remote(source),
-                );
-            } else {
-                missing.push(requirement.media_id);
-            }
-        }
-        if !missing.is_empty() {
+        let resolution = self
+            .inner
+            .resolve_push_media(target, &config.media_source_order)?;
+        if !resolution.unresolved_data.is_empty() {
             return Err(LascoError::from(lasco_core::error::LibraryError::Sync(
-                lasco_core::error::SyncError::MissingMediaOnConfiguredSources(missing),
+                lasco_core::error::SyncError::MissingMediaOnConfiguredSources(
+                    resolution.unresolved_data,
+                ),
             )));
         }
-        let used: std::collections::HashSet<_> = assignments
-            .values()
-            .filter_map(|source| match source {
-                lasco_core::library::sync::PlannedMediaSource::Remote(id) => Some(*id),
-                _ => None,
-            })
-            .collect();
-        sources.retain(|id, _| used.contains(id));
+
+        // Only the remotes the plan names are opened. Push verifies each of them before
+        // reading anything from it.
+        let mut sources: HashMap<RemoteUuid, Box<dyn lasco_core::storage::Storage + Send + Sync>> =
+            HashMap::new();
+        for source_id in resolution.source_remote_ids() {
+            sources.insert(
+                source_id,
+                self.build_storage_for_remote(&source_id, app_support_dir.as_deref())?,
+            );
+        }
         let source_reads = sources
             .iter()
             .map(|(id, storage)| (*id, StorageRead::new(storage.as_ref())))
@@ -726,13 +681,41 @@ impl FfiLibrary {
                 target_storage.as_ref(),
                 target,
                 lasco_core::library::sync::PushMediaPlan {
-                    assignments,
+                    assignments: resolution.assignments,
                     sources: source_reads,
                 },
             )
             .await
             .map_err(LascoError::from)?;
         Ok(ffi_count(report.ops_uploaded))
+    }
+
+    /// Confirms which media blobs a remote holds and records them in its media inventory,
+    /// without fetching. Returns how many blobs it newly confirmed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the ID is invalid, storage cannot be built, a sync is already
+    /// running for this remote, or the remote does not belong to this library.
+    pub async fn confirm_remote_media_async(
+        &self,
+        remote_id: FfiRemoteUuid,
+        app_support_dir: Option<String>,
+    ) -> Result<u64, LascoError> {
+        let remote_uuid: RemoteUuid = remote_id.try_into()?;
+        let storage = self.build_storage_for_remote(&remote_uuid, app_support_dir.as_deref())?;
+        let inner = self.inner.clone();
+        let confirmed = self
+            .rt
+            .spawn(async move {
+                inner
+                    .confirm_remote_media(storage.as_ref(), remote_uuid)
+                    .await
+            })
+            .await
+            .map_err(|e| LascoError::Other { msg: e.to_string() })?
+            .map_err(LascoError::from)?;
+        Ok(ffi_count(confirmed))
     }
 
     /// # Errors

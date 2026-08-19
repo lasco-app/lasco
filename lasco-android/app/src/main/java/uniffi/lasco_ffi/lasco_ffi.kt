@@ -903,6 +903,8 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -965,6 +967,8 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_album_list_groups(
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_album_list_items_sorted(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_all_media_ids(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_confirm_remote_media_async(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_connect_remote(
 ): Short
@@ -1187,6 +1191,8 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_album_list_items_sorted(`ptr`: Pointer
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_all_media_ids(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_lasco_ffi_fn_method_ffilibrary_confirm_remote_media_async(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,
+): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_connect_remote(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_create_album(`ptr`: Pointer,`name`: RustBuffer.ByValue,`parentAlbumId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1533,6 +1539,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_all_media_ids() != 28671.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_confirm_remote_media_async() != 59085.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_connect_remote() != 33397.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1680,7 +1689,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_from_remote_async() != 41311.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_using_configured_media_sources_async() != 15476.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_using_configured_media_sources_async() != 9550.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_remove_media_from_album() != 46585.toShort()) {
@@ -2350,6 +2359,17 @@ public interface FfiLibraryInterface {
     fun `allMediaIds`(): List<FfiMediaUuid>
     
     /**
+     * Confirms which media blobs a remote holds and records them in its media inventory,
+     * without fetching. Returns how many blobs it newly confirmed.
+     *
+     * # Errors
+     *
+     * Returns an error if the ID is invalid, storage cannot be built, a sync is already
+     * running for this remote, or the remote does not belong to this library.
+     */
+    suspend fun `confirmRemoteMediaAsync`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): kotlin.ULong
+    
+    /**
      * # Errors
      *
      * Returns an error if the ID/configuration is invalid, storage cannot be built, or remote identity cannot be verified.
@@ -2665,7 +2685,13 @@ public interface FfiLibraryInterface {
     suspend fun `pushRemoteFromRemoteAsync`(`targetRemoteId`: FfiRemoteUuid, `sourceRemoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): kotlin.ULong
     
     /**
-     * Push using the ordered configured media sources. Resolution completes before core push starts.
+     * Push using the ordered configured media sources. Preparation completes before core push
+     * starts, and reads nothing but local files: the media cache and the media inventories.
+     *
+     * # Errors
+     *
+     * Returns an error if the ID or configuration is invalid, storage cannot be built, some
+     * data blob has no known place to be read from, or the push itself fails.
      */
     suspend fun `pushRemoteUsingConfiguredMediaSourcesAsync`(`targetRemoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): kotlin.ULong
     
@@ -3193,6 +3219,36 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     )
     }
     
+
+    
+    /**
+     * Confirms which media blobs a remote holds and records them in its media inventory,
+     * without fetching. Returns how many blobs it newly confirmed.
+     *
+     * # Errors
+     *
+     * Returns an error if the ID is invalid, storage cannot be built, a sync is already
+     * running for this remote, or the remote does not belong to this library.
+     */
+    @Throws(LascoException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `confirmRemoteMediaAsync`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?) : kotlin.ULong {
+        return uniffiRustCallAsync(
+        callWithPointer { thisPtr ->
+            UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_confirm_remote_media_async(
+                thisPtr,
+                FfiConverterTypeFfiRemoteUuid.lower(`remoteId`),FfiConverterOptionalString.lower(`appSupportDir`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_poll_u64(future, callback, continuation) },
+        { future, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_complete_u64(future, continuation) },
+        { future -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_free_u64(future) },
+        // lift function
+        { FfiConverterULong.lift(it) },
+        // Error FFI converter
+        LascoException.ErrorHandler,
+    )
+    }
 
     
     /**
@@ -4071,7 +4127,13 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
 
     
     /**
-     * Push using the ordered configured media sources. Resolution completes before core push starts.
+     * Push using the ordered configured media sources. Preparation completes before core push
+     * starts, and reads nothing but local files: the media cache and the media inventories.
+     *
+     * # Errors
+     *
+     * Returns an error if the ID or configuration is invalid, storage cannot be built, some
+     * data blob has no known place to be read from, or the push itself fails.
      */
     @Throws(LascoException::class)
     @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
@@ -5292,6 +5354,14 @@ sealed class LascoException: kotlin.Exception() {
             get() = "mediaIds=${ `mediaIds` }"
     }
     
+    class MissingMediaOnConfiguredSources(
+        
+        val `mediaIds`: List<FfiMediaId>
+        ) : LascoException() {
+        override val message
+            get() = "mediaIds=${ `mediaIds` }"
+    }
+    
     class CrdtRecoveryAvailable(
         ) : LascoException() {
         override val message
@@ -5336,11 +5406,14 @@ public object FfiConverterTypeLascoError : FfiConverterRustBuffer<LascoException
             4 -> LascoException.MissingLocalMedia(
                 FfiConverterSequenceTypeFfiMediaId.read(buf),
                 )
-            5 -> LascoException.CrdtRecoveryAvailable()
-            6 -> LascoException.Storage(
+            5 -> LascoException.MissingMediaOnConfiguredSources(
+                FfiConverterSequenceTypeFfiMediaId.read(buf),
+                )
+            6 -> LascoException.CrdtRecoveryAvailable()
+            7 -> LascoException.Storage(
                 FfiConverterString.read(buf),
                 )
-            7 -> LascoException.Other(
+            8 -> LascoException.Other(
                 FfiConverterString.read(buf),
                 )
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
@@ -5362,6 +5435,11 @@ public object FfiConverterTypeLascoError : FfiConverterRustBuffer<LascoException
                 4UL
             )
             is LascoException.MissingLocalMedia -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterSequenceTypeFfiMediaId.allocationSize(value.`mediaIds`)
+            )
+            is LascoException.MissingMediaOnConfiguredSources -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
                 + FfiConverterSequenceTypeFfiMediaId.allocationSize(value.`mediaIds`)
@@ -5402,17 +5480,22 @@ public object FfiConverterTypeLascoError : FfiConverterRustBuffer<LascoException
                 FfiConverterSequenceTypeFfiMediaId.write(value.`mediaIds`, buf)
                 Unit
             }
-            is LascoException.CrdtRecoveryAvailable -> {
+            is LascoException.MissingMediaOnConfiguredSources -> {
                 buf.putInt(5)
+                FfiConverterSequenceTypeFfiMediaId.write(value.`mediaIds`, buf)
+                Unit
+            }
+            is LascoException.CrdtRecoveryAvailable -> {
+                buf.putInt(6)
                 Unit
             }
             is LascoException.Storage -> {
-                buf.putInt(6)
+                buf.putInt(7)
                 FfiConverterString.write(value.`msg`, buf)
                 Unit
             }
             is LascoException.Other -> {
-                buf.putInt(7)
+                buf.putInt(8)
                 FfiConverterString.write(value.`msg`, buf)
                 Unit
             }
