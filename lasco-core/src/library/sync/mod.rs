@@ -136,12 +136,16 @@ impl Library {
         let remote = StorageRead::new(storage);
         verify_remote_identity(&remote, remote_id).await?;
 
-        let known_media: Vec<(MediaUuid, crate::operations::StorageDate)> = {
+        let known_media: Vec<media_inventory::KnownMedia> = {
             let state = self.inner.state.read();
             state
                 .media_entries()
                 .iter()
-                .map(|entry| (entry.media_id, entry.storage_date))
+                .map(|entry| media_inventory::KnownMedia {
+                    media_id: entry.media_id,
+                    storage_date: entry.storage_date,
+                    expects_thumb: entry.companion_kind.is_none(),
+                })
                 .collect()
         };
         let remote_media_list = self.inner.local_dirs.remote_media_list(&remote_id_string);

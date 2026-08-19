@@ -226,6 +226,11 @@ impl Library {
         let blob_bytes = match std::fs::read(&thumb_path) {
             Ok(bytes) => bytes,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                // A companion resource is never given a thumbnail, so there is nothing to
+                // fetch and the remote is left alone.
+                if self.media_is_companion(media_id) {
+                    return Err(LibraryError::MediaNotFound(media_id));
+                }
                 let storage = storage.ok_or(LibraryError::MediaNotFound(media_id))?;
                 let key = format!("media/{year}/{month:02}/{media_id}.thumb");
                 let bytes = storage
@@ -258,6 +263,15 @@ impl Library {
         }
         let blob_bytes = std::fs::read(&data_path)?;
         self.decrypt_media_blob(media_id, &blob_bytes)
+    }
+
+    /// Whether another media references this one as its companion resource.
+    #[must_use]
+    pub fn media_is_companion(&self, media_id: MediaUuid) -> bool {
+        let state = self.inner.state.read();
+        state
+            .media(media_id)
+            .is_some_and(|entry| entry.companion_kind.is_some())
     }
 
     pub(crate) fn media_year_month(&self, media_id: MediaUuid) -> Result<(u16, u8)> {
@@ -657,6 +671,46 @@ mod tests {
 
         let thumb_bytes = lib.media_get_thumbnail(media_id, None).await.unwrap();
         assert_eq!(thumb_bytes, thumb_data);
+    }
+
+    #[tokio::test]
+    // A companion resource is never given a thumbnail, so asking for one must fail on the
+    // spot instead of reaching for a remote that cannot hold it.
+    async fn media_get_thumbnail_on_a_companion_never_touches_the_remote() {
+        let tmp = TempDir::new().unwrap();
+        let (lib, _) = make_library(&tmp);
+        let storage = StorageMockMemory::new();
+        let video_src = tmp.path().join("live.mov");
+        std::fs::write(&video_src, b"motion").unwrap();
+        let video_id = lib
+            .media_add(MediaAddSource::CopyFrom(video_src), None, None, None, None)
+            .await
+            .unwrap()
+            .id();
+        let still_src = tmp.path().join("live.jpg");
+        std::fs::write(&still_src, b"pixels").unwrap();
+        lib.media_add(
+            MediaAddSource::CopyFrom(still_src),
+            None,
+            None,
+            None,
+            Some(video_id),
+        )
+        .await
+        .unwrap();
+
+        let gets_before = storage.get_call_count();
+        let error = lib
+            .media_get_thumbnail(video_id, Some(&storage))
+            .await
+            .unwrap_err();
+
+        assert!(matches!(error, LibraryError::MediaNotFound(id) if id == video_id));
+        assert_eq!(
+            storage.get_call_count(),
+            gets_before,
+            "a companion thumbnail must never be requested from a remote"
+        );
     }
 
     #[tokio::test]

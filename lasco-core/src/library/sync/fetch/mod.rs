@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use crate::crdt::CrdtState;
 use crate::encryption::master_key::{MasterKey, parse_mk_filename};
 use crate::error::{LibraryError, SyncError};
-use crate::identifiers::{LibraryId, MediaUuid, RemoteUuid};
+use crate::identifiers::{LibraryId, RemoteUuid};
 use crate::library::Library;
 use crate::library::local_dirs::{
     LocalStateCrdt, LocalStateLibraryDir, RemoteCompactOpIdMergedToLocal, RemoteLastKnownStateDir,
@@ -11,11 +11,10 @@ use crate::library::local_dirs::{
 };
 use crate::library::local_ops_read_write::LocalOpsReadWriteLock;
 use crate::library::remote_media_list_lock::RemoteMediaListLock;
-use crate::operations::StorageDate;
 use crate::operations::remote_ops::RemoteOpFile;
 use crate::remote::{CompactOpIdMergedToLocal, LastKnownState};
 
-use super::media_inventory::confirm_known_media;
+use super::media_inventory::{KnownMedia, confirm_known_media};
 use super::remote_access::StorageRead;
 use super::{SyncReportFetch, verify_remote_identity};
 
@@ -159,12 +158,16 @@ pub(super) async fn fetch_impl(
     // the inventory has not confirmed yet, not only the ones created by the operations merged
     // in this run. A blob uploaded by another client after its creation operation was merged
     // here would otherwise never be discovered.
-    let known_media: Vec<(MediaUuid, StorageDate)> = {
+    let known_media: Vec<KnownMedia> = {
         let state = state_lock.read();
         state
             .media_entries()
             .iter()
-            .map(|entry| (entry.media_id, entry.storage_date))
+            .map(|entry| KnownMedia {
+                media_id: entry.media_id,
+                storage_date: entry.storage_date,
+                expects_thumb: entry.companion_kind.is_none(),
+            })
             .collect()
     };
     confirm_known_media(
