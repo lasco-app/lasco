@@ -14,8 +14,6 @@ pub enum OperationError {
     BlobTooLarge { declared: usize, maximum: usize },
     #[error("local operation log frame is incomplete: expected {expected} bytes, found {found}")]
     IncompleteFrame { expected: usize, found: usize },
-    #[error("unsupported local operation log format version {0}")]
-    UnsupportedLocalOperationLogVersion(u32),
     #[error("pending operation file contains trailing data")]
     PendingTrailingData,
     #[error(transparent)]

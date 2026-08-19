@@ -18,11 +18,14 @@ match the expected one is rejected with an error.
 | Encrypted blob | `BLOB_FORMAT_VERSION` | `1` (`u8`) | `encryption/blob.rs` |
 | Master key file | `PROTOCOL_VERSION` | `1` (`u32`) | `library/mod.rs` |
 | Library directory | `LIBRARY_FORMAT_VERSION` | `1` (`u32`) | `library/mod.rs` |
-| Local operation log | `LOCAL_OP_LOG_FORMAT_VERSION` | `1` (`u32`) | `operations/local_ops.rs` |
 | S3 secret key | `S3_SECRET_ENCRYPTION_DESCRIPTION` | `"AES-256-GCM v1"` | `s3_secret.rs` |
 
-`config.json`, `library.json`, and the CRDT snapshot carry no version field. See
-[Unversioned formats](#unversioned-formats).
+`config.json`, `library.json`, the CRDT snapshot, and the local operation log carry no version
+field at all. They are device local and are never uploaded to a remote, so no other device or
+build has to agree on their shape. The configuration files evolve through their serde
+representation, using `#[serde(default)]` for added fields and `#[serde(alias)]` for renames. The
+snapshot and the log are caches of state the operation history already holds, so a file that
+cannot be decoded is discarded and rebuilt rather than migrated.
 
 ---
 
@@ -83,23 +86,6 @@ performed against the local copy only.
 
 ---
 
-## Local operation log format
-
-`operations.log` begins with a magic value and a little endian `u32` version:
-
-```
-[ magic: "LOPS" (4 bytes) | format_version: u32 (4 bytes, little endian) | frames... ]
-```
-
-A file that does not start with `LOPS` is treated as the headerless legacy format and read from
-byte zero. A file that does start with `LOPS` but carries a version other than
-`LOCAL_OP_LOG_FORMAT_VERSION` is rejected.
-
-Each frame after the header is a length prefixed encrypted blob holding one CRDT operation, and
-so carries the blob envelope version of its own.
-
----
-
 ## Remote secret key version
 
 There is no separate per remote credential file. S3 credentials live in `library.json`, and the
@@ -113,56 +99,3 @@ secret key's version is a plain string tag compared by equality:
 ```
 
 Decryption is refused when the description does not match `S3_SECRET_ENCRYPTION_DESCRIPTION`.
-
----
-
-## Unversioned formats
-
-### Configuration files
-
-`config.json` and `library.json` carry no version field. They are device local and are never
-uploaded to a remote, so no other device or build has to agree on their shape.
-
-They evolve through serde instead. A new field is declared with `#[serde(default)]` and backfilled
-on first load, then written on the next save. `media_source_order` in `library.json` is the current
-example: a file that lacks it is given the ordering implied by the existing per remote priority
-fields. Renames use `#[serde(alias)]`. A change that serde cannot express this way is a change to
-the library layout, which is what `LIBRARY_FORMAT_VERSION` is for.
-
-The consequence is that an older build reading a file written by a newer one silently drops the
-fields it does not know and writes the file back without them. Downgrading an installation, or
-copying a library directory onto a device running an older build, is not supported.
-
-### CRDT snapshot
-
-`crdt-state.enc` holds a plain CBOR encoding of `CrdtState` with no wrapper and no version field.
-A snapshot that cannot be decoded produces `PersistenceError::Deserialize`, which
-`is_recoverable_snapshot_failure` reports as recoverable and the FFI surfaces as
-`LascoError::CrdtRecoveryAvailable`. The snapshot is a local cache of state that the operation log
-and the remote already hold, so the recovery path is to discard it and rebuild rather than to
-migrate it.
-
-### Remote state caches
-
-These are local caches of remote state, refetched when they are missing:
-
-- `remotes/{remote_id}/state/media/media_list.json`
-- `remotes/{remote_id}/state/compact_op_id_merged_to_local.json`
-- the compaction lock `operations/LOCK.op`
-
-The remote operation files encode their compaction tier and operation count in the filename
-(`{uuid}.op{tier}_{count}`) rather than in a version field, and the CBOR payload inside them is
-covered only by the blob envelope version.
-
----
-
-## Application versions
-
-The version shown in each app's settings screen is the product version and is unrelated to any of
-the format versions above.
-
-| Component | Field | Value |
-|---|---|---|
-| `lasco-core`, `lasco-ffi` | `version` in `Cargo.toml` | `0.1.0` |
-| Swift app | `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION` | `0.1.0` / `3` |
-| Android app | `versionName` / `versionCode` | `0.1.0` / `1` |
