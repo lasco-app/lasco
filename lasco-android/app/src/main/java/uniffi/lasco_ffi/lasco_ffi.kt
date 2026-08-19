@@ -903,8 +903,6 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
-
-
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1093,8 +1091,6 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_set_media_source_order(
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_set_media_thumbnail(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_set_remote_auto_push(
-): Short
-fun uniffi_lasco_ffi_checksum_method_ffilibrary_set_remote_media_fetch_priority(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_show_media(
 ): Short
@@ -1316,8 +1312,6 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_set_media_source_order(`ptr`: Pointer,
 fun uniffi_lasco_ffi_fn_method_ffilibrary_set_media_thumbnail(`ptr`: Pointer,`mediaId`: RustBuffer.ByValue,`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_set_remote_auto_push(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`enabled`: Byte,uniffi_out_err: UniffiRustCallStatus, 
-): Unit
-fun uniffi_lasco_ffi_fn_method_ffilibrary_set_remote_media_fetch_priority(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`priority`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_show_media(`ptr`: Pointer,`mediaId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -1726,9 +1720,6 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_set_remote_auto_push() != 52461.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_set_remote_media_fetch_priority() != 26777.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_show_media() != 45030.toShort()) {
@@ -2783,18 +2774,6 @@ public interface FfiLibraryInterface {
      * in-memory auto-push update after configuration is saved.
      */
     fun `setRemoteAutoPush`(`remoteId`: FfiRemoteUuid, `enabled`: kotlin.Boolean)
-    
-    /**
-     * # Errors
-     *
-     * Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
-     *
-     * # Panics
-     *
-     * Panics if another thread panicked while holding the cached remote-list mutex during the
-     * in-memory priority update after configuration is saved.
-     */
-    fun `setRemoteMediaFetchPriority`(`remoteId`: FfiRemoteUuid, `priority`: kotlin.UInt)
     
     /**
      * # Errors
@@ -4355,28 +4334,6 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     /**
      * # Errors
      *
-     * Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
-     *
-     * # Panics
-     *
-     * Panics if another thread panicked while holding the cached remote-list mutex during the
-     * in-memory priority update after configuration is saved.
-     */
-    @Throws(LascoException::class)override fun `setRemoteMediaFetchPriority`(`remoteId`: FfiRemoteUuid, `priority`: kotlin.UInt)
-        = 
-    callWithPointer {
-    uniffiRustCallWithError(LascoException) { _status ->
-    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_set_remote_media_fetch_priority(
-        it, FfiConverterTypeFfiRemoteUuid.lower(`remoteId`),FfiConverterUInt.lower(`priority`),_status)
-}
-    }
-    
-    
-
-    
-    /**
-     * # Errors
-     *
      * Returns an error if `media_id` is invalid or does not identify media in the local state.
      */
     @Throws(LascoException::class)override fun `showMedia`(`mediaId`: FfiMediaUuid): FfiMediaItem {
@@ -5225,8 +5182,6 @@ data class FfiRemote (
     var `remoteId`: FfiRemoteUuid, 
     var `name`: kotlin.String, 
     var `autoPush`: kotlin.Boolean, 
-    var `mediaFetchPriority`: kotlin.UInt, 
-    var `excludeFromMediaFetch`: kotlin.Boolean, 
     var `kind`: kotlin.String, 
     var `endpoint`: kotlin.String?, 
     var `bucket`: kotlin.String?, 
@@ -5246,8 +5201,6 @@ public object FfiConverterTypeFfiRemote: FfiConverterRustBuffer<FfiRemote> {
             FfiConverterTypeFfiRemoteUuid.read(buf),
             FfiConverterString.read(buf),
             FfiConverterBoolean.read(buf),
-            FfiConverterUInt.read(buf),
-            FfiConverterBoolean.read(buf),
             FfiConverterString.read(buf),
             FfiConverterOptionalString.read(buf),
             FfiConverterOptionalString.read(buf),
@@ -5260,8 +5213,6 @@ public object FfiConverterTypeFfiRemote: FfiConverterRustBuffer<FfiRemote> {
             FfiConverterTypeFfiRemoteUuid.allocationSize(value.`remoteId`) +
             FfiConverterString.allocationSize(value.`name`) +
             FfiConverterBoolean.allocationSize(value.`autoPush`) +
-            FfiConverterUInt.allocationSize(value.`mediaFetchPriority`) +
-            FfiConverterBoolean.allocationSize(value.`excludeFromMediaFetch`) +
             FfiConverterString.allocationSize(value.`kind`) +
             FfiConverterOptionalString.allocationSize(value.`endpoint`) +
             FfiConverterOptionalString.allocationSize(value.`bucket`) +
@@ -5273,8 +5224,6 @@ public object FfiConverterTypeFfiRemote: FfiConverterRustBuffer<FfiRemote> {
             FfiConverterTypeFfiRemoteUuid.write(value.`remoteId`, buf)
             FfiConverterString.write(value.`name`, buf)
             FfiConverterBoolean.write(value.`autoPush`, buf)
-            FfiConverterUInt.write(value.`mediaFetchPriority`, buf)
-            FfiConverterBoolean.write(value.`excludeFromMediaFetch`, buf)
             FfiConverterString.write(value.`kind`, buf)
             FfiConverterOptionalString.write(value.`endpoint`, buf)
             FfiConverterOptionalString.write(value.`bucket`, buf)

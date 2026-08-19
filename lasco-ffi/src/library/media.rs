@@ -1,5 +1,3 @@
-use lasco_core::library_json::LibraryJson;
-
 use lasco_core::library::media::upload::MediaAddResult;
 
 use super::remotes::media_entry_to_ffi;
@@ -31,8 +29,7 @@ impl FfiLibrary {
     }
 
     pub fn get_default_fetch_remote(&self) -> Option<FfiRemoteUuid> {
-        let library_id = self.inner.library_id();
-        let lib_config = LibraryJson::load(&self.app_dir, &library_id).ok()??;
+        let lib_config = self.load_library_json().ok()?;
         lib_config
             .default_fetch_remote
             .as_ref()
@@ -47,9 +44,8 @@ impl FfiLibrary {
         &self,
         remote_id: Option<FfiRemoteUuid>,
     ) -> Result<(), LascoError> {
-        let library_id = self.inner.library_id();
-        let mut lib_config =
-            LibraryJson::load(&self.app_dir, &library_id)?.ok_or(LascoError::NotFound)?;
+        let library_json = self.library_json_read_write();
+        let mut lib_config = library_json.read()?;
         let remote_uuid = remote_id.map(TryInto::try_into).transpose()?;
         if let Some(remote_uuid) = remote_uuid
             && !lib_config
@@ -62,27 +58,23 @@ impl FfiLibrary {
             });
         }
         lib_config.default_fetch_remote = remote_uuid;
-        lib_config.save(&self.app_dir, &library_id)?;
+        library_json.write(&lib_config)?;
         Ok(())
     }
 
     pub fn get_auto_import_device_media(&self) -> bool {
-        let library_id = self.inner.library_id();
-        LibraryJson::load(&self.app_dir, &library_id)
-            .ok()
-            .flatten()
-            .is_some_and(|c| c.auto_import_device_media)
+        self.load_library_json()
+            .is_ok_and(|config| config.auto_import_device_media)
     }
 
     /// # Errors
     ///
     /// Returns an error if the library configuration is missing, malformed, or cannot be saved.
     pub fn set_auto_import_device_media(&self, enabled: bool) -> Result<(), LascoError> {
-        let library_id = self.inner.library_id();
-        let mut lib_config =
-            LibraryJson::load(&self.app_dir, &library_id)?.ok_or(LascoError::NotFound)?;
+        let library_json = self.library_json_read_write();
+        let mut lib_config = library_json.read()?;
         lib_config.auto_import_device_media = enabled;
-        lib_config.save(&self.app_dir, &library_id)?;
+        library_json.write(&lib_config)?;
         Ok(())
     }
 
@@ -587,10 +579,9 @@ impl FfiLibrary {
     ///
     /// Returns an error if the library configuration cannot be read.
     pub fn media_ids_without_remote_backup(&self) -> Result<Vec<FfiMediaUuid>, LascoError> {
-        let library_id = self.inner.library_id();
-        let remote_ids = LibraryJson::load(&self.app_dir, &library_id)?
-            .map(|cfg| lasco_core::library_json::list_remote_ids(&cfg))
-            .unwrap_or_default();
+        let remote_ids = self
+            .load_library_json()
+            .map(|config| lasco_core::library_json::list_remote_ids(&config))?;
         Ok(self
             .inner
             .media_ids_without_remote_backup(&remote_ids)
@@ -632,9 +623,7 @@ impl FfiLibrary {
     fn media_fetch_remote_ids(
         &self,
     ) -> Result<Vec<lasco_core::identifiers::RemoteUuid>, LascoError> {
-        let library_id = self.inner.library_id();
-        let lib_config =
-            LibraryJson::load(&self.app_dir, &library_id)?.ok_or(LascoError::NotFound)?;
+        let lib_config = self.load_library_json()?;
         Ok(lib_config.media_source_order)
     }
 }

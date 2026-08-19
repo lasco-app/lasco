@@ -11,6 +11,7 @@ mod sync_policy;
 pub mod user;
 
 use std::fmt;
+use std::path::Path;
 use std::sync::Arc;
 
 use uuid::Uuid;
@@ -25,6 +26,7 @@ use crate::library::local_dirs::LocalDirs;
 use crate::library::local_ops_read_write::LocalOpsReadWriteLock;
 use crate::library::remote_media_list_lock::RemoteMediaListLock;
 use crate::library::sync_policy::{FetchSlotGuard, RemoteSyncGuard, SyncPolicy};
+use crate::library_json::{LibraryJsonReadWrite, LibraryJsonReadWriteLock};
 use crate::operations::{LibraryPassword, LibraryUsername};
 
 pub use crate::identifiers::LibraryId;
@@ -54,6 +56,8 @@ pub(crate) struct LibraryInner {
     pub(crate) state: parking_lot::RwLock<crate::crdt::CrdtState>,
     pub(crate) sync_policy: SyncPolicy,
     pub(crate) username: LibraryUsername,
+    /// Serializes synchronous reads and read-modify-write updates of this library's `library.json`.
+    library_json_read_write_lock: LibraryJsonReadWriteLock,
     /// The sole lock that grants access to `operations.log`.
     pub(crate) local_ops_read_write_lock: LocalOpsReadWriteLock,
     /// Per-remote locks for synchronous `media_list.json` read-modify-write access.
@@ -79,6 +83,14 @@ const _: () = {
 };
 
 impl Library {
+    /// Opens exclusive synchronous access to this library's `library.json`.
+    /// The returned object must not be held across an `.await`.
+    pub fn library_json_read_write<'a>(&'a self, app_dir: &'a Path) -> LibraryJsonReadWrite<'a> {
+        self.inner
+            .library_json_read_write_lock
+            .lock(app_dir, self.inner.library_id)
+    }
+
     pub(crate) fn try_acquire_remote_sync(&self, remote_id: &str) -> Option<RemoteSyncGuard<'_>> {
         self.inner.sync_policy.try_acquire_remote(remote_id)
     }
@@ -136,6 +148,7 @@ impl Library {
                 username: credentials.username,
                 state: parking_lot::RwLock::new(initial_crdt),
                 sync_policy: SyncPolicy::new(),
+                library_json_read_write_lock: LibraryJsonReadWriteLock::new(),
                 local_ops_read_write_lock,
                 remote_media_list_lock: RemoteMediaListLock::new(),
             }),
@@ -184,6 +197,7 @@ impl Library {
                 username: credentials.username,
                 state: parking_lot::RwLock::new(loaded_crdt),
                 sync_policy: SyncPolicy::new(),
+                library_json_read_write_lock: LibraryJsonReadWriteLock::new(),
                 local_ops_read_write_lock,
                 remote_media_list_lock: RemoteMediaListLock::new(),
             }),
@@ -220,6 +234,7 @@ impl Library {
                 username,
                 state: parking_lot::RwLock::new(loaded_crdt),
                 sync_policy: SyncPolicy::new(),
+                library_json_read_write_lock: LibraryJsonReadWriteLock::new(),
                 local_ops_read_write_lock,
                 remote_media_list_lock: RemoteMediaListLock::new(),
             }),

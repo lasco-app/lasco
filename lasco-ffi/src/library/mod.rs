@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 
 use lasco_core::config_json::{ConfigJson, LibraryNickname};
-use lasco_core::library_json::LibraryJson;
+use lasco_core::library_json::{LibraryJson, find_library_id_by_nickname};
 use lasco_core::operations::{LibraryPassword, LibraryUsername};
 use lasco_core::session::session_load_master_key;
 
@@ -116,24 +116,24 @@ pub fn list_libraries(app_dir: Option<String>) -> Result<Vec<FfiLibraryEntry>, L
     Ok(config
         .libraries
         .iter()
-        .map(|(id, entry)| {
-            // The nickname lives in the index. The username lives in library.json.
+        .map(|id| {
+            // The nickname and username live in library.json.
             match LibraryJson::load(&app_dir, id) {
                 Ok(Some(lib)) => FfiLibraryEntry {
                     library_id: (*id).into(),
-                    nickname: lib.nickname.0,
+                    nickname: lib.library_nickname.0,
                     username: lib.default_username.map(|u| u.0),
                     load_error: None,
                 },
                 Ok(None) => FfiLibraryEntry {
                     library_id: (*id).into(),
-                    nickname: entry.nickname.0.clone(),
+                    nickname: id.to_string(),
                     username: None,
                     load_error: Some("library.json not found".to_string()),
                 },
                 Err(e) => FfiLibraryEntry {
                     library_id: (*id).into(),
-                    nickname: entry.nickname.0.clone(),
+                    nickname: id.to_string(),
                     username: None,
                     load_error: Some(e.to_string()),
                 },
@@ -202,13 +202,15 @@ pub fn ffi_open_cached(
         return Ok(None);
     };
 
-    let Ok(resolved) = config.resolve_nickname(nickname.map(LibraryNickname::from)) else {
-        return Ok(None);
-    };
-
-    let library_id = match config.get_library_id_by_nickname(&resolved.0) {
-        Some(id) => *id,
-        None => return Ok(None),
+    let library_id = match nickname {
+        Some(nickname) => match find_library_id_by_nickname(&app_dir, &nickname) {
+            Ok(id) => id,
+            Err(_) => return Ok(None),
+        },
+        None => match config.get_default_library_id() {
+            Some(id) => *id,
+            None => return Ok(None),
+        },
     };
     let Some(library_config) = LibraryJson::load(&app_dir, &library_id)? else {
         return Ok(None);
@@ -236,7 +238,7 @@ pub fn ffi_open_cached(
 
     let library = rt.block_on(lasco_core::client::open_library(
         &app_dir,
-        resolved,
+        library_config.library_nickname,
         lib_username,
         None,
         Some(&sessions),
@@ -373,15 +375,15 @@ impl FfiLibrary {
             msg: "no libraries configured".to_string(),
         })?;
 
-        let resolved = config
-            .resolve_nickname(nickname.map(LibraryNickname::from))
-            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
-
-        let library_id = config
-            .get_library_id_by_nickname(&resolved.0)
-            .ok_or(LascoError::NotFound)?;
+        let library_id = match nickname {
+            Some(nickname) => find_library_id_by_nickname(&app_dir, &nickname)
+                .map_err(|e| LascoError::Other { msg: e.to_string() })?,
+            None => *config
+                .get_default_library_id()
+                .ok_or(LascoError::NotFound)?,
+        };
         let library_config =
-            LibraryJson::load(&app_dir, library_id)?.ok_or(LascoError::NotFound)?;
+            LibraryJson::load(&app_dir, &library_id)?.ok_or(LascoError::NotFound)?;
         let remotes = library_config
             .remotes
             .iter()
@@ -391,7 +393,7 @@ impl FfiLibrary {
         let sessions = sessions_dir(&app_dir);
         let library = rt.block_on(lasco_core::client::open_library(
             &app_dir,
-            resolved,
+            library_config.library_nickname,
             LibraryUsername(username),
             Some(LibraryPassword(password)),
             Some(&sessions),

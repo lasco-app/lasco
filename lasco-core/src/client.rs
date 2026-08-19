@@ -9,7 +9,9 @@ use crate::encryption::master_key::{MasterKey, find_master_key};
 use crate::identifiers::LibraryId;
 use crate::library::Library;
 use crate::library::local_dirs::LocalDirs;
-use crate::library_json::{LibraryJson, RemoteConfig, RemoteKind, S3Config, save_library};
+use crate::library_json::{
+    LibraryJson, RemoteConfig, RemoteKind, S3Config, find_library_id_by_nickname, save_library,
+};
 use crate::operations::{LibraryPassword, LibraryUsername};
 use crate::s3_secret::{encrypt_s3_secret_key, resolve_s3_credentials};
 use crate::session::{session_load_master_key, session_store_master_key};
@@ -105,21 +107,17 @@ pub async fn open_library(
     password: Option<LibraryPassword>,
     session_dir: Option<&Path>,
 ) -> Result<Library> {
-    let config_json = ConfigJson::load(app_dir)?
-        .ok_or_else(|| anyhow::anyhow!("no libraries configured; use 'lasco new' to create one"))?;
+    let library_id = find_library_id_by_nickname(app_dir, &library_nickname.0)
+        .map_err(|_| anyhow::anyhow!("library '{}' not found", library_nickname.0))?;
 
-    let library_id = config_json
-        .get_library_id_by_nickname(&library_nickname.0)
-        .ok_or_else(|| anyhow::anyhow!("library '{}' not found", library_nickname.0))?;
-
-    let local_dirs = LocalDirs::new(app_dir, library_id);
-    let library_config = LibraryJson::load(app_dir, library_id)?
+    let local_dirs = LocalDirs::new(app_dir, &library_id);
+    let library_config = LibraryJson::load(app_dir, &library_id)?
         .ok_or_else(|| anyhow::anyhow!("library.json not found for '{}'", library_nickname.0))?;
     let device_id = library_config.device_id;
 
-    if let Some(master_key) = session_load_master_key(*library_id, &username, session_dir)? {
+    if let Some(master_key) = session_load_master_key(library_id, &username, session_dir)? {
         let library =
-            Library::open_with_master_key(local_dirs, master_key, *library_id, device_id, username)
+            Library::open_with_master_key(local_dirs, master_key, library_id, device_id, username)
                 .context("failed to open library")?;
         return Ok(library);
     }
@@ -137,7 +135,7 @@ pub async fn open_library(
     )
     .context("failed to open library")?;
 
-    session_store_master_key(*library_id, &username, library.master_key(), session_dir)?;
+    session_store_master_key(library_id, &username, library.master_key(), session_dir)?;
 
     Ok(library)
 }
@@ -178,7 +176,7 @@ pub async fn create_library(
 
     let library_config = LibraryJson {
         version: crate::library_json::LIBRARY_JSON_VERSION,
-        nickname: LibraryNickname(nickname),
+        library_nickname: LibraryNickname(nickname),
         device_id,
         default_fetch_remote: None,
         default_username: Some(username.clone()),
@@ -205,14 +203,10 @@ pub async fn recover_library_state(
     username: LibraryUsername,
     password: LibraryPassword,
 ) -> Result<()> {
-    let config_json =
-        ConfigJson::load(app_dir)?.ok_or_else(|| anyhow::anyhow!("no libraries configured"))?;
-    let library_id = config_json
-        .get_library_id_by_nickname(&library_nickname.0)
-        .ok_or_else(|| anyhow::anyhow!("library '{}' not found", library_nickname.0))?;
-    let library_config = LibraryJson::load(app_dir, library_id)?
+    let library_id = find_library_id_by_nickname(app_dir, &library_nickname.0)?;
+    let library_config = LibraryJson::load(app_dir, &library_id)?
         .ok_or_else(|| anyhow::anyhow!("library.json not found"))?;
-    let local_dirs = LocalDirs::new(app_dir, library_id);
+    let local_dirs = LocalDirs::new(app_dir, &library_id);
     let master_key = find_master_key(
         local_dirs.local_state_library_dir().path(),
         &username.0,
@@ -390,7 +384,7 @@ pub async fn add_existing_library_s3(
 
     let library_config = LibraryJson {
         version: crate::library_json::LIBRARY_JSON_VERSION,
-        nickname: LibraryNickname(nickname),
+        library_nickname: LibraryNickname(nickname),
         device_id,
         default_username: Some(effective_username.clone()),
         active_password_uuid: Some(active_password_uuid),
@@ -448,7 +442,7 @@ pub fn delete_library(
     }
 
     if let Some(mut config) = ConfigJson::load(app_dir)?
-        && config.libraries.contains_key(library_id)
+        && config.libraries.contains(library_id)
     {
         config.remove_library(library_id)?;
         config.save(app_dir)?;
