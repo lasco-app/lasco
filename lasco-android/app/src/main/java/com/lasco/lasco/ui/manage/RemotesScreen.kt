@@ -38,6 +38,7 @@ import com.lasco.lasco.ui.theme.LascoTheme
 import com.lasco.lasco.ui.theme.lascoPanel
 import kotlinx.coroutines.launch
 import uniffi.lasco_ffi.FfiRemote
+import uniffi.lasco_ffi.LascoException
 import uniffi.lasco_ffi.FfiCompactionLockInfo
 
 /**
@@ -66,6 +67,7 @@ fun RemotesScreen(
     var pendingLockRemoval by remember { mutableStateOf<FfiRemote?>(null) }
     var removalBlocked by remember { mutableStateOf<RemoteRemovalBlocked?>(null) }
     var removalBlockedByScheduledPush by remember { mutableStateOf<FfiRemote?>(null) }
+    var removalFailed by remember { mutableStateOf<String?>(null) }
     var feedback by remember { mutableStateOf<String?>(null) }
     var isUpdatingMediaSourceOrder by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -90,8 +92,17 @@ fun RemotesScreen(
             )
             return
         }
-        repo.removeRemote(remote.remoteId)
-        feedback = "${remote.name}: removed"
+        // A push or fetch that claimed the remote between the scheduled push check and here
+        // stops the removal, which leaves the configuration untouched. Saying so is the only
+        // way the user learns the remote is still there.
+        try {
+            repo.removeRemote(remote.remoteId)
+            feedback = "${remote.name}: removed"
+        } catch (e: LascoException.SyncBusy) {
+            removalFailed = "\"${remote.name}\" is syncing right now. Wait for it to finish, then remove it."
+        } catch (e: LascoException) {
+            removalFailed = "\"${remote.name}\" could not be removed: ${e.message ?: "unknown error"}"
+        }
     }
 
     Column(
@@ -217,6 +228,13 @@ fun RemotesScreen(
                 pendingDelete = null
             },
             onCancel = { pendingDelete = null },
+        )
+    }
+    removalFailed?.let { message ->
+        LascoInfoDialog(
+            title = "Remote not removed",
+            message = message,
+            onDismiss = { removalFailed = null },
         )
     }
     removalBlockedByScheduledPush?.let { remote ->

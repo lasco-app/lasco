@@ -13,6 +13,7 @@ struct RemotesView: View {
     @State private var isUpdatingMediaSourceOrder = false
     @State private var removalBlocked: RemoteRemovalBlockedContext?
     @State private var removalBlockedByScheduledPush: FfiRemote?
+    @State private var removalFailed: String?
     let repository: LibraryRepository
     let session: LibrarySessionState
     let syncCoordinator: SyncCoordinator
@@ -38,7 +39,7 @@ struct RemotesView: View {
         }
         let count = (try? await repository.mediaCountLostIfRemoteRemoved(remoteID: remote.remoteId)) ?? 0
         guard count > 0 else {
-            try? await repository.removeRemote(id: remote.remoteId)
+            await commitRemoval(remote)
             return
         }
         removalBlocked = RemoteRemovalBlockedContext(
@@ -46,6 +47,19 @@ struct RemotesView: View {
             others: session.remotes.filter { $0.remoteId != remote.remoteId },
             mediaCount: count
         )
+    }
+
+    /// A push or fetch that claimed the remote between the scheduled push check and here stops
+    /// the removal, which leaves the configuration untouched. Saying so is the only way the
+    /// user learns the remote is still there.
+    private func commitRemoval(_ remote: FfiRemote) async {
+        do {
+            try await repository.removeRemote(id: remote.remoteId)
+        } catch LascoError.SyncBusy {
+            removalFailed = "\(remote.name) is syncing right now. Wait for it to finish, then remove it."
+        } catch {
+            removalFailed = "\(remote.name) could not be removed: \(error.localizedDescription)"
+        }
     }
 
     var body: some View {
@@ -141,6 +155,19 @@ struct RemotesView: View {
             .environment(\.lascoTheme, .dark)
             .preferredColorScheme(.dark)
             .presentationDetents([.medium])
+        }
+        .alert(
+            "Remote not removed",
+            isPresented: Binding(
+                get: { removalFailed != nil },
+                set: { if !$0 { removalFailed = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            if let removalFailed {
+                Text(removalFailed)
+            }
         }
         .alert(
             "Push scheduled",
