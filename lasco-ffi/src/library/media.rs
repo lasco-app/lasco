@@ -5,6 +5,7 @@ use super::types::{FfiLocalStateStats, FfiMediaAddResult, FfiMediaNeighbors};
 use super::{FfiLibrary, FfiMediaItem, ffi_count};
 use crate::error::LascoError;
 use crate::ids::{FfiAlbumUuid, FfiLibraryId, FfiMediaUuid, FfiRemoteUuid};
+use lasco_core::identifiers::RemoteUuid;
 
 pub(super) fn inclusive_range(start: u32, end: u32) -> Result<(usize, usize), LascoError> {
     if start > end {
@@ -570,19 +571,60 @@ impl FfiLibrary {
             .collect()
     }
 
+    /// Counts the media that clearing local media would leave with no known copy anywhere.
+    ///
+    /// Only a remote can back up a local copy here, because the local copy is what the
+    /// operation deletes. The answer is an upper bound, see `media_ids_without_backup`.
+    ///
     /// # Errors
     ///
     /// Returns an error if the library configuration cannot be read.
-    pub fn media_ids_without_remote_backup(&self) -> Result<Vec<FfiMediaUuid>, LascoError> {
+    pub fn media_count_lost_if_local_media_cleared(&self) -> Result<u64, LascoError> {
         let remote_ids = self
             .load_library_json()
             .map(|config| lasco_core::library_json::list_remote_ids(&config))?;
-        Ok(self
-            .inner
-            .media_ids_without_remote_backup(&remote_ids)
+        Ok(ffi_count(
+            self.inner
+                .media_ids_without_backup(
+                    &remote_ids,
+                    lasco_core::library::media::query::BackupScope::RemotesOnly,
+                )
+                .len(),
+        ))
+    }
+
+    /// Counts the media that removing `remote_id` would leave with no known copy anywhere.
+    ///
+    /// The local copy survives the removal, so it counts as a home alongside every remaining
+    /// remote. The answer is an upper bound, see `media_ids_without_backup`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the library configuration cannot be read or `remote_id` is invalid.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
+    pub fn media_count_lost_if_remote_removed(
+        &self,
+        remote_id: FfiRemoteUuid,
+    ) -> Result<u64, LascoError> {
+        let removed: RemoteUuid = remote_id.try_into()?;
+        let removed = removed.to_string();
+        let remaining: Vec<String> = self
+            .load_library_json()
+            .map(|config| lasco_core::library_json::list_remote_ids(&config))?
             .into_iter()
-            .map(Into::into)
-            .collect())
+            .filter(|id| *id != removed)
+            .collect();
+        Ok(ffi_count(
+            self.inner
+                .media_ids_without_backup(
+                    &remaining,
+                    lasco_core::library::media::query::BackupScope::RemotesOrLocal,
+                )
+                .len(),
+        ))
     }
 
     pub fn local_state_stats(&self) -> FfiLocalStateStats {

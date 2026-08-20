@@ -91,8 +91,9 @@ class StatusViewModel(
         viewModelScope.launch { _localStateStats.value = repo.localStateStats() }
     }
 
-    suspend fun mediaCountWithoutRemoteBackup(): Int? =
-        repo.mediaIdsWithoutRemoteBackup().size.takeIf { it > 0 }
+    // Queried when the user reaches for the action rather than on every refresh, because it
+    // stats a file per media and is only ever read to answer that one question.
+    suspend fun mediaCountLostIfLocalMediaCleared(): Int = repo.mediaCountLostIfLocalMediaCleared()
 
     fun cleanLocalMedia() {
         viewModelScope.launch {

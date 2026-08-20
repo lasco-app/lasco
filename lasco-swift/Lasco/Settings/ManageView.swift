@@ -12,10 +12,12 @@ struct ManageView: View {
     @AppStorage("expertMode") private var expertMode = false
     let repository: LibraryRepository
     let session: LibrarySessionState
+    let syncCoordinator: SyncCoordinator
 
-    init(repository: LibraryRepository, session: LibrarySessionState) {
+    init(repository: LibraryRepository, session: LibrarySessionState, syncCoordinator: SyncCoordinator) {
         self.repository = repository
         self.session = session
+        self.syncCoordinator = syncCoordinator
     }
 
     var body: some View {
@@ -37,7 +39,7 @@ struct ManageView: View {
 
                         VStack(alignment: .leading, spacing: 0) {
                             NavigationLink {
-                                RemotesView(repository: repository, session: session)
+                                RemotesView(repository: repository, session: session, syncCoordinator: syncCoordinator)
                                     .navigationBarBackButtonHidden(true)
                             } label: {
                                 HStack {

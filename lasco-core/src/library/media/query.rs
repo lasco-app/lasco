@@ -35,6 +35,17 @@ pub enum MediaListScope {
     All,
 }
 
+/// Selects what counts as a home for a media blob in `Library::media_ids_without_backup`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BackupScope {
+    /// Only a remote counts. Used before clearing local media, where the local copy is
+    /// exactly what is about to be deleted.
+    RemotesOnly,
+    /// A remote or this device's local state counts. Used before removing a remote, where
+    /// the local copy survives the operation.
+    RemotesOrLocal,
+}
+
 impl Library {
     /// Returns primary visible media ordered by date descending, then ID descending.
     #[must_use]
@@ -353,11 +364,12 @@ impl Library {
         album_ids
     }
 
-    /// Returns the ids of local media whose original is not confirmed by the positive media
-    /// inventory of any of `remote_ids`. A thumbnail alone is not a backup, so only the full
-    /// media file counts here. If `remote_ids` is empty, returns all local media.
-    #[must_use]
-    pub fn media_ids_without_remote_backup(&self, remote_ids: &[String]) -> Vec<MediaUuid> {
+    /// Whether the full media blob is confirmed present on any of `remote_ids`, according to
+    /// the media list this client has cached for each of them.
+    fn media_full_backed_by_remotes(
+        &self,
+        remote_ids: &[String],
+    ) -> std::collections::HashSet<MediaUuid> {
         let mut backed_up = std::collections::HashSet::new();
         for remote_id in remote_ids {
             let remote_media_list = self.inner.local_dirs.remote_media_list(remote_id);
@@ -376,11 +388,47 @@ impl Library {
                 );
             }
         }
+        backed_up
+    }
+
+    /// Whether the full media blob is present in this device's local state.
+    fn media_full_cached_locally(&self, media_id: MediaUuid) -> bool {
+        let Ok((year, month)) = self.media_year_month(media_id) else {
+            return false;
+        };
+        self.inner
+            .local_dirs
+            .local_state_media_dir()
+            .data_path(year, month, &media_id)
+            .exists()
+    }
+
+    /// Returns the ids of media whose full blob has no known home once `scope` is applied.
+    ///
+    /// Only the full media file counts, a thumbnail alone is never a backup. Remote knowledge
+    /// comes from the media list json this client cached for each remote at its last update,
+    /// never from a live listing, so a media confirmed nowhere may still sit on a remote this
+    /// client has not talked to recently. The answer is therefore an upper bound on what could
+    /// be lost, never an under-count.
+    ///
+    /// Every known media entry is considered, companion resources and album-orphaned media
+    /// included, because both are real blobs that a caller can really lose.
+    #[must_use]
+    pub fn media_ids_without_backup(
+        &self,
+        remote_ids: &[String],
+        scope: BackupScope,
+    ) -> Vec<MediaUuid> {
+        let backed_up = self.media_full_backed_by_remotes(remote_ids);
 
         self.media_list(MediaListScope::All)
             .into_iter()
             .map(|entry| entry.media_id)
             .filter(|media_id| !backed_up.contains(media_id))
+            .filter(|&media_id| match scope {
+                BackupScope::RemotesOnly => true,
+                BackupScope::RemotesOrLocal => !self.media_full_cached_locally(media_id),
+            })
             .collect()
     }
 
@@ -607,6 +655,137 @@ mod tests {
             lib.media_list(MediaListScope::Orphaned)
                 .iter()
                 .any(|entry| entry.media_id == orphan_id)
+        );
+    }
+
+    /// Records `media_id` as fully present on `remote_id` in that remote's cached media list.
+    fn record_full_on_remote(lib: &Library, remote_id: &str, media_id: MediaUuid) {
+        let remote_media_list = lib.inner.local_dirs.remote_media_list(remote_id);
+        let path = remote_media_list.media_list_path();
+        let mut list = MediaList::load_or_default(&path).unwrap();
+        list.record(media_id, true, false);
+        list.save(&path).unwrap();
+    }
+
+    fn evict_local_full(lib: &Library, media_id: MediaUuid) {
+        let entry = lib.media_show(media_id).unwrap();
+        let path = lib.inner.local_dirs.local_state_media_dir().data_path(
+            entry.storage_date.year,
+            entry.storage_date.month,
+            &media_id,
+        );
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[tokio::test]
+    async fn without_backup_ignores_a_thumbnail_only_confirmation() {
+        let tmp = TempDir::new().unwrap();
+        let (lib, _) = make_library(&tmp);
+        let (media_id, _) = add_media_to_album(&lib, &tmp, "img.jpg", b"photo data").await;
+
+        let remote_media_list = lib.inner.local_dirs.remote_media_list("remote-a");
+        let path = remote_media_list.media_list_path();
+        let mut list = MediaList::load_or_default(&path).unwrap();
+        list.record(media_id, false, true);
+        list.save(&path).unwrap();
+
+        let remotes = vec!["remote-a".to_string()];
+        assert_eq!(
+            lib.media_ids_without_backup(&remotes, BackupScope::RemotesOnly),
+            vec![media_id]
+        );
+    }
+
+    #[tokio::test]
+    async fn without_backup_clears_once_a_remote_confirms_the_full_blob() {
+        let tmp = TempDir::new().unwrap();
+        let (lib, _) = make_library(&tmp);
+        let (media_id, _) = add_media_to_album(&lib, &tmp, "img.jpg", b"photo data").await;
+        record_full_on_remote(&lib, "remote-a", media_id);
+
+        let remotes = vec!["remote-a".to_string()];
+        assert!(
+            lib.media_ids_without_backup(&remotes, BackupScope::RemotesOnly)
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn without_backup_counts_everything_when_no_remote_is_configured() {
+        let tmp = TempDir::new().unwrap();
+        let (lib, _) = make_library(&tmp);
+        let (media_id, _) = add_media_to_album(&lib, &tmp, "img.jpg", b"photo data").await;
+        record_full_on_remote(&lib, "remote-a", media_id);
+
+        // A remote that is not in the list contributes nothing, which is what makes removing
+        // the last remote report the whole library.
+        assert_eq!(
+            lib.media_ids_without_backup(&[], BackupScope::RemotesOnly),
+            vec![media_id]
+        );
+    }
+
+    // The local copy is what clearing local media deletes, so it can never stand in for a
+    // backup there. Removing a remote leaves it alone, so there it counts.
+    #[tokio::test]
+    async fn local_copy_counts_as_a_home_only_for_the_remote_removal_scope() {
+        let tmp = TempDir::new().unwrap();
+        let (lib, _) = make_library(&tmp);
+        let (media_id, _) = add_media_to_album(&lib, &tmp, "img.jpg", b"photo data").await;
+
+        assert_eq!(
+            lib.media_ids_without_backup(&[], BackupScope::RemotesOnly),
+            vec![media_id]
+        );
+        assert!(
+            lib.media_ids_without_backup(&[], BackupScope::RemotesOrLocal)
+                .is_empty()
+        );
+
+        evict_local_full(&lib, media_id);
+        assert_eq!(
+            lib.media_ids_without_backup(&[], BackupScope::RemotesOrLocal),
+            vec![media_id]
+        );
+    }
+
+    // Companion resources and album-orphaned media are real blobs a user can really lose, so
+    // both are counted even though neither shows up in the visible media list.
+    #[tokio::test]
+    async fn without_backup_counts_companion_and_orphaned_media() {
+        let tmp = TempDir::new().unwrap();
+        let (lib, _) = make_library(&tmp);
+
+        let video_src = tmp.path().join("live.mov");
+        std::fs::write(&video_src, b"motion").unwrap();
+        let video_id = lib
+            .media_add(MediaAddSource::CopyFrom(video_src), None, None, None, None)
+            .await
+            .unwrap()
+            .id();
+        let still_src = tmp.path().join("live.jpg");
+        std::fs::write(&still_src, b"pixels").unwrap();
+        let still_id = lib
+            .media_add(
+                MediaAddSource::CopyFrom(still_src),
+                None,
+                None,
+                None,
+                Some(video_id),
+            )
+            .await
+            .unwrap()
+            .id();
+
+        let unbacked = lib.media_ids_without_backup(&[], BackupScope::RemotesOnly);
+        assert!(unbacked.contains(&video_id), "companion must be counted");
+        assert!(unbacked.contains(&still_id), "orphan must be counted");
+        assert_eq!(unbacked.len(), 2);
+        assert!(
+            lib.media_list(MediaListScope::Visible)
+                .iter()
+                .all(|entry| entry.media_id != video_id),
+            "the companion is invisible in the media list, which is why the count looks high"
         );
     }
 

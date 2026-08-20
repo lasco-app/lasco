@@ -79,6 +79,7 @@ fun StatusScreen(modifier: Modifier = Modifier) {
     var showCleanConfirm by remember { mutableStateOf(false) }
     var showClearThumbsConfirm by remember { mutableStateOf(false) }
     var cleanBlockedCount by remember { mutableStateOf<Int?>(null) }
+    var cleanOverrideCount by remember { mutableStateOf<Int?>(null) }
     var feedback by remember { mutableStateOf<String?>(null) }
     var pushBlocked by remember { mutableStateOf<PushBlockedState?>(null) }
 
@@ -170,8 +171,8 @@ fun StatusScreen(modifier: Modifier = Modifier) {
                         .fillMaxWidth()
                         .clickable {
                             scope.launch {
-                                val blocked = statusViewModel.mediaCountWithoutRemoteBackup()
-                                if (blocked != null) cleanBlockedCount = blocked else showCleanConfirm = true
+                                val lost = statusViewModel.mediaCountLostIfLocalMediaCleared()
+                                if (lost > 0) cleanBlockedCount = lost else showCleanConfirm = true
                             }
                         }
                         .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -291,10 +292,35 @@ fun StatusScreen(modifier: Modifier = Modifier) {
         )
     }
     cleanBlockedCount?.let { count ->
-        LascoInfoDialog(
-            title = "Not fully backed up",
-            message = "$count item${if (count == 1) "" else "s"} not backed up on any remote. Push to a remote before cleaning local media.",
-            onDismiss = { cleanBlockedCount = null },
+        val plural = if (count == 1) "" else "s"
+        val message = "$count item$plural not confirmed on any remote. This is based on each " +
+            "remote's media list as of its last update, so some may already be there. Push to a " +
+            "remote before cleaning local media."
+        if (expertMode) {
+            LascoConfirmDialog(
+                title = "Not fully backed up",
+                message = message,
+                confirmLabel = "Clean anyway",
+                onConfirm = { cleanOverrideCount = count; cleanBlockedCount = null },
+                onCancel = { cleanBlockedCount = null },
+            )
+        } else {
+            LascoInfoDialog(
+                title = "Not fully backed up",
+                message = message,
+                onDismiss = { cleanBlockedCount = null },
+            )
+        }
+    }
+    cleanOverrideCount?.let { count ->
+        val plural = if (count == 1) "" else "s"
+        LascoConfirmDialog(
+            title = "Lose these media forever?",
+            message = "$count item$plural might be the only copy left. Cleaning deletes them " +
+                "from this device with no way to get them back.",
+            confirmLabel = "I understand, I might lose data",
+            onConfirm = { cleanOverrideCount = null; statusViewModel.cleanLocalMedia() },
+            onCancel = { cleanOverrideCount = null },
         )
     }
 }

@@ -45,7 +45,7 @@ struct LibraryParametersView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         NavigationLink {
                             if let activeSession = directory.activeSession {
-                                RemotesView(repository: activeSession.repository, session: activeSession.state)
+                                RemotesView(repository: activeSession.repository, session: activeSession.state, syncCoordinator: activeSession.syncCoordinator)
                             }
                         } label: {
                             HStack {

@@ -398,7 +398,13 @@ class LibraryRepository(
 
     suspend fun localStateStats(): FfiLocalStateStats = lib.localStateStats()
 
-    suspend fun mediaIdsWithoutRemoteBackup(): List<FfiMediaUuid> = lib.mediaIdsWithoutRemoteBackup()
+    suspend fun mediaCountLostIfLocalMediaCleared(): Int = withContext(io) {
+        lib.mediaCountLostIfLocalMediaCleared().toInt()
+    }
+
+    suspend fun mediaCountLostIfRemoteRemoved(remoteId: FfiRemoteUuid): Int = withContext(io) {
+        lib.mediaCountLostIfRemoteRemoved(remoteId).toInt()
+    }
 
     // Blocking and proportional to file size. Drop the wrap once the Rust side is async.
     suspend fun evictLocalData() = withContext(io) { lib.evictLocalData(lib.allMediaIds()) }

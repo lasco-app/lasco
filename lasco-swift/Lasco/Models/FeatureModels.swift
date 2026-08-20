@@ -524,7 +524,6 @@ final class MediaDetailModel {
 final class StatusModel {
     private(set) var mediaCount = 0
     private(set) var localStateStats: FfiLocalStateStats?
-    private(set) var mediaCountWithoutRemoteBackup: Int?
     private(set) var syncedByRemoteID: [FfiRemoteUuid: Bool] = [:]
     private let repository: any LibraryRepositoryProtocol
 
@@ -545,12 +544,9 @@ final class StatusModel {
         do {
             async let mediaCountQuery = repository.mediaByDateCount()
             async let statsQuery = repository.localStateStats()
-            async let backupQuery = repository.mediaIDsWithoutRemoteBackup()
             async let sessionQuery = repository.sessionSnapshot()
             mediaCount = try await mediaCountQuery
             localStateStats = try await statsQuery
-            let unbacked = try await backupQuery
-            mediaCountWithoutRemoteBackup = unbacked.isEmpty ? nil : unbacked.count
             let session = try await sessionQuery
             var syncStatus: [FfiRemoteUuid: Bool] = [:]
             for remote in session.remotes {
@@ -561,6 +557,18 @@ final class StatusModel {
         } catch is CancellationError {
         } catch {
             AppLogger.log(.error, "status query failed: \(error)")
+        }
+    }
+
+    /// The number of media that clearing local media would leave with no known copy anywhere.
+    /// Queried when the user reaches for the action rather than on every refresh, because it
+    /// stats a file per media and is only ever read to answer that one question.
+    func mediaCountLostIfLocalMediaCleared() async -> Int {
+        do {
+            return try await repository.mediaCountLostIfLocalMediaCleared()
+        } catch {
+            AppLogger.log(.error, "lost-media count failed: \(error)")
+            return 0
         }
     }
 

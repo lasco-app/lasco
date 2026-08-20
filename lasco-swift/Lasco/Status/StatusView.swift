@@ -10,7 +10,8 @@ struct StatusView: View {
     @State private var showAddS3 = false
     @State private var showAddLocalFS = false
     @State private var showCleanConfirm = false
-    @State private var cleanBlockedCount: Int? = nil
+    @State private var cleanBlockedCount: Int?
+    @State private var cleanOverrideCount: Int?
     @State private var showClearThumbsConfirm = false
     @State private var pushBlocked: PushBlockedContext?
     let repository: LibraryRepository
@@ -120,10 +121,32 @@ struct StatusView: View {
                 set: { if !$0 { cleanBlockedCount = nil } }
             )
         ) {
-            Button("OK") {}
+            if expertMode {
+                Button("Clean anyway", role: .destructive) {
+                    cleanOverrideCount = cleanBlockedCount
+                    cleanBlockedCount = nil
+                }
+            }
+            Button("OK", role: .cancel) {}
         } message: {
             if let count = cleanBlockedCount {
-                Text("\(count) item\(count == 1 ? "" : "s") not backed up on any remote. Push to a remote before cleaning local media.")
+                Text("\(count) item\(count == 1 ? "" : "s") not confirmed on any remote. This is based on each remote's media list as of its last update, so some may already be there. Push to a remote before cleaning local media.")
+            }
+        }
+        .alert(
+            "Lose these media forever?",
+            isPresented: Binding(
+                get: { cleanOverrideCount != nil },
+                set: { if !$0 { cleanOverrideCount = nil } }
+            )
+        ) {
+            Button("I understand, I might lose data", role: .destructive) {
+                Task { try? await model.cleanLocalMedia() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            if let count = cleanOverrideCount {
+                Text("\(count) item\(count == 1 ? "" : "s") might be the only copy left. Cleaning deletes them from this device with no way to get them back.")
             }
         }
     }
@@ -180,10 +203,13 @@ struct StatusView: View {
                 Divider().background(theme.inkMuted.opacity(0.2))
 
                 Button {
-                    if let count = model.mediaCountWithoutRemoteBackup {
-                        cleanBlockedCount = count
-                    } else {
-                        showCleanConfirm = true
+                    Task {
+                        let count = await model.mediaCountLostIfLocalMediaCleared()
+                        if count > 0 {
+                            cleanBlockedCount = count
+                        } else {
+                            showCleanConfirm = true
+                        }
                     }
                 } label: {
                     Text("Clean local media")

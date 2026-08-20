@@ -934,11 +934,28 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     func mediaContainingAlbumIds(mediaId: FfiMediaUuid, includeViaGroups: Bool) throws  -> [FfiAlbumUuid]
     
     /**
+     * Counts the media that clearing local media would leave with no known copy anywhere.
+     *
+     * Only a remote can back up a local copy here, because the local copy is what the
+     * operation deletes. The answer is an upper bound, see `media_ids_without_backup`.
+     *
      * # Errors
      *
      * Returns an error if the library configuration cannot be read.
      */
-    func mediaIdsWithoutRemoteBackup() throws  -> [FfiMediaUuid]
+    func mediaCountLostIfLocalMediaCleared() throws  -> UInt64
+    
+    /**
+     * Counts the media that removing `remote_id` would leave with no known copy anywhere.
+     *
+     * The local copy survives the removal, so it counts as a home alongside every remaining
+     * remote. The answer is an upper bound, see `media_ids_without_backup`.
+     *
+     * # Errors
+     *
+     * Returns an error if the library configuration cannot be read or `remote_id` is invalid.
+     */
+    func mediaCountLostIfRemoteRemoved(remoteId: FfiRemoteUuid) throws  -> UInt64
     
     /**
      * # Errors
@@ -1981,13 +1998,36 @@ nonisolated open func mediaContainingAlbumIds(mediaId: FfiMediaUuid, includeViaG
 }
     
     /**
+     * Counts the media that clearing local media would leave with no known copy anywhere.
+     *
+     * Only a remote can back up a local copy here, because the local copy is what the
+     * operation deletes. The answer is an upper bound, see `media_ids_without_backup`.
+     *
      * # Errors
      *
      * Returns an error if the library configuration cannot be read.
      */
-nonisolated open func mediaIdsWithoutRemoteBackup()throws  -> [FfiMediaUuid]  {
-    return try  FfiConverterSequenceTypeFfiMediaUuid.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
-    uniffi_lasco_ffi_fn_method_ffilibrary_media_ids_without_remote_backup(self.uniffiClonePointer(),$0
+nonisolated open func mediaCountLostIfLocalMediaCleared()throws  -> UInt64  {
+    return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_media_count_lost_if_local_media_cleared(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Counts the media that removing `remote_id` would leave with no known copy anywhere.
+     *
+     * The local copy survives the removal, so it counts as a home alongside every remaining
+     * remote. The answer is an upper bound, see `media_ids_without_backup`.
+     *
+     * # Errors
+     *
+     * Returns an error if the library configuration cannot be read or `remote_id` is invalid.
+     */
+nonisolated open func mediaCountLostIfRemoteRemoved(remoteId: FfiRemoteUuid)throws  -> UInt64  {
+    return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_media_count_lost_if_remote_removed(self.uniffiClonePointer(),
+        FfiConverterTypeFfiRemoteUuid_lower(remoteId),$0
     )
 })
 }
@@ -5266,7 +5306,10 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_media_containing_album_ids() != 8372) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_media_ids_without_remote_backup() != 14902) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_media_count_lost_if_local_media_cleared() != 58380) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_media_count_lost_if_remote_removed() != 6485) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_media_in_album() != 39680) {
