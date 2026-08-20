@@ -682,22 +682,32 @@ impl FfiLibrary {
                 self.build_storage_for_remote(&source_id, app_support_dir.as_deref())?,
             );
         }
-        let source_reads = sources
-            .iter()
-            .map(|(id, storage)| (*id, StorageRead::new(storage.as_ref())))
-            .collect();
         let target_storage = self.build_storage_for_remote(&target, app_support_dir.as_deref())?;
+        let inner = self.inner.clone();
+        let assignments = resolution.assignments;
+        // The push runs on the runtime owned by this library, not on the foreign
+        // executor driving this exported async function. Storage backends build
+        // network clients that need a Tokio context.
         let report = self
-            .inner
-            .push_with_media_plan(
-                target_storage.as_ref(),
-                target,
-                lasco_core::library::sync::PushMediaPlan {
-                    assignments: resolution.assignments,
-                    sources: source_reads,
-                },
-            )
+            .rt
+            .spawn(async move {
+                let source_reads = sources
+                    .iter()
+                    .map(|(id, storage)| (*id, StorageRead::new(storage.as_ref())))
+                    .collect();
+                inner
+                    .push_with_media_plan(
+                        target_storage.as_ref(),
+                        target,
+                        lasco_core::library::sync::PushMediaPlan {
+                            assignments,
+                            sources: source_reads,
+                        },
+                    )
+                    .await
+            })
             .await
+            .map_err(|e| LascoError::Other { msg: e.to_string() })?
             .map_err(LascoError::from)?;
         Ok(ffi_count(report.ops_uploaded))
     }
