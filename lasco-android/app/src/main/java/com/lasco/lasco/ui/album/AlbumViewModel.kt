@@ -43,6 +43,14 @@ sealed interface AlbumEntryKey {
     data object DisconnectedHeader : AlbumEntryKey
 }
 
+/** Safe for LazyLayout's Android saved-state Bundle and unique by entry type. */
+fun AlbumEntryKey.saveableValue(): String = when (this) {
+    is AlbumEntryKey.Album -> "album:${id.value}"
+    is AlbumEntryKey.Media -> "media:${id.value}"
+    is AlbumEntryKey.Group -> "group:${id.value}"
+    AlbumEntryKey.DisconnectedHeader -> "disconnected-header"
+}
+
 private class AlbumEntriesPagingSource(
     private val repo: LibraryRepository,
     private val albumId: FfiAlbumUuid?,

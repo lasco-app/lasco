@@ -428,7 +428,7 @@ fun MediaDetailScreen(
                             modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
                         )
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            itemsIndexed(containingAlbums, key = { _, album -> album.albumId }) { _, album ->
+                            itemsIndexed(containingAlbums, key = { _, album -> album.albumId.value }) { _, album ->
                                 AlbumCell(
                                     album = album,
                                     repo = repo,
@@ -571,7 +571,7 @@ private fun GroupThumbnailStrip(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         contentPadding = PaddingValues(horizontal = 12.dp),
     ) {
-        itemsIndexed(media, key = { _, m -> m.mediaId }) { idx, m ->
+        itemsIndexed(media, key = { _, m -> m.mediaId.value }) { idx, m ->
             Box(
                 modifier = Modifier
                     .size(52.dp)

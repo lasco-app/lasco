@@ -211,7 +211,9 @@ fun RecentMediaScreen(
                     horizontalArrangement = Arrangement.spacedBy(3.dp),
                     verticalArrangement = Arrangement.spacedBy(3.dp),
                 ) {
-                    items(count = media.itemCount, key = media.itemKey { it.mediaId }) { index ->
+                    // Lazy item keys are saved in Android's Bundle, so UniFFI
+                    // wrapper types must be reduced to their String values.
+                    items(count = media.itemCount, key = media.itemKey { it.mediaId.value }) { index ->
                         media[index]?.let { item ->
                             MediaGridCell(
                                 item = item,
