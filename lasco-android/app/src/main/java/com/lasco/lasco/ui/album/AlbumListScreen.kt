@@ -685,7 +685,7 @@ private fun AlbumEntriesGrid(
     ) {
         items(
             count = entries.itemCount,
-            key = entries.itemKey { it.key },
+            key = entries.itemKey { it.key.saveableValue() },
             span = { index -> if (entries.peek(index) is AlbumEntry.DisconnectedHeader || !isGridLayout && entries.peek(index) is AlbumEntry.Item) GridItemSpan(maxLineSpan) else GridItemSpan(1) },
         ) { index ->
             when (val entry = entries[index]) {
@@ -753,7 +753,7 @@ private fun MoveDestinationPicker(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            items(count = entries.itemCount, key = entries.itemKey { it.key }) { index ->
+            items(count = entries.itemCount, key = entries.itemKey { it.key.saveableValue() }) { index ->
                 (entries[index] as? AlbumEntry.ChildAlbum)?.album?.let { child ->
                     if (child.albumId !in excludedIds) AlbumCell(child, LibraryRepository.from(LocalContext.current), onClick = { current = child })
                 }

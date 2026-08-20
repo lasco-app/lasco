@@ -164,7 +164,7 @@ fun AlbumPickerDialog(
             Text(text = title, style = LascoTheme.type.categoryLarge(), color = colors.ink)
             Box(modifier = Modifier.fillMaxWidth().lascoPanel()) {
                 LazyColumn {
-                    items(albums, key = { it.albumId }) { album ->
+                    items(albums, key = { it.albumId.value }) { album ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -207,7 +207,7 @@ fun ThumbnailPickerDialog(
             Text(text = "Set thumbnail", style = LascoTheme.type.categoryLarge(), color = colors.ink)
             Box(modifier = Modifier.fillMaxWidth().lascoPanel()) {
                 LazyColumn {
-                    items(media, key = { it.mediaId }) { item ->
+                    items(media, key = { it.mediaId.value }) { item ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
