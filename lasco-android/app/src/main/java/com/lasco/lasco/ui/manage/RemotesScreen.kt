@@ -29,6 +29,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lasco.lasco.data.LibraryRepository
 import com.lasco.lasco.data.Prefs
 import com.lasco.lasco.ui.components.LascoConfirmDialog
+import com.lasco.lasco.ui.components.LascoInfoDialog
 import com.lasco.lasco.ui.components.LascoPrimaryButton
 import com.lasco.lasco.ui.components.LascoSecondaryButton
 import com.lasco.lasco.ui.status.MediaAtRiskDialog
@@ -64,6 +65,7 @@ fun RemotesScreen(
     var pendingDelete by remember { mutableStateOf<FfiRemote?>(null) }
     var pendingLockRemoval by remember { mutableStateOf<FfiRemote?>(null) }
     var removalBlocked by remember { mutableStateOf<RemoteRemovalBlocked?>(null) }
+    var removalBlockedByScheduledPush by remember { mutableStateOf<FfiRemote?>(null) }
     var feedback by remember { mutableStateOf<String?>(null) }
     var isUpdatingMediaSourceOrder by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -73,6 +75,12 @@ fun RemotesScreen(
     // Removes a remote unless this client cannot account for media once it is gone, in which
     // case the dialog offers to refresh what the remaining remotes are known to hold first.
     suspend fun removeRemote(remote: FfiRemote) {
+        // A scheduled push claims the remote when it fires, which would make the removal fail
+        // on timing alone. Refusing up front says so while the countdown is still visible.
+        if (remote.remoteId in syncState.scheduledAutoPushRemoteIds) {
+            removalBlockedByScheduledPush = remote
+            return
+        }
         val lost = runCatching { repo.mediaCountLostIfRemoteRemoved(remote.remoteId) }.getOrDefault(0)
         if (lost > 0) {
             removalBlocked = RemoteRemovalBlocked(
@@ -209,6 +217,14 @@ fun RemotesScreen(
                 pendingDelete = null
             },
             onCancel = { pendingDelete = null },
+        )
+    }
+    removalBlockedByScheduledPush?.let { remote ->
+        LascoInfoDialog(
+            title = "Push scheduled",
+            message = "A push to \"${remote.name}\" is about to run. Let it finish, or turn off " +
+                "Auto Push, then remove the remote.",
+            onDismiss = { removalBlockedByScheduledPush = null },
         )
     }
     removalBlocked?.let { blocked ->

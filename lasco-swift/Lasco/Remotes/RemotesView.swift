@@ -12,6 +12,7 @@ struct RemotesView: View {
     @State private var showAddLocalFS = false
     @State private var isUpdatingMediaSourceOrder = false
     @State private var removalBlocked: RemoteRemovalBlockedContext?
+    @State private var removalBlockedByScheduledPush: FfiRemote?
     let repository: LibraryRepository
     let session: LibrarySessionState
     let syncCoordinator: SyncCoordinator
@@ -24,7 +25,17 @@ struct RemotesView: View {
 
     /// Removes a remote unless this client cannot account for media once it is gone, in which
     /// case the sheet offers to refresh what the remaining remotes are known to hold first.
+    /// A scheduled push claims the remote when it fires, which would make the removal fail on
+    /// timing alone. Refusing up front says so while the countdown is still visible.
+    private func isPushScheduled(for remote: FfiRemote) -> Bool {
+        remote.autoPush && syncCoordinator.nextPushDate != nil
+    }
+
     private func removeRemote(_ remote: FfiRemote) async {
+        guard !isPushScheduled(for: remote) else {
+            removalBlockedByScheduledPush = remote
+            return
+        }
         let count = (try? await repository.mediaCountLostIfRemoteRemoved(remoteID: remote.remoteId)) ?? 0
         guard count > 0 else {
             try? await repository.removeRemote(id: remote.remoteId)
@@ -130,6 +141,19 @@ struct RemotesView: View {
             .environment(\.lascoTheme, .dark)
             .preferredColorScheme(.dark)
             .presentationDetents([.medium])
+        }
+        .alert(
+            "Push scheduled",
+            isPresented: Binding(
+                get: { removalBlockedByScheduledPush != nil },
+                set: { if !$0 { removalBlockedByScheduledPush = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            if let remote = removalBlockedByScheduledPush {
+                Text("A push to \(remote.name) is about to run. Let it finish, or turn off Auto Push, then remove the remote.")
+            }
         }
         .sheet(item: $removalBlocked) { context in
             MediaAtRiskSheet(
