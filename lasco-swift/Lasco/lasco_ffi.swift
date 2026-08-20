@@ -564,6 +564,12 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     func addMediaToGroup(groupId: FfiGroupUuid, mediaId: FfiMediaUuid) throws 
     
     /**
+     * Adds one Lasco Cloud storage destination. It becomes usable once the
+     * native client supplies its short-lived connection credentials.
+     */
+    func addRemoteCloudS3(name: String, cloudStorageId: String) throws  -> FfiRemoteUuid
+    
+    /**
      * # Errors
      *
      * Returns an error for a duplicate name or failed library-configuration persistence.
@@ -688,6 +694,11 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     func albumListItemsSorted(albumId: FfiAlbumUuid, ascending: Bool) throws  -> [FfiAlbumItem]
     
     func allMediaIds()  -> [FfiMediaUuid]
+    
+    /**
+     * Removes all ephemeral Cloud credentials, for example after sign-out.
+     */
+    func clearCloudS3Credentials() 
     
     /**
      * Confirms which media blobs a remote holds and records them in its media inventory,
@@ -1126,6 +1137,12 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     func setAutoImportDeviceMedia(enabled: Bool) throws 
     
     /**
+     * Replaces in-memory credentials for one configured Lasco Cloud remote.
+     * Credentials are intentionally forgotten when this FFI library closes.
+     */
+    func setCloudS3Credentials(remoteId: FfiRemoteUuid, credentials: FfiCloudS3Credentials) throws 
+    
+    /**
      * # Errors
      *
      * Returns an error if the library config cannot be read or saved, or `remote_id` is invalid or unconfigured.
@@ -1281,6 +1298,19 @@ nonisolated open func addMediaToGroup(groupId: FfiGroupUuid, mediaId: FfiMediaUu
         FfiConverterTypeFfiMediaUuid_lower(mediaId),$0
     )
 }
+}
+    
+    /**
+     * Adds one Lasco Cloud storage destination. It becomes usable once the
+     * native client supplies its short-lived connection credentials.
+     */
+nonisolated open func addRemoteCloudS3(name: String, cloudStorageId: String)throws  -> FfiRemoteUuid  {
+    return try  FfiConverterTypeFfiRemoteUuid_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_cloud_s3(self.uniffiClonePointer(),
+        FfiConverterString.lower(name),
+        FfiConverterString.lower(cloudStorageId),$0
+    )
+})
 }
     
     /**
@@ -1507,6 +1537,15 @@ nonisolated open func allMediaIds() -> [FfiMediaUuid]  {
     uniffi_lasco_ffi_fn_method_ffilibrary_all_media_ids(self.uniffiClonePointer(),$0
     )
 })
+}
+    
+    /**
+     * Removes all ephemeral Cloud credentials, for example after sign-out.
+     */
+nonisolated open func clearCloudS3Credentials()  {try! rustCall() {
+    uniffi_lasco_ffi_fn_method_ffilibrary_clear_cloud_s3_credentials(self.uniffiClonePointer(),$0
+    )
+}
 }
     
     /**
@@ -2371,6 +2410,18 @@ nonisolated open func setAutoImportDeviceMedia(enabled: Bool)throws   {try rustC
 }
     
     /**
+     * Replaces in-memory credentials for one configured Lasco Cloud remote.
+     * Credentials are intentionally forgotten when this FFI library closes.
+     */
+nonisolated open func setCloudS3Credentials(remoteId: FfiRemoteUuid, credentials: FfiCloudS3Credentials)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_set_cloud_s3_credentials(self.uniffiClonePointer(),
+        FfiConverterTypeFfiRemoteUuid_lower(remoteId),
+        FfiConverterTypeFfiCloudS3Credentials_lower(credentials),$0
+    )
+}
+}
+    
+    /**
      * # Errors
      *
      * Returns an error if the library config cannot be read or saved, or `remote_id` is invalid or unconfigured.
@@ -2780,6 +2831,128 @@ nonisolated public func FfiConverterTypeFfiAlbumUuid_lift(_ buf: RustBuffer) thr
 #endif
 nonisolated public func FfiConverterTypeFfiAlbumUuid_lower(_ value: FfiAlbumUuid) -> RustBuffer {
     return FfiConverterTypeFfiAlbumUuid.lower(value)
+}
+
+
+/**
+ * Short-lived connection material for one Lasco Cloud storage destination.
+ * This record is accepted only at runtime and is never written to library.json.
+ */
+nonisolated public struct FfiCloudS3Credentials {
+    public var endpoint: String
+    public var bucket: String
+    public var region: String
+    public var pathPrefix: String
+    public var accessKeyId: String
+    public var secretAccessKey: String
+    public var sessionToken: String?
+    public var expiresAt: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(endpoint: String, bucket: String, region: String, pathPrefix: String, accessKeyId: String, secretAccessKey: String, sessionToken: String?, expiresAt: String) {
+        self.endpoint = endpoint
+        self.bucket = bucket
+        self.region = region
+        self.pathPrefix = pathPrefix
+        self.accessKeyId = accessKeyId
+        self.secretAccessKey = secretAccessKey
+        self.sessionToken = sessionToken
+        self.expiresAt = expiresAt
+    }
+}
+
+#if compiler(>=6)
+nonisolated extension FfiCloudS3Credentials: Sendable {}
+#endif
+
+
+nonisolated extension FfiCloudS3Credentials: Equatable, Hashable {
+    public static func ==(lhs: FfiCloudS3Credentials, rhs: FfiCloudS3Credentials) -> Bool {
+        if lhs.endpoint != rhs.endpoint {
+            return false
+        }
+        if lhs.bucket != rhs.bucket {
+            return false
+        }
+        if lhs.region != rhs.region {
+            return false
+        }
+        if lhs.pathPrefix != rhs.pathPrefix {
+            return false
+        }
+        if lhs.accessKeyId != rhs.accessKeyId {
+            return false
+        }
+        if lhs.secretAccessKey != rhs.secretAccessKey {
+            return false
+        }
+        if lhs.sessionToken != rhs.sessionToken {
+            return false
+        }
+        if lhs.expiresAt != rhs.expiresAt {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(endpoint)
+        hasher.combine(bucket)
+        hasher.combine(region)
+        hasher.combine(pathPrefix)
+        hasher.combine(accessKeyId)
+        hasher.combine(secretAccessKey)
+        hasher.combine(sessionToken)
+        hasher.combine(expiresAt)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public struct FfiConverterTypeFfiCloudS3Credentials: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiCloudS3Credentials {
+        return
+            try FfiCloudS3Credentials(
+                endpoint: FfiConverterString.read(from: &buf), 
+                bucket: FfiConverterString.read(from: &buf), 
+                region: FfiConverterString.read(from: &buf), 
+                pathPrefix: FfiConverterString.read(from: &buf), 
+                accessKeyId: FfiConverterString.read(from: &buf), 
+                secretAccessKey: FfiConverterString.read(from: &buf), 
+                sessionToken: FfiConverterOptionString.read(from: &buf), 
+                expiresAt: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiCloudS3Credentials, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.endpoint, into: &buf)
+        FfiConverterString.write(value.bucket, into: &buf)
+        FfiConverterString.write(value.region, into: &buf)
+        FfiConverterString.write(value.pathPrefix, into: &buf)
+        FfiConverterString.write(value.accessKeyId, into: &buf)
+        FfiConverterString.write(value.secretAccessKey, into: &buf)
+        FfiConverterOptionString.write(value.sessionToken, into: &buf)
+        FfiConverterString.write(value.expiresAt, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public func FfiConverterTypeFfiCloudS3Credentials_lift(_ buf: RustBuffer) throws -> FfiCloudS3Credentials {
+    return try FfiConverterTypeFfiCloudS3Credentials.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public func FfiConverterTypeFfiCloudS3Credentials_lower(_ value: FfiCloudS3Credentials) -> RustBuffer {
+    return FfiConverterTypeFfiCloudS3Credentials.lower(value)
 }
 
 
@@ -5255,6 +5428,9 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_media_to_group() != 3438) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_cloud_s3() != 63606) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_debug_local_android() != 10217) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -5295,6 +5471,9 @@ nonisolated private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_all_media_ids() != 28671) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_clear_cloud_s3_credentials() != 39490) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_confirm_remote_media_async() != 59085) {
@@ -5478,6 +5657,9 @@ nonisolated private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_set_auto_import_device_media() != 2768) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_set_cloud_s3_credentials() != 755) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_set_default_fetch_remote() != 3089) {

@@ -29,6 +29,10 @@ pub struct RemoteConfig {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RemoteKind {
     S3(S3Config),
+    /// Lasco-managed S3 storage. Connection credentials are deliberately not
+    /// persisted: the native client obtains a short-lived session for this
+    /// stable storage identity and injects it into the FFI at runtime.
+    CloudS3(CloudS3Config),
     FixedPath(FixedPathConfig),
     UsbAndroid(UsbAndroidConfig),
     UsbApple(UsbAppleConfig),
@@ -48,6 +52,15 @@ pub struct S3Config {
     pub secret_key_encrypted: String,
     /// Human-readable description of the encryption scheme.
     pub secret_key_encryption_description: String,
+}
+
+/// Persistent identity for one Lasco Cloud storage destination.
+///
+/// `cloud_storage_id` is opaque and stable even when the service moves the
+/// underlying bucket, prefix, region, or provider.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloudS3Config {
+    pub cloud_storage_id: String,
 }
 
 /// Trusts a stored absolute path, e.g. a USB or external drive.

@@ -38,12 +38,23 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Android Emulator reaches the development machine through this
+            // alias. Physical-device development can override it with
+            // -PlascoCloudUrl=http://<LAN-IP>:<port>.
+            buildConfigField(
+                "String",
+                "LASCO_CLOUD_URL",
+                "\"${project.findProperty("lascoCloudUrl") ?: "http://10.0.2.2:8787"}\"",
+            )
+        }
         release {
             // R8 is off until the JNA and uniffi generated bindings have keep rules,
             // since both rely on reflection that minification would otherwise strip.
             optimization {
                 enable = false
             }
+            buildConfigField("String", "LASCO_CLOUD_URL", "\"https://api.lasco.cloud\"")
         }
     }
     compileOptions {
@@ -52,6 +63,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

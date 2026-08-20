@@ -25,6 +25,27 @@ impl StorageS3 {
         access_key: &str,
         secret_key: &str,
     ) -> Result<Self> {
+        Self::new_with_session_token(
+            endpoint,
+            bucket_name,
+            region,
+            path_prefix,
+            access_key,
+            secret_key,
+            None,
+        )
+    }
+
+    /// Creates storage with an optional temporary STS/session token.
+    pub fn new_with_session_token(
+        endpoint: &str,
+        bucket_name: &str,
+        region: &str,
+        path_prefix: Option<&str>,
+        access_key: &str,
+        secret_key: &str,
+        session_token: Option<&str>,
+    ) -> Result<Self> {
         let path_prefix = normalize_path_prefix(path_prefix.unwrap_or(""));
         // For S3-compatible providers the connection host
         // comes from the region endpoint, not from a host header. Use a custom
@@ -45,8 +66,14 @@ impl StorageS3 {
         let access_key = access_key.trim();
         let secret_key = secret_key.trim();
 
-        let credentials = S3Credentials::new(Some(access_key), Some(secret_key), None, None, None)
-            .map_err(|e| StorageError::Other(Box::new(e)))?;
+        let credentials = S3Credentials::new(
+            Some(access_key),
+            Some(secret_key),
+            None,
+            session_token.filter(|token| !token.trim().is_empty()),
+            None,
+        )
+        .map_err(|e| StorageError::Other(Box::new(e)))?;
 
         // Path style is needed for MinIO and other S3-compatible services.
         let bucket = Bucket::new(bucket_name, region, credentials)
