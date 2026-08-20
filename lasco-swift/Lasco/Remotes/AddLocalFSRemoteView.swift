@@ -4,13 +4,21 @@ import AppKit
 #endif
 
 struct AddLocalFSRemoteView: View {
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(LibraryRepository.self) private var repository
     @Environment(\.dismiss) private var dismiss
     @Environment(ToastManager.self) var toastManager
     @Environment(\.lascoTheme) var theme
 
+    let onRemoteReady: @MainActor () async throws -> Void
+
     @FocusState private var nameFieldFocused: Bool
     @State private var name = ""
+    @State private var errorMessage: String?
+    @State private var isAdding = false
+
+    init(onRemoteReady: @escaping @MainActor () async throws -> Void = {}) {
+        self.onRemoteReady = onRemoteReady
+    }
 
     private var isValid: Bool { !name.isEmpty }
 
@@ -71,6 +79,13 @@ struct AddLocalFSRemoteView: View {
                                     .textInputAutocapitalization(.never)
                                     #endif
                             }
+
+                            if let errorMessage {
+                                Text(errorMessage)
+                                    .font(LascoFont.body(13))
+                                    .foregroundStyle(theme.error)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
                         }
 
                         Spacer().frame(height: 100)
@@ -82,23 +97,32 @@ struct AddLocalFSRemoteView: View {
 
             VStack(spacing: 0) {
                 Button("Add Remote") {
-                    guard !name.isEmpty else { return }
+                    guard !isAdding else { return }
                     let remoteName = name
-                    if let remoteId = libraryModel.addRemoteDebugLocalApple(name: remoteName) {
-                        dismiss()
-                        Task {
-                            if let err = await libraryModel.initializeRemote(remoteId: remoteId) {
-                                toastManager.show(error: err)
-                            } else {
-                                toastManager.show(ok: "\(remoteName): initialized")
+                    isAdding = true
+                    errorMessage = nil
+                    Task {
+                        var addedRemoteID: FfiRemoteUuid?
+                        do {
+                            let remoteID = try await repository.addRemoteDebugLocalApple(name: remoteName)
+                            addedRemoteID = remoteID
+                            try await repository.initializeRemote(id: remoteID)
+                            try await onRemoteReady()
+                            dismiss()
+                            toastManager.show(ok: "\(remoteName): initialized")
+                        } catch {
+                            if let addedRemoteID {
+                                try? await repository.removeRemote(id: addedRemoteID)
                             }
+                            errorMessage = error.localizedDescription
                         }
+                        isAdding = false
                     }
                 }
                 .buttonStyle(LascoDevButtonStyle())
                 .frame(maxWidth: .infinity)
-                .disabled(!isValid)
-                .opacity(isValid ? 1 : 0.45)
+                .disabled(!isValid || isAdding)
+                .opacity(isValid && !isAdding ? 1 : 0.45)
             }
             .padding(.horizontal, 32)
             .padding(.top, 20)
@@ -129,5 +153,4 @@ struct AddLocalFSRemoteView: View {
 
 #Preview {
     AddLocalFSRemoteView()
-        .environmentObject(LibraryModel())
 }

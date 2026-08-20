@@ -16,11 +16,12 @@ const _: () = assert!(KEK_SIZE == 32); // AES-256 key is fixed at 256 bits by th
 
 /// Key-encryption key derived from the user's password and `LibrarySalt` via Argon2id.
 ///
-/// Decrypts `mk_{username}.enc` to recover the MasterKey. Never stored on disk.
+/// Decrypts `mk_{username}.enc` to recover the `MasterKey`. Never stored on disk.
 #[derive(Clone, Zeroize, ZeroizeOnDrop)]
 pub struct Kek([u8; KEK_SIZE]);
 
 impl Kek {
+    #[must_use]
     pub fn from_raw(bytes: [u8; KEK_SIZE]) -> Self {
         Self(bytes)
     }
@@ -39,6 +40,12 @@ impl AsRef<[u8; KEK_SIZE]> for Kek {
 }
 
 /// Derive a `Kek` from `password` and `salt` using Argon2id.
+///
+/// # Panics
+///
+/// Panics if the hardcoded Argon2id parameters or fixed-size derivation output become invalid;
+/// both conditions indicate a programming error rather than invalid caller input.
+#[must_use]
 pub fn derive_kek(password: &str, salt: LibrarySalt) -> Kek {
     let params = Params::new(ARGON2_M_COST, ARGON2_T_COST, ARGON2_P_COST, Some(KEK_SIZE))
         .expect("hardcoded Argon2 params are not valid");

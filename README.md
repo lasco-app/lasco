@@ -1,4 +1,10 @@
-# Lasco
+<p align="center">
+  <img src="docs/static/img/logo_black_0_5.png" alt="Lasco" width="200">
+</p>
+
+<p align="center">
+  <img src="docs/static/img/lasco-screenshots.png" alt="Lasco screenshots">
+</p>
 
 Lasco is a client-side app to back up and sync your photo library to multiple storage solutions like S3 and soon, NAS, USB drives, or any file server.
 
@@ -18,7 +24,7 @@ All logic runs on your device. Lasco encrypts your photos and videos locally, th
 
 ## Format specification
 
-The Lasco format is fully documented: [getlasco.app/docs/format-specification/motivations](https://getlasco.app/docs/format-specification/motivations)
+I am trying to document in a useful way the way it works and the way it is implemented: [getlasco.app/docs/format-specification/motivations](https://getlasco.app/docs/format-specification/motivations)
 
 ## License
 

@@ -5,62 +5,97 @@ sidebar_label: Versioning
 
 # Versioning
 
-Lasco uses separate version indicators for different layers of the format.
+Lasco has no single format version. Only the layers that cross a device boundary, or that cannot
+be rebuilt from something else, carry a version indicator. Everything that is device local and
+regenerable is left unversioned and evolves through its serde representation instead.
 
----
+Each version that does exist is checked by strict equality against the constant compiled into the
+current build. There is no range of accepted versions and no migration path: a value that does not
+match the expected one is rejected with an error.
 
-## Library format version
+| Layer | Constant | Current value | Defined in |
+|---|---|---|---|
+| Encrypted blob | `BLOB_FORMAT_VERSION` | `1` (`u8`) | `encryption/blob.rs` |
+| Master key file | `PROTOCOL_VERSION` | `1` (`u32`) | `library/mod.rs` |
+| Library directory | `LIBRARY_FORMAT_VERSION` | `1` (`u32`) | `library/mod.rs` |
+| S3 secret key | `S3_SECRET_ENCRYPTION_DESCRIPTION` | `"AES-256-GCM v1"` | `s3_secret.rs` |
 
-The library format version is stored as an empty sentinel file in the `library/` directory on the remote:
-
-```
-library/
-  version_1
-```
-
+`config.json`, `library.json`, the CRDT snapshot, and the local operation log carry no version
+field at all. They are device local and are never uploaded to a remote, so no other device or
+build has to agree on their shape. The configuration files evolve through their serde
+representation, using `#[serde(default)]` for added fields and `#[serde(alias)]` for renames. The
+snapshot and the log are caches of state the operation history already holds, so a file that
+cannot be decoded is discarded and rebuilt rather than migrated.
 
 ---
 
 ## Encrypted blob format
 
-Every encrypted blob (media files `.data`, thumbnails `.thumb`, and operation group files `.op`) begins with a single-byte version header:
+Every encrypted blob begins with a single byte version header, followed by the XChaCha20 nonce
+and the ciphertext:
 
 ```
 [ format_version: u8 (1 byte) | nonce: 24 bytes | ciphertext ]
 ```
 
+This envelope is shared by media files (`.data`), thumbnails (`.thumb`), remote operation files
+(`.op`), the CRDT snapshot, and each frame of the local operation log. Decoding a blob whose first
+byte is not `BLOB_FORMAT_VERSION` fails with an unknown blob format version error.
+
+The version covers the envelope only. It says nothing about the shape of the plaintext inside,
+which is versioned separately where it is versioned at all.
+
 ---
 
 ## Master key protocol version
 
-Each per-user master key file (`mk_{username}_{uuid}.enc`) stores a version field before ciphertext:
+Each per-user master key file (`mk_{username}_{uuid}.enc`) stores a big endian `u32` before the
+AES-GCM nonce and the ciphertext:
 
 ```
-[ protocol_version: u32 | nonce: 12 bytes | ciphertext ]
+[ protocol_version: u32 (4 bytes, big endian) | nonce: 12 bytes | ciphertext ]
 ```
+
+The constant is named `PROTOCOL_VERSION` and lives in `library/mod.rs`, but the master key file is
+the only place it is written or checked.
 
 ---
 
-## App config version
+## Library directory format
 
-The global `config.json` file carries a version:
+The library format version is an empty sentinel file whose name encodes the version. The filename
+is derived from `LIBRARY_FORMAT_VERSION` by `library_format_sentinel()`, so the number and the name
+cannot drift apart:
 
-```json
-{
-  "version": 1,
-  ...
-}
 ```
+local_state/library/
+  version_1
+```
+
+It is written on init, next to `library_id_{uuid}`, `library_salt`, and the master key files.
+`Library::open` requires the file named `version_1` to be present in the local library directory
+and fails otherwise, so a directory written by a build with a different sentinel name is refused.
+
+This is the one coarse gate for the on-disk layout. It is meant to be incremented only for a
+change an older build must not open at all, not for the ordinary addition of a field to a config
+file. Note that `config.json` is read before any library is opened, so it sits outside this gate.
+
+`initialize_remote` copies the whole local `library/` directory to a remote, so the sentinel also
+ends up under `library/version_1` on the remote. Nothing reads it back from there: the check is
+performed against the local copy only.
 
 ---
 
 ## Remote secret key version
 
-There is no separate per-remote credential file. S3 credentials live in `library.json`, and the secret key's version is a plain string tag checked by equality:
+There is no separate per remote credential file. S3 credentials live in `library.json`, and the
+secret key's version is a plain string tag compared by equality:
 
 ```json
 {
-  "secret_key_encryption_description": "AES-256-GCM v1",
-  ...
+  "secret_key_encrypted": "...",
+  "secret_key_encryption_description": "AES-256-GCM v1"
 }
 ```
+
+Decryption is refused when the description does not match `S3_SECRET_ENCRYPTION_DESCRIPTION`.

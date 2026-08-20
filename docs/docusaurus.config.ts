@@ -70,6 +70,11 @@ const config: Config = {
       },
       items: [
         {
+          to: '/roadmap',
+          label: 'ROADMAP',
+          position: 'right',
+        },
+        {
           href: 'https://github.com/lasco-app/lasco',
           label: 'GitHub',
           position: 'right',

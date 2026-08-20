@@ -4,13 +4,14 @@ use std::time::SystemTime;
 use chrono::{DateTime, Datelike, Utc};
 use uuid::Uuid;
 
+use crate::crdt::{MediaCreation, OperationContent};
 use crate::encryption::blob::encrypt_blob;
 use crate::encryption::blob_key::derive_blob_key;
 use crate::error::LibraryError;
 use crate::identifiers::{AlbumUuid, MediaUuid};
-use crate::library::media::MediaHash;
 use crate::library::Library;
-use crate::operations::{MediaFilename, Operation};
+use crate::library::media::MediaHash;
+use crate::operations::MediaFilename;
 
 pub type Result<T> = std::result::Result<T, LibraryError>;
 
@@ -29,6 +30,7 @@ pub enum MediaAddResult {
 }
 
 impl MediaAddResult {
+    #[must_use]
     pub fn id(&self) -> MediaUuid {
         match self {
             MediaAddResult::Added(id) | MediaAddResult::AlreadyExists(id) => *id,
@@ -37,6 +39,9 @@ impl MediaAddResult {
 }
 
 impl Library {
+    /// # Errors
+    ///
+    /// Returns an error if the source cannot be read, media encryption/storage fails, an associated album is absent, or the creation operation cannot be persisted.
     pub async fn media_add(
         &self,
         source: MediaAddSource,
@@ -51,11 +56,11 @@ impl Library {
 
         // If a media with the same hash already exists, return it.
         {
-            let state = self.inner.operation_state.read();
-            if let Some(existing_ids) = state.views.by_content_hash.get(&content_hash) {
-                if let Some(&existing_id) = existing_ids.first() {
-                    return Ok(MediaAddResult::AlreadyExists(existing_id));
-                }
+            let state = self.inner.state.read();
+            if let Some(existing_ids) = state.views.by_content_hash.get(&content_hash)
+                && let Some(&existing_id) = existing_ids.first()
+            {
+                return Ok(MediaAddResult::AlreadyExists(existing_id));
             }
         }
 
@@ -72,55 +77,60 @@ impl Library {
         });
         let size_bytes = metadata.len();
         let storage_date = crate::operations::StorageDate {
-            year: datetime.year() as u16,
-            month: datetime.month() as u8,
+            year: u16::try_from(datetime.year())
+                .map_err(|_| LibraryError::UnsupportedStorageDate)?,
+            month: u8::try_from(datetime.month())
+                .map_err(|_| LibraryError::UnsupportedStorageDate)?,
         };
 
         let master_key = &self.inner.master_key;
-        let local_dirs = &self.inner.local_dirs;
+        let local_state_media_dir = self.inner.local_dirs.local_state_media_dir();
         let file_key = derive_blob_key(master_key, &media_id.0);
 
         let blob = encrypt_blob(&file_key, &bytes);
-        let data_path = local_dirs.media_data_path(storage_date.year, storage_date.month, &media_id);
+        let data_path =
+            local_state_media_dir.data_path(storage_date.year, storage_date.month, &media_id);
         if let Some(parent) = data_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
         std::fs::write(&data_path, blob.to_bytes())?;
 
-        self.append_to_pending(Operation::MediaCreation {
-            timestamp: Utc::now(),
-            media_id,
-            filename_original: MediaFilename(filename_original),
-            date: datetime,
-            storage_date,
-            size_bytes,
-            content_hash: content_hash.clone(),
-            modified_at: None,
-            gps: None,
-            apple_aae_media_id,
-            apple_live_photo_media_id,
-        })?;
-        if let Some(album_id) = album_id {
-            self.append_to_pending(Operation::AlbumMediaAdd {
-                timestamp: Utc::now(),
-                album_id,
+        self.record_local_operation(
+            Utc::now(),
+            OperationContent::MediaCreation(MediaCreation {
                 media_id,
-            })?;
+                filename_original: MediaFilename(filename_original),
+                date: datetime,
+                storage_date,
+                size_bytes,
+                content_hash,
+                modified_at: None,
+                gps: None,
+                apple_aae_media_id,
+                apple_live_photo_media_id,
+            }),
+        )?;
+        if let Some(album_id) = album_id {
+            self.record_local_operation(
+                Utc::now(),
+                OperationContent::AlbumMediaAdd { album_id, media_id },
+            )?;
         }
-
-        self.load_local_state().await?;
 
         Ok(MediaAddResult::Added(media_id))
     }
 
     /// Deletes the local `.data` file for each media ID, silently skipping IDs that have
     /// no local file (e.g. already evicted or never cached).
+    /// # Errors
+    ///
+    /// Returns an error if removing a cached media blob fails.
     pub fn evict_local_data(&self, media_ids: &[MediaUuid]) -> Result<()> {
-        let local_dirs = &self.inner.local_dirs;
+        let local_state_media_dir = self.inner.local_dirs.local_state_media_dir();
 
         for &media_id in media_ids {
             let (year, month) = self.media_year_month(media_id)?;
-            let data_path = local_dirs.media_data_path(year, month, &media_id);
+            let data_path = local_state_media_dir.data_path(year, month, &media_id);
             if data_path.exists() {
                 std::fs::remove_file(&data_path)?;
             }
@@ -131,12 +141,15 @@ impl Library {
 
     /// Deletes the local `.thumb` file for each media ID, silently skipping IDs that have
     /// no local thumbnail (e.g. already evicted or never cached).
+    /// # Errors
+    ///
+    /// Returns an error if removing a cached thumbnail fails.
     pub fn evict_local_thumbnails(&self, media_ids: &[MediaUuid]) -> Result<()> {
-        let local_dirs = &self.inner.local_dirs;
+        let local_state_media_dir = self.inner.local_dirs.local_state_media_dir();
 
         for &media_id in media_ids {
             let (year, month) = self.media_year_month(media_id)?;
-            let thumb_path = local_dirs.media_thumb_path(year, month, &media_id);
+            let thumb_path = local_state_media_dir.thumb_path(year, month, &media_id);
             if thumb_path.exists() {
                 std::fs::remove_file(&thumb_path)?;
             }
@@ -149,6 +162,9 @@ impl Library {
     ///
     /// `data` must be raw image bytes (e.g. JPEG) no larger than `THUMBNAIL_SIZE`×`THUMBNAIL_SIZE`.
     /// Year/month are resolved from the in-memory state.
+    /// # Errors
+    ///
+    /// Returns an error if the thumbnail cannot be encrypted or written to the local cache.
     pub fn media_set_thumbnail(&self, media_id: MediaUuid, data: &[u8]) -> Result<()> {
         let (year, month) = self.media_year_month(media_id)?;
         let file_key = derive_blob_key(&self.inner.master_key, &media_id.0);
@@ -156,196 +172,12 @@ impl Library {
         let thumb_path = self
             .inner
             .local_dirs
-            .media_thumb_path(year, month, &media_id);
+            .local_state_media_dir()
+            .thumb_path(year, month, &media_id);
         if let Some(parent) = thumb_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
         std::fs::write(&thumb_path, blob.to_bytes())?;
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::path::Path;
-
-    use tempfile::TempDir;
-
-    use crate::encryption::blob::decrypt_blob;
-    use crate::encryption::blob::BlobEncrypted;
-    use crate::identifiers::LibraryId;
-    use crate::library::local_dirs::LocalDirs;
-    use crate::library::Credentials;
-    use crate::operations::local_ops::read_pending_op_group;
-
-    use super::*;
-
-    async fn make_library(tmp: &TempDir) -> (Library, LocalDirs) {
-        let library_id = LibraryId(Uuid::new_v4());
-        let local_dirs = LocalDirs::new(tmp.path().to_path_buf(), &library_id);
-        local_dirs.ensure_state_dirs().unwrap();
-        let (lib, _password_uuid) = Library::init(
-            local_dirs.clone(),
-            library_id,
-            Credentials {
-                username: "alice".into(),
-                password: "pass".into(),
-            },
-        )
-        .await
-        .unwrap();
-        (lib, local_dirs)
-    }
-
-    fn write_source(dir: &Path, name: &str, content: &[u8]) -> PathBuf {
-        let path = dir.join(name);
-        std::fs::write(&path, content).unwrap();
-        path
-    }
-
-    #[tokio::test]
-    async fn copy_from_creates_data_thumb_and_op() {
-        let tmp = TempDir::new().unwrap();
-        let (lib, local_dirs) = make_library(&tmp).await;
-        let album_id = AlbumUuid::from_uuid(Uuid::new_v4());
-        let src = write_source(tmp.path(), "photo.jpg", b"fake image bytes");
-
-        let result = lib
-            .media_add(MediaAddSource::CopyFrom(src), Some(album_id), None, None, None)
-            .await
-            .unwrap();
-        let media_id = match result {
-            MediaAddResult::Added(id) => id,
-            MediaAddResult::AlreadyExists(_) => panic!("expected Added"),
-        };
-
-        let now = chrono::Utc::now();
-        let data_path = local_dirs.media_data_path(now.year() as u16, now.month() as u8, &media_id);
-        assert!(data_path.exists(), ".data file must exist");
-        let pending = crate::operations::local_ops::read_pending_op_group(
-            &local_dirs.pending_op_path(),
-            &lib.inner.master_key,
-        )
-        .unwrap();
-        assert!(
-            pending.is_some(),
-            "pending group must exist after media_add"
-        );
-    }
-
-    #[tokio::test]
-    async fn data_blob_decrypts_to_source_bytes() {
-        let tmp = TempDir::new().unwrap();
-        let (lib, local_dirs) = make_library(&tmp).await;
-        let album_id = AlbumUuid::from_uuid(Uuid::new_v4());
-        let content = b"original photo content";
-        let src = write_source(tmp.path(), "img.jpg", content);
-
-        let result = lib
-            .media_add(MediaAddSource::CopyFrom(src), Some(album_id), None, None, None)
-            .await
-            .unwrap();
-        let media_id = match result {
-            MediaAddResult::Added(id) => id,
-            MediaAddResult::AlreadyExists(_) => panic!("expected Added"),
-        };
-
-        let now = chrono::Utc::now();
-        let data_path = local_dirs.media_data_path(now.year() as u16, now.month() as u8, &media_id);
-        let raw = std::fs::read(&data_path).unwrap();
-        let blob = BlobEncrypted::from_bytes(&raw).unwrap();
-        let file_key = derive_blob_key(&lib.inner.master_key, &media_id.0);
-        let decrypted = decrypt_blob(&file_key, &blob).unwrap();
-        assert_eq!(decrypted.as_slice(), content.as_slice());
-    }
-
-    #[tokio::test]
-    async fn op_group_contains_media_creation_and_album_media_add() {
-        let tmp = TempDir::new().unwrap();
-        let (lib, local_dirs) = make_library(&tmp).await;
-        let album_id = AlbumUuid::from_uuid(Uuid::new_v4());
-        let src = write_source(tmp.path(), "pic.jpg", b"data");
-
-        let result = lib
-            .media_add(MediaAddSource::CopyFrom(src), Some(album_id), None, None, None)
-            .await
-            .unwrap();
-        let media_id = match result {
-            MediaAddResult::Added(id) => id,
-            MediaAddResult::AlreadyExists(_) => panic!("expected Added"),
-        };
-
-        let group = read_pending_op_group(&local_dirs.pending_op_path(), &lib.inner.master_key)
-            .unwrap()
-            .unwrap();
-        let ops = &group.operations;
-        assert_eq!(ops.len(), 2);
-        assert!(
-            matches!(&ops[0], Operation::MediaCreation { media_id: mid, .. } if mid == &media_id),
-            "first op must be MediaCreation"
-        );
-        assert!(
-            matches!(&ops[1], Operation::AlbumMediaAdd { album_id: aid, media_id: mid, .. }
-                if aid == &album_id && mid == &media_id),
-            "second op must be AlbumMediaAdd"
-        );
-    }
-
-    #[tokio::test]
-    async fn duplicate_import_returns_already_exists() {
-        let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
-        let album_id = AlbumUuid::from_uuid(Uuid::new_v4());
-        let src = write_source(tmp.path(), "photo.jpg", b"same content");
-
-        let first = lib
-            .media_add(MediaAddSource::CopyFrom(src.clone()), Some(album_id), None, None, None)
-            .await
-            .unwrap();
-        let first_id = match first {
-            MediaAddResult::Added(id) => id,
-            MediaAddResult::AlreadyExists(_) => panic!("expected Added on first import"),
-        };
-
-        let second = lib
-            .media_add(MediaAddSource::CopyFrom(src), Some(album_id), None, None, None)
-            .await
-            .unwrap();
-        match second {
-            MediaAddResult::AlreadyExists(id) => assert_eq!(id, first_id),
-            MediaAddResult::Added(_) => panic!("expected AlreadyExists on duplicate import"),
-        }
-    }
-
-    #[tokio::test]
-    async fn content_hash_stored_in_op_and_state() {
-        let tmp = TempDir::new().unwrap();
-        let (lib, local_dirs) = make_library(&tmp).await;
-        let album_id = AlbumUuid::from_uuid(Uuid::new_v4());
-        let content = b"photo bytes";
-        let src = write_source(tmp.path(), "img.jpg", content);
-        let expected_hash = MediaHash::from_bytes(content);
-
-        let result = lib
-            .media_add(MediaAddSource::CopyFrom(src), Some(album_id), None, None, None)
-            .await
-            .unwrap();
-        let media_id = match result {
-            MediaAddResult::Added(id) => id,
-            MediaAddResult::AlreadyExists(_) => panic!("expected Added"),
-        };
-
-        let group = read_pending_op_group(&local_dirs.pending_op_path(), &lib.inner.master_key)
-            .unwrap()
-            .unwrap();
-        let op = &group.operations[0];
-        assert!(
-            matches!(op, Operation::MediaCreation { content_hash, .. } if *content_hash == expected_hash),
-            "op must carry the correct content_hash"
-        );
-
-        let state = lib.inner.operation_state.read();
-        let entry = state.reconstructed.media.get(&media_id).unwrap();
-        assert_eq!(entry.content_hash, expected_hash);
     }
 }

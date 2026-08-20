@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct LibraryParametersView: View {
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(LibraryDirectoryModel.self) private var directory
     @Environment(\.dismiss) private var dismiss
     @Environment(\.lascoTheme) var theme
 
@@ -27,18 +27,16 @@ struct LibraryParametersView: View {
                     .padding(.top, 40)
                     .padding(.bottom, 8)
 
-                    if let nickname = libraryModel.openNickname {
+                    if let activeSession = directory.activeSession {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(nickname)
+                            Text(activeSession.state.nickname)
                                 .font(LascoFont.categoryLarge())
                                 .foregroundStyle(theme.ink)
-                            if let id = libraryModel.openLibraryId {
-                                Text(id)
-                                    .font(LascoFont.mono())
-                                    .foregroundStyle(theme.inkMuted)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                            }
+                            Text(activeSession.state.libraryID.value)
+                                .font(LascoFont.mono())
+                                .foregroundStyle(theme.inkMuted)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
                         }
                         .padding(.horizontal, 32)
                         .padding(.bottom, 32)
@@ -46,8 +44,9 @@ struct LibraryParametersView: View {
 
                     VStack(alignment: .leading, spacing: 0) {
                         NavigationLink {
-                            RemotesView()
-                                .environmentObject(libraryModel)
+                            if let activeSession = directory.activeSession {
+                                RemotesView(repository: activeSession.repository, session: activeSession.state, syncCoordinator: activeSession.syncCoordinator)
+                            }
                         } label: {
                             HStack {
                                 Text("Remotes")

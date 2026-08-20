@@ -5,7 +5,27 @@ use std::path::PathBuf;
 use async_trait::async_trait;
 use walkdir::WalkDir;
 
-use super::{Result, Storage, StorageError};
+use super::{AtomicWriteMode, Result, Storage, StorageError};
+
+/// Atomically move `from` to `to`, failing if `to` already exists.
+#[cfg(target_vendor = "apple")]
+fn rename_no_replace(from: &std::path::Path, to: &std::path::Path) -> io::Result<()> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
+    let from = CString::new(from.as_os_str().as_bytes())
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "source path contains NUL"))?;
+    let to = CString::new(to.as_os_str().as_bytes()).map_err(|_| {
+        io::Error::new(io::ErrorKind::InvalidInput, "destination path contains NUL")
+    })?;
+    // SAFETY: The C strings are NUL-terminated and live for the duration of the call.
+    let result = unsafe { libc::renamex_np(from.as_ptr(), to.as_ptr(), libc::RENAME_EXCL) };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
+}
 
 #[derive(Debug)]
 pub struct StorageLocalFs {
@@ -13,9 +33,10 @@ pub struct StorageLocalFs {
 }
 
 impl StorageLocalFs {
-    pub fn new(root: impl Into<PathBuf>) -> Result<Self> {
+    #[must_use]
+    pub(crate) fn new(root: impl Into<PathBuf>) -> Self {
         let root = root.into();
-        Ok(Self { root })
+        Self { root }
     }
 }
 
@@ -29,17 +50,48 @@ impl Storage for StorageLocalFs {
         fs::write(path, data).map_err(|e| StorageError::Other(Box::new(e)))
     }
 
-    /// Not atomic across processes — acceptable for single-client testing.
-    async fn put_if_absent(&self, key: &str, data: &[u8]) -> Result<bool> {
+    async fn put_atomic(&self, key: &str, data: &[u8], mode: AtomicWriteMode) -> Result<bool> {
         let path = self.root.join(key);
-        if path.exists() {
-            return Ok(false);
-        }
+        let temp_path = path.with_file_name(format!(
+            ".{}.{}.temp",
+            path.file_name().unwrap_or_default().to_string_lossy(),
+            uuid::Uuid::new_v4()
+        ));
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|e| StorageError::Other(Box::new(e)))?;
         }
-        fs::write(path, data).map_err(|e| StorageError::Other(Box::new(e)))?;
-        Ok(true)
+        fs::write(&temp_path, data).map_err(|e| StorageError::Other(Box::new(e)))?;
+        match mode {
+            AtomicWriteMode::Replace => {
+                fs::rename(&temp_path, &path).map_err(|e| StorageError::Other(Box::new(e)))?;
+                Ok(true)
+            }
+            AtomicWriteMode::CreateIfAbsent => {
+                #[cfg(target_vendor = "apple")]
+                let publish = rename_no_replace(&temp_path, &path);
+                // This fallback is for single-writer local filesystems. It intentionally
+                // accepts a check-then-rename race until the backend gains a real
+                // conditional-create primitive.
+                #[cfg(not(target_vendor = "apple"))]
+                let publish = if path.exists() {
+                    Err(io::Error::from(io::ErrorKind::AlreadyExists))
+                } else {
+                    fs::rename(&temp_path, &path)
+                };
+
+                match publish {
+                    Ok(()) => Ok(true),
+                    Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+                        let _ = fs::remove_file(&temp_path);
+                        Ok(false)
+                    }
+                    Err(e) => {
+                        let _ = fs::remove_file(&temp_path);
+                        Err(StorageError::Other(Box::new(e)))
+                    }
+                }
+            }
+        }
     }
 
     async fn get(&self, key: &str) -> Result<Vec<u8>> {
@@ -68,13 +120,17 @@ impl Storage for StorageLocalFs {
             return Err(StorageError::NotFound);
         }
         let mut keys = Vec::new();
-        for entry in WalkDir::new(&base).into_iter().filter_map(std::result::Result::ok) {
-            if entry.file_type().is_file() {
-                if let Ok(rel) = entry.path().strip_prefix(&self.root) {
-                    if let Some(s) = rel.to_str() {
-                        keys.push(s.to_owned());
-                    }
-                }
+        for entry in WalkDir::new(&base)
+            .min_depth(1)
+            .max_depth(1)
+            .into_iter()
+            .filter_map(std::result::Result::ok)
+        {
+            if entry.file_type().is_file()
+                && let Ok(rel) = entry.path().strip_prefix(&self.root)
+                && let Some(s) = rel.to_str()
+            {
+                keys.push(s.to_owned());
             }
         }
         Ok(keys)
@@ -92,27 +148,48 @@ mod tests {
 
     fn store() -> (StorageLocalFs, TempDir) {
         let dir = TempDir::new().unwrap();
-        let s = StorageLocalFs::new(dir.path()).unwrap();
+        let s = StorageLocalFs::new(dir.path());
         (s, dir)
     }
 
     #[tokio::test]
     async fn put_then_get_returns_identical_bytes() {
         let (s, _dir) = store();
-        s.put("k", b"hello").await.unwrap();
+        s.put_atomic("k", b"hello", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
         assert_eq!(s.get("k").await.unwrap(), b"hello");
+    }
+
+    #[tokio::test]
+    async fn put_atomic_replaces_file_and_removes_temp_file() {
+        let (s, dir) = store();
+        s.put_atomic("nested/file", b"old", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
+        s.put_atomic("nested/file", b"new", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
+
+        assert_eq!(s.get("nested/file").await.unwrap(), b"new");
+        assert!(!dir.path().join("nested/file.temp").exists());
     }
 
     #[tokio::test]
     async fn get_missing_key_returns_not_found() {
         let (s, _dir) = store();
-        assert!(matches!(s.get("missing").await, Err(StorageError::NotFound)));
+        assert!(matches!(
+            s.get("missing").await,
+            Err(StorageError::NotFound)
+        ));
     }
 
     #[tokio::test]
     async fn delete_removes_key() {
         let (s, _dir) = store();
-        s.put("k", b"v").await.unwrap();
+        s.put_atomic("k", b"v", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
         s.delete("k").await.unwrap();
         assert!(matches!(s.get("k").await, Err(StorageError::NotFound)));
     }
@@ -126,12 +203,32 @@ mod tests {
     #[tokio::test]
     async fn list_returns_only_matching_prefix() {
         let (s, _dir) = store();
-        s.put("operations/a", b"1").await.unwrap();
-        s.put("operations/b", b"2").await.unwrap();
-        s.put("other/c", b"3").await.unwrap();
+        s.put_atomic("operations/a", b"1", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
+        s.put_atomic("operations/b", b"2", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
+        s.put_atomic("other/c", b"3", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
         let mut keys = s.list("operations/").await.unwrap();
         keys.sort();
         assert_eq!(keys, vec!["operations/a", "operations/b"]);
+    }
+
+    #[tokio::test]
+    async fn list_does_not_descend_into_nested_prefixes() {
+        let (s, _dir) = store();
+        s.put_atomic("remote_id_1", b"", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
+        s.put_atomic("media/2026/08/a.data", b"1", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
+
+        assert_eq!(s.list("").await.unwrap(), vec!["remote_id_1"]);
+        assert!(s.list("media/").await.unwrap().is_empty());
     }
 
     #[tokio::test]
@@ -144,7 +241,7 @@ mod tests {
     async fn new_does_not_create_root_dir() {
         let dir = TempDir::new().unwrap();
         let root = dir.path().join("does_not_exist_yet");
-        let s = StorageLocalFs::new(&root).unwrap();
+        let s = StorageLocalFs::new(&root);
         assert!(!root.exists());
         assert!(matches!(s.list("").await, Err(StorageError::NotFound)));
     }
@@ -153,22 +250,34 @@ mod tests {
     async fn exists_after_put_and_missing() {
         let (s, _dir) = store();
         assert!(!s.exists("k").await.unwrap());
-        s.put("k", b"v").await.unwrap();
+        s.put_atomic("k", b"v", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
         assert!(s.exists("k").await.unwrap());
     }
 
     #[tokio::test]
-    async fn put_if_absent_new_key_returns_true_existing_returns_false() {
+    async fn create_if_absent_new_key_returns_true_existing_returns_false() {
         let (s, _dir) = store();
-        assert!(s.put_if_absent("k", b"original").await.unwrap());
-        assert!(!s.put_if_absent("k", b"overwrite").await.unwrap());
+        assert!(
+            s.put_atomic("k", b"original", AtomicWriteMode::CreateIfAbsent)
+                .await
+                .unwrap()
+        );
+        assert!(
+            !s.put_atomic("k", b"overwrite", AtomicWriteMode::CreateIfAbsent)
+                .await
+                .unwrap()
+        );
         assert_eq!(s.get("k").await.unwrap(), b"original");
     }
 
     #[tokio::test]
     async fn nested_key_paths_created_and_retrieved() {
         let (s, _dir) = store();
-        s.put("a/b/c.bin", b"deep").await.unwrap();
+        s.put_atomic("a/b/c.bin", b"deep", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
         assert_eq!(s.get("a/b/c.bin").await.unwrap(), b"deep");
     }
 }

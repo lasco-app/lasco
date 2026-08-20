@@ -1,8 +1,37 @@
 import React, {type ReactNode} from 'react';
 import useDocusaurusContext from '@docusaurus/useDocusaurusContext';
-import Layout from '@theme/Layout';
+import DocusaurusLayout from '@theme/Layout';
+import {Rive, Layout as RiveLayout, Fit, Alignment} from '@rive-app/canvas';
 
 import styles from './index.module.css';
+
+// =============================================
+// Rive mascot animations (canvas runtime)
+// =============================================
+
+function RiveMascot({src, className}: {src: string; className?: string}) {
+  const canvasRef = React.useRef<HTMLCanvasElement>(null);
+
+  React.useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const riveInstance = new Rive({
+      src,
+      canvas,
+      autoplay: true,
+      layout: new RiveLayout({fit: Fit.Contain, alignment: Alignment.Center}),
+      onLoad: () => riveInstance.resizeDrawingSurfaceToCanvas(),
+    });
+    const handleResize = () => riveInstance.resizeDrawingSurfaceToCanvas();
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      riveInstance.cleanup();
+    };
+  }, [src]);
+
+  return <canvas ref={canvasRef} className={className} aria-hidden="true" />;
+}
 
 // =============================================
 // Screenshot Scroll Section
@@ -101,9 +130,8 @@ function ScreenshotScrollSection() {
   return (
     <section className={styles.screenshotScrollSection} ref={sectionRef}>
       <div className={styles.mascotFlamingoWrap}>
-        <img
-          src="https://public.getlasco.app/mascot_laying_0_5x.png"
-          aria-hidden="true"
+        <RiveMascot
+          src="/img/macot_hero_anim.riv"
           className={styles.mascotFlamingo}
         />
       </div>
@@ -212,7 +240,7 @@ const WHY_ITEMS = [
   {
     id: 'native',
     title: 'Native apps',
-    desc: 'Built natively for iOS and Android.',
+    desc: 'Built natively for iOS, with Android coming soon.',
   },
   {
     id: 'e2ee',
@@ -362,24 +390,23 @@ for (var i = 0; i < formContainers.length; i++) {
 export default function Home(): ReactNode {
   const {siteConfig} = useDocusaurusContext();
   return (
-    <Layout
+    <DocusaurusLayout
       title={siteConfig.title}
       description="Keep your memories usable, safe and private.">
       <main>
-        <h1 className={styles.heroTitle}>Self (non hosted) photo management app</h1>
+        <h1 className={styles.heroTitle}>Private photo management. No server to deploy.</h1>
         <p className={styles.mobileIntroText}>{SCREENSHOT_PANELS[0].desc}</p>
         <div style={{width: '100%', aspectRatio: '1448/360', display: 'block'}} />
         <ScreenshotScrollSection />
         <WhyLascoSection />
         <div style={{display: 'flex', justifyContent: 'center', padding: '120px 0 200px'}}>
-          <img
-            src="https://public.getlasco.app/mascot_hole.png"
-            aria-hidden="true"
-            style={{height: 200, maxWidth: '100%'}}
+          <RiveMascot
+            src="/img/msacot_hole_anim.riv"
+            className={styles.mascotHole}
           />
         </div>
         {/* <WaitlistSection /> */}
       </main>
-    </Layout>
+    </DocusaurusLayout>
   );
 }

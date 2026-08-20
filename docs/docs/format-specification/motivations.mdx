@@ -37,15 +37,14 @@ Since media are rarely present locally, a push often involves downloading from o
 
 ## Conflict-free design
 
-Because no server coordinates writes, concurrent modifications from multiple clients could produce conflicts. Lasco adopts a **CRDT-inspired operation log**: every local change is recorded as an operation appended to a log. When pushing or fetching, operation logs are merged. This merge is always well-defined because two invariants are enforced for the vast majority of stored files:
+Because no server coordinates writes, concurrent modifications from multiple clients could produce conflicts. For files stored on a remote—an S3 server, a hard drive, or another storage backend—Lasco reduces the risk of concurrent writes with two simple rules:
 
 1. **Unique random names.** Every new file is given a randomly generated name, making name collisions effectively impossible.
 2. **Immutability.** Once created, a file is never modified in place. The one exception is the local pending-operations file, which accumulates operations before they are uploaded.
 
-### Always-representable state
+Lasco stores every action using two CRDTs:
 
-Any combination of valid operations must yield a state the client can present to the user. If concurrent operations produce an inconsistency (e.g. a cycle in the album tree), the affected objects are shown in a dedicated UI section rather than hidden or automatically fixed. The user resolves it by emitting further operations.
+1. **The operation set.** Each action is represented by one immutable operation. Together, operations form a growing-set CRDT: new operations are added, never changed or removed. Merging two operation sets is simply taking their union, so it is straightforward and independent of which device observed an operation first.
+2. **The library state.** Operations are applied to `CrdtState`, which represents the library itself: its media, albums, groups, and their properties. This state is also a CRDT. Its merge rules are designed and checked so the result is correct regardless of the order in which operations are applied.
 
-### CRDT operation ordering
-
-To reconstruct the library state, operation groups are sorted into a total order and applied sequentially. The order is derived from a causal DAG: each group carries a `parent_op_id` pointing to the group the author had last seen when they wrote it. A topological sort of this DAG ensures a group is applied only after its parent. When multiple groups share the same parent (concurrent writes from different clients), they are ordered by `op_id` ascending. Operation IDs are UUIDv7, which embed a millisecond-precision timestamp, so this tie-break gives "earliest clock wins" on concurrent forks while remaining fully deterministic.
+The library state can therefore be persisted and cached locally. When a device obtains new operations, it applies them to its existing state instead of rebuilding the library from scratch.

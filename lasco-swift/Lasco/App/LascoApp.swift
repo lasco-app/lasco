@@ -10,7 +10,7 @@ import CoreText
 
 @main
 struct LascoApp: App {
-    @StateObject private var libraryModel = LibraryModel()
+    @State private var directory = LibraryDirectoryModel()
     @State private var toastManager = ToastManager()
     @Environment(\.scenePhase) private var scenePhase
 
@@ -34,15 +34,20 @@ struct LascoApp: App {
     var body: some Scene {
         WindowGroup {
             Group {
-                if libraryModel.isOpen {
-                    MainView()
-                        .environmentObject(libraryModel)
+                if directory.isOpen,
+                   let activeSession = directory.activeSession {
+                    MainView(
+                        repository: activeSession.repository,
+                        session: activeSession.state,
+                        syncCoordinator: activeSession.syncCoordinator,
+                        importCoordinator: activeSession.mediaImportCoordinator
+                    )
                         .environment(toastManager)
                         .preferredColorScheme(.dark)
                         .toastOverlay(toastManager)
-                } else if libraryModel.showOnboarding {
+                } else if directory.showOnboarding {
                     OnboardingView()
-                        .environmentObject(libraryModel)
+                        .environment(directory)
                         .environment(toastManager)
                         #if os(macOS)
                         .frame(width: 390, height: 700)
@@ -50,7 +55,7 @@ struct LascoApp: App {
                         .toastOverlay(toastManager)
                 } else {
                     LibraryListView()
-                        .environmentObject(libraryModel)
+                        .environment(directory)
                         .environment(toastManager)
                         #if os(macOS)
                         .frame(width: 390, height: 700)
@@ -60,15 +65,20 @@ struct LascoApp: App {
             }
             .modifier(RemoveTitleToolbarModifier())
             .hideSystemNavigationBar()
-            .environment(\.lascoTheme, libraryModel.isOpen ? .dark : .plaster)
-            .tint(libraryModel.isOpen ? LascoTheme.dark.pink : LascoTheme.plaster.pink)
+            .environment(directory)
+            .environment(\.lascoTheme, directory.isOpen ? .dark : .plaster)
+            .tint(directory.isOpen ? LascoTheme.dark.pink : LascoTheme.plaster.pink)
+            .task { await directory.start() }
         }
-        .windowResizability(libraryModel.isOpen ? .contentMinSize : .contentSize)
+        .windowResizability(directory.isOpen ? .contentMinSize : .contentSize)
         #if canImport(UIKit)
         .onChange(of: scenePhase) { _, newPhase in
-            guard newPhase == .active, libraryModel.isOpen else { return }
-            Task { await libraryModel.autoImportFromPhotoLibrary() }
-            Task { await libraryModel.fetchDefaultRemote() }
+            guard newPhase == .active,
+                  let activeSession = directory.activeSession else { return }
+            Task {
+                await activeSession.syncCoordinator.fetchDefaultRemote()
+                await activeSession.autoPhotoImportCoordinator.importFromPhotoLibrary()
+            }
         }
         #endif
     }

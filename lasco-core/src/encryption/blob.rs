@@ -1,5 +1,5 @@
-use chacha20poly1305::{aead::Aead, KeyInit, XChaCha20Poly1305, XNonce};
-use rand::{rngs::OsRng, RngCore};
+use chacha20poly1305::{KeyInit, XChaCha20Poly1305, XNonce, aead::Aead};
+use rand::{RngCore, rngs::OsRng};
 
 use crate::encryption::blob_key::BlobKey;
 use crate::encryption::error::{BlobError, CryptoError};
@@ -25,6 +25,7 @@ pub struct BlobEncrypted {
 
 impl BlobEncrypted {
     /// Serializes the blob to `[version | nonce | ciphertext]` bytes.
+    #[must_use]
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut out = Vec::with_capacity(HEADER_LEN + self.ciphertext.len());
         out.push(self.format_version);
@@ -34,7 +35,7 @@ impl BlobEncrypted {
     }
 
     /// Deserializes a blob from `[version | nonce | ciphertext]` bytes.
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, BlobError> {
+    pub(crate) fn from_bytes(bytes: &[u8]) -> Result<Self, BlobError> {
         if bytes.len() < HEADER_LEN {
             return Err(BlobError::Truncated {
                 expected: HEADER_LEN,
@@ -56,6 +57,12 @@ impl BlobEncrypted {
 }
 
 /// Encrypt `plaintext` with XChaCha20-Poly1305 using a random 24-byte nonce sourced from the OS RNG.
+///
+/// # Panics
+///
+/// Panics if XChaCha20-Poly1305 rejects the fixed-size nonce or key, which would indicate an
+/// internal cryptographic invariant has been violated.
+#[must_use]
 pub fn encrypt_blob(file_key: &BlobKey, plaintext: &[u8]) -> BlobEncrypted {
     let key = chacha20poly1305::Key::from_slice(file_key.as_ref());
     let cipher = XChaCha20Poly1305::new(key);
@@ -73,13 +80,16 @@ pub fn encrypt_blob(file_key: &BlobKey, plaintext: &[u8]) -> BlobEncrypted {
 }
 
 /// Decrypt a `BlobEncrypted` with XChaCha20-Poly1305. Returns an error on authentication failure.
-pub fn decrypt_blob(file_key: &BlobKey, blob: &BlobEncrypted) -> Result<Vec<u8>, CryptoError> {
+pub(crate) fn decrypt_blob(
+    file_key: &BlobKey,
+    blob: &BlobEncrypted,
+) -> Result<Vec<u8>, CryptoError> {
     let key = chacha20poly1305::Key::from_slice(file_key.as_ref());
     let cipher = XChaCha20Poly1305::new(key);
     let xnonce = XNonce::from_slice(&blob.nonce.0);
     cipher
         .decrypt(xnonce, blob.ciphertext.as_ref())
-        .map_err(|_| CryptoError::AuthenticationFailed)
+        .map_err(|_authentication_error| CryptoError::AuthenticationFailed)
 }
 
 #[cfg(test)]
@@ -150,9 +160,9 @@ mod tests {
         let fk = derive_blob_key(&mk, &uuid);
         let blob = encrypt_blob(&fk, b"secret data");
         let wrong_mk = generate_master_key();
-        let wrong_fk = derive_blob_key(&wrong_mk, &uuid);
+        let wrong_file_key = derive_blob_key(&wrong_mk, &uuid);
         assert!(matches!(
-            decrypt_blob(&wrong_fk, &blob),
+            decrypt_blob(&wrong_file_key, &blob),
             Err(CryptoError::AuthenticationFailed)
         ));
     }

@@ -1,104 +1,380 @@
+use crate::encryption::blob::BlobEncrypted;
+use crate::encryption::blob_key::derive_blob_key;
 use crate::error::{LibraryError, SyncError};
 use crate::identifiers::{CompactedOpId, MediaUuid, RemoteUuid};
 use crate::library::Library;
+use crate::library::local_dirs::{
+    LocalStateLibraryDir, LocalStateMediaDir, RemoteLastKnownStateDir, RemoteMediaList,
+};
 use crate::operations::remote_ops::{self as op_io, RemoteOpFile};
-use crate::operations::{local_ops as op_log, CompactionEntry, CompactionFile, StorageDate};
-use crate::remote::last_known_state::collect_group_ids_from_dir;
+use crate::operations::{CompactionFile, StorageDate};
+use crate::remote::last_known_state::collect_dots_from_dir;
 use crate::remote::{LastKnownState, MediaList};
+use crate::storage::AtomicWriteMode;
 
-use super::compaction::{self, appropriate_tier, count_tier_files, release_lock, tier_needs_compaction, try_acquire_lock};
-use super::{map_op_err, verify_remote_identity, SyncReportPush};
+use super::compaction::{
+    self, appropriate_tier, count_tier_files, release_lock, tier_needs_compaction, try_acquire_lock,
+};
+use super::media_inventory::{KnownMedia, confirm_known_media};
+use super::remote_access::{StorageRead, StorageReadWrite};
+use super::{
+    MediaBlob, PlannedMediaSource, PushMediaPlan, PushMediaResolution, PushMediaSource,
+    SyncReportPush, map_op_err, verify_remote_identity, verify_remote_library_format,
+};
+
+/// Where to read one thumbnail that is not cached locally.
+///
+/// A plan names a source per blob, so a thumbnail can come from a different remote than its
+/// original. Returning `None` leaves the thumbnail unconfirmed on the target, which is never an
+/// error: nothing records whether a media ever had a thumbnail.
+fn thumb_source<'a>(
+    media_source: &'a PushMediaSource<'a>,
+    relay_source: &Option<(RemoteUuid, &'a StorageRead<'a>)>,
+    media_id: MediaUuid,
+) -> Option<&'a StorageRead<'a>> {
+    match media_source {
+        PushMediaSource::Plan(plan) => {
+            match plan.assignments.get(&(media_id, MediaBlob::Thumb))? {
+                PlannedMediaSource::Local => None,
+                PlannedMediaSource::Remote(id) => plan.sources.get(id),
+            }
+        }
+        _ => relay_source.as_ref().map(|(_, source)| *source),
+    }
+}
+
+/// The local cache first, since using it costs no download, then the first candidate whose own
+/// inventory confirms the blob.
+fn resolve_blob(
+    cached_locally: bool,
+    candidates: &[(RemoteUuid, MediaList)],
+    confirmed: impl Fn(&MediaList) -> bool,
+) -> Option<PlannedMediaSource> {
+    if cached_locally {
+        return Some(PlannedMediaSource::Local);
+    }
+    candidates
+        .iter()
+        .find(|(_, inventory)| confirmed(inventory))
+        .map(|(remote_id, _)| PlannedMediaSource::Remote(*remote_id))
+}
 
 struct FileToPush {
     media_id: MediaUuid,
     storage_date: StorageDate,
+    needs_data: bool,
+    needs_thumb: bool,
+}
+
+pub(super) struct PushAccess<'a> {
+    pub storage: &'a StorageReadWrite<'a>,
+    pub local_state_media_dir: &'a LocalStateMediaDir,
+    pub remote_last_known_state_dir: &'a RemoteLastKnownStateDir,
+    pub remote_media_list: &'a RemoteMediaList,
+    pub local_state_library_dir: &'a LocalStateLibraryDir,
 }
 
 impl Library {
+    /// Resolves, for every blob the target is missing, where to get it.
+    ///
+    /// This is push preparation. It reads the local media cache and the media inventories of
+    /// the target and of the candidate sources, in `source_priority` order, and contacts no
+    /// remote at all, so it works offline and always terminates immediately.
+    ///
+    /// A blob the target's own inventory already confirms is left out of the plan, since push
+    /// has nothing to do for it.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a media inventory exists but cannot be read.
+    pub fn resolve_push_media(
+        &self,
+        target: RemoteUuid,
+        source_priority: &[RemoteUuid],
+    ) -> Result<PushMediaResolution, LibraryError> {
+        let load_inventory = |remote_id: RemoteUuid| -> Result<MediaList, LibraryError> {
+            let remote_id = remote_id.to_string();
+            let remote_media_list = self.inner.local_dirs.remote_media_list(&remote_id);
+            Ok(self.inner.remote_media_list_lock.with_lock(
+                &remote_id,
+                &remote_media_list,
+                |remote_media_list| {
+                    MediaList::load_or_default(&remote_media_list.media_list_path())
+                },
+            )?)
+        };
+
+        let target_inventory = load_inventory(target)?;
+        let mut candidates = Vec::new();
+        for candidate in source_priority {
+            if *candidate == target {
+                continue;
+            }
+            candidates.push((*candidate, load_inventory(*candidate)?));
+        }
+
+        let media_dir = self.inner.local_dirs.local_state_media_dir();
+        let mut resolution = PushMediaResolution::default();
+        for entry in self.inner.state.read().media_entries() {
+            let year = entry.storage_date.year;
+            let month = entry.storage_date.month;
+
+            if !target_inventory.has_full(&entry.media_id) {
+                let cached = media_dir.data_path(year, month, &entry.media_id).exists();
+                let source = resolve_blob(cached, &candidates, |inventory| {
+                    inventory.has_full(&entry.media_id)
+                });
+                match source {
+                    Some(source) => {
+                        resolution
+                            .assignments
+                            .insert((entry.media_id, MediaBlob::Data), source);
+                    }
+                    // Uploading the library without the original would lose the media.
+                    None => resolution.unresolved_data.push(entry.media_id),
+                }
+            }
+
+            // A companion resource has no thumbnail to place, so it is left out of the plan
+            // entirely once its data blob is resolved.
+            if entry.companion_kind.is_none() && !target_inventory.has_thumb(&entry.media_id) {
+                let cached = media_dir.thumb_path(year, month, &entry.media_id).exists();
+                let source = resolve_blob(cached, &candidates, |inventory| {
+                    inventory.has_thumb(&entry.media_id)
+                });
+                // A thumbnail nobody can provide is left out rather than reported. Nothing
+                // records whether a media ever had one, so failing here would let a media
+                // without a thumbnail block every push of the library.
+                if let Some(source) = source {
+                    resolution
+                        .assignments
+                        .insert((entry.media_id, MediaBlob::Thumb), source);
+                }
+            }
+        }
+
+        Ok(resolution)
+    }
+
+    pub async fn push_with_media_plan(
+        &self,
+        storage: &dyn crate::storage::Storage,
+        remote_id: RemoteUuid,
+        plan: PushMediaPlan<'_>,
+    ) -> Result<SyncReportPush, LibraryError> {
+        self.push_with_media_source(storage, remote_id, PushMediaSource::Plan(plan))
+            .await
+    }
+    /// # Errors
+    ///
+    /// Returns an error if remote identity verification, operation upload, or required media upload fails.
     pub async fn push(
         &self,
         storage: &dyn crate::storage::Storage,
-        remote_id: &str,
+        remote_id: RemoteUuid,
     ) -> Result<SyncReportPush, LibraryError> {
-        let _guard = self
-            .try_acquire_remote_sync(remote_id)
-            .ok_or(SyncError::AlreadyRunning)?;
-        self.push_impl(storage, remote_id).await
+        self.push_with_media_source(storage, remote_id, PushMediaSource::LocalOnly)
+            .await
     }
 
-    pub(super) async fn push_impl(
+    /// Push with an explicit policy for media absent from the local cache.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if another push is active, remote validation/upload fails, or the selected media source cannot supply required blobs.
+    pub async fn push_with_media_source(
         &self,
         storage: &dyn crate::storage::Storage,
-        remote_id: &str,
+        remote_id: RemoteUuid,
+        media_source: PushMediaSource<'_>,
     ) -> Result<SyncReportPush, LibraryError> {
-        let local_dirs = &self.inner.local_dirs;
+        let remote_id_string = remote_id.to_string();
+        let _guard = self
+            .try_acquire_remote_sync(&remote_id_string)
+            .ok_or(SyncError::AlreadyRunning)?;
+        let remote = StorageReadWrite::new(storage);
+        let local_state_media_dir = self.inner.local_dirs.local_state_media_dir();
+        let local_state_library_dir = self.inner.local_dirs.local_state_library_dir();
+        let remote_last_known_state_dir = self
+            .inner
+            .local_dirs
+            .remote_last_known_state_dir(&remote_id_string);
+        let remote_media_list = self.inner.local_dirs.remote_media_list(&remote_id_string);
+        self.push_impl(
+            PushAccess {
+                storage: &remote,
+                local_state_media_dir: &local_state_media_dir,
+                remote_last_known_state_dir: &remote_last_known_state_dir,
+                remote_media_list: &remote_media_list,
+                local_state_library_dir: &local_state_library_dir,
+            },
+            remote_id,
+            media_source,
+        )
+        .await
+    }
+
+    #[allow(
+        clippy::too_many_lines,
+        reason = "The ordered push workflow shares one report and transaction context across its phases."
+    )]
+    pub(super) async fn push_impl(
+        &self,
+        access: PushAccess<'_>,
+        remote_id: RemoteUuid,
+        media_source: PushMediaSource<'_>,
+    ) -> Result<SyncReportPush, LibraryError> {
         let master_key = &self.inner.master_key;
 
-        let remote_uuid = remote_id
-            .parse::<uuid::Uuid>()
-            .map(RemoteUuid::from_uuid)
-            .map_err(|e| {
-                SyncError::RemoteIdMismatch(format!("invalid remote id '{remote_id}': {e}"))
-            })?;
-        verify_remote_identity(storage, remote_uuid).await?;
+        verify_remote_identity(&access.storage.as_read(), remote_id).await?;
+        verify_remote_library_format(&access.storage.as_read()).await?;
+        let remote_id_string = remote_id.to_string();
+
+        let relay_source = match &media_source {
+            PushMediaSource::LocalOnly => None,
+            PushMediaSource::FromRemote { remote_id, storage } => {
+                verify_remote_identity(&storage, *remote_id).await?;
+                verify_remote_library_format(storage).await?;
+                Some((*remote_id, storage))
+            }
+            PushMediaSource::Plan(plan) => {
+                for (id, source) in &plan.sources {
+                    verify_remote_identity(source, *id).await?;
+                    verify_remote_library_format(source).await?;
+                }
+                None
+            }
+        };
+
+        // Master-key files are immutable credentials. Propagate every local one with a
+        // non-overwriting write after identity verification; never delete or replace a remote key.
+        for entry in std::fs::read_dir(access.local_state_library_dir.path())? {
+            let entry = entry?;
+            let path = entry.path();
+            let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+                continue;
+            };
+            let is_master_key_file = name
+                .strip_prefix("mk_")
+                .and_then(|name| name.strip_suffix(".enc"))
+                .is_some();
+            if !path.is_file() || !is_master_key_file {
+                continue;
+            }
+            let data = std::fs::read(&path)?;
+            access
+                .storage
+                .put_atomic(
+                    &format!("library/{name}"),
+                    &data,
+                    AtomicWriteMode::CreateIfAbsent,
+                )
+                .await
+                .map_err(SyncError::RemoteUnreachable)?;
+        }
+
+        // Relay blobs never belong in normal library state. A unique OS temporary directory
+        // keeps them outside the local media cache and removes them when this Push returns.
+        let staging_dir = tempfile::tempdir()?;
 
         // Push only ever acts on op files recorded in its own last known state for this
         // remote, plus whatever it uploads or merges in this call. It never lists or reads
         // arbitrary remote files to decide what to upload or compact, so it can't turn into
         // an implicit fetch.
-        let ops_dir = local_dirs.remote_ops_dir(remote_id);
-        let mut last_known_state = LastKnownState::open(local_dirs, remote_id)?;
-        let remote_covered = collect_group_ids_from_dir(&ops_dir, master_key)
-            .map_err(SyncError::LocalCacheCorrupt)?;
+        let ops_dir = access.remote_last_known_state_dir.operations_dir();
+        let mut last_known_state = LastKnownState::open(access.remote_last_known_state_dir)?;
+        let remote_covered =
+            collect_dots_from_dir(&ops_dir, master_key).map_err(SyncError::LocalCacheCorrupt)?;
 
-        let media_list_path = local_dirs.remote_media_list_path(remote_id);
-        let mut media_list = MediaList::load_or_default(&media_list_path)?;
+        // Confirm what the target already holds before deciding what to upload, so a blob
+        // another client uploaded is neither reported missing nor sent a second time. This
+        // lists media folders only, never operation files, so push still cannot turn into an
+        // implicit fetch.
+        let known_media: Vec<KnownMedia> = {
+            let state = self.inner.state.read();
+            state
+                .media_entries()
+                .iter()
+                .map(|entry| KnownMedia {
+                    media_id: entry.media_id,
+                    storage_date: entry.storage_date,
+                    expects_thumb: entry.companion_kind.is_none(),
+                })
+                .collect()
+        };
+        confirm_known_media(
+            &access.storage.as_read(),
+            &known_media,
+            &remote_id_string,
+            access.remote_media_list,
+            &self.inner.remote_media_list_lock,
+        )
+        .await;
 
-        // Flush any pending (unpushed) op group into the main log before uploading.
-        let flushed_pending = self.with_op_lock(|| {
-            if let Some(pending) =
-                op_log::take_pending_op_group(&local_dirs.pending_op_path(), master_key)?
-            {
-                op_log::append_op_group(&local_dirs.operations_log_path(), master_key, &pending)?;
-                Ok(true)
-            } else {
-                Ok(false)
+        // Only the snapshot read is locked. Network storage awaits below must remain unlocked.
+        let media_list = self.inner.remote_media_list_lock.with_lock(
+            &remote_id_string,
+            access.remote_media_list,
+            |remote_media_list| MediaList::load_or_default(&remote_media_list.media_list_path()),
+        )?;
+
+        // Report missing media before uploading operations. The caller can then select a
+        // source and retry without a partially completed default Push.
+        if relay_source.is_none() && !matches!(media_source, PushMediaSource::Plan(_)) {
+            let missing: Vec<_> = {
+                let state = self.inner.state.read();
+                state
+                    .media_entries()
+                    .iter()
+                    .filter(|entry| !media_list.has_full(&entry.media_id))
+                    .filter_map(|entry| {
+                        (!access
+                            .local_state_media_dir
+                            .data_path(
+                                entry.storage_date.year,
+                                entry.storage_date.month,
+                                &entry.media_id,
+                            )
+                            .exists())
+                        .then_some(entry.media_id)
+                    })
+                    .collect()
+            };
+            if !missing.is_empty() {
+                return Err(SyncError::MissingLocalMedia(missing).into());
             }
-        })?;
-        if flushed_pending {
-            self.load_local_state().await?;
         }
 
-        // Read all local op groups from the log.
-        let local_groups = self
-            .with_op_lock(|| Ok(op_log::read_op_groups(&local_dirs.operations_log_path(), master_key)?))?;
-        let ops_to_upload: Vec<_> = local_groups
+        // The append-only log is the complete local operation history, including
+        // operations learned by Fetch that must be relayed to this remote.
+        // Read it synchronously and release its guard before any network await.
+        let ops_to_upload: Vec<_> = self
+            .local_ops_read_write()
+            .read_operations()?
             .into_iter()
-            .filter(|g| !remote_covered.contains(&g.op_id))
+            .filter(|operation| !remote_covered.contains(&operation.dot))
             .collect();
 
         let ops_uploaded = ops_to_upload.len();
         let mut compactions_run = 0usize;
 
         if !ops_to_upload.is_empty() {
-            let op_count: u32 = ops_to_upload.iter().map(|g| g.operations.len() as u32).sum();
-            let tier = appropriate_tier(op_count as usize);
+            let op_count = u32::try_from(ops_to_upload.len())
+                .expect("an in-memory upload batch cannot contain more than u32::MAX operations");
+            let tier = appropriate_tier(ops_to_upload.len());
             {
                 // Upload as a single compaction file at the tier that fits this batch.
                 let file_uuid = CompactedOpId::new();
-                let contents: Vec<CompactionEntry> = ops_to_upload
-                    .iter()
-                    .map(|g| CompactionEntry {
-                        op_id: g.op_id,
-                        group: g.clone(),
-                    })
-                    .collect();
                 let key = format!("operations/{file_uuid}.op{tier}_{op_count}");
-                let comp_file = CompactionFile { tier, contents };
-                let blob = crate::operations::encrypt_compaction_file(master_key, &file_uuid, &comp_file)
-                    .map_err(map_op_err)?;
+                let comp_file = CompactionFile {
+                    tier,
+                    operations: ops_to_upload.clone(),
+                };
+                let blob =
+                    crate::operations::encrypt_compaction_file(master_key, &file_uuid, &comp_file)
+                        .map_err(map_op_err)?;
                 let bytes = blob.to_bytes();
-                op_io::write_compaction_bytes(storage, &key, &bytes)
+                op_io::write_compaction_bytes(access.storage, &key, &bytes)
                     .await
                     .map_err(map_op_err)?;
                 last_known_state.write_compaction_bytes(&file_uuid, tier, op_count, &bytes)?;
@@ -119,7 +395,8 @@ impl Library {
             if !cascade_done {
                 // The lock spans the whole cascade below, not just a single tier's merge, so
                 // another client can never interleave a compaction between two of our tiers.
-                let lock_token = try_acquire_lock(storage).await?;
+                let device_id = self.inner.state.read().device_id();
+                let lock_token = try_acquire_lock(access.storage, device_id).await?;
                 if let Some(lock_token) = lock_token {
                     let mut cascade_error = None;
                     for current_tier in tier..tier + 10 {
@@ -129,13 +406,23 @@ impl Library {
                             cascade_done = true;
                             break;
                         }
-                        match compaction::compact_tier(storage, master_key, current_tier, &last_known_state, &lock_token).await {
+                        match compaction::compact_tier(
+                            access.storage,
+                            master_key,
+                            current_tier,
+                            &last_known_state,
+                            &lock_token,
+                        )
+                        .await
+                        {
                             Ok(result) => {
                                 // compact_tier already updated the on-disk last known state
                                 // for the new file and every deleted source as it went, so
                                 // this only needs to bring the in-memory view in line.
                                 compactions_run += 1;
-                                last_known_state.files_mut().retain(|f| !result.sources.contains(f));
+                                last_known_state
+                                    .files_mut()
+                                    .retain(|f| !result.sources.contains(f));
                                 last_known_state.files_mut().push(result.new_file);
                             }
                             Err(error) => {
@@ -144,7 +431,7 @@ impl Library {
                             }
                         }
                     }
-                    release_lock(storage, lock_token).await?;
+                    release_lock(access.storage, lock_token).await?;
                     if let Some(error) = cascade_error {
                         return Err(error.into());
                     }
@@ -155,25 +442,20 @@ impl Library {
         }
 
         let media_pending: Vec<FileToPush> = {
-            let state = self.inner.operation_state.read();
+            let state = self.inner.state.read();
             state
-                .reconstructed
-                .media
+                .media_entries()
                 .iter()
-                .filter(|(media_id, _)| !media_list.contains(media_id))
-                .filter(|(media_id, file_meta)| {
-                    local_dirs
-                        .media_data_path(
-                            file_meta.storage_date.year,
-                            file_meta.storage_date.month,
-                            media_id,
-                        )
-                        .exists()
+                .map(|entry| FileToPush {
+                    media_id: entry.media_id,
+                    storage_date: entry.storage_date,
+                    needs_data: !media_list.has_full(&entry.media_id),
+                    // A companion resource never has a thumbnail, so asking a source for one
+                    // would fail on every push for as long as the media exists.
+                    needs_thumb: entry.companion_kind.is_none()
+                        && !media_list.has_thumb(&entry.media_id),
                 })
-                .map(|(media_id, file_meta)| FileToPush {
-                    media_id: *media_id,
-                    storage_date: file_meta.storage_date,
-                })
+                .filter(|item| item.needs_data || item.needs_thumb)
                 .collect()
         };
 
@@ -189,34 +471,139 @@ impl Library {
                 item.storage_date.year, item.storage_date.month, item.media_id
             );
 
-            let data_path = local_dirs.media_data_path(
-                item.storage_date.year,
-                item.storage_date.month,
-                &item.media_id,
-            );
-            let bytes = std::fs::read(&data_path)?;
-            storage
-                .put(&data_key, &bytes)
-                .await
-                .map_err(SyncError::RemoteUnreachable)?;
-
-            let thumb_path = local_dirs.media_thumb_path(
-                item.storage_date.year,
-                item.storage_date.month,
-                &item.media_id,
-            );
-            if thumb_path.exists() {
-                let bytes = std::fs::read(&thumb_path)?;
-                storage
-                    .put(&thumb_key, &bytes)
+            // A media whose data blob is already confirmed but whose thumbnail is not reaches
+            // this loop for the thumbnail alone, so each blob is handled on its own.
+            let mut data_uploaded = false;
+            let mut data_present = false;
+            if item.needs_data {
+                let data_path = access.local_state_media_dir.data_path(
+                    item.storage_date.year,
+                    item.storage_date.month,
+                    &item.media_id,
+                );
+                let (bytes, staged_data) = if data_path.exists() {
+                    (std::fs::read(&data_path)?, None)
+                } else {
+                    let (source_id, source) = match &media_source {
+                        PushMediaSource::Plan(plan) => {
+                            match plan.assignments.get(&(item.media_id, MediaBlob::Data)) {
+                                Some(PlannedMediaSource::Remote(id)) => (
+                                    *id,
+                                    plan.sources.get(id).ok_or_else(|| {
+                                        SyncError::MissingMediaOnConfiguredSources(vec![
+                                            item.media_id,
+                                        ])
+                                    })?,
+                                ),
+                                _ => {
+                                    return Err(SyncError::MissingMediaOnConfiguredSources(vec![
+                                        item.media_id,
+                                    ])
+                                    .into());
+                                }
+                            }
+                        }
+                        _ => {
+                            let (id, source) = relay_source
+                                .as_ref()
+                                .expect("missing local media requires a relay source");
+                            (*id, *source)
+                        }
+                    };
+                    let downloaded = source.get(&data_key).await.map_err(|error| {
+                        SyncError::SourceUnavailable {
+                            source_remote_id: source_id,
+                            media_id: item.media_id,
+                            error,
+                        }
+                    })?;
+                    let bytes = stage_and_validate_media(
+                        staging_dir.path(),
+                        &downloaded,
+                        item.media_id,
+                        &self.inner.master_key,
+                    )
+                    .map_err(|_| SyncError::CorruptRemoteMedia {
+                        source_remote_id: source_id,
+                        media_id: item.media_id,
+                    })?;
+                    (bytes.0, Some(bytes.1))
+                };
+                data_uploaded = access
+                    .storage
+                    .put_atomic(&data_key, &bytes, AtomicWriteMode::CreateIfAbsent)
                     .await
                     .map_err(SyncError::RemoteUnreachable)?;
+                // A non-overwriting write that published nothing means the blob was already
+                // there, so the target holds it either way.
+                data_present = true;
+                if let Some(path) = staged_data {
+                    std::fs::remove_file(path)?;
+                }
             }
 
-            media_list.insert_present(item.media_id);
-            media_list.save(&media_list_path)?;
+            let mut thumb_present = false;
+            if item.needs_thumb {
+                let thumb_path = access.local_state_media_dir.thumb_path(
+                    item.storage_date.year,
+                    item.storage_date.month,
+                    &item.media_id,
+                );
+                if thumb_path.exists() {
+                    let bytes = std::fs::read(&thumb_path)?;
+                    access
+                        .storage
+                        .put_atomic(&thumb_key, &bytes, AtomicWriteMode::CreateIfAbsent)
+                        .await
+                        .map_err(SyncError::RemoteUnreachable)?;
+                    thumb_present = true;
+                } else if let Some(source) =
+                    thumb_source(&media_source, &relay_source, item.media_id)
+                {
+                    match source.get(&thumb_key).await {
+                        Ok(downloaded) => match stage_and_validate_media(
+                            staging_dir.path(),
+                            &downloaded,
+                            item.media_id,
+                            &self.inner.master_key,
+                        ) {
+                            Ok((bytes, path)) => {
+                                access
+                                    .storage
+                                    .put_atomic(&thumb_key, &bytes, AtomicWriteMode::CreateIfAbsent)
+                                    .await
+                                    .map_err(SyncError::RemoteUnreachable)?;
+                                std::fs::remove_file(path)?;
+                                thumb_present = true;
+                            }
+                            Err(error) => return Err(error),
+                        },
+                        // A media with no thumbnail anywhere stays unconfirmed for its
+                        // thumbnail, which costs nothing beyond this pass.
+                        Err(crate::storage::StorageError::NotFound) => {}
+                        Err(error) => return Err(SyncError::RemoteUnreachable(error).into()),
+                    }
+                }
+            }
 
-            media_uploaded += 1;
+            // Reload under the lock so this write preserves any observation made by another
+            // remote's sync while the upload was in progress.
+            self.inner.remote_media_list_lock.with_lock(
+                &remote_id_string,
+                access.remote_media_list,
+                |remote_media_list| {
+                    let path = remote_media_list.media_list_path();
+                    let mut media_list = MediaList::load_or_default(&path)?;
+                    if media_list.record(item.media_id, data_present, thumb_present) {
+                        media_list.save(&path)?;
+                    }
+                    Ok::<_, std::io::Error>(())
+                },
+            )?;
+
+            if data_uploaded {
+                media_uploaded += 1;
+            }
         }
 
         Ok(SyncReportPush {
@@ -225,6 +612,24 @@ impl Library {
             compactions_run,
         })
     }
+}
+
+/// Download one encrypted blob into an isolated staging file, prove it decrypts, then return
+/// its bytes and path. Callers remove the path immediately after the target upload succeeds.
+fn stage_and_validate_media(
+    staging_dir: &std::path::Path,
+    bytes: &[u8],
+    media_id: MediaUuid,
+    master_key: &crate::encryption::master_key::MasterKey,
+) -> Result<(Vec<u8>, std::path::PathBuf), LibraryError> {
+    let path = staging_dir.join(format!("{}.stage", uuid::Uuid::new_v4()));
+    std::fs::write(&path, bytes)?;
+    let staged = std::fs::read(&path)?;
+    let blob = BlobEncrypted::from_bytes(&staged).map_err(crate::error::OperationError::Blob)?;
+    let file_key = derive_blob_key(master_key, &media_id.0);
+    crate::encryption::blob::decrypt_blob(&file_key, &blob)
+        .map_err(crate::error::OperationError::Crypto)?;
+    Ok((staged, path))
 }
 
 #[cfg(test)]

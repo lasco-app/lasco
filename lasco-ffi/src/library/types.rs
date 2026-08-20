@@ -1,12 +1,39 @@
+use crate::ids::{FfiAlbumUuid, FfiGroupUuid, FfiLibraryId, FfiMediaUuid, FfiRemoteUuid};
+
 #[derive(uniffi::Record, Debug)]
 pub struct FfiCreateLibraryResult {
-    pub library_id: String,
+    pub library_id: FfiLibraryId,
     pub master_key_hex: String,
+}
+
+// already_existed is true when a media with the same content hash was already
+// in the library, in which case media_id is the existing entry and nothing was
+// written. Callers use it to skip work they would otherwise redo, such as
+// regenerating a thumbnail.
+#[derive(uniffi::Record, Debug)]
+pub struct FfiMediaAddResult {
+    pub media_id: FfiMediaUuid,
+    pub already_existed: bool,
+}
+
+/// A media identifier returned to clients when a local-only push cannot find
+/// every required original in this device's cache.
+#[derive(uniffi::Record, Debug, Clone)]
+pub struct FfiMediaId {
+    pub value: String,
+}
+
+impl From<lasco_core::identifiers::MediaUuid> for FfiMediaId {
+    fn from(value: lasco_core::identifiers::MediaUuid) -> Self {
+        Self {
+            value: value.to_string(),
+        }
+    }
 }
 
 #[derive(uniffi::Record, Debug)]
 pub struct FfiMediaItem {
-    pub media_id: String,
+    pub media_id: FfiMediaUuid,
     pub filename_original: String,
     pub name: Option<String>,
     pub date: String,
@@ -15,26 +42,33 @@ pub struct FfiMediaItem {
     pub size_bytes: u64,
     pub content_hash: String,
     pub author: String,
-    pub apple_aae_media_id: Option<String>,
-    pub apple_live_photo_media_id: Option<String>,
+    pub apple_aae_media_id: Option<FfiMediaUuid>,
+    pub apple_live_photo_media_id: Option<FfiMediaUuid>,
+}
+
+#[derive(uniffi::Record, Debug)]
+pub struct FfiMediaNeighbors {
+    pub previous: Option<FfiMediaItem>,
+    pub current: FfiMediaItem,
+    pub next: Option<FfiMediaItem>,
 }
 
 #[derive(uniffi::Record, Debug)]
 pub struct FfiAlbum {
-    pub album_id: String,
+    pub album_id: FfiAlbumUuid,
     pub name: String,
-    pub parent_album_id: Option<String>,
-    pub media_count: u32,
+    pub parent_album_id: Option<FfiAlbumUuid>,
+    pub media_count: u64,
     pub deleted: bool,
     pub is_disconnected: bool,
-    pub thumbnail_media_id: Option<String>,
+    pub thumbnail_media_id: Option<FfiMediaUuid>,
 }
 
 #[derive(uniffi::Record, Debug)]
 pub struct FfiGroup {
-    pub group_id: String,
-    pub album_id_parent: String,
-    pub media_ids: Vec<String>,
+    pub group_id: FfiGroupUuid,
+    pub album_id_parent: FfiAlbumUuid,
+    pub media_ids: Vec<FfiMediaUuid>,
 }
 
 #[derive(uniffi::Record, Debug)]
@@ -46,14 +80,15 @@ pub struct FfiAlbumItem {
 }
 
 #[derive(uniffi::Record, Debug)]
-pub struct FfiSyncResult {
-    pub pushed: u32,
-    pub pulled: u32,
+pub struct FfiMediaOrGroupNeighbors {
+    pub previous: Option<FfiAlbumItem>,
+    pub current: FfiAlbumItem,
+    pub next: Option<FfiAlbumItem>,
 }
 
 #[derive(uniffi::Record, Debug)]
 pub struct FfiLibraryEntry {
-    pub id: String,
+    pub library_id: FfiLibraryId,
     pub nickname: String,
     pub username: Option<String>,
     pub load_error: Option<String>,
@@ -61,8 +96,9 @@ pub struct FfiLibraryEntry {
 
 #[derive(uniffi::Record, Debug, Clone)]
 pub struct FfiRemote {
-    pub id: String,
+    pub remote_id: FfiRemoteUuid,
     pub name: String,
+    pub auto_push: bool,
     pub kind: String,
     pub endpoint: Option<String>,
     pub bucket: Option<String>,
@@ -91,10 +127,31 @@ pub struct FfiLocalStateStats {
     pub thumb_cached_bytes: u64,
 }
 
+/// What one remote is not yet confirmed to hold. Both counts come from the media list this
+/// client cached for that remote, so they are accurate as of its last fetch or push.
 #[derive(uniffi::Record, Debug)]
-pub struct FfiOperationGroup {
-    pub op_id: String,
-    pub parent_op_id: Option<String>,
-    pub operations: Vec<FfiOperation>,
+pub struct FfiRemoteMediaShortfall {
+    pub missing_full: u64,
+    pub missing_thumb: u64,
+}
+
+/// Remote compaction-lock metadata. Absence of this record means no lock is held.
+#[derive(uniffi::Record, Debug)]
+pub struct FfiCompactionLockInfo {
+    pub owner_device_id: String,
+    pub created_at: String,
+    pub is_owned_by_current_device: bool,
+}
+
+#[derive(uniffi::Record, Debug)]
+pub struct FfiDot {
+    pub lamport_counter: u64,
+    pub device_id: String,
+}
+
+#[derive(uniffi::Record, Debug)]
+pub struct FfiCrdtOperation {
+    pub dot: FfiDot,
     pub author: String,
+    pub operation: FfiOperation,
 }

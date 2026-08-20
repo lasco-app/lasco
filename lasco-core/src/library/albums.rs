@@ -1,13 +1,17 @@
 use std::collections::{HashSet, VecDeque};
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
+use crate::crdt::GroupEntry;
+use crate::crdt::OperationContent;
 use crate::error::LibraryError;
 use crate::identifiers::{AlbumUuid, MediaUuid};
 use crate::library::Library;
 use crate::library::media::MediaEntry;
-use crate::operations::{AlbumName, Operation};
+use crate::library::range::inclusive_slice;
+use crate::operations::AlbumName;
+use crate::state::AlbumBrowseItem;
 
 pub type Result<T> = std::result::Result<T, LibraryError>;
 
@@ -20,43 +24,147 @@ pub struct AlbumSummary {
     pub thumbnail_media_id: Option<MediaUuid>,
 }
 
+/// A media or group entry as displayed in an album's date-ordered item list.
+#[derive(Debug, Clone)]
+#[allow(
+    clippy::large_enum_variant,
+    reason = "Media is the dominant album item; boxing it would add allocation and indirection on the common path."
+)]
+pub enum AlbumItem {
+    Media(MediaEntry),
+    Group(GroupEntry),
+}
+
+#[derive(Debug, Clone)]
+pub struct DatedAlbumItem {
+    pub item: AlbumItem,
+    pub effective_date: DateTime<Utc>,
+}
+
 impl Library {
+    /// Returns direct, non-deleted albums under `parent_album_id`, ordered by
+    /// name and then ID. `None` denotes the root album level.
+    #[must_use]
+    pub fn album_albums(&self, parent_album_id: Option<AlbumUuid>) -> Vec<AlbumSummary> {
+        let state = self.inner.state.read();
+        state
+            .views
+            .album_albums_by_name
+            .get(&parent_album_id)
+            .into_iter()
+            .flatten()
+            .filter_map(|album_id| state.album(*album_id))
+            .map(|entry| AlbumSummary {
+                album_id: entry.album_id,
+                album_id_parent: entry.album_id_parent,
+                name: entry.name.clone(),
+                media_count: entry.media_ids.len(),
+                thumbnail_media_id: entry.thumbnail_media_id,
+            })
+            .collect()
+    }
+
+    pub fn album_albums_count(&self, parent_album_id: Option<AlbumUuid>) -> usize {
+        let state = self.inner.state.read();
+        state
+            .views
+            .album_albums_by_name
+            .get(&parent_album_id)
+            .map_or(0, Vec::len)
+    }
+
+    #[must_use]
+    pub fn album_albums_range(
+        &self,
+        parent_album_id: Option<AlbumUuid>,
+        pos_start_inclusive: usize,
+        pos_end_inclusive: usize,
+    ) -> Vec<AlbumSummary> {
+        if pos_start_inclusive > pos_end_inclusive {
+            return Vec::new();
+        }
+        let state = self.inner.state.read();
+        let Some(album_ids) = state.views.album_albums_by_name.get(&parent_album_id) else {
+            return Vec::new();
+        };
+        let Some(ids) = inclusive_slice(album_ids, pos_start_inclusive, pos_end_inclusive) else {
+            return Vec::new();
+        };
+        ids.iter()
+            .filter_map(|album_id| state.album(*album_id))
+            .map(|entry| AlbumSummary {
+                album_id: entry.album_id,
+                album_id_parent: entry.album_id_parent,
+                name: entry.name.clone(),
+                media_count: entry.media_ids.len(),
+                thumbnail_media_id: entry.thumbnail_media_id,
+            })
+            .collect()
+    }
+    /// # Errors
+    ///
+    /// Returns an error if the optional parent is absent or the creation operation cannot be persisted.
     pub async fn album_create(
         &self,
         name: AlbumName,
         album_id_parent: Option<AlbumUuid>,
     ) -> Result<AlbumUuid> {
         let album_id = AlbumUuid::from_uuid(Uuid::new_v4());
-        self.append_to_pending(Operation::AlbumCreation {
-            timestamp: Utc::now(),
-            album_id,
-            name,
-            album_id_parent,
-        })?;
-        self.load_local_state().await?;
+        self.record_local_operation(
+            Utc::now(),
+            OperationContent::AlbumCreation {
+                album_id,
+                name,
+                parent_id: album_id_parent,
+            },
+        )?;
         Ok(album_id)
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the album or media is absent, or the membership operation cannot be persisted.
     pub async fn album_add_media(&self, album_id: AlbumUuid, media_id: MediaUuid) -> Result<()> {
-        self.append_to_pending(Operation::AlbumMediaAdd { timestamp: Utc::now(), album_id, media_id })?;
-        self.load_local_state().await?;
+        self.record_local_operation(
+            Utc::now(),
+            OperationContent::AlbumMediaAdd { album_id, media_id },
+        )?;
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the album or membership is absent, or the removal operation cannot be persisted.
     pub async fn album_remove_media(&self, album_id: AlbumUuid, media_id: MediaUuid) -> Result<()> {
-        self.append_to_pending(Operation::AlbumMediaRemove { timestamp: Utc::now(), album_id, media_id })?;
-        self.load_local_state().await?;
+        let observed = self
+            .inner
+            .state
+            .read()
+            .album_member_dots(album_id, media_id);
+        self.record_local_operation(
+            Utc::now(),
+            OperationContent::AlbumMediaRemove {
+                album_id,
+                media_id,
+                observed,
+            },
+        )?;
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the album is absent or the delete operation cannot be persisted.
     pub async fn album_delete(&self, album_id: AlbumUuid) -> Result<()> {
-        self.append_to_pending(Operation::AlbumDeletion { timestamp: Utc::now(), album_id })?;
-        self.load_local_state().await?;
+        self.record_local_operation(Utc::now(), OperationContent::AlbumDeletion { album_id })?;
         Ok(())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the album is absent.
     pub fn album_list_media(&self, album_id: AlbumUuid) -> Result<Vec<MediaEntry>> {
-        let state = self.inner.operation_state.read();
+        let state = self.inner.state.read();
         let media_ids = state
             .views
             .by_album
@@ -65,26 +173,105 @@ impl Library {
         let entries = media_ids
             .iter()
             .filter_map(|mid| {
-                let media = state.reconstructed.media.get(mid)?;
-                let group_ids = state
-                    .views
-                    .media_group_membership
-                    .get(mid)
-                    .cloned()
-                    .unwrap_or_default();
-                Some(MediaEntry::from_state(media, group_ids))
+                state
+                    .media(*mid)
+                    .map(|media| MediaEntry::from_state(&media, media.group_ids.clone()))
             })
             .collect();
         Ok(entries)
     }
 
-    pub fn album_list(&self) -> Vec<AlbumSummary> {
-        let state = self.inner.operation_state.read();
+    /// # Errors
+    ///
+    /// Returns an error if the album is absent.
+    pub fn album_items_count(&self, album_id: AlbumUuid) -> Result<usize> {
+        let state = self.inner.state.read();
         state
-            .reconstructed
-            .albums
+            .views
+            .album_items_newest
+            .get(&album_id)
+            .map(Vec::len)
+            .ok_or(LibraryError::AlbumNotFound(album_id))
+    }
+
+    /// Returns the inclusive range of media and groups in an album, ordered by
+    /// effective date with a deterministic ID tie-breaker.
+    /// # Errors
+    ///
+    /// Returns an error if the album is absent.
+    pub fn album_items_by_date_range(
+        &self,
+        album_id: AlbumUuid,
+        ascending: bool,
+        pos_start_inclusive: usize,
+        pos_end_inclusive: usize,
+    ) -> Result<Vec<DatedAlbumItem>> {
+        if pos_start_inclusive > pos_end_inclusive {
+            return Ok(Vec::new());
+        }
+        let state = self.inner.state.read();
+        let items = state
+            .views
+            .album_items_newest
+            .get(&album_id)
+            .ok_or(LibraryError::AlbumNotFound(album_id))?;
+        let selected: Vec<&AlbumBrowseItem> = if ascending {
+            if pos_start_inclusive >= items.len() {
+                Vec::new()
+            } else {
+                let canonical_start = items.len() - 1 - pos_end_inclusive.min(items.len() - 1);
+                let canonical_end = items.len() - 1 - pos_start_inclusive;
+                inclusive_slice(items, canonical_start, canonical_end)
+                    .unwrap_or_default()
+                    .iter()
+                    .rev()
+                    .collect()
+            }
+        } else {
+            inclusive_slice(items, pos_start_inclusive, pos_end_inclusive)
+                .unwrap_or_default()
+                .iter()
+                .collect()
+        };
+        Ok(selected
+            .into_iter()
+            .filter_map(|item| match item {
+                AlbumBrowseItem::Media(media_id) => {
+                    let media = state.media(*media_id)?;
+                    Some(DatedAlbumItem {
+                        item: AlbumItem::Media(MediaEntry::from_state(
+                            &media,
+                            media.group_ids.clone(),
+                        )),
+                        effective_date: media.date,
+                    })
+                }
+                AlbumBrowseItem::Group(group_id) => {
+                    let group = state.group(*group_id)?;
+                    let effective_date = group
+                        .media_ids
+                        .iter()
+                        .filter_map(|media_id| state.media(*media_id).map(|media| media.date))
+                        .max()
+                        .unwrap_or_default();
+                    Some(DatedAlbumItem {
+                        item: AlbumItem::Group(group),
+                        effective_date,
+                    })
+                }
+            })
+            .collect())
+    }
+
+    #[must_use]
+    pub fn album_list(&self) -> Vec<AlbumSummary> {
+        let state = self.inner.state.read();
+        state
+            .views
+            .album_albums_by_name
             .values()
-            .filter(|entry| !entry.deleted)
+            .flatten()
+            .filter_map(|album_id| state.album(*album_id))
             .map(|entry| AlbumSummary {
                 album_id: entry.album_id,
                 album_id_parent: entry.album_id_parent,
@@ -97,13 +284,14 @@ impl Library {
 
     /// Reconstruct the path from an album to its root (or as far as available).
     /// Uses a visited set so it is safe even if reparent ops created cycles.
+    #[must_use]
     pub fn album_get_path(&self, album_id: AlbumUuid) -> String {
-        let state = self.inner.operation_state.read();
+        let state = self.inner.state.read();
         let mut current = album_id;
         let mut names = Vec::new();
         let mut visited: HashSet<AlbumUuid> = HashSet::new();
 
-        while let Some(entry) = state.reconstructed.albums.get(&current) {
+        while let Some(entry) = state.album(current) {
             if !visited.insert(current) {
                 names.push("...".to_string());
                 break;
@@ -120,22 +308,37 @@ impl Library {
         names.join(" / ")
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the album is absent or the rename operation cannot be persisted.
     pub async fn album_rename(&self, album_id: AlbumUuid, name: AlbumName) -> Result<()> {
         {
-            let state = self.inner.operation_state.read();
-            if !state.reconstructed.albums.contains_key(&album_id) {
+            let state = self.inner.state.read();
+            if state.album(album_id).is_none() {
                 return Err(LibraryError::AlbumNotFound(album_id));
             }
         }
-        self.append_to_pending(Operation::AlbumRename { timestamp: Utc::now(), album_id, name })?;
-        self.load_local_state().await?;
+        self.record_local_operation(
+            Utc::now(),
+            OperationContent::AlbumRename {
+                album_id,
+                name: Some(name),
+            },
+        )?;
         Ok(())
     }
 
-    pub async fn album_reparent(&self, album_id: AlbumUuid, new_parent_id: Option<AlbumUuid>) -> Result<()> {
+    /// # Errors
+    ///
+    /// Returns an error if the album or new parent is absent, the move creates a cycle, or the operation cannot be persisted.
+    pub async fn album_reparent(
+        &self,
+        album_id: AlbumUuid,
+        new_parent_id: Option<AlbumUuid>,
+    ) -> Result<()> {
         {
-            let state = self.inner.operation_state.read();
-            if !state.reconstructed.albums.contains_key(&album_id) {
+            let state = self.inner.state.read();
+            if state.album(album_id).is_none() {
                 return Err(LibraryError::AlbumNotFound(album_id));
             }
             if new_parent_id == Some(album_id) {
@@ -151,19 +354,25 @@ impl Library {
                     if !visited.insert(c) {
                         break;
                     }
-                    cursor = state.reconstructed.albums.get(&c).and_then(|e| e.album_id_parent);
+                    cursor = state.album(c).and_then(|entry| entry.album_id_parent);
                 }
             }
         }
-        self.append_to_pending(Operation::AlbumReparent { timestamp: Utc::now(), album_id, new_parent_id })?;
-        self.load_local_state().await?;
+        self.record_local_operation(
+            Utc::now(),
+            OperationContent::AlbumReparent {
+                album_id,
+                parent_id: new_parent_id,
+            },
+        )?;
         Ok(())
     }
 
     /// Returns all non-deleted album IDs not reachable from root.
     /// These arise from concurrent reparent ops that created cycles.
+    #[must_use]
     pub fn album_disconnected_ids(&self) -> Vec<AlbumUuid> {
-        let state = self.inner.operation_state.read();
+        let state = self.inner.state.read();
         let mut reachable: HashSet<AlbumUuid> = HashSet::new();
         let mut queue: VecDeque<AlbumUuid> = VecDeque::new();
 
@@ -186,46 +395,63 @@ impl Library {
         }
 
         state
-            .reconstructed
-            .albums
-            .values()
-            .filter(|a| !a.deleted && !reachable.contains(&a.album_id))
+            .album_entries()
+            .iter()
+            .filter(|a| !reachable.contains(&a.album_id))
             .map(|a| a.album_id)
             .collect()
     }
 
-    /// Return (name, parent_id, media_count, thumbnail_media_id) for a non-deleted album, or None.
-    pub fn album_node_by_id(&self, album_id: AlbumUuid) -> Option<(AlbumName, Option<AlbumUuid>, usize, Option<MediaUuid>)> {
-        let state = self.inner.operation_state.read();
-        let entry = state.reconstructed.albums.get(&album_id)?;
-        if entry.deleted {
-            return None;
-        }
-        Some((entry.name.clone(), entry.album_id_parent, entry.media_ids.len(), entry.thumbnail_media_id))
+    /// Return (name, `parent_id`, `media_count`, `thumbnail_media_id`) for a non-deleted album, or None.
+    #[must_use]
+    pub fn album_node_by_id(
+        &self,
+        album_id: AlbumUuid,
+    ) -> Option<(AlbumName, Option<AlbumUuid>, usize, Option<MediaUuid>)> {
+        let state = self.inner.state.read();
+        let entry = state.album(album_id)?;
+        Some((
+            entry.name.clone(),
+            entry.album_id_parent,
+            entry.media_ids.len(),
+            entry.thumbnail_media_id,
+        ))
     }
 
-    pub async fn album_set_thumbnail(&self, album_id: AlbumUuid, media_id: Option<MediaUuid>) -> Result<()> {
+    /// # Errors
+    ///
+    /// Returns an error if the album or media is absent, or the thumbnail operation cannot be persisted.
+    pub async fn album_set_thumbnail(
+        &self,
+        album_id: AlbumUuid,
+        media_id: Option<MediaUuid>,
+    ) -> Result<()> {
         {
-            let state = self.inner.operation_state.read();
-            if !state.reconstructed.albums.contains_key(&album_id) {
+            let state = self.inner.state.read();
+            if state.album(album_id).is_none() {
                 return Err(LibraryError::AlbumNotFound(album_id));
             }
         }
-        self.append_to_pending(Operation::AlbumThumbnailSet { timestamp: Utc::now(), album_id, media_id })?;
-        self.load_local_state().await?;
+        self.record_local_operation(
+            Utc::now(),
+            OperationContent::AlbumThumbnailSet { album_id, media_id },
+        )?;
         Ok(())
     }
 
     /// Resolve an album name to its UUID.
     /// Returns an error if the name is not found or if multiple albums match (ambiguous).
-    pub fn album_resolve_name(&self, name: &AlbumName) -> Result<AlbumUuid> {
-        let state = self.inner.operation_state.read();
+    #[allow(
+        dead_code,
+        reason = "Retained for name-based album selection in the CLI."
+    )]
+    fn album_resolve_name(&self, name: &AlbumName) -> Result<AlbumUuid> {
+        let state = self.inner.state.read();
         let matches: Vec<(AlbumUuid, String)> = state
-            .reconstructed
-            .albums
+            .album_entries()
             .iter()
-            .filter(|(_, entry)| !entry.deleted && &entry.name == name)
-            .map(|(id, _)| (*id, self.album_get_path(*id)))
+            .filter(|entry| &entry.name == name)
+            .map(|entry| (entry.album_id, self.album_get_path(entry.album_id)))
             .collect();
 
         match matches.len() {
@@ -237,7 +463,6 @@ impl Library {
             )),
         }
     }
-
 }
 
 #[cfg(test)]
@@ -249,24 +474,24 @@ mod tests {
 
     use crate::error::LibraryError;
     use crate::identifiers::LibraryId;
-    use crate::library::{Credentials, Library};
-    use crate::library::media::upload::MediaAddSource;
     use crate::library::local_dirs::LocalDirs;
+    use crate::library::media::upload::MediaAddSource;
+    use crate::library::{Credentials, Library};
 
-    async fn make_library(tmp: &TempDir) -> (Library, LocalDirs) {
+    fn make_library(tmp: &TempDir) -> (Library, LocalDirs) {
         use crate::operations::{LibraryPassword, LibraryUsername};
         let library_id = LibraryId(Uuid::new_v4());
-        let local_dirs = LocalDirs::new(tmp.path().to_path_buf(), &library_id);
+        let local_dirs = LocalDirs::new(tmp.path(), &library_id);
         local_dirs.ensure_state_dirs().unwrap();
         let (lib, _password_uuid) = Library::init(
             local_dirs.clone(),
             library_id,
+            crate::crdt::DeviceId(1),
             Credentials {
                 username: LibraryUsername("alice".into()),
                 password: LibraryPassword("pass".into()),
             },
         )
-        .await
         .unwrap();
         (lib, local_dirs)
     }
@@ -282,10 +507,16 @@ mod tests {
     async fn album_list_reports_parent_child_relationship() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
-        let parent_id = lib.album_create(AlbumName("Parent".into()), None).await.unwrap();
-        let child_id = lib.album_create(AlbumName("Child".into()), Some(parent_id)).await.unwrap();
+        let parent_id = lib
+            .album_create(AlbumName("Parent".into()), None)
+            .await
+            .unwrap();
+        let child_id = lib
+            .album_create(AlbumName("Child".into()), Some(parent_id))
+            .await
+            .unwrap();
 
         let albums = lib.album_list();
         assert_eq!(albums.len(), 2);
@@ -296,15 +527,51 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn album_albums_range_returns_only_direct_albums_in_name_order() {
+        use crate::operations::AlbumName;
+        let tmp = TempDir::new().unwrap();
+        let (lib, _) = make_library(&tmp);
+        let zulu = lib
+            .album_create(AlbumName("Zulu".into()), None)
+            .await
+            .unwrap();
+        let alpha = lib
+            .album_create(AlbumName("Alpha".into()), None)
+            .await
+            .unwrap();
+        let _nested = lib
+            .album_create(AlbumName("Nested".into()), Some(alpha))
+            .await
+            .unwrap();
+
+        assert_eq!(lib.album_albums_count(None), 2);
+        let first = lib.album_albums_range(None, 0, 0);
+        let second = lib.album_albums_range(None, 1, 1);
+        assert_eq!(first[0].album_id, alpha);
+        assert_eq!(second[0].album_id, zulu);
+        assert_eq!(lib.album_albums_count(Some(alpha)), 1);
+    }
+
+    #[tokio::test]
     // After album_add_media, album_list_media shows the file.
     async fn add_file_then_list_shows_file() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
         let album_id = lib.album_create(AlbumName("A".into()), None).await.unwrap();
         let src = write_file(tmp.path(), "photo.jpg", b"data");
-        let media_id = lib.media_add(MediaAddSource::CopyFrom(src), Some(album_id), None, None, None).await.unwrap().id();
+        let media_id = lib
+            .media_add(
+                MediaAddSource::CopyFrom(src),
+                Some(album_id),
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap()
+            .id();
 
         let media = lib.album_list_media(album_id).unwrap();
         assert_eq!(media.len(), 1);
@@ -316,11 +583,21 @@ mod tests {
     async fn remove_file_then_list_is_empty() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
         let album_id = lib.album_create(AlbumName("A".into()), None).await.unwrap();
         let src = write_file(tmp.path(), "photo.jpg", b"data");
-        let media_id = lib.media_add(MediaAddSource::CopyFrom(src), Some(album_id), None, None, None).await.unwrap().id();
+        let media_id = lib
+            .media_add(
+                MediaAddSource::CopyFrom(src),
+                Some(album_id),
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap()
+            .id();
         lib.album_remove_media(album_id, media_id).await.unwrap();
 
         let media = lib.album_list_media(album_id).unwrap();
@@ -332,9 +609,12 @@ mod tests {
     async fn deleted_album_absent_from_list() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
-        let album_id = lib.album_create(AlbumName("Deletable".into()), None).await.unwrap();
+        let album_id = lib
+            .album_create(AlbumName("Deletable".into()), None)
+            .await
+            .unwrap();
         lib.album_delete(album_id).await.unwrap();
 
         let albums = lib.album_list();
@@ -346,15 +626,32 @@ mod tests {
     async fn file_add_auto_inserts_into_album() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
-        let album_id = lib.album_create(AlbumName("Upload".into()), None).await.unwrap();
+        let album_id = lib
+            .album_create(AlbumName("Upload".into()), None)
+            .await
+            .unwrap();
         let src = write_file(tmp.path(), "img.jpg", b"pixels");
-        let media_id = lib.media_add(MediaAddSource::CopyFrom(src), Some(album_id), None, None, None).await.unwrap().id();
+        let media_id = lib
+            .media_add(
+                MediaAddSource::CopyFrom(src),
+                Some(album_id),
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap()
+            .id();
 
-        let state = lib.inner.operation_state.read();
+        let state = lib.inner.state.read();
         let by_album = &state.views.by_album;
-        assert!(by_album.get(&album_id).map_or(false, |ids| ids.contains(&media_id)));
+        assert!(
+            by_album
+                .get(&album_id)
+                .is_some_and(|ids| ids.contains(&media_id))
+        );
     }
 
     #[tokio::test]
@@ -362,12 +659,22 @@ mod tests {
     async fn manual_album_add_media_works() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
         let album_a = lib.album_create(AlbumName("A".into()), None).await.unwrap();
         let album_b = lib.album_create(AlbumName("B".into()), None).await.unwrap();
         let src = write_file(tmp.path(), "img.jpg", b"pixels");
-        let media_id = lib.media_add(MediaAddSource::CopyFrom(src), Some(album_a), None, None, None).await.unwrap().id();
+        let media_id = lib
+            .media_add(
+                MediaAddSource::CopyFrom(src),
+                Some(album_a),
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap()
+            .id();
 
         lib.album_add_media(album_b, media_id).await.unwrap();
         let media_b = lib.album_list_media(album_b).unwrap();
@@ -380,13 +687,12 @@ mod tests {
     async fn album_get_path_root_album() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
         let album_id = lib
             .album_create(AlbumName("Root Album".into()), None)
             .await
             .unwrap();
-        lib.load_local_state().await.unwrap();
 
         let path = lib.album_get_path(album_id);
         assert_eq!(path, "Root Album");
@@ -397,7 +703,7 @@ mod tests {
     async fn album_get_path_nested_album() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
         let root = lib
             .album_create(AlbumName("Root".into()), None)
@@ -411,7 +717,6 @@ mod tests {
             .album_create(AlbumName("Grandchild".into()), Some(child))
             .await
             .unwrap();
-        lib.load_local_state().await.unwrap();
 
         let path = lib.album_get_path(grandchild);
         assert_eq!(path, "Root / Child / Grandchild");
@@ -422,11 +727,10 @@ mod tests {
     async fn album_resolve_name_unique() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
         let album_name = AlbumName("Unique Album".into());
         let album_id = lib.album_create(album_name.clone(), None).await.unwrap();
-        lib.load_local_state().await.unwrap();
 
         let resolved = lib.album_resolve_name(&album_name).unwrap();
         assert_eq!(resolved, album_id);
@@ -437,7 +741,7 @@ mod tests {
     async fn album_resolve_name_not_found() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
         let album_name = AlbumName("Nonexistent".into());
         let result = lib.album_resolve_name(&album_name);
@@ -450,15 +754,17 @@ mod tests {
     async fn album_resolve_name_ambiguous() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
         let album_name = AlbumName("Duplicate".into());
         let _album1 = lib.album_create(album_name.clone(), None).await.unwrap();
         let _album2 = lib.album_create(album_name.clone(), None).await.unwrap();
-        lib.load_local_state().await.unwrap();
 
         let result = lib.album_resolve_name(&album_name);
-        assert!(matches!(result, Err(LibraryError::AlbumNameAmbiguous(_, _))));
+        assert!(matches!(
+            result,
+            Err(LibraryError::AlbumNameAmbiguous(_, _))
+        ));
 
         if let Err(LibraryError::AlbumNameAmbiguous(_, matches)) = result {
             assert_eq!(matches.len(), 2);
@@ -472,15 +778,13 @@ mod tests {
     async fn album_resolve_name_excludes_deleted() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
         let album_name = AlbumName("Deletable".into());
         let album_id = lib.album_create(album_name.clone(), None).await.unwrap();
-        lib.load_local_state().await.unwrap();
 
         // Delete the album
         lib.album_delete(album_id).await.unwrap();
-        lib.load_local_state().await.unwrap();
 
         // Resolution should now fail
         let result = lib.album_resolve_name(&album_name);
@@ -488,23 +792,21 @@ mod tests {
     }
 
     #[tokio::test]
-    // album_get_path with deleted album still works (deleted flag doesn't affect path lookup)
+    // Deleted albums are absent from the derived CRDT projection.
     async fn album_get_path_deleted_album() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
         let album_name = AlbumName("Deletable".into());
         let album_id = lib.album_create(album_name.clone(), None).await.unwrap();
-        lib.load_local_state().await.unwrap();
 
         // Delete the album
         lib.album_delete(album_id).await.unwrap();
-        lib.load_local_state().await.unwrap();
 
-        // Path should still be resolvable
+        // Deleted ancestors do not remain browse-visible.
         let path = lib.album_get_path(album_id);
-        assert_eq!(path, "Deletable");
+        assert_eq!(path, "");
     }
 
     #[tokio::test]
@@ -512,13 +814,26 @@ mod tests {
     async fn album_rename_changes_name() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
-        let album_id = lib.album_create(AlbumName("Before".into()), None).await.unwrap();
-        lib.album_rename(album_id, AlbumName("After".into())).await.unwrap();
+        let album_id = lib
+            .album_create(AlbumName("Before".into()), None)
+            .await
+            .unwrap();
+        lib.album_rename(album_id, AlbumName("After".into()))
+            .await
+            .unwrap();
 
         let albums = lib.album_list();
-        assert_eq!(albums.iter().find(|a| a.album_id == album_id).unwrap().name.0, "After");
+        assert_eq!(
+            albums
+                .iter()
+                .find(|a| a.album_id == album_id)
+                .unwrap()
+                .name
+                .0,
+            "After"
+        );
     }
 
     #[tokio::test]
@@ -527,10 +842,13 @@ mod tests {
         use crate::identifiers::AlbumUuid;
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
         let fake_id = AlbumUuid::from_uuid(uuid::Uuid::new_v4());
-        let err = lib.album_rename(fake_id, AlbumName("X".into())).await.unwrap_err();
+        let err = lib
+            .album_rename(fake_id, AlbumName("X".into()))
+            .await
+            .unwrap_err();
         assert!(matches!(err, LibraryError::AlbumNotFound(_)));
     }
 
@@ -539,11 +857,14 @@ mod tests {
     async fn album_reparent_moves_album() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
         let root_a = lib.album_create(AlbumName("A".into()), None).await.unwrap();
         let root_b = lib.album_create(AlbumName("B".into()), None).await.unwrap();
-        let child = lib.album_create(AlbumName("C".into()), Some(root_a)).await.unwrap();
+        let child = lib
+            .album_create(AlbumName("C".into()), Some(root_a))
+            .await
+            .unwrap();
 
         lib.album_reparent(child, Some(root_b)).await.unwrap();
 
@@ -558,10 +879,13 @@ mod tests {
     async fn album_reparent_self_is_cycle() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
         let album_id = lib.album_create(AlbumName("A".into()), None).await.unwrap();
-        let err = lib.album_reparent(album_id, Some(album_id)).await.unwrap_err();
+        let err = lib
+            .album_reparent(album_id, Some(album_id))
+            .await
+            .unwrap_err();
         assert!(matches!(err, LibraryError::AlbumReparentWouldCycle));
     }
 
@@ -570,10 +894,13 @@ mod tests {
     async fn album_reparent_descendant_is_cycle() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
         let parent = lib.album_create(AlbumName("P".into()), None).await.unwrap();
-        let child = lib.album_create(AlbumName("C".into()), Some(parent)).await.unwrap();
+        let child = lib
+            .album_create(AlbumName("C".into()), Some(parent))
+            .await
+            .unwrap();
 
         let err = lib.album_reparent(parent, Some(child)).await.unwrap_err();
         assert!(matches!(err, LibraryError::AlbumReparentWouldCycle));
@@ -584,11 +911,13 @@ mod tests {
     async fn album_disconnected_ids_empty_without_cycles() {
         use crate::operations::AlbumName;
         let tmp = TempDir::new().unwrap();
-        let (lib, _) = make_library(&tmp).await;
+        let (lib, _) = make_library(&tmp);
 
         lib.album_create(AlbumName("A".into()), None).await.unwrap();
         let parent = lib.album_create(AlbumName("B".into()), None).await.unwrap();
-        lib.album_create(AlbumName("C".into()), Some(parent)).await.unwrap();
+        lib.album_create(AlbumName("C".into()), Some(parent))
+            .await
+            .unwrap();
 
         assert!(lib.album_disconnected_ids().is_empty());
     }

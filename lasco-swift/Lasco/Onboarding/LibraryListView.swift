@@ -1,9 +1,11 @@
 import SwiftUI
 
-extension FfiLibraryEntry: Identifiable {}
+extension FfiLibraryEntry: Identifiable {
+    public var id: FfiLibraryId { libraryId }
+}
 
 struct LibraryListView: View {
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(LibraryDirectoryModel.self) private var directory
     @Environment(ToastManager.self) var toastManager
 
     @State private var selectedEntry: FfiLibraryEntry?
@@ -40,7 +42,7 @@ struct LibraryListView: View {
 
                 ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    if let err = libraryModel.librariesError {
+                    if let err = directory.librariesError {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Could not load libraries")
                                 .font(LascoFont.body())
@@ -54,7 +56,7 @@ struct LibraryListView: View {
                         .padding(.horizontal, 16)
                         .padding(.vertical, 16)
                         .lascoPanel()
-                    } else if libraryModel.libraries.isEmpty {
+                    } else if directory.libraries.isEmpty {
                         Text("No libraries yet.")
                             .font(LascoFont.body())
                             .foregroundStyle(Color.Lasco.inkMuted)
@@ -63,10 +65,10 @@ struct LibraryListView: View {
                             .padding(.vertical, 20)
                             .lascoPanel()
                     } else {
-                        ForEach(libraryModel.libraries, id: \.id) { entry in
+                        ForEach(directory.libraries, id: \.id) { entry in
                             if let err = entry.loadError {
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text(entry.id.isEmpty ? "Unknown library" : entry.nickname)
+                                    Text(entry.id.value.isEmpty ? "Unknown library" : entry.nickname)
                                         .font(LascoFont.body())
                                         .foregroundStyle(Color.Lasco.ink)
                                     Text(err)
@@ -80,11 +82,10 @@ struct LibraryListView: View {
                                 .lascoPanel()
                             } else {
                                 Button {
-                                    libraryModel.error = nil
-                                    switch libraryModel.openCached(entry: entry) {
-                                    case .opened: break
-                                    case .noSession: selectedEntry = entry
-                                    case .failed(let msg): toastManager.show(error: msg)
+                                    Task {
+                                        if await directory.openCached(entry: entry) == false {
+                                            selectedEntry = entry
+                                        }
                                     }
                                 } label: {
                                     Text(entry.nickname)
@@ -125,7 +126,7 @@ struct LibraryListView: View {
         }
         .sheet(item: $selectedEntry) { entry in
             LibraryOpenSheet(entry: entry)
-                .environmentObject(libraryModel)
+                .environment(directory)
         }
         .sheet(isPresented: $showSettings) {
             SettingsView()
@@ -135,18 +136,18 @@ struct LibraryListView: View {
                 onBack: { showNewLibrary = false },
                 onComplete: { showNewLibrary = false }
             )
-            .environmentObject(libraryModel)
+            .environment(directory)
         }
         .sheet(isPresented: $showAddExisting) {
             AddExistingLibraryView()
-                .environmentObject(libraryModel)
+                .environment(directory)
                 .environment(toastManager)
         }
     }
 }
 
 struct LibraryOpenSheet: View {
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(LibraryDirectoryModel.self) private var directory
     @Environment(\.dismiss) private var dismiss
 
     let entry: FfiLibraryEntry
@@ -154,6 +155,7 @@ struct LibraryOpenSheet: View {
     @State private var username: String
     @State private var password = ""
     @State private var isLoading = false
+    @State private var showRecoveryConfirmation = false
     @FocusState private var passwordFocused: Bool
 
     init(entry: FfiLibraryEntry) {
@@ -196,18 +198,26 @@ struct LibraryOpenSheet: View {
                             .focused($passwordFocused)
                     }
 
-                    if let error = libraryModel.error {
+                    if let error = directory.onboarding.error {
                         ErrorBanner(message: error)
+                    }
+
+                    if directory.snapshotRecoveryAvailable {
+                        Button("Recover from operation log") {
+                            showRecoveryConfirmation = true
+                        }
+                        .buttonStyle(.plain)
+                        .font(LascoFont.body(15))
+                        .foregroundStyle(Color.Lasco.inkMuted)
                     }
 
                     Button {
                         isLoading = true
-                        libraryModel.open(
-                            nickname: entry.nickname,
-                            username: username,
-                            password: password
-                        )
-                        isLoading = false
+                        Task {
+                            _ = await directory.open(nickname: entry.nickname, username: username, password: password)
+                            isLoading = false
+                            if directory.isOpen { dismiss() }
+                        }
                     } label: {
                         if isLoading {
                             HStack(spacing: 8) {
@@ -232,10 +242,26 @@ struct LibraryOpenSheet: View {
                 passwordFocused = true
             }
         }
+        .alert("Recover library state?", isPresented: $showRecoveryConfirmation) {
+            Button("Recover", role: .destructive) {
+                isLoading = true
+                Task {
+                    _ = await directory.recoverCRDTState(
+                        nickname: entry.nickname,
+                        username: username,
+                        password: password
+                    )
+                    isLoading = false
+                    if directory.isOpen { dismiss() }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This rebuilds the local library state from its encrypted operation log. Your photos and remote storage are not changed.")
+        }
     }
 }
 
 #Preview {
     LibraryListView()
-        .environmentObject(LibraryModel())
 }

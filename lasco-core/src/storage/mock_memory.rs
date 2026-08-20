@@ -1,11 +1,12 @@
 use rustc_hash::FxHashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::collections::hash_map::Entry;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use async_trait::async_trait;
 use parking_lot::Mutex;
 
-use super::{Result, Storage, StorageError};
+use super::{AtomicWriteMode, Result, Storage, StorageError};
 
 #[derive(Clone, Debug, Default)]
 pub struct StorageMockMemory {
@@ -21,16 +22,19 @@ impl StorageMockMemory {
         self.offline.store(offline, Ordering::SeqCst);
     }
 
+    #[must_use]
     pub fn list_call_count(&self) -> usize {
         self.list_call_count.load(Ordering::SeqCst)
     }
 
+    #[must_use]
     pub fn get_call_count(&self) -> usize {
         self.get_call_count.load(Ordering::SeqCst)
     }
 }
 
 impl StorageMockMemory {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -55,16 +59,21 @@ impl Storage for StorageMockMemory {
         Ok(())
     }
 
-    async fn put_if_absent(&self, key: &str, data: &[u8]) -> Result<bool> {
+    async fn put_atomic(&self, key: &str, data: &[u8], mode: AtomicWriteMode) -> Result<bool> {
         self.check_online()?;
-        use std::collections::hash_map::Entry;
         let mut guard = self.data.lock();
-        match guard.entry(key.to_owned()) {
-            Entry::Vacant(e) => {
-                e.insert(data.to_vec());
+        match mode {
+            AtomicWriteMode::Replace => {
+                guard.insert(key.to_owned(), data.to_vec());
                 Ok(true)
             }
-            Entry::Occupied(_) => Ok(false),
+            AtomicWriteMode::CreateIfAbsent => match guard.entry(key.to_owned()) {
+                Entry::Vacant(e) => {
+                    e.insert(data.to_vec());
+                    Ok(true)
+                }
+                Entry::Occupied(_) => Ok(false),
+            },
         }
     }
 
@@ -91,7 +100,10 @@ impl Storage for StorageMockMemory {
             .data
             .lock()
             .keys()
-            .filter(|k| k.starts_with(prefix))
+            .filter(|k| {
+                k.strip_prefix(prefix)
+                    .is_some_and(|remainder| !remainder.contains('/'))
+            })
             .cloned()
             .collect();
         Ok(keys)
@@ -110,20 +122,27 @@ mod tests {
     #[tokio::test]
     async fn put_then_get_returns_identical_bytes() {
         let s = StorageMockMemory::new();
-        s.put("k", b"hello").await.unwrap();
+        s.put_atomic("k", b"hello", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
         assert_eq!(s.get("k").await.unwrap(), b"hello");
     }
 
     #[tokio::test]
     async fn get_missing_key_returns_not_found() {
         let s = StorageMockMemory::new();
-        assert!(matches!(s.get("missing").await, Err(StorageError::NotFound)));
+        assert!(matches!(
+            s.get("missing").await,
+            Err(StorageError::NotFound)
+        ));
     }
 
     #[tokio::test]
     async fn delete_removes_key() {
         let s = StorageMockMemory::new();
-        s.put("k", b"v").await.unwrap();
+        s.put_atomic("k", b"v", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
         s.delete("k").await.unwrap();
         assert!(matches!(s.get("k").await, Err(StorageError::NotFound)));
     }
@@ -131,27 +150,57 @@ mod tests {
     #[tokio::test]
     async fn list_returns_only_matching_prefix() {
         let s = StorageMockMemory::new();
-        s.put("files/a", b"1").await.unwrap();
-        s.put("files/b", b"2").await.unwrap();
-        s.put("other/c", b"3").await.unwrap();
+        s.put_atomic("files/a", b"1", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
+        s.put_atomic("files/b", b"2", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
+        s.put_atomic("other/c", b"3", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
         let mut keys = s.list("files/").await.unwrap();
         keys.sort();
         assert_eq!(keys, vec!["files/a", "files/b"]);
     }
 
     #[tokio::test]
+    async fn list_does_not_descend_into_nested_prefixes() {
+        let s = StorageMockMemory::new();
+        s.put_atomic("remote_id_1", b"", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
+        s.put_atomic("media/2026/08/a.data", b"1", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
+
+        assert_eq!(s.list("").await.unwrap(), vec!["remote_id_1"]);
+        assert!(s.list("media/").await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
     async fn exists_after_put_and_missing() {
         let s = StorageMockMemory::new();
         assert!(!s.exists("k").await.unwrap());
-        s.put("k", b"v").await.unwrap();
+        s.put_atomic("k", b"v", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
         assert!(s.exists("k").await.unwrap());
     }
 
     #[tokio::test]
-    async fn put_if_absent_new_key_returns_true_existing_returns_false() {
+    async fn create_if_absent_new_key_returns_true_existing_returns_false() {
         let s = StorageMockMemory::new();
-        assert!(s.put_if_absent("k", b"original").await.unwrap());
-        assert!(!s.put_if_absent("k", b"overwrite").await.unwrap());
+        assert!(
+            s.put_atomic("k", b"original", AtomicWriteMode::CreateIfAbsent)
+                .await
+                .unwrap()
+        );
+        assert!(
+            !s.put_atomic("k", b"overwrite", AtomicWriteMode::CreateIfAbsent)
+                .await
+                .unwrap()
+        );
         assert_eq!(s.get("k").await.unwrap(), b"original");
     }
 }

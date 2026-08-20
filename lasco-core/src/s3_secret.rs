@@ -1,8 +1,8 @@
 use aes_gcm::{
-    aead::{Aead, AeadCore},
     Aes256Gcm, KeyInit,
+    aead::{Aead, AeadCore},
 };
-use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use rand::rngs::OsRng;
 
 use crate::encryption::master_key::MasterKey;
@@ -14,8 +14,12 @@ pub const S3_SECRET_ENCRYPTION_DESCRIPTION: &str = "AES-256-GCM v1";
 
 const S3_SECRET_NONCE_SIZE: usize = 12;
 
-/// Encrypt an S3 secret key using the MasterKey (AES-256-GCM).
+/// Encrypt an S3 secret key using the `MasterKey` (AES-256-GCM).
 /// Returns the base64 ciphertext and its encryption description.
+///
+/// # Errors
+///
+/// Returns an error if AES-GCM encryption fails.
 pub fn encrypt_s3_secret_key(
     master_key: &MasterKey,
     secret_key: &str,
@@ -25,7 +29,7 @@ pub fn encrypt_s3_secret_key(
     let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
     let ciphertext = cipher
         .encrypt(&nonce, secret_key.as_bytes())
-        .map_err(|_| CryptoError::AuthenticationFailed)?;
+        .map_err(|_encryption_error| CryptoError::AuthenticationFailed)?;
     let mut encrypted_data = Vec::with_capacity(S3_SECRET_NONCE_SIZE + ciphertext.len());
     encrypted_data.extend_from_slice(&nonce);
     encrypted_data.extend(ciphertext);
@@ -33,8 +37,8 @@ pub fn encrypt_s3_secret_key(
     Ok((encoded, S3_SECRET_ENCRYPTION_DESCRIPTION.to_string()))
 }
 
-/// Decrypt an S3 secret key using the MasterKey (AES-256-GCM).
-pub fn decrypt_s3_secret_key(
+/// Decrypt an S3 secret key using the `MasterKey` (AES-256-GCM).
+fn decrypt_s3_secret_key(
     master_key: &MasterKey,
     encrypted: &str,
     description: &str,
@@ -44,7 +48,7 @@ pub fn decrypt_s3_secret_key(
     }
     let encrypted_data = BASE64_STANDARD
         .decode(encrypted)
-        .map_err(|_| CryptoError::AuthenticationFailed)?;
+        .map_err(|_authentication_error| CryptoError::AuthenticationFailed)?;
     if encrypted_data.len() < S3_SECRET_NONCE_SIZE {
         return Err(CryptoError::AuthenticationFailed);
     }
@@ -54,12 +58,12 @@ pub fn decrypt_s3_secret_key(
     let nonce = aes_gcm::Nonce::from_slice(nonce_bytes);
     let plaintext = cipher
         .decrypt(nonce, ciphertext)
-        .map_err(|_| CryptoError::AuthenticationFailed)?;
-    String::from_utf8(plaintext).map_err(|_| CryptoError::AuthenticationFailed)
+        .map_err(|_authentication_error| CryptoError::AuthenticationFailed)?;
+    String::from_utf8(plaintext).map_err(|_authentication_error| CryptoError::AuthenticationFailed)
 }
 
 /// Resolve S3 credentials from an `S3Config`, decrypting the secret key with the master key.
-pub fn resolve_s3_credentials(
+pub(crate) fn resolve_s3_credentials(
     s3_config: &S3Config,
     master_key: &MasterKey,
 ) -> Result<(String, String), CryptoError> {

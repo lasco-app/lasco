@@ -1,3 +1,4 @@
+use std::fmt::Write as _;
 use std::path::Path;
 
 use keyring::Entry;
@@ -25,13 +26,18 @@ pub enum SessionError {
     Io(#[from] std::io::Error),
 }
 
-fn session_file(dir: &Path, library_id: LibraryId, username: &LibraryUsername) -> std::path::PathBuf {
-    dir.join(library_id.to_string()).join(format!("{}.bin", username.0))
+fn session_file(
+    dir: &Path,
+    library_id: LibraryId,
+    username: &LibraryUsername,
+) -> std::path::PathBuf {
+    dir.join(library_id.to_string())
+        .join(format!("{}.bin", username.0))
 }
 
-/// Store the MasterKey for a user.
+/// Store the `MasterKey` for a user.
 /// Writes to a file when `session_dir` is `Some`, and to the OS keychain otherwise.
-pub fn session_store_master_key(
+pub(crate) fn session_store_master_key(
     library_id: LibraryId,
     username: &LibraryUsername,
     master_key: &MasterKey,
@@ -50,7 +56,11 @@ pub fn session_store_master_key(
     Ok(())
 }
 
-/// Load the cached MasterKey for a user. Returns `None` if not present.
+/// Load the cached `MasterKey` for a user. Returns `None` if not present.
+///
+/// # Errors
+///
+/// Returns an error for keychain or session-file access failures, or malformed cached key material.
 pub fn session_load_master_key(
     library_id: LibraryId,
     username: &LibraryUsername,
@@ -60,7 +70,9 @@ pub fn session_load_master_key(
         let path = session_file(dir, library_id, username);
         match std::fs::read(&path) {
             Ok(bytes) => {
-                let arr: [u8; MASTER_KEY_SIZE] = bytes.try_into().map_err(|_| SessionError::InvalidLength)?;
+                let arr: [u8; MASTER_KEY_SIZE] = bytes
+                    .try_into()
+                    .map_err(|_length_error| SessionError::InvalidLength)?;
                 return Ok(Some(MasterKey::from_raw(arr)));
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -78,7 +90,11 @@ pub fn session_load_master_key(
     }
 }
 
-/// Clear the cached MasterKey for a library.
+/// Clear the cached `MasterKey` for a library.
+///
+/// # Errors
+///
+/// Returns an error if the session directory or OS keychain cannot be accessed.
 pub fn session_clear(
     library_id: LibraryId,
     username: &LibraryUsername,
@@ -87,7 +103,7 @@ pub fn session_clear(
     if let Some(dir) = session_dir {
         let lib_dir = dir.join(library_id.to_string());
         if lib_dir.exists() {
-            std::fs::remove_dir_all(&lib_dir).ok();
+            let _ = std::fs::remove_dir_all(&lib_dir);
         }
         return Ok(());
     }
@@ -99,7 +115,11 @@ pub fn session_clear(
 }
 
 fn hex_encode(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
+    let mut hex = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        write!(hex, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    hex
 }
 
 fn hex_decode(s: &str) -> Result<[u8; MASTER_KEY_SIZE], ()> {

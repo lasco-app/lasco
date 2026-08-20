@@ -2,26 +2,32 @@ pub mod albums;
 pub mod error;
 pub mod groups;
 pub mod local_dirs;
+mod local_ops_read_write;
 pub mod media;
+mod range;
+mod remote_media_list_lock;
 pub mod sync;
 mod sync_policy;
 pub mod user;
 
 use std::fmt;
+use std::path::Path;
 use std::sync::Arc;
 
-use chrono::Utc;
 use uuid::Uuid;
 
-use crate::encryption::master_key::{MasterKey, find_master_key, generate_master_key, write_mk_file};
 use crate::encryption::library_salt::{generate_salt, write_salt_file};
+use crate::encryption::master_key::{
+    MasterKey, find_master_key, generate_master_key, write_mk_file,
+};
 use crate::error::LibraryError;
-use crate::identifiers::{AlbumUuid, OpUuid};
-use crate::state::OperationState;
-use crate::operations::local_ops as op_log;
-use crate::operations::{AlbumName, LibraryPassword, LibraryUsername, Operation, OperationGroup};
+use crate::identifiers::RemoteUuid;
 use crate::library::local_dirs::LocalDirs;
+use crate::library::local_ops_read_write::LocalOpsReadWriteLock;
+use crate::library::remote_media_list_lock::RemoteMediaListLock;
 use crate::library::sync_policy::{FetchSlotGuard, RemoteSyncGuard, SyncPolicy};
+use crate::library_json::{LibraryJsonReadWrite, LibraryJsonReadWriteLock};
+use crate::operations::{LibraryPassword, LibraryUsername};
 
 pub use crate::identifiers::LibraryId;
 
@@ -30,10 +36,26 @@ pub use crate::identifiers::LibraryId;
 pub const PROTOCOL_VERSION: u32 = 1;
 
 /// Library format version written as a sentinel file (`local_state/library/version_{i}`) on init.
+/// Increment it when the on-disk layout changes in a way an older build must not open.
 pub const LIBRARY_FORMAT_VERSION: u32 = 1;
 
 /// Sentinel filename for the current library format version.
-pub const LIBRARY_FORMAT_SENTINEL: &str = "version_1";
+#[must_use]
+pub fn library_format_sentinel() -> String {
+    format!("version_{LIBRARY_FORMAT_VERSION}")
+}
+
+/// Verifies that a local library directory carries the sentinel this build writes.
+fn verify_local_library_format(local_dirs: &LocalDirs) -> Result<()> {
+    let lib_dir = local_dirs.local_state_library_dir();
+    if lib_dir.path().join(library_format_sentinel()).exists() {
+        return Ok(());
+    }
+    Err(LibraryError::UnsupportedFormatVersion {
+        found: "(unknown)".to_string(),
+        expected: library_format_sentinel(),
+    })
+}
 
 #[derive(Debug)]
 pub struct Credentials {
@@ -47,12 +69,15 @@ pub(crate) struct LibraryInner {
     pub(crate) master_key: MasterKey,
     pub(crate) library_id: LibraryId,
     pub(crate) local_dirs: LocalDirs,
-    pub(crate) operation_state: parking_lot::RwLock<OperationState>,
+    pub(crate) state: parking_lot::RwLock<crate::crdt::CrdtState>,
     pub(crate) sync_policy: SyncPolicy,
     pub(crate) username: LibraryUsername,
-    /// Guards all reads/writes of pending.op and operations.log, held only across sync
-    /// std::fs calls, never across an await.
-    pub(crate) op_files_lock: parking_lot::Mutex<()>,
+    /// Serializes synchronous reads and read-modify-write updates of this library's `library.json`.
+    library_json_read_write_lock: LibraryJsonReadWriteLock,
+    /// The sole lock that grants access to `operations.log`.
+    pub(crate) local_ops_read_write_lock: LocalOpsReadWriteLock,
+    /// Per-remote locks for synchronous `media_list.json` read-modify-write access.
+    pub(crate) remote_media_list_lock: RemoteMediaListLock,
 }
 
 #[derive(Clone)]
@@ -74,6 +99,14 @@ const _: () = {
 };
 
 impl Library {
+    /// Opens exclusive synchronous access to this library's `library.json`.
+    /// The returned object must not be held across an `.await`.
+    pub fn library_json_read_write<'a>(&'a self, app_dir: &'a Path) -> LibraryJsonReadWrite<'a> {
+        self.inner
+            .library_json_read_write_lock
+            .lock(app_dir, self.inner.library_id)
+    }
+
     pub(crate) fn try_acquire_remote_sync(&self, remote_id: &str) -> Option<RemoteSyncGuard<'_>> {
         self.inner.sync_policy.try_acquire_remote(remote_id)
     }
@@ -82,33 +115,119 @@ impl Library {
         self.inner.sync_policy.try_acquire_fetch_slot()
     }
 
+    /// Removes one remote, deleting everything this client caches about it, which is its last
+    /// known operation state, its media list and its compaction bookkeeping.
+    ///
+    /// `remove_from_config` runs while the remote is held and must be what drops it from
+    /// `library.json`. Holding it across both steps is what makes removal all or nothing. The
+    /// remote is claimed first, so a refusal leaves the configuration untouched, and the
+    /// configuration is written before the deletion, so no operation started afterwards can
+    /// resolve the remote and recreate the directory.
+    ///
+    /// A push writing its media list recreates the directory it writes into, which is why
+    /// deleting while an operation holds the remote is refused rather than attempted.
+    ///
+    /// # Errors
+    ///
+    /// Returns `SyncError::AlreadyRunning` if an operation holds the remote, whatever
+    /// `remove_from_config` returns, or an error if the directory cannot be removed.
+    pub fn forget_remote<E, F>(
+        &self,
+        remote_id: RemoteUuid,
+        remove_from_config: F,
+    ) -> std::result::Result<(), E>
+    where
+        F: FnOnce() -> std::result::Result<(), E>,
+        E: From<LibraryError>,
+    {
+        let remote_id_string = remote_id.to_string();
+        let _remote_guard = self
+            .try_acquire_remote_sync(&remote_id_string)
+            .ok_or_else(|| {
+                E::from(LibraryError::Sync(
+                    crate::library::sync::error::SyncError::AlreadyRunning,
+                ))
+            })?;
+
+        remove_from_config()?;
+
+        let dir = self.inner.local_dirs.remote_dir(&remote_id_string);
+        match std::fs::remove_dir_all(&dir) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(E::from(LibraryError::Io(e))),
+        }
+    }
+
+    /// Deletes every per remote directory whose remote is not in `live_remote_ids`.
+    ///
+    /// Removal deletes the directory itself, so this only has work to do when that could not
+    /// happen, which is when a sync held the remote or the process stopped between writing
+    /// `library.json` and deleting. Returns how many directories it removed.
+    #[must_use]
+    pub fn sweep_orphan_remote_dirs(&self, live_remote_ids: &[String]) -> usize {
+        let Ok(entries) = std::fs::read_dir(self.inner.local_dirs.remotes_dir()) else {
+            return 0;
+        };
+        let mut swept = 0;
+        for entry in entries.flatten() {
+            if !entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                continue;
+            }
+            let Ok(name) = entry.file_name().into_string() else {
+                continue;
+            };
+            if live_remote_ids.contains(&name) {
+                continue;
+            }
+            // A sync holding this remote would have to have been started from a configuration
+            // that still listed it, so reaching here means nothing is using the directory.
+            if std::fs::remove_dir_all(entry.path()).is_ok() {
+                swept += 1;
+            }
+        }
+        swept
+    }
+
     /// Initialize a new library with the given credentials.
     ///
     /// Writes crypto metadata (salt, sentinel, master-key file) to `local_state/library/`
     /// on the local filesystem. No remote storage is touched.
-    pub async fn init(
+    pub(crate) fn init(
         local_dirs: LocalDirs,
         library_id: LibraryId,
+        device_id: crate::crdt::DeviceId,
         credentials: Credentials,
     ) -> Result<(Library, Uuid)> {
-        let lib_dir = local_dirs.local_library_dir();
-        std::fs::create_dir_all(&lib_dir)?;
+        let lib_dir = local_dirs.local_state_library_dir();
+        std::fs::create_dir_all(lib_dir.path())?;
 
         let salt = generate_salt();
-        write_salt_file(&lib_dir, salt)?;
+        write_salt_file(lib_dir.path(), salt)?;
 
-        std::fs::write(lib_dir.join(LIBRARY_FORMAT_SENTINEL), b"")?;
-        std::fs::write(lib_dir.join(format!("library_id_{}", library_id.0)), b"")?;
+        std::fs::write(lib_dir.path().join(library_format_sentinel()), b"")?;
+        std::fs::write(
+            lib_dir.path().join(format!("library_id_{}", library_id.0)),
+            b"",
+        )?;
 
         let master_key = generate_master_key();
         let password_uuid = Uuid::new_v4();
         write_mk_file(
-            &lib_dir,
+            lib_dir.path(),
             &credentials.username.0,
             password_uuid,
             &master_key,
             salt,
             &credentials.password.0,
+        )?;
+        let local_ops_read_write_lock =
+            LocalOpsReadWriteLock::new(local_dirs.local_state_operations());
+        let initial_crdt = crate::crdt::CrdtState::new(device_id);
+        crate::crdt::save_persisted(
+            &local_dirs.local_state_crdt().snapshot_path(),
+            &master_key,
+            &initial_crdt,
         )?;
 
         let library = Library {
@@ -117,155 +236,185 @@ impl Library {
                 library_id,
                 local_dirs,
                 username: credentials.username,
-                operation_state: parking_lot::RwLock::new(OperationState::build(&[])),
+                state: parking_lot::RwLock::new(initial_crdt),
                 sync_policy: SyncPolicy::new(),
-                op_files_lock: parking_lot::Mutex::new(()),
+                library_json_read_write_lock: LibraryJsonReadWriteLock::new(),
+                local_ops_read_write_lock,
+                remote_media_list_lock: RemoteMediaListLock::new(),
             }),
         };
         Ok((library, password_uuid))
     }
 
-    pub async fn open(
+    pub(crate) fn open(
         local_dirs: LocalDirs,
+        device_id: crate::crdt::DeviceId,
         credentials: Credentials,
     ) -> Result<Library> {
-        let lib_dir = local_dirs.local_library_dir();
-        let sentinel_path = lib_dir.join(LIBRARY_FORMAT_SENTINEL);
-        if !sentinel_path.exists() {
-            return Err(LibraryError::UnsupportedFormatVersion {
-                found: "(unknown)".to_string(),
-                expected: LIBRARY_FORMAT_SENTINEL.to_string(),
-            });
-        }
-
-        let (master_key, _password_uuid) =
-            find_master_key(&lib_dir, &credentials.username.0, &credentials.password.0)?;
-
+        verify_local_library_format(&local_dirs)?;
+        let lib_dir = local_dirs.local_state_library_dir();
+        let (master_key, _password_uuid) = find_master_key(
+            lib_dir.path(),
+            &credentials.username.0,
+            &credentials.password.0,
+        )?;
+        let local_ops_read_write_lock =
+            LocalOpsReadWriteLock::new(local_dirs.local_state_operations());
+        let mut loaded_crdt = crate::crdt::load_persisted(
+            &local_dirs.local_state_crdt().snapshot_path(),
+            &master_key,
+            device_id,
+        )?;
+        loaded_crdt.set_device_id(device_id);
+        reconcile_snapshot_with_operation_log(
+            &mut loaded_crdt,
+            &local_ops_read_write_lock,
+            &local_dirs,
+            &master_key,
+        )?;
         Ok(Library {
             inner: Arc::new(LibraryInner {
                 library_id: local_dirs.library_id(),
                 master_key,
                 local_dirs,
                 username: credentials.username,
-                operation_state: parking_lot::RwLock::new(OperationState::build(&[])),
+                state: parking_lot::RwLock::new(loaded_crdt),
                 sync_policy: SyncPolicy::new(),
-                op_files_lock: parking_lot::Mutex::new(()),
+                library_json_read_write_lock: LibraryJsonReadWriteLock::new(),
+                local_ops_read_write_lock,
+                remote_media_list_lock: RemoteMediaListLock::new(),
             }),
         })
     }
 
-    /// Open with a pre-loaded MasterKey (session cache path).
-    pub async fn open_with_master_key(
+    /// Open with a pre-loaded `MasterKey` (session cache path).
+    pub(crate) fn open_with_master_key(
         local_dirs: LocalDirs,
         master_key: MasterKey,
         library_id: LibraryId,
+        device_id: crate::crdt::DeviceId,
         username: LibraryUsername,
     ) -> Result<Library> {
+        verify_local_library_format(&local_dirs)?;
+        let local_ops_read_write_lock =
+            LocalOpsReadWriteLock::new(local_dirs.local_state_operations());
+        let mut loaded_crdt = crate::crdt::load_persisted(
+            &local_dirs.local_state_crdt().snapshot_path(),
+            &master_key,
+            device_id,
+        )?;
+        loaded_crdt.set_device_id(device_id);
+        reconcile_snapshot_with_operation_log(
+            &mut loaded_crdt,
+            &local_ops_read_write_lock,
+            &local_dirs,
+            &master_key,
+        )?;
         Ok(Library {
             inner: Arc::new(LibraryInner {
                 master_key,
                 library_id,
                 local_dirs,
                 username,
-                operation_state: parking_lot::RwLock::new(OperationState::build(&[])),
+                state: parking_lot::RwLock::new(loaded_crdt),
                 sync_policy: SyncPolicy::new(),
-                op_files_lock: parking_lot::Mutex::new(()),
+                library_json_read_write_lock: LibraryJsonReadWriteLock::new(),
+                local_ops_read_write_lock,
+                remote_media_list_lock: RemoteMediaListLock::new(),
             }),
         })
     }
 
+    /// Rebuilds the disposable materialized snapshot from the durable operation log.
+    ///
+    /// The caller must have already authenticated and explicitly obtained user consent. The old
+    /// snapshot is retained beside the replacement for diagnosis.
+    pub(crate) fn recover_persisted_state(
+        local_dirs: &LocalDirs,
+        master_key: &MasterKey,
+        device_id: crate::crdt::DeviceId,
+    ) -> Result<()> {
+        let snapshot_path = local_dirs.local_state_crdt().snapshot_path();
+        if snapshot_path.exists() {
+            let backup_path = snapshot_path.with_extension(format!(
+                "enc.unrecoverable-{}",
+                chrono::Utc::now().timestamp_millis()
+            ));
+            std::fs::rename(&snapshot_path, backup_path)?;
+        }
+        let operations = LocalOpsReadWriteLock::new(local_dirs.local_state_operations());
+        let log = operations.lock(master_key).read_operations()?;
+        let mut rebuilt = crate::crdt::CrdtState::new(device_id);
+        rebuilt.merge_all(log.iter());
+        crate::crdt::save_persisted(&snapshot_path, master_key, &rebuilt)?;
+        Ok(())
+    }
+
+    #[must_use]
     pub fn library_id(&self) -> LibraryId {
         self.inner.library_id
     }
 
+    #[must_use]
     pub fn username(&self) -> &LibraryUsername {
         &self.inner.username
     }
 
+    #[must_use]
     pub fn master_key(&self) -> &MasterKey {
         &self.inner.master_key
     }
 
+    #[must_use]
     pub fn protocol_version(&self) -> u32 {
         PROTOCOL_VERSION
     }
 
-    /// Serializes access to pending.op and operations.log. `f` must be sync (no `.await`
-    /// inside), so the lock is never held across an await point.
-    pub(crate) fn with_op_lock<T>(&self, f: impl FnOnce() -> Result<T>) -> Result<T> {
-        let _guard = self.inner.op_files_lock.lock();
-        f()
-    }
-
-    /// Append a single operation to the pending group, creating it if needed.
-    /// All local mutations go through this instead of writing directly to the main log.
-    pub(crate) fn append_to_pending(&self, op: Operation) -> Result<()> {
-        let local_dirs = &self.inner.local_dirs;
-        let master_key = &self.inner.master_key;
-        let pending_path = local_dirs.pending_op_path();
-
-        self.with_op_lock(|| {
-            let mut group = op_log::read_pending_op_group(&pending_path, master_key)?
-                .unwrap_or_else(|| OperationGroup {
-                    op_id: OpUuid::new(),
-                    parent_op_id: None,
-                    author: self.inner.username.clone(),
-                    operations: vec![],
-                });
-
-            group.operations.push(op);
-            op_log::write_pending_op_group(&pending_path, master_key, &group)?;
-            Ok(())
-        })
-    }
-
-    pub async fn load_local_state(&self) -> Result<()> {
-        let local_dirs = &self.inner.local_dirs;
-        let master_key = &self.inner.master_key;
-
-        let groups = self.with_op_lock(|| {
-            let mut groups = op_log::read_op_groups(&local_dirs.operations_log_path(), master_key)?;
-            if let Some(pending) = op_log::read_pending_op_group(&local_dirs.pending_op_path(), master_key)? {
-                groups.push(pending);
-            }
-            Ok(groups)
-        })?;
-        let state = OperationState::build(&groups);
-        *self.inner.operation_state.write() = state;
+    /// Atomically records a local CRDT operation in `CrdtState` and the durable log.
+    pub(crate) fn record_local_operation(
+        &self,
+        timestamp: chrono::DateTime<chrono::Utc>,
+        content: crate::crdt::OperationContent,
+    ) -> Result<()> {
+        let mut state = self.inner.state.write();
+        let crdt_operation = crate::crdt::CrdtOperation {
+            dot: state.next_local_dot(),
+            author: self.inner.username.clone(),
+            timestamp,
+            content,
+        };
+        // The append-only log is the operation source of truth for Push, so make the
+        // operation durable there before replacing the derived state snapshot.
+        self.local_ops_read_write()
+            .append_operation(&crdt_operation)?;
+        state.apply(&crdt_operation);
+        crate::crdt::save_persisted(
+            &self.inner.local_dirs.local_state_crdt().snapshot_path(),
+            &self.inner.master_key,
+            &state,
+        )?;
         Ok(())
     }
 
-    pub fn pending_media_count(&self) -> Result<u32> {
-        let pending_path = self.inner.local_dirs.pending_op_path();
+    /// # Errors
+    ///
+    /// Returns an error if the remote's synchronization metadata cannot be read.
+    pub fn has_unpushed_changes(&self, remote_id: RemoteUuid) -> Result<bool> {
+        let remote_last_known_state_dir = self
+            .inner
+            .local_dirs
+            .remote_last_known_state_dir(&remote_id.to_string());
         let master_key = &self.inner.master_key;
-        let group = self.with_op_lock(|| Ok(op_log::read_pending_op_group(&pending_path, master_key)?))?;
-        let Some(group) = group else {
-            return Ok(0);
-        };
-        let count = group.operations.iter()
-            .filter(|op| matches!(op, Operation::MediaCreation { .. }))
-            .count();
-        Ok(count as u32)
-    }
-
-    pub fn has_unpushed_changes(&self, remote_id: &str) -> Result<bool> {
-        let local_dirs = &self.inner.local_dirs;
-        let master_key = &self.inner.master_key;
-
-        let local_ids = self.with_op_lock(|| {
-            let mut local_ids = op_log::read_op_ids(&local_dirs.operations_log_path())?;
-            if let Some(pending) = op_log::read_pending_op_group(&local_dirs.pending_op_path(), master_key)? {
-                local_ids.insert(pending.op_id);
-            }
-            Ok(local_ids)
-        })?;
+        // The log is the complete operation history, including operations received
+        // during Fetch that may still need delivery to this remote.
+        let local_ids = self.local_ops_read_write().known_dots()?;
 
         if local_ids.is_empty() {
             return Ok(false);
         }
 
-        let remote_ids = crate::remote::last_known_state::collect_group_ids_from_dir(
-            &local_dirs.remote_ops_dir(remote_id),
+        let remote_ids = crate::remote::last_known_state::collect_dots_from_dir(
+            &remote_last_known_state_dir.operations_dir(),
             master_key,
         )
         .map_err(crate::library::sync::error::SyncError::LocalCacheCorrupt)?;
@@ -273,35 +422,44 @@ impl Library {
         Ok(!local_ids.is_subset(&remote_ids))
     }
 
-    pub fn list_operation_groups(&self) -> Result<Vec<OperationGroup>> {
-        self.with_op_lock(|| {
-            let mut groups = op_log::read_op_groups(
-                &self.inner.local_dirs.operations_log_path(),
-                &self.inner.master_key,
-            )?;
-            if let Some(pending) = op_log::read_pending_op_group(
-                &self.inner.local_dirs.pending_op_path(),
-                &self.inner.master_key,
-            )? {
-                groups.push(pending);
-            }
-            Ok(groups)
-        })
+    /// # Errors
+    ///
+    /// Returns an error if locally persisted operations cannot be read or decoded.
+    pub fn list_operations(&self) -> Result<Vec<crate::crdt::CrdtOperation>> {
+        self.local_ops_read_write().read_operations()
     }
 
-    pub async fn setup_default_album(
+    /// Returns a newest-first slice of the persisted operation log.
+    pub fn list_operations_range(
         &self,
-        album_name: AlbumName,
-    ) -> Result<AlbumUuid> {
-        let album_id = AlbumUuid::from_uuid(Uuid::new_v4());
-        self.append_to_pending(Operation::AlbumCreation {
-            timestamp: Utc::now(),
-            album_id,
-            name: album_name,
-            album_id_parent: None,
-        })?;
-        Ok(album_id)
+        start_pos: u64,
+        end_pos_exclusive: u64,
+    ) -> Result<Vec<crate::crdt::CrdtOperation>> {
+        self.local_ops_read_write()
+            .read_operations_range(start_pos, end_pos_exclusive)
     }
+}
+
+/// The encrypted operation log is the recovery authority. Replaying it is
+/// idempotent and repairs a snapshot that was not written after a successful
+/// log append.
+fn reconcile_snapshot_with_operation_log(
+    crdt: &mut crate::crdt::CrdtState,
+    operations: &LocalOpsReadWriteLock,
+    local_dirs: &LocalDirs,
+    master_key: &MasterKey,
+) -> Result<()> {
+    let log = operations.lock(master_key).read_operations()?;
+    if log.is_empty() {
+        return Ok(());
+    }
+    crdt.merge_all(log.iter());
+    crate::crdt::save_persisted(
+        &local_dirs.local_state_crdt().snapshot_path(),
+        master_key,
+        crdt,
+    )?;
+    Ok(())
 }
 
 #[cfg(test)]

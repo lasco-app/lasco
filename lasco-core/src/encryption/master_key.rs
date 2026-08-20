@@ -3,18 +3,18 @@ use std::path::{Path, PathBuf};
 
 use aes_gcm::aead::generic_array::typenum::Unsigned;
 use aes_gcm::{
-    aead::{Aead, AeadCore},
     Aes256Gcm, Key as AesKey, KeyInit,
+    aead::{Aead, AeadCore},
 };
 use chacha20poly1305::Key as XChaChaKey;
-use rand::rngs::OsRng;
 use rand::RngCore;
+use rand::rngs::OsRng;
 use uuid::Uuid;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::encryption::error::KeychainError;
-use crate::encryption::kek::{derive_kek, KEK_SIZE};
-use crate::encryption::library_salt::{read_salt_file, LibrarySalt};
+use crate::encryption::kek::{KEK_SIZE, derive_kek};
+use crate::encryption::library_salt::{LibrarySalt, read_salt_file};
 use crate::library::PROTOCOL_VERSION;
 
 pub type Result<T> = std::result::Result<T, KeychainError>;
@@ -30,11 +30,12 @@ const FILE_HEADER_LEN: usize = VERSION_SIZE + AES_GCM_NONCE_SIZE;
 
 /// Random 256-bit root key for a library, stored encrypted inside `library/mk_{username}_{uuid}.enc`.
 ///
-/// Used to derive BlobKeys for each file via HKDF-SHA256. Never stored in plaintext on disk.
+/// Used to derive `BlobKeys` for each file via HKDF-SHA256. Never stored in plaintext on disk.
 #[derive(Clone, Zeroize, ZeroizeOnDrop)]
 pub struct MasterKey([u8; MASTER_KEY_SIZE]);
 
 impl MasterKey {
+    #[must_use]
     pub fn from_raw(bytes: [u8; MASTER_KEY_SIZE]) -> Self {
         Self(bytes)
     }
@@ -53,6 +54,7 @@ impl AsRef<[u8; MASTER_KEY_SIZE]> for MasterKey {
 }
 
 /// Generate a fresh random `MasterKey`.
+#[must_use]
 pub fn generate_master_key() -> MasterKey {
     let mut key_bytes = [0; MASTER_KEY_SIZE];
     OsRng.fill_bytes(&mut key_bytes);
@@ -73,10 +75,7 @@ fn aes_gcm_encrypt(key_bytes: &[u8; KEK_SIZE], plaintext: &[u8]) -> Vec<u8> {
     out
 }
 
-fn aes_gcm_decrypt(
-    key_bytes: &[u8; KEK_SIZE],
-    bytes: &[u8],
-) -> Result<Vec<u8>> {
+fn aes_gcm_decrypt(key_bytes: &[u8; KEK_SIZE], bytes: &[u8]) -> Result<Vec<u8>> {
     if bytes.len() < FILE_HEADER_LEN {
         return Err(KeychainError::TooShort);
     }
@@ -91,7 +90,7 @@ fn aes_gcm_decrypt(
     let nonce = aes_gcm::Nonce::<_>::from_slice(nonce_bytes);
     cipher
         .decrypt(nonce, ciphertext)
-        .map_err(|_| KeychainError::AuthenticationFailed)
+        .map_err(|_authentication_error| KeychainError::AuthenticationFailed)
 }
 
 fn serialize_mk(master_key: &MasterKey) -> [u8; MASTER_KEY_SIZE] {
@@ -118,6 +117,7 @@ fn mk_path(lib_dir: &Path, username: &str, password_uuid: Uuid) -> PathBuf {
 const UUID_STR_LEN: usize = 36;
 
 /// Parse `mk_{username}_{uuid}.enc` filenames. Returns `(username, uuid)` on success.
+#[must_use]
 pub fn parse_mk_filename(name: &str) -> Option<(String, Uuid)> {
     let rest = name.strip_prefix("mk_")?.strip_suffix(".enc")?;
     if rest.len() < UUID_STR_LEN + 2 {
@@ -129,7 +129,7 @@ pub fn parse_mk_filename(name: &str) -> Option<(String, Uuid)> {
     Some((username.to_string(), uuid))
 }
 
-pub fn write_mk_file(
+pub(crate) fn write_mk_file(
     lib_dir: &Path,
     username: &str,
     password_uuid: Uuid,
@@ -144,7 +144,11 @@ pub fn write_mk_file(
         .map_err(|e| KeychainError::Io(e.to_string()))
 }
 
-pub fn read_mk_file(
+#[allow(
+    dead_code,
+    reason = "Retained for direct master-key file access and its unit tests."
+)]
+pub(crate) fn read_mk_file(
     lib_dir: &Path,
     username: &str,
     password_uuid: Uuid,
@@ -152,8 +156,9 @@ pub fn read_mk_file(
     password: &str,
 ) -> Result<MasterKey> {
     let path = mk_path(lib_dir, username, password_uuid);
-    let bytes = std::fs::read(&path)
-        .map_err(|_| KeychainError::NotFound(format!("mk_{username}_{password_uuid}.enc not found")))?;
+    let bytes = std::fs::read(&path).map_err(|_read_error| {
+        KeychainError::NotFound(format!("mk_{username}_{password_uuid}.enc not found"))
+    })?;
     let kek = derive_kek(password, salt);
     let plaintext = aes_gcm_decrypt(kek.as_ref(), &bytes)?;
     deserialize_mk(&plaintext)
@@ -161,7 +166,7 @@ pub fn read_mk_file(
 
 /// Try all `mk_{username}_*.enc` files in `lib_dir` until one decrypts successfully.
 /// Returns the master key and the UUID of the file that matched.
-pub fn find_master_key(
+pub(crate) fn find_master_key(
     lib_dir: &Path,
     username: &str,
     password: &str,
@@ -169,8 +174,7 @@ pub fn find_master_key(
     let salt = read_salt_file(lib_dir)?;
     let kek = derive_kek(password, salt);
 
-    let entries = std::fs::read_dir(lib_dir)
-        .map_err(|e| KeychainError::Io(e.to_string()))?;
+    let entries = std::fs::read_dir(lib_dir).map_err(|e| KeychainError::Io(e.to_string()))?;
 
     for entry in entries.flatten() {
         let name = entry.file_name();
@@ -179,12 +183,11 @@ pub fn find_master_key(
             if file_username != username {
                 continue;
             }
-            if let Ok(bytes) = std::fs::read(entry.path()) {
-                if let Ok(plaintext) = aes_gcm_decrypt(kek.as_ref(), &bytes) {
-                    if let Ok(mk) = deserialize_mk(&plaintext) {
-                        return Ok((mk, uuid));
-                    }
-                }
+            if let Ok(bytes) = std::fs::read(entry.path())
+                && let Ok(plaintext) = aes_gcm_decrypt(kek.as_ref(), &bytes)
+                && let Ok(mk) = deserialize_mk(&plaintext)
+            {
+                return Ok((mk, uuid));
             }
         }
     }
@@ -195,7 +198,16 @@ pub fn find_master_key(
 }
 
 /// Open with a known password UUID (fast path, avoids iterating all mk files).
-pub fn open_master_key(lib_dir: &Path, username: &str, password_uuid: Uuid, password: &str) -> Result<MasterKey> {
+#[allow(
+    dead_code,
+    reason = "Retained for the known-password-UUID master-key fast path."
+)]
+pub(crate) fn open_master_key(
+    lib_dir: &Path,
+    username: &str,
+    password_uuid: Uuid,
+    password: &str,
+) -> Result<MasterKey> {
     let salt = read_salt_file(lib_dir)?;
     read_mk_file(lib_dir, username, password_uuid, salt, password)
 }

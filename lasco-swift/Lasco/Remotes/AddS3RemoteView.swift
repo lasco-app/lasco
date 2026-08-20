@@ -1,10 +1,13 @@
 import SwiftUI
 
 struct AddS3RemoteView: View {
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(LibraryRepository.self) private var repository
+    @Environment(LibraryDirectoryModel.self) private var directory
     @Environment(\.dismiss) private var dismiss
     @Environment(ToastManager.self) var toastManager
     @Environment(\.lascoTheme) var theme
+
+    let onRemoteReady: @MainActor () async throws -> Void
 
     @FocusState private var nameFieldFocused: Bool
     @State private var name = ""
@@ -15,6 +18,8 @@ struct AddS3RemoteView: View {
     @State private var accessKey = ""
     @State private var secretKey = ""
     @State private var uploadAcknowledged = false
+    @State private var addErrorMessage: String?
+    @State private var isAdding = false
 
     enum TestState: Equatable {
         case idle
@@ -23,6 +28,10 @@ struct AddS3RemoteView: View {
         case failure(String)
     }
     @State private var testState: TestState = .idle
+
+    init(onRemoteReady: @escaping @MainActor () async throws -> Void = {}) {
+        self.onRemoteReady = onRemoteReady
+    }
 
     private var canTest: Bool {
         !endpoint.isEmpty && !bucket.isEmpty && !accessKey.isEmpty && !secretKey.isEmpty
@@ -117,6 +126,13 @@ struct AddS3RemoteView: View {
                             case .idle, .testing:
                                 EmptyView()
                             }
+
+                            if let addErrorMessage {
+                                Text(addErrorMessage)
+                                    .font(LascoFont.body(13))
+                                    .foregroundStyle(theme.error)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
                         }
 
                         Spacer().frame(height: 100)
@@ -128,32 +144,31 @@ struct AddS3RemoteView: View {
 
             VStack(spacing: 0) {
                 Button("Add Remote") {
-                    if let remoteId = libraryModel.addRemoteS3(
-                        id: name,
-                        endpoint: endpoint,
-                        bucket: bucket,
-                        region: region,
-                        pathPrefix: pathPrefix,
-                        accessKey: accessKey,
-                        secretKey: secretKey
-                    ) {
-                        dismiss()
-                        Task {
-                            if let err = await libraryModel.initializeRemote(remoteId: remoteId) {
-                                toastManager.show(error: err)
-                            } else {
-                                toastManager.show(ok: "\(name): initialized")
+                    guard !isAdding else { return }
+                    isAdding = true
+                    addErrorMessage = nil
+                    Task {
+                        var addedRemoteID: FfiRemoteUuid?
+                        do {
+                            let remoteID = try await repository.addRemoteS3(id: name, endpoint: endpoint, bucket: bucket, region: region, pathPrefix: pathPrefix, accessKey: accessKey, secretKey: secretKey)
+                            addedRemoteID = remoteID
+                            try await repository.initializeRemote(id: remoteID)
+                            try await onRemoteReady()
+                            dismiss()
+                            toastManager.show(ok: "\(name): initialized")
+                        } catch {
+                            if let addedRemoteID {
+                                try? await repository.removeRemote(id: addedRemoteID)
                             }
+                            addErrorMessage = error.localizedDescription
                         }
-                    } else if let err = libraryModel.error {
-                        libraryModel.error = nil
-                        toastManager.show(error: err)
+                        isAdding = false
                     }
                 }
                 .buttonStyle(LascoPrimaryButtonStyle())
                 .frame(maxWidth: .infinity)
-                .disabled(!isValid)
-                .opacity(isValid ? 1 : 0.45)
+                .disabled(!isValid || isAdding)
+                .opacity(isValid && !isAdding ? 1 : 0.45)
             }
             .padding(.horizontal, 32)
             .padding(.top, 20)
@@ -177,17 +192,10 @@ struct AddS3RemoteView: View {
         testState = .testing
         let endpoint = endpoint, bucket = bucket, region = region, pathPrefix = pathPrefix
         let accessKey = accessKey, secretKey = secretKey
-        Task.detached {
+        Task {
             let result: TestState
             do {
-                try ffiTestS3Remote(
-                    endpoint: endpoint,
-                    bucket: bucket,
-                    region: region,
-                    pathPrefix: pathPrefix,
-                    accessKey: accessKey,
-                    secretKey: secretKey
-                )
+                try await directory.testS3Remote(endpoint: endpoint, bucket: bucket, region: region, pathPrefix: pathPrefix, accessKey: accessKey, secretKey: secretKey)
                 result = .success
             } catch let e as LascoError {
                 result = .failure(e.friendlyMessage)
@@ -223,5 +231,4 @@ struct AddS3RemoteView: View {
 
 #Preview {
     AddS3RemoteView()
-        .environmentObject(LibraryModel())
 }

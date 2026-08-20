@@ -1,11 +1,11 @@
 import SwiftUI
 
 struct AddMediaView: View {
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(AlbumListModel.self) private var model
     let targetAlbum: FfiAlbum?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.lascoTheme) var theme
-    @State private var selectedMediaIds: Set<String> = []
+    @State private var selectedMediaIds: Set<FfiMediaUuid> = []
     @State private var path: [FfiAlbum] = []
 
     var body: some View {
@@ -44,7 +44,7 @@ struct AddMediaView: View {
                 Button("Add \(selectedMediaIds.count)") {
                     if let albumId = targetAlbum?.albumId {
                         for mediaId in selectedMediaIds {
-                            libraryModel.addMediaToAlbum(albumId: albumId, mediaId: mediaId)
+                            Task { try? await model.addMedia(mediaID: mediaId, albumID: albumId) }
                         }
                     }
                     dismiss()
@@ -61,13 +61,13 @@ struct AddMediaView: View {
 }
 
 struct AddMediaAlbumBrowser: View {
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(AlbumListModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @Environment(\.lascoTheme) var theme
     let album: FfiAlbum?
     let targetAlbumName: String
     @Binding var path: [FfiAlbum]
-    @Binding var selectedMediaIds: Set<String>
+    @Binding var selectedMediaIds: Set<FfiMediaUuid>
 
     @State private var albumMedia: [FfiMediaItem] = []
     @State private var mediaLayout: MediaLayout = .grid
@@ -76,9 +76,7 @@ struct AddMediaAlbumBrowser: View {
     private var title: String { album?.name.uppercased() ?? "ALL ALBUMS" }
 
     private var childAlbums: [FfiAlbum] {
-        libraryModel.albums.filter {
-            $0.parentAlbumId == album?.albumId && !$0.deleted && !$0.isDisconnected
-        }
+        model.albums(parentID: album?.albumId).filter { !$0.deleted }
     }
 
     var body: some View {
@@ -174,10 +172,13 @@ struct AddMediaAlbumBrowser: View {
                 .padding(.horizontal, 20)
             }
         }
+        .task(id: album?.albumId) {
+            await model.load(parentID: album?.albumId)
+        }
         .background(theme.bg)
         .onAppear {
             if let album {
-                albumMedia = libraryModel.mediaInAlbum(albumId: album.albumId)
+                Task { albumMedia = await model.mediaInAlbum(albumID: album.albumId) }
             }
         }
     }

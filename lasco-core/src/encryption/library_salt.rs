@@ -1,7 +1,7 @@
 use std::path::Path;
 
-use rand::rngs::OsRng;
 use rand::RngCore;
+use rand::rngs::OsRng;
 
 use crate::encryption::error::KeychainError;
 
@@ -16,20 +16,21 @@ const LIBRARY_SALT_FILE: &str = "library_salt";
 #[derive(Debug, Clone, Copy)]
 pub struct LibrarySalt(pub [u8; LIBRARY_SALT_SIZE]);
 
+#[must_use]
 pub fn generate_salt() -> LibrarySalt {
     let mut bytes = [0; LIBRARY_SALT_SIZE];
     OsRng.fill_bytes(&mut bytes);
     LibrarySalt(bytes)
 }
 
-pub fn write_salt_file(lib_dir: &Path, salt: LibrarySalt) -> Result<()> {
-    std::fs::write(lib_dir.join(LIBRARY_SALT_FILE), &salt.0)
+pub(crate) fn write_salt_file(lib_dir: &Path, salt: LibrarySalt) -> Result<()> {
+    std::fs::write(lib_dir.join(LIBRARY_SALT_FILE), salt.0)
         .map_err(|e| KeychainError::Io(e.to_string()))
 }
 
-pub fn read_salt_file(lib_dir: &Path) -> Result<LibrarySalt> {
+pub(crate) fn read_salt_file(lib_dir: &Path) -> Result<LibrarySalt> {
     let bytes = std::fs::read(lib_dir.join(LIBRARY_SALT_FILE))
-        .map_err(|_| KeychainError::NotFound("library_salt not found".to_string()))?;
+        .map_err(|_read_error| KeychainError::NotFound("library_salt not found".to_string()))?;
     if bytes.len() != LIBRARY_SALT_SIZE {
         return Err(KeychainError::InvalidLength {
             expected: LIBRARY_SALT_SIZE,

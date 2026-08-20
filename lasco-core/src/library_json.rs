@@ -1,14 +1,13 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
-use crate::config_json::{library_data_dir, ConfigJson, LibraryNickname};
-use crate::identifiers::{AlbumUuid, LibraryId, RemoteUuid};
+use crate::config_json::{ConfigJson, LibraryNickname, library_data_dir};
+use crate::crdt::DeviceId;
+use crate::identifiers::{LibraryId, RemoteUuid};
 use crate::operations::LibraryUsername;
-
-pub const LIBRARY_JSON_VERSION: u32 = 1;
 
 // Remote storage configuration types
 
@@ -16,6 +15,13 @@ pub const LIBRARY_JSON_VERSION: u32 = 1;
 pub struct RemoteConfig {
     pub remote_uuid: RemoteUuid,
     pub name: String,
+    #[serde(default)]
+    pub auto_push: bool,
+    /// Lower values are tried first when media is fetched on demand.
+    pub media_fetch_priority: u32,
+    /// Excludes this remote from on-demand media retrieval while retaining it for other operations.
+    #[serde(default)]
+    pub exclude_from_media_fetch: bool,
     pub kind: RemoteKind,
 }
 
@@ -24,8 +30,10 @@ pub struct RemoteConfig {
 pub enum RemoteKind {
     S3(S3Config),
     FixedPath(FixedPathConfig),
+    UsbAndroid(UsbAndroidConfig),
+    UsbApple(UsbAppleConfig),
     DebugLocalApple(DebugLocalAppleConfig),
-    // future: UsbVolume(UsbVolumeConfig)
+    DebugLocalAndroid(DebugLocalAndroidConfig),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,6 +56,21 @@ pub struct FixedPathConfig {
     pub root_dir: PathBuf,
 }
 
+/// Persistent Storage Access Framework grant for a wired USB folder selected
+/// on Android. This is deliberately Android-specific: SAF providers have
+/// different read/write guarantees from Apple security-scoped URLs.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UsbAndroidConfig {
+    pub tree_uri: String,
+}
+
+/// Base64-encoded security-scoped bookmark for a wired USB folder selected on
+/// Apple platforms. The bookmark is an opaque access capability, not a path.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UsbAppleConfig {
+    pub bookmark_base64: String,
+}
+
 /// Persists only a name and re-resolves the path against the current app-support
 /// directory on every use, so it survives the sandboxed app container's UUID
 /// segment changing across relaunches/reinstalls on iOS/macOS.
@@ -56,15 +79,22 @@ pub struct DebugLocalAppleConfig {
     pub local_dir_name: String,
 }
 
+/// Stores a name and resolves the path against the app's own data directory on
+/// every use. Android's `app_dir` is not sandboxed the same way iOS/macOS is, so
+/// unlike `DebugLocalAppleConfig` no separate app-support directory is needed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DebugLocalAndroidConfig {
+    pub local_dir_name: String,
+}
+
 /// Per-library configuration stored at `{app_dir}/libraries/{library_id}/library.json`.
 /// It holds the library preferences and the ordered list of remotes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LibraryJson {
-    /// Configuration version
-    #[serde(default = "default_library_version")]
-    pub version: u32,
-    /// User-friendly nickname for the library
-    pub nickname: LibraryNickname,
+    /// User-friendly nickname for the library.
+    pub library_nickname: LibraryNickname,
+    /// Stable local CRDT author identity. This configuration is never uploaded to remotes.
+    pub device_id: DeviceId,
     /// Default username for this library
     #[serde(default)]
     pub default_username: Option<LibraryUsername>,
@@ -73,27 +103,28 @@ pub struct LibraryJson {
     pub active_password_uuid: Option<Uuid>,
     /// Default remote for fetching operations
     pub default_fetch_remote: Option<RemoteUuid>,
-    /// Device-local default upload album
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub default_upload_album: Option<AlbumUuid>,
     /// Whether to automatically import new device media into this library
     #[serde(default)]
     pub auto_import_device_media: bool,
     /// Configured remote storage locations
     pub remotes: Vec<RemoteConfig>,
-}
-
-fn default_library_version() -> u32 {
-    LIBRARY_JSON_VERSION
+    /// Ordered subset of remotes allowed to supply uncached originals and relay media.
+    #[serde(default)]
+    pub media_source_order: Vec<RemoteUuid>,
 }
 
 /// Path to a library's `library.json`
+#[must_use]
 pub fn library_json_path(app_dir: &Path, library_id: &LibraryId) -> PathBuf {
     library_data_dir(app_dir, library_id).join("library.json")
 }
 
 impl LibraryJson {
     /// Load a library's configuration from disk.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file cannot be read or is invalid JSON.
     pub fn load(app_dir: &Path, library_id: &LibraryId) -> Result<Option<Self>> {
         let path = library_json_path(app_dir, library_id);
         if !path.exists() {
@@ -101,19 +132,37 @@ impl LibraryJson {
         }
         let data = fs::read(&path)
             .with_context(|| format!("failed to read library config from {}", path.display()))?;
-        let config: LibraryJson =
+        let mut config: LibraryJson =
             serde_json::from_slice(&data).context("failed to parse library.json")?;
-        if config.version != LIBRARY_JSON_VERSION {
-            bail!(
-                "unsupported library config version {} (expected {})",
-                config.version,
-                LIBRARY_JSON_VERSION
-            );
+        // Old configurations did not carry the ordered subset. Preserve their established
+        // priority semantics on first load; subsequent saves write only the new field.
+        if config.media_source_order.is_empty() {
+            let mut legacy: Vec<_> = config
+                .remotes
+                .iter()
+                .enumerate()
+                .filter(|(_, remote)| !remote.exclude_from_media_fetch)
+                .collect();
+            legacy.sort_by_key(|(index, remote)| (remote.media_fetch_priority, *index));
+            config.media_source_order = legacy
+                .into_iter()
+                .map(|(_, remote)| remote.remote_uuid)
+                .collect();
+        } else {
+            let known: std::collections::HashSet<_> =
+                config.remotes.iter().map(|r| r.remote_uuid).collect();
+            config.media_source_order.retain(|id| known.contains(id));
+            let mut seen = std::collections::HashSet::new();
+            config.media_source_order.retain(|id| seen.insert(*id));
         }
         Ok(Some(config))
     }
 
     /// Save a library's configuration to disk.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if its directory cannot be created or its JSON cannot be serialized or written.
     pub fn save(&self, app_dir: &Path, library_id: &LibraryId) -> Result<()> {
         let dir = library_data_dir(app_dir, library_id);
         fs::create_dir_all(&dir)
@@ -126,32 +175,117 @@ impl LibraryJson {
     }
 }
 
-/// Persist a library's configuration and register it in the global index.
+/// Owns the mutex that serializes access to one library's on-disk configuration.
+pub struct LibraryJsonReadWriteLock {
+    mutex: parking_lot::Mutex<()>,
+}
+
+impl LibraryJsonReadWriteLock {
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            mutex: parking_lot::Mutex::new(()),
+        }
+    }
+
+    pub(crate) fn lock<'a>(
+        &'a self,
+        app_dir: &'a Path,
+        library_id: LibraryId,
+    ) -> LibraryJsonReadWrite<'a> {
+        LibraryJsonReadWrite {
+            app_dir,
+            library_id,
+            lock_guard: self.mutex.lock(),
+        }
+    }
+}
+
+/// Exclusive access to one library's on-disk configuration.
+///
+/// This object keeps the library configuration mutex locked from construction through its drop.
+/// Do not hold it across an `.await`.
+pub struct LibraryJsonReadWrite<'a> {
+    app_dir: &'a Path,
+    library_id: LibraryId,
+    #[allow(
+        dead_code,
+        reason = "Keeping this RAII guard alive grants this object exclusive access until it is dropped."
+    )]
+    lock_guard: parking_lot::MutexGuard<'a, ()>,
+}
+
+impl<'a> LibraryJsonReadWrite<'a> {
+    /// Read the current library configuration while holding exclusive access.
+    pub fn read(&self) -> Result<LibraryJson> {
+        LibraryJson::load(self.app_dir, &self.library_id)?
+            .ok_or_else(|| anyhow::anyhow!("library.json not found"))
+    }
+
+    /// Persist a library configuration while holding exclusive access.
+    pub fn write(&self, library_json: &LibraryJson) -> Result<()> {
+        library_json.save(self.app_dir, &self.library_id)
+    }
+}
+
+/// Persist a library's configuration and register its ID in the global index.
+///
+/// # Errors
+///
+/// Returns an error if either library or global application configuration cannot be read or saved.
 pub fn save_library(app_dir: &Path, library_id: &LibraryId, library: &LibraryJson) -> Result<()> {
     library.save(app_dir, library_id)?;
     let mut config = ConfigJson::load(app_dir)?.unwrap_or_default();
-    config.add_or_update_library(*library_id, library.nickname.clone());
+    config.add_library(*library_id);
     config.save(app_dir)?;
     Ok(())
 }
 
-/// Load the configuration for the library with the given nickname.
-pub fn load_library_by_nickname(
-    app_dir: &Path,
-    nickname: &str,
-) -> Result<(LibraryId, LibraryJson)> {
+/// Find a registered library by its nickname.
+///
+/// # Errors
+///
+/// Returns an error if the global index or a registered library configuration cannot be read,
+/// or if no library has the requested nickname.
+pub fn find_library_id_by_nickname(app_dir: &Path, nickname: &str) -> Result<LibraryId> {
     let config =
         ConfigJson::load(app_dir)?.ok_or_else(|| anyhow::anyhow!("no libraries configured"))?;
-    let library_id = *config
-        .get_library_id_by_nickname(nickname)
-        .ok_or_else(|| anyhow::anyhow!("library '{nickname}' not found"))?;
+    for library_id in config.libraries {
+        let library = LibraryJson::load(app_dir, &library_id)?
+            .ok_or_else(|| anyhow::anyhow!("library.json not found for '{library_id}'"))?;
+        if library.library_nickname.0 == nickname {
+            return Ok(library_id);
+        }
+    }
+    anyhow::bail!("library '{nickname}' not found")
+}
+
+/// Load the configuration for the library with the given nickname.
+///
+/// # Errors
+///
+/// Returns an error if configuration is unreadable, no library has that nickname, or its config is missing.
+#[allow(
+    dead_code,
+    reason = "Retained for nickname-based library selection in the CLI."
+)]
+fn load_library_by_nickname(app_dir: &Path, nickname: &str) -> Result<(LibraryId, LibraryJson)> {
+    let library_id = find_library_id_by_nickname(app_dir, nickname)?;
     let library = LibraryJson::load(app_dir, &library_id)?
         .ok_or_else(|| anyhow::anyhow!("library.json not found for '{nickname}'"))?;
     Ok((library_id, library))
 }
 
 /// Load the configuration for the default library.
-pub fn load_default_library(app_dir: &Path) -> Result<(LibraryId, LibraryJson)> {
+///
+/// # Errors
+///
+/// Returns an error if configuration is unreadable, no default exists, or its config is missing.
+#[allow(
+    dead_code,
+    reason = "Retained for default-library selection in the CLI."
+)]
+fn load_default_library(app_dir: &Path) -> Result<(LibraryId, LibraryJson)> {
     let config =
         ConfigJson::load(app_dir)?.ok_or_else(|| anyhow::anyhow!("no libraries configured"))?;
     let library_id = *config
@@ -163,6 +297,7 @@ pub fn load_default_library(app_dir: &Path) -> Result<(LibraryId, LibraryJson)> 
 }
 
 /// Get the remote kind for a given remote UUID (as a string).
+#[must_use]
 pub fn get_remote_kind(library: &LibraryJson, remote_uuid: &str) -> Option<RemoteKind> {
     library
         .remotes
@@ -172,8 +307,20 @@ pub fn get_remote_kind(library: &LibraryJson, remote_uuid: &str) -> Option<Remot
 }
 
 /// Validate that a remote UUID (as a string) exists in the library config.
-pub fn validate_remote_exists(library: &LibraryJson, remote_uuid: &str) -> Result<()> {
-    if library.remotes.iter().any(|r| r.remote_uuid.to_string() == remote_uuid) {
+///
+/// # Errors
+///
+/// Returns an error if no configured remote has `remote_uuid`.
+#[allow(
+    dead_code,
+    reason = "Retained for CLI validation of remote UUID arguments."
+)]
+fn validate_remote_exists(library: &LibraryJson, remote_uuid: &str) -> Result<()> {
+    if library
+        .remotes
+        .iter()
+        .any(|r| r.remote_uuid.to_string() == remote_uuid)
+    {
         return Ok(());
     }
     anyhow::bail!(
@@ -184,19 +331,33 @@ pub fn validate_remote_exists(library: &LibraryJson, remote_uuid: &str) -> Resul
 }
 
 /// List all remote UUIDs (as strings) from the library config.
+#[must_use]
 pub fn list_remote_ids(library: &LibraryJson) -> Vec<String> {
-    library.remotes.iter().map(|r| r.remote_uuid.to_string()).collect()
+    library
+        .remotes
+        .iter()
+        .map(|r| r.remote_uuid.to_string())
+        .collect()
 }
 
 /// Find the single remote with the given human-readable name.
 /// Errors if zero or more than one remote share that name.
-pub fn find_remote_by_name<'a>(library: &'a LibraryJson, name: &str) -> Result<&'a RemoteConfig> {
+#[allow(
+    dead_code,
+    reason = "Retained for name-based remote selection in the CLI."
+)]
+fn find_remote_by_name<'a>(library: &'a LibraryJson, name: &str) -> Result<&'a RemoteConfig> {
     let matches: Vec<&RemoteConfig> = library.remotes.iter().filter(|r| r.name == name).collect();
     match matches.len() {
         0 => anyhow::bail!(
             "Remote '{}' not found. Available remotes: {}",
             name,
-            library.remotes.iter().map(|r| r.name.as_str()).collect::<Vec<_>>().join(", ")
+            library
+                .remotes
+                .iter()
+                .map(|r| r.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
         ),
         1 => Ok(matches[0]),
         _ => anyhow::bail!(
@@ -208,7 +369,11 @@ pub fn find_remote_by_name<'a>(library: &'a LibraryJson, name: &str) -> Result<&
 }
 
 /// Find a remote by its UUID.
-pub fn find_remote_by_uuid<'a>(library: &'a LibraryJson, uuid: &RemoteUuid) -> Option<&'a RemoteConfig> {
+#[must_use]
+pub fn find_remote_by_uuid<'a>(
+    library: &'a LibraryJson,
+    uuid: &RemoteUuid,
+) -> Option<&'a RemoteConfig> {
     library.remotes.iter().find(|r| &r.remote_uuid == uuid)
 }
 
@@ -219,16 +384,19 @@ mod tests {
 
     fn make_test_library(remote_path: PathBuf) -> LibraryJson {
         LibraryJson {
-            version: LIBRARY_JSON_VERSION,
-            nickname: LibraryNickname("test".to_string()),
+            library_nickname: LibraryNickname("test".to_string()),
+            device_id: DeviceId(1),
             default_username: None,
             active_password_uuid: None,
             default_fetch_remote: None,
-            default_upload_album: None,
             auto_import_device_media: false,
+            media_source_order: vec![],
             remotes: vec![RemoteConfig {
                 remote_uuid: RemoteUuid::new(),
                 name: "local".to_string(),
+                auto_push: true,
+                media_fetch_priority: 0,
+                exclude_from_media_fetch: false,
                 kind: RemoteKind::FixedPath(FixedPathConfig {
                     root_dir: remote_path,
                 }),
@@ -246,7 +414,7 @@ mod tests {
 
         let (loaded_id, loaded) = load_library_by_nickname(dir.path(), "test").unwrap();
         assert_eq!(loaded_id, library_id);
-        assert_eq!(loaded.nickname.0, "test");
+        assert_eq!(loaded.library_nickname.0, "test");
         assert_eq!(loaded.remotes[0].name, "local");
     }
 
@@ -255,7 +423,8 @@ mod tests {
         let library = make_test_library(PathBuf::from("/tmp/remote"));
         let json = serde_json::to_string(&library).unwrap();
         let deserialized: LibraryJson = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized.nickname.0, "test");
+        assert_eq!(deserialized.library_nickname.0, "test");
+        assert!(!json.contains("upload_album"));
     }
 
     #[test]
@@ -277,6 +446,9 @@ mod tests {
         library.remotes.push(RemoteConfig {
             remote_uuid: RemoteUuid::new(),
             name: "local".to_string(),
+            auto_push: true,
+            media_fetch_priority: 1,
+            exclude_from_media_fetch: false,
             kind: RemoteKind::FixedPath(FixedPathConfig {
                 root_dir: PathBuf::from("/tmp/remote2"),
             }),

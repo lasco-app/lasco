@@ -1,12 +1,16 @@
 import SwiftUI
 
 struct OperationsView: View {
-    @EnvironmentObject var libraryModel: LibraryModel
+    let repository: LibraryRepository
+    @State private var model: OperationsModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.lascoTheme) var theme
 
-    private var groups: [FfiOperationGroup] {
-        libraryModel.listOperationGroups().reversed()
+    private var operations: [FfiCrdtOperation] { model.operations }
+
+    init(repository: LibraryRepository) {
+        self.repository = repository
+        _model = State(initialValue: OperationsModel(repository: repository))
     }
 
     var body: some View {
@@ -28,7 +32,7 @@ struct OperationsView: View {
                 .padding(.top, 40)
                 .padding(.bottom, 16)
 
-                if groups.isEmpty {
+                if operations.isEmpty {
                     VStack {
                         Spacer()
                         Text("No operations yet.")
@@ -40,8 +44,16 @@ struct OperationsView: View {
                 } else {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 12) {
-                            ForEach(groups, id: \.opId) { group in
-                                OperationGroupRow(group: group)
+                            ForEach(operations, id: \.dot) { operation in
+                                OperationRow(operation: operation)
+                                    .onAppear {
+                                        guard operation.dot == operations.last?.dot else { return }
+                                        Task { await model.loadMore() }
+                                    }
+                            }
+                            if model.isLoading {
+                                ProgressView()
+                                    .frame(maxWidth: .infinity)
                             }
                         }
                         .padding(.horizontal, 20)
@@ -50,47 +62,36 @@ struct OperationsView: View {
                 }
             }
         }
+        .task { await model.start() }
     }
 }
 
-private struct OperationGroupRow: View {
-    let group: FfiOperationGroup
+private struct OperationRow: View {
+    let operation: FfiCrdtOperation
     @Environment(\.lascoTheme) var theme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(group.opId.prefix(12))
+                    Text("\(operation.dot.deviceId.prefix(8)):\(operation.dot.lamportCounter)")
                         .font(LascoFont.mono())
                         .foregroundStyle(theme.ink)
-                    if let parentId = group.parentOpId {
-                        HStack(spacing: 4) {
-                            Text("↑")
-                                .font(LascoFont.mono())
-                                .foregroundStyle(theme.inkMuted)
-                            Text(parentId.prefix(12))
-                                .font(LascoFont.mono())
-                                .foregroundStyle(theme.inkMuted)
-                        }
-                    }
                 }
                 Spacer()
-                Text(group.author)
+                Text(operation.author)
                     .font(LascoFont.mono())
                     .foregroundStyle(theme.inkMuted)
             }
 
-            ForEach(Array(group.operations.enumerated()), id: \.offset) { _, op in
-                OperationRow(operation: op)
-            }
+            OperationContentRow(operation: operation.operation)
         }
         .padding(14)
         .lascoPanel()
     }
 }
 
-private struct OperationRow: View {
+private struct OperationContentRow: View {
     let operation: FfiOperation
     @Environment(\.lascoTheme) var theme
 

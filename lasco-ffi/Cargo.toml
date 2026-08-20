@@ -1,10 +1,34 @@
 [package]
 name = "lasco-ffi"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
+description = "UniFFI bindings for Lasco's encrypted photo backup core"
+license = "GPL-3.0-only"
+repository = "https://github.com/lasco-app/lasco"
+readme = "../README.md"
+keywords = []
+categories = []
 
-[lints]
-workspace = true
+[lints.clippy]
+cargo = { level = "warn", priority = -1 }
+complexity = { level = "warn", priority = -1 }
+correctness = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+perf = { level = "warn", priority = -1 }
+style = { level = "warn", priority = -1 }
+suspicious = { level = "warn", priority = -1 }
+allow_attributes_without_reason = "warn"
+undocumented_unsafe_blocks = "warn"
+unused_result_ok = "warn"
+redundant_type_annotations = "warn"
+empty_structs_with_brackets = "warn"
+too_many_lines = "warn"
+large_enum_variant = "allow"
+missing_fields_in_debug = "allow"
+case_sensitive_file_extension_comparisons = "allow"
+items_after_statements = "allow"
+cargo_common_metadata = "allow"
+multiple_crate_versions = "allow"
 
 [lib]
 crate-type = ["cdylib", "staticlib"]
@@ -24,3 +48,11 @@ path = "src/bin/uniffi_bindgen.rs"
 
 [build-dependencies]
 uniffi = { version = "0.29", features = ["build"] }
+
+[dev-dependencies]
+proptest = "1"
+rand = "0.8"
+tempfile = "3"
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"

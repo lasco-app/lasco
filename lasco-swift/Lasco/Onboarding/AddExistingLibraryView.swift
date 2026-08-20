@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct AddExistingLibraryView: View {
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(LibraryDirectoryModel.self) private var directory
     @Environment(\.dismiss) private var dismiss
     @Environment(ToastManager.self) var toastManager
     @Environment(\.lascoTheme) var theme
@@ -182,37 +182,15 @@ struct AddExistingLibraryView: View {
 
     private func addLibrary() {
         isAdding = true
-        let ok = libraryModel.addExisting(
-            nickname: nickname,
-            username: username,
-            password: password,
-            newUsername: createNewUser ? newUsername : nil,
-            newPassword: createNewUser ? newPassword : nil,
-            remoteId: remoteName,
-            endpoint: endpoint,
-            bucket: bucket,
-            region: region,
-            pathPrefix: pathPrefix,
-            accessKey: accessKey,
-            secretKey: secretKey
-        )
-        isAdding = false
-        if ok {
-            dismiss()
-        } else if let err = libraryModel.error {
-            libraryModel.error = nil
-            toastManager.show(error: err)
-        }
-    }
-
-    private func testConnection() {
-        testState = .testing
-        let endpoint = endpoint, bucket = bucket, region = region, pathPrefix = pathPrefix
-        let accessKey = accessKey, secretKey = secretKey
-        Task.detached {
-            let result: TestState
+        Task {
             do {
-                try ffiTestS3Remote(
+                try await directory.addExisting(
+                    nickname: nickname,
+                    username: username,
+                    password: password,
+                    newUsername: createNewUser ? newUsername : nil,
+                    newPassword: createNewUser ? newPassword : nil,
+                    remoteID: remoteName,
                     endpoint: endpoint,
                     bucket: bucket,
                     region: region,
@@ -220,6 +198,23 @@ struct AddExistingLibraryView: View {
                     accessKey: accessKey,
                     secretKey: secretKey
                 )
+                isAdding = false
+                dismiss()
+            } catch {
+                isAdding = false
+                toastManager.show(error: error.localizedDescription)
+            }
+        }
+    }
+
+    private func testConnection() {
+        testState = .testing
+        let endpoint = endpoint, bucket = bucket, region = region, pathPrefix = pathPrefix
+        let accessKey = accessKey, secretKey = secretKey
+        Task {
+            let result: TestState
+            do {
+                try await directory.testS3Remote(endpoint: endpoint, bucket: bucket, region: region, pathPrefix: pathPrefix, accessKey: accessKey, secretKey: secretKey)
                 result = .success
             } catch let e as LascoError {
                 result = .failure(e.friendlyMessage)
@@ -255,5 +250,4 @@ struct AddExistingLibraryView: View {
 
 #Preview {
     AddExistingLibraryView()
-        .environmentObject(LibraryModel())
 }

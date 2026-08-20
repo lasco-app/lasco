@@ -2,9 +2,40 @@ use tempfile::TempDir;
 use uuid::Uuid;
 
 use crate::identifiers::AlbumUuid;
-use crate::storage::{Storage, StorageMockMemory};
+use crate::storage::{AtomicWriteMode, Storage, StorageMockMemory};
 
-use super::super::test_utils::{make_library, make_library_with_same_keys, remote_uuid, write_file, REMOTE_ID};
+use super::super::remote_access::StorageReadWrite;
+use super::super::test_utils::{
+    REMOTE_ID, make_library, make_library_with_same_keys, remote_uuid, write_file,
+};
+
+/// Writes `operations` to the remote as a single tier 1 compaction file, the same
+/// encoding Push produces.
+async fn write_compaction_file(
+    storage: &StorageMockMemory,
+    master_key: &crate::encryption::master_key::MasterKey,
+    operations: Vec<crate::crdt::CrdtOperation>,
+) {
+    use crate::operations::CompactionFile;
+
+    let file_uuid = crate::identifiers::CompactedOpId::new();
+    let op_count = operations.len();
+    let comp_file = CompactionFile {
+        tier: 1,
+        operations,
+    };
+    let bytes = crate::operations::encrypt_compaction_file(master_key, &file_uuid, &comp_file)
+        .unwrap()
+        .to_bytes();
+    let key = format!("operations/{file_uuid}.op1_{op_count}");
+    crate::operations::remote_ops::write_compaction_bytes(
+        &StorageReadWrite::new(storage),
+        &key,
+        &bytes,
+    )
+    .await
+    .unwrap();
+}
 
 #[tokio::test]
 // fetch is idempotent. A second fetch downloads nothing new.
@@ -14,13 +45,22 @@ async fn fetch_idempotent() {
     let tmp_b = TempDir::new().unwrap();
 
     let lib_a = make_library(&tmp_a).await;
-    lib_a.initialize_remote(&storage, remote_uuid()).await.unwrap();
+    lib_a
+        .initialize_remote(&storage, remote_uuid())
+        .await
+        .unwrap();
     let lib_b = make_library_with_same_keys(&tmp_b, &lib_a).await;
 
     let album_id = AlbumUuid::from_uuid(Uuid::new_v4());
     let src = write_file(tmp_a.path(), "img.jpg", b"hello");
     lib_a
-        .media_add(crate::library::media::upload::MediaAddSource::CopyFrom(src), Some(album_id), None, None, None)
+        .media_add(
+            crate::library::media::upload::MediaAddSource::CopyFrom(src),
+            Some(album_id),
+            None,
+            None,
+            None,
+        )
         .await
         .unwrap();
     lib_a.push(&storage, REMOTE_ID).await.unwrap();
@@ -28,7 +68,8 @@ async fn fetch_idempotent() {
     let r1 = lib_b.fetch(&storage, REMOTE_ID).await.unwrap();
     let r2 = lib_b.fetch(&storage, REMOTE_ID).await.unwrap();
 
-    assert_eq!(r1.ops_downloaded, 1);
+    // media_add into an album records two operations, MediaCreation then AlbumMediaAdd.
+    assert_eq!(r1.ops_downloaded, 2);
     assert_eq!(r2.ops_downloaded, 0, "second fetch must download nothing");
 }
 
@@ -40,7 +81,9 @@ async fn fetch_calls_list_on_every_invocation() {
     let storage = StorageMockMemory::new();
     let tmp = TempDir::new().unwrap();
     let lib = make_library(&tmp).await;
-    lib.initialize_remote(&storage, remote_uuid()).await.unwrap();
+    lib.initialize_remote(&storage, remote_uuid())
+        .await
+        .unwrap();
     let before = storage.list_call_count();
 
     lib.fetch(&storage, REMOTE_ID).await.unwrap();
@@ -48,143 +91,166 @@ async fn fetch_calls_list_on_every_invocation() {
     lib.fetch(&storage, REMOTE_ID).await.unwrap();
     let after_second = storage.list_call_count();
 
-    assert_eq!(after_first - before, 3, "first fetch: 3 list calls (remote identity, library/, operations/)");
-    assert_eq!(after_second - before, 6, "second fetch: 3 more list calls regardless of prior state");
+    assert_eq!(
+        after_first - before,
+        3,
+        "first fetch: 3 list calls (remote identity, library/, operations/)"
+    );
+    assert_eq!(
+        after_second - before,
+        6,
+        "second fetch: 3 more list calls regardless of prior state"
+    );
 }
 
 #[tokio::test]
-// After lib_a pushes a second file, lib_b's next fetch sees it (no stale remote cache).
+// After lib_a pushes a second file, lib_b's next fetch sees it (no stale last-known state).
 async fn fetch_sees_externally_modified_remote() {
     let storage = StorageMockMemory::new();
     let tmp_a = TempDir::new().unwrap();
     let tmp_b = TempDir::new().unwrap();
 
     let lib_a = make_library(&tmp_a).await;
-    lib_a.initialize_remote(&storage, remote_uuid()).await.unwrap();
+    lib_a
+        .initialize_remote(&storage, remote_uuid())
+        .await
+        .unwrap();
     let lib_b = make_library_with_same_keys(&tmp_b, &lib_a).await;
 
     let album_id = AlbumUuid::from_uuid(Uuid::new_v4());
 
     let src1 = write_file(tmp_a.path(), "first.jpg", b"first");
     let mid1 = lib_a
-        .media_add(crate::library::media::upload::MediaAddSource::CopyFrom(src1), Some(album_id), None, None, None)
+        .media_add(
+            crate::library::media::upload::MediaAddSource::CopyFrom(src1),
+            Some(album_id),
+            None,
+            None,
+            None,
+        )
         .await
-        .unwrap().id();
+        .unwrap()
+        .id();
     lib_a.push(&storage, REMOTE_ID).await.unwrap();
 
     lib_b.fetch(&storage, REMOTE_ID).await.unwrap();
-    lib_b.media_show(mid1).expect("B must have mid1 after first fetch");
+    lib_b
+        .media_show(mid1)
+        .expect("B must have mid1 after first fetch");
 
     let src2 = write_file(tmp_a.path(), "second.jpg", b"second");
     let mid2 = lib_a
-        .media_add(crate::library::media::upload::MediaAddSource::CopyFrom(src2), Some(album_id), None, None, None)
+        .media_add(
+            crate::library::media::upload::MediaAddSource::CopyFrom(src2),
+            Some(album_id),
+            None,
+            None,
+            None,
+        )
         .await
-        .unwrap().id();
+        .unwrap()
+        .id();
     lib_a.push(&storage, REMOTE_ID).await.unwrap();
 
     lib_b.fetch(&storage, REMOTE_ID).await.unwrap();
-    lib_b.media_show(mid2).expect("B must see mid2 on the next fetch without needing a restart");
+    lib_b
+        .media_show(mid2)
+        .expect("B must see mid2 on the next fetch without needing a restart");
 }
 
 #[tokio::test]
-// A compaction file on the remote carries an op that B has never seen.
-// B's fetch must decrypt the compaction file and absorb the op.
+// A compaction file on the remote carries operations that B has never seen.
+// B's fetch must decrypt the compaction file and absorb them.
 async fn fetch_absorbs_op_from_compaction_file() {
-    use crate::operations::{CompactionEntry, CompactionFile};
-    use crate::operations::remote_ops::write_compaction_file;
-
     let storage = StorageMockMemory::new();
     let tmp_a = TempDir::new().unwrap();
     let tmp_b = TempDir::new().unwrap();
 
     let lib_a = make_library(&tmp_a).await;
-    lib_a.initialize_remote(&storage, remote_uuid()).await.unwrap();
+    lib_a
+        .initialize_remote(&storage, remote_uuid())
+        .await
+        .unwrap();
     let lib_b = make_library_with_same_keys(&tmp_b, &lib_a).await;
 
     let album_id = AlbumUuid::from_uuid(Uuid::new_v4());
     let src = write_file(tmp_a.path(), "packed.jpg", b"packed");
     let mid = lib_a
-        .media_add(crate::library::media::upload::MediaAddSource::CopyFrom(src), Some(album_id), None, None, None)
+        .media_add(
+            crate::library::media::upload::MediaAddSource::CopyFrom(src),
+            Some(album_id),
+            None,
+            None,
+            None,
+        )
         .await
-        .unwrap().id();
+        .unwrap()
+        .id();
 
-    let group = crate::operations::local_ops::read_pending_op_group(
-        &lib_a.inner.local_dirs.pending_op_path(),
-        &lib_a.inner.master_key,
-    )
-    .unwrap()
-    .expect("pending group must exist after media_add");
-
-    let comp_uuid = crate::identifiers::CompactedOpId::new();
-    let comp_file = CompactionFile {
-        tier: 1,
-        contents: vec![CompactionEntry { op_id: group.op_id, group }],
-    };
-    let comp_key = format!("operations/{comp_uuid}.op1_{}", comp_file.contents.len());
-    write_compaction_file(&storage, &lib_a.inner.master_key, &comp_key, &comp_uuid, &comp_file)
-        .await
-        .unwrap();
+    let operations = lib_a.list_operations().unwrap();
+    assert!(!operations.is_empty(), "media_add must record operations");
+    let op_count = operations.len();
+    write_compaction_file(&storage, &lib_a.inner.master_key, operations).await;
 
     let report = lib_b.fetch(&storage, REMOTE_ID).await.unwrap();
-    assert_eq!(report.ops_downloaded, 1, "B must absorb the op from the compaction file");
-    lib_b.media_show(mid).expect("B must have the media after absorbing compaction file");
+    assert_eq!(
+        report.ops_downloaded, op_count,
+        "B must absorb the ops from the compaction file"
+    );
+    lib_b
+        .media_show(mid)
+        .expect("B must have the media after absorbing compaction file");
 }
 
 #[tokio::test]
 // An op present in two separate compaction files (e.g. after concurrent pushes) is not
 // double-appended to the local log.
 async fn fetch_does_not_double_append_op_in_two_compaction_files() {
-    use crate::operations::{CompactionEntry, CompactionFile};
-    use crate::operations::remote_ops::write_compaction_file;
-
     let storage = StorageMockMemory::new();
     let tmp_a = TempDir::new().unwrap();
     let tmp_b = TempDir::new().unwrap();
 
     let lib_a = make_library(&tmp_a).await;
-    lib_a.initialize_remote(&storage, remote_uuid()).await.unwrap();
+    lib_a
+        .initialize_remote(&storage, remote_uuid())
+        .await
+        .unwrap();
     let lib_b = make_library_with_same_keys(&tmp_b, &lib_a).await;
 
     let album_id = AlbumUuid::from_uuid(Uuid::new_v4());
     let src = write_file(tmp_a.path(), "dup.jpg", b"dup");
     let mid = lib_a
-        .media_add(crate::library::media::upload::MediaAddSource::CopyFrom(src), Some(album_id), None, None, None)
+        .media_add(
+            crate::library::media::upload::MediaAddSource::CopyFrom(src),
+            Some(album_id),
+            None,
+            None,
+            None,
+        )
         .await
         .unwrap()
         .id();
 
-    let group = crate::operations::local_ops::read_pending_op_group(
-        &lib_a.inner.local_dirs.pending_op_path(),
-        &lib_a.inner.master_key,
-    )
-    .unwrap()
-    .expect("pending group must exist after media_add");
+    let operations = lib_a.list_operations().unwrap();
+    let op_count = operations.len();
 
-    // Write the same op group into two different compaction files.
-    for i in 0u32..2 {
-        let comp_uuid = crate::identifiers::CompactedOpId::new();
-        let comp_file = CompactionFile {
-            tier: 1,
-            contents: vec![CompactionEntry { op_id: group.op_id, group: group.clone() }],
-        };
-        let comp_key = format!("operations/{comp_uuid}.op1_{i}");
-        write_compaction_file(
-            &storage,
-            &lib_a.inner.master_key,
-            &comp_key,
-            &comp_uuid,
-            &comp_file,
-        )
-        .await
-        .unwrap();
+    // Write the same operations into two different compaction files.
+    for _ in 0u32..2 {
+        write_compaction_file(&storage, &lib_a.inner.master_key, operations.clone()).await;
     }
 
     let report = lib_b.fetch(&storage, REMOTE_ID).await.unwrap();
-    assert_eq!(report.ops_downloaded, 1, "op must be appended exactly once");
+    assert_eq!(
+        report.ops_downloaded, op_count,
+        "each op must be appended exactly once"
+    );
     lib_b.media_show(mid).expect("B must have the media");
 
     let report2 = lib_b.fetch(&storage, REMOTE_ID).await.unwrap();
-    assert_eq!(report2.ops_downloaded, 0, "second fetch must download nothing");
+    assert_eq!(
+        report2.ops_downloaded, 0,
+        "second fetch must download nothing"
+    );
 }
 
 #[tokio::test]
@@ -196,36 +262,29 @@ async fn fetch_converges_after_compaction_push() {
     let tmp_b = TempDir::new().unwrap();
 
     let lib_a = make_library(&tmp_a).await;
-    lib_a.initialize_remote(&storage, remote_uuid()).await.unwrap();
+    lib_a
+        .initialize_remote(&storage, remote_uuid())
+        .await
+        .unwrap();
     let lib_b = make_library_with_same_keys(&tmp_b, &lib_a).await;
 
-    // Inject 20 op groups directly into A's main log (bypassing pending).
-    for _ in 0..20usize {
-        let op_id = crate::identifiers::OpUuid::new();
-        let media_id = crate::identifiers::MediaUuid::from_uuid(uuid::Uuid::new_v4());
-        let group = crate::operations::OperationGroup {
-            op_id,
-            parent_op_id: None,
-            author: lib_a.inner.username.clone(),
-            operations: vec![crate::operations::Operation::MediaCreation {
-                timestamp: chrono::Utc::now(),
-                media_id,
-                filename_original: crate::operations::MediaFilename("x.jpg".into()),
-                date: chrono::Utc::now(),
-                storage_date: crate::operations::StorageDate { year: 2024, month: 1 },
-                size_bytes: 100,
-                content_hash: crate::library::media::MediaHash::zeroed(),
-                modified_at: None,
-                gps: None,
-                apple_aae_media_id: None,
-                apple_live_photo_media_id: None,
-            }],
-        };
-        crate::operations::local_ops::append_op_group(
-            &lib_a.inner.local_dirs.operations_log_path(),
-            &lib_a.inner.master_key,
-            &group,
-        ).unwrap();
+    // Twenty media, each added outside any album so each records exactly one operation.
+    for i in 0..20usize {
+        let src = write_file(
+            tmp_a.path(),
+            &format!("x{i}.jpg"),
+            format!("data-{i}").as_bytes(),
+        );
+        lib_a
+            .media_add(
+                crate::library::media::upload::MediaAddSource::CopyFrom(src),
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap();
     }
 
     let report = lib_a.push(&storage, REMOTE_ID).await.unwrap();
@@ -233,7 +292,10 @@ async fn fetch_converges_after_compaction_push() {
     assert_eq!(report.compactions_run, 0);
 
     let fetch_report = lib_b.fetch(&storage, REMOTE_ID).await.unwrap();
-    assert_eq!(fetch_report.ops_downloaded, 20, "B must absorb all 20 ops from the .op1 file");
+    assert_eq!(
+        fetch_report.ops_downloaded, 20,
+        "B must absorb all 20 ops from the .op1 file"
+    );
 }
 
 #[tokio::test]
@@ -245,23 +307,114 @@ async fn fetch_updates_media_list_from_ops() {
     let tmp_b = TempDir::new().unwrap();
 
     let lib_a = make_library(&tmp_a).await;
-    lib_a.initialize_remote(&storage, remote_uuid()).await.unwrap();
+    lib_a
+        .initialize_remote(&storage, remote_uuid())
+        .await
+        .unwrap();
     let lib_b = make_library_with_same_keys(&tmp_b, &lib_a).await;
 
     let album_id = AlbumUuid::from_uuid(Uuid::new_v4());
     let src = write_file(tmp_a.path(), "photo.jpg", b"data");
     let media_id = lib_a
-        .media_add(crate::library::media::upload::MediaAddSource::CopyFrom(src), Some(album_id), None, None, None)
+        .media_add(
+            crate::library::media::upload::MediaAddSource::CopyFrom(src),
+            Some(album_id),
+            None,
+            None,
+            None,
+        )
         .await
-        .unwrap().id();
+        .unwrap()
+        .id();
     lib_a.push(&storage, REMOTE_ID).await.unwrap();
 
     lib_b.fetch(&storage, REMOTE_ID).await.unwrap();
 
-    let media_list_path = lib_b.inner.local_dirs.remote_media_list_path(REMOTE_ID);
-    let media_list = crate::remote::local_state::media_list_json::MediaList::load_or_default(&media_list_path)
+    let media_list_path = lib_b
+        .inner
+        .local_dirs
+        .remote_media_list(&REMOTE_ID.to_string())
+        .media_list_path();
+    let media_list =
+        crate::remote::local_state::media_list_json::MediaList::load_or_default(&media_list_path)
+            .unwrap();
+    assert!(
+        media_list.has_full(&media_id),
+        "media_list.json must contain media_id after fetch"
+    );
+}
+
+#[tokio::test]
+// A blob uploaded to the remote after its creation op was already merged locally is still
+// discovered, because fetch confirms every media the reconstructed state knows about and
+// not only the ones created by the operations merged in this run.
+async fn fetch_confirms_media_uploaded_after_its_op_was_merged() {
+    let storage = StorageMockMemory::new();
+    let tmp_a = TempDir::new().unwrap();
+    let tmp_b = TempDir::new().unwrap();
+
+    let lib_a = make_library(&tmp_a).await;
+    lib_a
+        .initialize_remote(&storage, remote_uuid())
+        .await
         .unwrap();
-    assert!(media_list.contains(&media_id), "media_list.json must contain media_id after fetch");
+    let lib_b = make_library_with_same_keys(&tmp_b, &lib_a).await;
+
+    let album_id = AlbumUuid::from_uuid(Uuid::new_v4());
+    let src = write_file(tmp_a.path(), "photo.jpg", b"data");
+    let media_id = lib_a
+        .media_add(
+            crate::library::media::upload::MediaAddSource::CopyFrom(src),
+            Some(album_id),
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap()
+        .id();
+    lib_a.push(&storage, REMOTE_ID).await.unwrap();
+
+    let entry = lib_a.media_show(media_id).unwrap();
+    let data_key = format!(
+        "media/{}/{:02}/{}.data",
+        entry.storage_date.year, entry.storage_date.month, media_id
+    );
+    let blob = storage.get(&data_key).await.unwrap();
+
+    // The op file is on the remote but the blob is not there yet.
+    storage.delete(&data_key).await.unwrap();
+    lib_b.fetch(&storage, REMOTE_ID).await.unwrap();
+
+    let media_list_path = lib_b
+        .inner
+        .local_dirs
+        .remote_media_list(&REMOTE_ID.to_string())
+        .media_list_path();
+    let media_list =
+        crate::remote::local_state::media_list_json::MediaList::load_or_default(&media_list_path)
+            .unwrap();
+    assert!(
+        !media_list.has_full(&media_id),
+        "an absent blob must stay unconfirmed"
+    );
+
+    storage
+        .put_atomic(&data_key, &blob, AtomicWriteMode::CreateIfAbsent)
+        .await
+        .unwrap();
+
+    // This fetch merges no new operation file at all.
+    let report = lib_b.fetch(&storage, REMOTE_ID).await.unwrap();
+    assert_eq!(report.ops_downloaded, 0);
+
+    let media_list =
+        crate::remote::local_state::media_list_json::MediaList::load_or_default(&media_list_path)
+            .unwrap();
+    assert!(
+        media_list.has_full(&media_id),
+        "the late blob must be confirmed by a later fetch"
+    );
 }
 
 #[tokio::test]
@@ -273,7 +426,10 @@ async fn fetch_downloads_new_user_mk_file() {
     let tmp_b = TempDir::new().unwrap();
 
     let lib_a = make_library(&tmp_a).await;
-    lib_a.initialize_remote(&storage, remote_uuid()).await.unwrap();
+    lib_a
+        .initialize_remote(&storage, remote_uuid())
+        .await
+        .unwrap();
     let lib_b = make_library_with_same_keys(&tmp_b, &lib_a).await;
 
     // Simulate a new user being added and propagated to the remote from another device.
@@ -285,13 +441,36 @@ async fn fetch_downloads_new_user_mk_file() {
         .await
         .unwrap();
     let mk_name = format!("mk_bob_{bob_uuid}.enc");
-    let mk_bytes = std::fs::read(lib_a.inner.local_dirs.local_library_dir().join(&mk_name)).unwrap();
-    storage.put(&format!("library/{mk_name}"), &mk_bytes).await.unwrap();
+    let mk_bytes = std::fs::read(
+        lib_a
+            .inner
+            .local_dirs
+            .local_state_library_dir()
+            .path()
+            .join(&mk_name),
+    )
+    .unwrap();
+    storage
+        .put_atomic(
+            &format!("library/{mk_name}"),
+            &mk_bytes,
+            AtomicWriteMode::Replace,
+        )
+        .await
+        .unwrap();
 
     lib_b.fetch(&storage, REMOTE_ID).await.unwrap();
 
-    let downloaded = lib_b.inner.local_dirs.local_library_dir().join(&mk_name);
-    assert!(downloaded.exists(), "B must have downloaded bob's mk file after fetch");
+    let downloaded = lib_b
+        .inner
+        .local_dirs
+        .local_state_library_dir()
+        .path()
+        .join(&mk_name);
+    assert!(
+        downloaded.exists(),
+        "B must have downloaded bob's mk file after fetch"
+    );
     assert_eq!(std::fs::read(&downloaded).unwrap(), mk_bytes);
 }
 
@@ -303,7 +482,10 @@ async fn fetch_does_not_redownload_existing_mk_file() {
     let tmp_b = TempDir::new().unwrap();
 
     let lib_a = make_library(&tmp_a).await;
-    lib_a.initialize_remote(&storage, remote_uuid()).await.unwrap();
+    lib_a
+        .initialize_remote(&storage, remote_uuid())
+        .await
+        .unwrap();
     let lib_b = make_library_with_same_keys(&tmp_b, &lib_a).await;
 
     let bob_uuid = lib_a
@@ -314,15 +496,33 @@ async fn fetch_does_not_redownload_existing_mk_file() {
         .await
         .unwrap();
     let mk_name = format!("mk_bob_{bob_uuid}.enc");
-    let mk_bytes = std::fs::read(lib_a.inner.local_dirs.local_library_dir().join(&mk_name)).unwrap();
-    storage.put(&format!("library/{mk_name}"), &mk_bytes).await.unwrap();
+    let mk_bytes = std::fs::read(
+        lib_a
+            .inner
+            .local_dirs
+            .local_state_library_dir()
+            .path()
+            .join(&mk_name),
+    )
+    .unwrap();
+    storage
+        .put_atomic(
+            &format!("library/{mk_name}"),
+            &mk_bytes,
+            AtomicWriteMode::Replace,
+        )
+        .await
+        .unwrap();
 
     lib_b.fetch(&storage, REMOTE_ID).await.unwrap();
     let before = storage.get_call_count();
     lib_b.fetch(&storage, REMOTE_ID).await.unwrap();
     let after = storage.get_call_count();
 
-    assert_eq!(after, before, "second fetch must not re-download an mk file already present locally");
+    assert_eq!(
+        after, before,
+        "second fetch must not re-download an mk file already present locally"
+    );
 }
 
 #[tokio::test]
@@ -333,12 +533,21 @@ async fn fetch_errors_on_library_id_mismatch() {
     let tmp_a = TempDir::new().unwrap();
 
     let lib_a = make_library(&tmp_a).await;
-    lib_a.initialize_remote(&storage, remote_uuid()).await.unwrap();
+    lib_a
+        .initialize_remote(&storage, remote_uuid())
+        .await
+        .unwrap();
 
     // Corrupt the remote's library_id_{uuid} marker to simulate a different library.
     let wrong_marker = format!("library/library_id_{}", Uuid::new_v4());
-    storage.delete(&format!("library/library_id_{}", lib_a.library_id().0)).await.unwrap();
-    storage.put(&wrong_marker, b"").await.unwrap();
+    storage
+        .delete(&format!("library/library_id_{}", lib_a.library_id().0))
+        .await
+        .unwrap();
+    storage
+        .put_atomic(&wrong_marker, b"", AtomicWriteMode::Replace)
+        .await
+        .unwrap();
 
     let err = lib_a.fetch(&storage, REMOTE_ID).await.unwrap_err();
     assert!(
@@ -358,12 +567,21 @@ async fn fetch_errors_on_remote_id_mismatch() {
     let tmp_a = TempDir::new().unwrap();
 
     let lib_a = make_library(&tmp_a).await;
-    lib_a.initialize_remote(&storage, remote_uuid()).await.unwrap();
+    lib_a
+        .initialize_remote(&storage, remote_uuid())
+        .await
+        .unwrap();
 
     // Corrupt the remote's remote_id_{uuid} marker to simulate a different remote.
     let wrong_marker = format!("remote_id_{}", Uuid::new_v4());
-    storage.delete(&format!("remote_id_{}", REMOTE_ID)).await.unwrap();
-    storage.put(&wrong_marker, b"").await.unwrap();
+    storage
+        .delete(&format!("remote_id_{REMOTE_ID}"))
+        .await
+        .unwrap();
+    storage
+        .put_atomic(&wrong_marker, b"", AtomicWriteMode::Replace)
+        .await
+        .unwrap();
 
     let err = lib_a.fetch(&storage, REMOTE_ID).await.unwrap_err();
     assert!(
@@ -373,4 +591,98 @@ async fn fetch_errors_on_remote_id_mismatch() {
         ),
         "fetch must fail with RemoteIdMismatch, got: {err}"
     );
+}
+
+#[tokio::test]
+// Confirmation run on its own records what a fetch would, without merging any operation.
+async fn confirm_remote_media_records_without_fetching() {
+    let storage = StorageMockMemory::new();
+    let tmp_a = TempDir::new().unwrap();
+    let tmp_b = TempDir::new().unwrap();
+
+    let lib_a = make_library(&tmp_a).await;
+    lib_a
+        .initialize_remote(&storage, remote_uuid())
+        .await
+        .unwrap();
+    let lib_b = make_library_with_same_keys(&tmp_b, &lib_a).await;
+
+    let album_id = AlbumUuid::from_uuid(Uuid::new_v4());
+    let src = write_file(tmp_a.path(), "photo.jpg", b"data");
+    let media_id = lib_a
+        .media_add(
+            crate::library::media::upload::MediaAddSource::CopyFrom(src),
+            Some(album_id),
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap()
+        .id();
+    lib_a.push(&storage, REMOTE_ID).await.unwrap();
+
+    // B learns the media exists, while the blob is not yet on the remote.
+    let data_key = {
+        let entry = lib_a.media_show(media_id).unwrap();
+        format!(
+            "media/{}/{:02}/{}.data",
+            entry.storage_date.year, entry.storage_date.month, media_id
+        )
+    };
+    let blob = storage.get(&data_key).await.unwrap();
+    storage.delete(&data_key).await.unwrap();
+    lib_b.fetch(&storage, REMOTE_ID).await.unwrap();
+
+    let media_list_path = lib_b
+        .inner
+        .local_dirs
+        .remote_media_list(&REMOTE_ID.to_string())
+        .media_list_path();
+    assert!(
+        !crate::remote::local_state::media_list_json::MediaList::load_or_default(&media_list_path)
+            .unwrap()
+            .has_full(&media_id)
+    );
+
+    storage
+        .put_atomic(&data_key, &blob, AtomicWriteMode::CreateIfAbsent)
+        .await
+        .unwrap();
+
+    let confirmed = lib_b
+        .confirm_remote_media(&storage, REMOTE_ID)
+        .await
+        .unwrap();
+
+    assert_eq!(confirmed, 1);
+    assert!(
+        crate::remote::local_state::media_list_json::MediaList::load_or_default(&media_list_path)
+            .unwrap()
+            .has_full(&media_id)
+    );
+}
+
+#[tokio::test]
+// Confirmation takes the same per-remote slot as fetch and push, so it cannot run while one of
+// them is working on that remote.
+async fn confirm_remote_media_refuses_while_the_remote_slot_is_held() {
+    let storage = StorageMockMemory::new();
+    let tmp = TempDir::new().unwrap();
+    let lib = make_library(&tmp).await;
+    lib.initialize_remote(&storage, remote_uuid())
+        .await
+        .unwrap();
+
+    let guard = lib.try_acquire_remote_sync(&REMOTE_ID.to_string()).unwrap();
+    let error = lib
+        .confirm_remote_media(&storage, REMOTE_ID)
+        .await
+        .unwrap_err();
+    drop(guard);
+
+    assert!(matches!(
+        error,
+        crate::error::LibraryError::Sync(crate::error::SyncError::AlreadyRunning)
+    ));
 }

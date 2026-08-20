@@ -1,12 +1,16 @@
 import SwiftUI
 
 struct MainView: View {
-    @EnvironmentObject var libraryModel: LibraryModel
     @Environment(ToastManager.self) var toastManager
     @Environment(\.lascoTheme) var theme
     @State private var selectedTab: AppTab = .home
     @State private var hideTabBar = false
     @State private var albumToOpen: FfiAlbum? = nil
+
+    let repository: LibraryRepository
+    let session: LibrarySessionState
+    let syncCoordinator: SyncCoordinator
+    let importCoordinator: MediaImportCoordinator
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -23,9 +27,8 @@ struct MainView: View {
             }
         }
         .background(theme.bg)
-        .task(id: libraryModel.isOpen) {
-            guard libraryModel.isOpen else { return }
-            await libraryModel.fetchDefaultRemote()
+        .task {
+            await syncCoordinator.fetchDefaultRemote()
         }
     }
 
@@ -33,15 +36,15 @@ struct MainView: View {
     private var tabContent: some View {
         switch selectedTab {
         case .home:
-            ContentView(openAlbum: openAlbum)
+            ContentView(repository: repository, session: session, importCoordinator: importCoordinator, openAlbum: openAlbum)
         case .albums:
-            AlbumsView(pendingAlbum: $albumToOpen)
+            AlbumsView(repository: repository, session: session, importCoordinator: importCoordinator, pendingAlbum: $albumToOpen)
         // case .search:
         //     SearchView()
         case .status:
-            StatusView()
+            StatusView(repository: repository, session: session, syncCoordinator: syncCoordinator)
         case .manage:
-            ManageView()
+            ManageView(repository: repository, session: session, syncCoordinator: syncCoordinator)
         }
     }
 

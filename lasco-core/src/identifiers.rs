@@ -7,6 +7,7 @@ pub struct MediaUuid(pub Uuid);
 
 impl MediaUuid {
     // Not impl From<Uuid>. Prevents accidental cross-type UUID coercions.
+    #[must_use]
     pub fn from_uuid(id: Uuid) -> Self {
         Self(id)
     }
@@ -24,6 +25,7 @@ pub struct AlbumUuid(pub Uuid);
 
 impl AlbumUuid {
     // Not impl From<Uuid>.
+    #[must_use]
     pub fn from_uuid(id: Uuid) -> Self {
         Self(id)
     }
@@ -41,6 +43,7 @@ pub struct GroupUuid(pub Uuid);
 
 impl GroupUuid {
     // Not impl From<Uuid>.
+    #[must_use]
     pub fn from_uuid(id: Uuid) -> Self {
         Self(id)
     }
@@ -58,35 +61,9 @@ pub struct UserUuid(pub Uuid);
 
 impl UserUuid {
     // Not impl From<Uuid>.
+    #[must_use]
     pub fn from_uuid(id: Uuid) -> Self {
         Self(id)
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct OpUuid(pub Uuid);
-
-impl OpUuid {
-    // Not impl From<Uuid>.
-    pub fn from_uuid(id: Uuid) -> Self {
-        Self(id)
-    }
-
-    pub fn new() -> Self {
-        Self(Uuid::now_v7())
-    }
-}
-
-impl Default for OpUuid {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl std::fmt::Display for OpUuid {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
     }
 }
 
@@ -94,6 +71,13 @@ impl std::fmt::Display for OpUuid {
 pub struct LibraryId(pub Uuid);
 
 impl LibraryId {
+    // Not impl From<Uuid>. Prevents accidental cross-type UUID coercions.
+    #[must_use]
+    pub fn from_uuid(id: Uuid) -> Self {
+        Self(id)
+    }
+
+    #[must_use]
     pub fn new() -> Self {
         LibraryId(Uuid::new_v4())
     }
@@ -116,11 +100,13 @@ impl std::fmt::Display for LibraryId {
 pub struct RemoteUuid(pub Uuid);
 
 impl RemoteUuid {
+    #[must_use]
     pub fn new() -> Self {
         Self(Uuid::new_v4())
     }
 
     // Not impl From<Uuid>. Prevents accidental cross-type UUID coercions.
+    #[must_use]
     pub fn from_uuid(id: Uuid) -> Self {
         Self(id)
     }
@@ -143,11 +129,13 @@ impl std::fmt::Display for RemoteUuid {
 pub struct CompactedOpId(pub Uuid);
 
 impl CompactedOpId {
+    #[must_use]
     pub fn new() -> Self {
         Self(Uuid::new_v4())
     }
 
     // Not impl From<Uuid>. Prevents accidental cross-type UUID coercions.
+    #[must_use]
     pub fn from_uuid(id: Uuid) -> Self {
         Self(id)
     }

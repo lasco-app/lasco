@@ -1,5 +1,8 @@
 import SwiftUI
 import UniformTypeIdentifiers
+#if canImport(PhotosUI)
+import PhotosUI
+#endif
 #if canImport(UIKit)
 import UIKit
 #else
@@ -15,27 +18,39 @@ enum LibraryDestination: Hashable {
 // MARK: - ContentView
 
 struct ContentView: View {
-    @EnvironmentObject var libraryModel: LibraryModel
     @Environment(ToastManager.self) var toastManager
     @Environment(\.lascoTheme) var theme
 
     let openAlbum: (FfiAlbum) -> Void
+    let repository: LibraryRepository
+    let session: LibrarySessionState
+    let importCoordinator: MediaImportCoordinator
+
+    @State private var model: RecentMediaModel
+
+    init(repository: LibraryRepository, session: LibrarySessionState, importCoordinator: MediaImportCoordinator, openAlbum: @escaping (FfiAlbum) -> Void) {
+        self.repository = repository
+        self.session = session
+        self.importCoordinator = importCoordinator
+        self.openAlbum = openAlbum
+        _model = State(initialValue: RecentMediaModel(repository: repository))
+    }
 
     @State private var showingImportMedia = false
-    @State private var pendingImportUrls: [URL] = []
-    @State private var showingAlbumPicker = false
+    @State private var showingPhotosPicker = false
+    @State private var photosPickerItems: [PhotosPickerItem] = []
     @State private var path: [LibraryDestination] = []
-    @State private var selection: Set<String> = []
+    @State private var selection: Set<FfiMediaUuid> = []
     @State private var isSelecting = false
     @State private var albumsForMedia: AlbumList? = nil
-    @State private var showingDefaultAlbumPicker = false
+    @State private var showingAddToAlbumPicker = false
 
     var body: some View {
         NavigationStack(path: $path) {
             GeometryReader { geo in
                 let columns = geo.size.width > 500 ? 3 : 2
                 let gridColumns = Array(repeating: GridItem(.flexible(), spacing: 3), count: columns)
-                let media = libraryModel.media
+                let media = model.media
 
                 ZStack(alignment: .top) {
                     ScrollView {
@@ -90,7 +105,7 @@ struct ContentView: View {
             .navigationDestination(for: LibraryDestination.self) { dest in
                 switch dest {
                 case .mediaDetail(let state):
-                    MediaDetailView(media: state.items, startIndex: state.startIndex, startThumbnail: state.startThumbnail, onAlbumTap: openAlbum)
+                    MediaDetailView(source: state.source, startPosition: state.startPosition, repository: repository, onAlbumTap: openAlbum)
                 }
             }
             .sheet(item: $albumsForMedia) { list in
@@ -105,32 +120,18 @@ struct ContentView: View {
                 .environment(\.lascoTheme, .dark)
                 .preferredColorScheme(.dark)
             }
+            .sheet(isPresented: $showingAddToAlbumPicker) {
+                AlbumPickerView(
+                    repository: repository,
+                    title: "Add to album",
+                    onSelect: addSelectionToAlbum,
+                    onCancel: { showingAddToAlbumPicker = false }
+                )
+                .environment(\.lascoTheme, .dark)
+                .preferredColorScheme(.dark)
+            }
         }
         .background(theme.bg)
-        .sheet(isPresented: $showingAlbumPicker) {
-            AlbumPickerView(title: "Choose import destination") { album in
-                showingAlbumPicker = false
-                doImport(urls: pendingImportUrls, album: album)
-                pendingImportUrls = []
-            } onCancel: {
-                showingAlbumPicker = false
-                pendingImportUrls = []
-            }
-            .environmentObject(libraryModel)
-            .environment(\.lascoTheme, .dark)
-            .preferredColorScheme(.dark)
-        }
-        .sheet(isPresented: $showingDefaultAlbumPicker) {
-            AlbumPickerView(title: "Default upload album") { album in
-                libraryModel.setDefaultUploadAlbum(albumId: album.albumId)
-                showingDefaultAlbumPicker = false
-            } onCancel: {
-                showingDefaultAlbumPicker = false
-            }
-            .environmentObject(libraryModel)
-            .environment(\.lascoTheme, .dark)
-            .preferredColorScheme(.dark)
-        }
         .fileImporter(
             isPresented: $showingImportMedia,
             allowedContentTypes: [.image, .movie],
@@ -140,17 +141,41 @@ struct ContentView: View {
             case .failure(let err):
                 toastManager.show(error: err.localizedDescription)
             case .success(let urls):
-                if let defaultAlbum = libraryModel.defaultUploadAlbum {
-                    doImport(urls: urls, album: defaultAlbum)
-                } else {
-                    pendingImportUrls = urls
-                    showingAlbumPicker = true
-                }
+                doImport(urls: urls)
             }
         }
-        .onAppear {
-            AppLogger.log(.info, "home screen shown — \(libraryModel.media.count) media items")
+        #if canImport(UIKit)
+        .photosPicker(
+            isPresented: $showingPhotosPicker,
+            selection: $photosPickerItems,
+            maxSelectionCount: 0,
+            matching: .any(of: [.images, .videos]),
+            photoLibrary: .shared()
+        )
+        .onChange(of: photosPickerItems) { _, items in
+            guard !items.isEmpty else { return }
+            let captured = items
+            photosPickerItems = []
+            Task {
+                let urls = await temporaryURLs(for: captured)
+                guard !urls.isEmpty else {
+                    toastManager.show(error: "Could not read the selected photos")
+                    return
+                }
+                doImport(urls: urls)
+            }
         }
+        #endif
+        .onAppear {
+            AppLogger.log(.info, "home screen shown — \(model.media.count) media items")
+        }
+        .task { await model.start() }
+        .onChange(of: model.showingOrphans) {
+            selection = []
+            isSelecting = false
+            Task { await model.load() }
+        }
+        .environment(repository)
     }
 
     // MARK: Header
@@ -161,18 +186,14 @@ struct ContentView: View {
                 .font(LascoFont.categoryLarge())
                 .foregroundStyle(theme.ink)
             Spacer()
-            Button {
-                guard libraryModel.isOpen else {
-                    toastManager.show(error: "No library open")
-                    return
-                }
-                showingImportMedia = true
-            } label: {
-                Image("upload").renderingMode(.template).resizable().frame(width: 18, height: 18)
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundStyle(theme.ink)
+            Toggle(isOn: $model.showingOrphans) {
+                Text(model.showingOrphans ? "Orphan" : "All")
+                    .font(LascoFont.body())
+                    .foregroundStyle(theme.inkSub)
             }
-            .buttonStyle(.plain)
+                .accessibilityLabel("Media filter")
+                .accessibilityValue(model.showingOrphans ? "On" : "Off")
+            addMenu
         }
         .padding(.top, 20)
         .padding(.bottom, 8)
@@ -227,18 +248,21 @@ struct ContentView: View {
 
             Spacer()
 
-            if selection.count == 1, let mediaId = selection.first {
+            Menu {
                 Button {
-                    triggerOpenAlbum(for: mediaId)
+                    showingAddToAlbumPicker = true
                 } label: {
-                    Image("folder").renderingMode(.template).resizable().frame(width: 18, height: 18)
-                        .font(.system(size: 18, weight: .medium))
-                        .frame(width: 48, height: 44)
-                        .contentShape(Rectangle())
+                    Label("Add to album", systemImage: "folder.badge.plus")
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(theme.ink)
+            } label: {
+                Text("...")
+                    .font(LascoFont.body())
+                    .frame(width: 48, height: 44)
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .foregroundStyle(theme.ink)
+            .accessibilityLabel("Selection actions")
         }
         .padding(.horizontal, 12)
         .background(theme.pink)
@@ -250,32 +274,14 @@ struct ContentView: View {
     @ViewBuilder
     private func mediaContent(media: [FfiMediaItem], gridColumns: [GridItem]) -> some View {
         if media.isEmpty {
-            Text("No media yet.")
+            Text(model.showingOrphans ? "No orphan media." : "No media yet.")
                 .font(LascoFont.title())
                 .foregroundStyle(theme.inkSub)
                 .padding(20)
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else {
-            if libraryModel.defaultUploadAlbumId == nil {
-                HStack(spacing: 12) {
-                    Text("Auto-import paused: no default upload album set.")
-                        .font(LascoFont.body())
-                        .foregroundStyle(theme.ink)
-                    Spacer()
-                    Button("Set album →") {
-                        showingDefaultAlbumPicker = true
-                    }
-                    .buttonStyle(.plain)
-                    .font(LascoFont.body())
-                    .foregroundStyle(theme.ink)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(theme.pink)
-            }
-
             LazyVGrid(columns: gridColumns, spacing: 3) {
-                ForEach(media, id: \.mediaId) { item in
+                ForEach(Array(media.enumerated()), id: \.element.mediaId) { position, item in
                     let isSelected = selection.contains(item.mediaId)
                     MediaGridCell(item: item, isSelected: isSelected)
                         .onTapGesture {
@@ -286,9 +292,11 @@ struct ContentView: View {
                                 } else {
                                     selection.insert(item.mediaId)
                                 }
-                            } else if let idx = media.firstIndex(where: { $0.mediaId == item.mediaId }) {
-                                let thumb = libraryModel.thumbnail(for: item.mediaId)
-                                path.append(.mediaDetail(MediaDetailState(items: media.map { .media($0) }, startIndex: idx, startThumbnail: thumb)))
+                            } else {
+                                path.append(.mediaDetail(MediaDetailState(
+                                    source: model.showingOrphans ? .orphansByDate : .homeByDate,
+                                    startPosition: position
+                                )))
                             }
                         }
                         .onLongPressGesture {
@@ -308,6 +316,10 @@ struct ContentView: View {
                             }
                         }
                         #endif
+                        .onAppear {
+                            guard item.mediaId == media.last?.mediaId else { return }
+                            Task { await model.loadMore() }
+                        }
                 }
             }
         }
@@ -317,26 +329,94 @@ struct ContentView: View {
 
     // MARK: Open album
 
-    private func triggerOpenAlbum(for mediaId: String) {
-        let containing = libraryModel.albumsContainingMedia(mediaId: mediaId)
-        guard !containing.isEmpty else { return }
-        if containing.count == 1 {
-            selection = []
-            isSelecting = false
-            openAlbum(containing[0])
-        } else {
-            guard let mediaItem = libraryModel.showMedia(mediaId: mediaId) else { return }
-            albumsForMedia = AlbumList(media: mediaItem, albums: containing)
+    private func triggerOpenAlbum(for mediaId: FfiMediaUuid) {
+        Task {
+            let containing = await model.albumsContainingMedia(id: mediaId)
+            guard !containing.isEmpty else { return }
+            if containing.count == 1 {
+                selection = []
+                isSelecting = false
+                openAlbum(containing[0])
+            } else if let mediaItem = await model.showMedia(id: mediaId) {
+                albumsForMedia = AlbumList(media: mediaItem, albums: containing)
+            }
+        }
+    }
+
+    private func addSelectionToAlbum(_ album: FfiAlbum) {
+        let mediaIds = selection
+        showingAddToAlbumPicker = false
+        Task {
+            do {
+                for mediaId in mediaIds {
+                    try await repository.addMediaToAlbum(albumID: album.albumId, mediaID: mediaId)
+                }
+                selection = []
+                isSelecting = false
+                toastManager.show(ok: "Added \(mediaIds.count) item(s) to \(album.name)")
+            } catch {
+                toastManager.show(error: error.localizedDescription)
+            }
         }
     }
 
     // MARK: Import helpers
 
-    private func doImport(urls: [URL], album: FfiAlbum) {
-        if let err = libraryModel.importMedia(urls: urls, albumId: album.albumId) {
-            toastManager.show(error: err)
-        } else {
-            toastManager.show(ok: "Imported \(urls.count) item(s) to \(album.name)")
+    private var addMenu: some View {
+        Menu {
+            #if canImport(UIKit)
+            Button {
+                showingPhotosPicker = true
+            } label: {
+                Label("Import from Photos…", systemImage: "photo.on.rectangle")
+            }
+            #endif
+            Button {
+                showingImportMedia = true
+            } label: {
+                Label("Import from Files…", systemImage: "square.and.arrow.down")
+            }
+        } label: {
+            Image("plus")
+                .renderingMode(.template)
+                .resizable()
+                .frame(width: 18, height: 18)
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(theme.ink)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Import orphan media")
+    }
+
+    #if canImport(UIKit)
+    private func temporaryURLs(for items: [PhotosPickerItem]) async -> [URL] {
+        var urls: [URL] = []
+        for item in items {
+            guard let data = try? await item.loadTransferable(type: Data.self) else { continue }
+            let fileExtension = item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }) ? "mov" : "jpg"
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+                .appendingPathExtension(fileExtension)
+            do {
+                try data.write(to: url)
+                urls.append(url)
+            } catch {
+                AppLogger.log(.error, "could not write selected photo to a temporary file: \(error)")
+            }
+        }
+        return urls
+    }
+    #endif
+
+    private func doImport(urls: [URL]) {
+        Task {
+            if let err = await importCoordinator.importMedia(urls: urls) {
+                toastManager.show(error: err)
+            } else {
+                toastManager.show(ok: "Imported \(urls.count) item(s) as orphan media")
+            }
         }
     }
 
@@ -353,7 +433,7 @@ private struct AlbumList: Identifiable {
 // MARK: - OpenAlbumPickerSheet
 
 private struct OpenAlbumPickerSheet: View {
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(LibraryRepository.self) private var repository
     let media: FfiMediaItem
     let albums: [FfiAlbum]
     let onSelect: (FfiAlbum) -> Void
@@ -444,7 +524,7 @@ private struct OpenAlbumPickerSheet: View {
         .frame(minWidth: 400, minHeight: 300)
         #endif
         .task(id: media.mediaId) {
-            if let data = libraryModel.thumbnail(for: media.mediaId) {
+            if let data = try? await repository.thumbnailAsync(mediaID: media.mediaId) {
                 thumbnail = Image(data: data)
             }
         }

@@ -1,16 +1,16 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::encryption::master_key::MasterKey;
 use crate::error::SyncError;
 use crate::identifiers::CompactedOpId;
 use crate::operations::remote_ops::{self as op_io, RemoteOpFile};
 use crate::remote::LastKnownState;
-use crate::storage::Storage;
+use crate::storage::AtomicWriteMode;
 
 use super::map_op_err;
+use super::remote_access::{StorageRead, StorageReadWrite};
 
 pub(super) type Result<T> = std::result::Result<T, SyncError>;
 
@@ -23,12 +23,12 @@ pub(super) const TIER_FILE_LIMIT: usize = 10;
 /// compaction file that stays within its tier's ops limit.
 ///
 /// Tier N's ops limit is 20*10^(N-1), so the smallest tier holding `op_count`
-/// is the smallest N with 10^(N-1) >= ceil(op_count / 20). Writing q for that
+/// is the smallest N with 10^(N-1) >= `ceil(op_count` / 20). Writing q for that
 /// ceiling, N-1 is the number of digits of q-1, which `ilog10` gives directly.
 pub(super) fn appropriate_tier(op_count: usize) -> u8 {
     let q = (op_count as u64).div_ceil(20);
     let exponent = if q <= 1 { 0 } else { (q - 1).ilog10() + 1 };
-    (exponent + 1) as u8
+    u8::try_from(exponent + 1).expect("a usize operation count requires fewer than 256 tiers")
 }
 
 /// Returns the number of files at each tier.
@@ -63,12 +63,56 @@ struct CompactionLock {
 /// Remote key for the compaction lock (shared across all tiers).
 const LOCK_KEY: &str = "operations/LOCK.op";
 
+/// Metadata shown to a user before they explicitly remove a stale lock.
+#[derive(Debug, Clone)]
+pub struct CompactionLockInfo {
+    pub owner_device_id: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+async fn read_lock(storage: &StorageRead<'_>) -> Result<Option<CompactionLockInfo>> {
+    let bytes = match storage.get(LOCK_KEY).await {
+        Ok(bytes) => bytes,
+        Err(crate::storage::StorageError::NotFound) => return Ok(None),
+        Err(error) => return Err(SyncError::RemoteUnreachable(error)),
+    };
+    let lock: CompactionLock = serde_json::from_slice(&bytes).map_err(|error| {
+        SyncError::RemoteOperationInvalid(format!("invalid compaction lock: {error}"))
+    })?;
+    Ok(Some(CompactionLockInfo {
+        owner_device_id: lock.client_id,
+        created_at: lock.created_at,
+    }))
+}
+
+/// Reads the current global compaction lock without changing it.
+pub async fn inspect_lock(storage: &StorageRead<'_>) -> Result<Option<CompactionLockInfo>> {
+    read_lock(storage).await
+}
+
+/// Deletes a lock only if it still belongs to the expected local device.
+pub async fn remove_lock_owned_by(
+    storage: &StorageReadWrite<'_>,
+    expected_device_id: &str,
+) -> Result<bool> {
+    let Some(lock) = read_lock(&storage.as_read()).await? else {
+        return Ok(false);
+    };
+    if lock.owner_device_id != expected_device_id {
+        return Ok(false);
+    }
+    storage
+        .delete(LOCK_KEY)
+        .await
+        .map_err(SyncError::RemoteUnreachable)?;
+    Ok(true)
+}
+
 /// Proof that the compaction lock is held. Obtained from [`try_acquire_lock`] and consumed by
 /// [`release_lock`]. [`compact_tier`] requires a reference to one, so the type system rules out
 /// calling it without the lock held.
 pub(super) struct CompactionLockToken {
-    #[allow(dead_code)]
-    private: (),
+    _private: (),
 }
 
 /// Tries to acquire the compaction lock.
@@ -82,20 +126,23 @@ pub(super) struct CompactionLockToken {
 ///
 /// Returns `Some` token if the lock was acquired.
 /// Returns `None` if the lock is already held by another client.
-pub(super) async fn try_acquire_lock(storage: &dyn Storage) -> Result<Option<CompactionLockToken>> {
+pub(super) async fn try_acquire_lock(
+    storage: &StorageReadWrite<'_>,
+    device_id: crate::crdt::DeviceId,
+) -> Result<Option<CompactionLockToken>> {
     let key = LOCK_KEY;
     let payload = serde_json::to_vec(&CompactionLock {
-        client_id: Uuid::new_v4().to_string(),
+        client_id: device_id.to_string(),
         created_at: chrono::Utc::now(),
     })
     .expect("CompactionLock is always serializable");
 
     let acquired = storage
-        .put_if_absent(&key, &payload)
+        .put_atomic(key, &payload, AtomicWriteMode::CreateIfAbsent)
         .await
         .map_err(SyncError::RemoteUnreachable)?;
 
-    Ok(acquired.then_some(CompactionLockToken { private: () }))
+    Ok(acquired.then_some(CompactionLockToken { _private: () }))
 }
 
 /// Releases the compaction lock.
@@ -103,7 +150,10 @@ pub(super) async fn try_acquire_lock(storage: &dyn Storage) -> Result<Option<Com
 /// This lock is global across all tiers, see [`try_acquire_lock`]. Takes the token by value so
 /// a client can't release a lock it never acquired, and can't accidentally use the token again
 /// afterwards.
-pub(super) async fn release_lock(storage: &dyn Storage, _token: CompactionLockToken) -> Result<()> {
+pub(super) async fn release_lock(
+    storage: &StorageReadWrite<'_>,
+    _token: CompactionLockToken,
+) -> Result<()> {
     storage
         .delete(LOCK_KEY)
         .await
@@ -112,7 +162,7 @@ pub(super) async fn release_lock(storage: &dyn Storage, _token: CompactionLockTo
 
 /// Metadata produced by a successful [`compact_tier`] call, so the caller can update its
 /// in-memory view of known files. The on-disk last known state is already up to date by the
-/// time this is returned, compact_tier writes it incrementally as each remote op succeeds.
+/// time this is returned, `compact_tier` writes it incrementally as each remote op succeeds.
 pub(super) struct CompactionResult {
     pub(super) sources: Vec<RemoteOpFile>,
     pub(super) new_file: RemoteOpFile,
@@ -133,7 +183,7 @@ pub(super) struct CompactionResult {
 /// is kept consistent with whatever modifications were actually made on the
 /// remote.
 pub(super) async fn compact_tier(
-    storage: &dyn Storage,
+    storage: &StorageReadWrite<'_>,
     master_key: &MasterKey,
     tier: u8,
     last_known_state: &LastKnownState,
@@ -147,23 +197,34 @@ pub(super) async fn compact_tier(
         .cloned()
         .collect();
 
-    // Read all op groups from every source file, from the local cache.
-    let mut all_entries: Vec<crate::operations::CompactionEntry> = Vec::new();
+    // Read all individual operations from every source file, deduplicated by dot.
+    let mut operations = Vec::new();
+    let mut known_dots = HashSet::new();
     for source in &sources {
-        let RemoteOpFile::Compaction { uuid, tier: file_tier, op_count } = source;
-        let file = last_known_state.read_compaction_file(master_key, uuid, *file_tier, *op_count)?;
-        all_entries.extend(file.contents);
+        let RemoteOpFile::Compaction {
+            uuid,
+            tier: file_tier,
+            op_count,
+        } = source;
+        let file =
+            last_known_state.read_compaction_file(master_key, uuid, *file_tier, *op_count)?;
+        operations.extend(
+            file.operations
+                .into_iter()
+                .filter(|operation| known_dots.insert(operation.dot)),
+        );
     }
 
     // Write the new compaction file at tier+1. Encrypted once, so the same ciphertext is
     // written to both the remote and the local cache below.
     let new_uuid = CompactedOpId::new();
     let new_tier = tier + 1;
-    let new_op_count: u32 = all_entries.iter().map(|e| e.group.operations.len() as u32).sum();
+    let new_op_count = u32::try_from(operations.len())
+        .expect("an in-memory compaction cannot contain more than u32::MAX operations");
     let new_key = format!("operations/{new_uuid}.op{new_tier}_{new_op_count}");
     let new_file = crate::operations::CompactionFile {
         tier: new_tier,
-        contents: all_entries,
+        operations,
     };
     let blob = crate::operations::encrypt_compaction_file(master_key, &new_uuid, &new_file)
         .map_err(map_op_err)?;
@@ -179,7 +240,11 @@ pub(super) async fn compact_tier(
     // Delete source files. The caller holds the compaction lock for the whole cascade,
     // so no other client can be reading or compacting them at the same time.
     for source in &sources {
-        let RemoteOpFile::Compaction { uuid, tier: file_tier, op_count } = source;
+        let RemoteOpFile::Compaction {
+            uuid,
+            tier: file_tier,
+            op_count,
+        } = source;
         let key = format!("operations/{uuid}.op{file_tier}_{op_count}");
         storage
             .delete(&key)
@@ -193,7 +258,11 @@ pub(super) async fn compact_tier(
 
     Ok(CompactionResult {
         sources,
-        new_file: RemoteOpFile::Compaction { uuid: new_uuid, tier: new_tier, op_count: new_op_count },
+        new_file: RemoteOpFile::Compaction {
+            uuid: new_uuid,
+            tier: new_tier,
+            op_count: new_op_count,
+        },
     })
 }
 

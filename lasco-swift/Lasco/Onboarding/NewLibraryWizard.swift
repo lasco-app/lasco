@@ -4,7 +4,7 @@ import Photos
 #endif
 
 struct NewLibraryWizard: View {
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(LibraryDirectoryModel.self) private var directory
     @AppStorage("expertMode") private var expertMode = false
 
     var onBack: () -> Void
@@ -19,6 +19,7 @@ struct NewLibraryWizard: View {
     @State private var showAddS3Sheet = false
     @State private var showAddLocalFSSheet = false
     @State private var masterKeyCopied = false
+    @State private var masterKey: String?
 
     init(initialStep: Int = 0, onBack: @escaping () -> Void, onComplete: @escaping () -> Void) {
         _step = State(initialValue: initialStep)
@@ -28,10 +29,7 @@ struct NewLibraryWizard: View {
 
     #if os(iOS)
     @Environment(\.scenePhase) private var scenePhase
-    @State private var libraryScan: PhotoLibraryImporter.LibraryScan? = nil
-    @State private var scanLoading = false
-    @State private var isBulkImporting = false
-    @State private var importResult: (photos: Int, videos: Int)? = nil
+    @State private var initialImportController: InitialPhotoImportController?
     @State private var photoPermissionDenied = false
     @State private var showIgnoredDetail = false
     #endif
@@ -89,9 +87,12 @@ struct NewLibraryWizard: View {
             }
         }
         .onChange(of: step) { _, newValue in
-            if let libId = libraryModel.lib?.libraryId() {
-                libraryModel.setOnboardingStep(newValue, libraryId: libId)
+            if let libraryID = directory.activeSession?.state.libraryID {
+                directory.setOnboardingStep(newValue, libraryID: libraryID)
             }
+        }
+        .onDisappear {
+            Task { await initialImportController?.cancelAndWait() }
         }
         #if os(iOS)
         .onChange(of: scenePhase) { _, newPhase in
@@ -108,11 +109,16 @@ struct NewLibraryWizard: View {
     private var stepButtons: some View {
         if step == 0 {
             Button("Create Library") {
-                libraryModel.error = nil
-                libraryModel.create(name: name, username: username, password: password)
-                if libraryModel.error == nil {
-                    slideForward = true
-                    withAnimation(.easeInOut(duration: 0.3)) { step = 1 }
+                directory.onboarding.clearError()
+                Task {
+                    do {
+                        let result = try await directory.create(name: name, username: username, password: password)
+                        masterKey = result.masterKey
+                        slideForward = true
+                        withAnimation(.easeInOut(duration: 0.3)) { step = 1 }
+                    } catch {
+                        directory.onboarding.setError(error)
+                    }
                 }
             }
             .buttonStyle(LascoPrimaryButtonStyle())
@@ -121,7 +127,7 @@ struct NewLibraryWizard: View {
             .opacity(canCreate ? 1 : 0.45)
         } else if step == 1 {
             Button("I've saved my key") {
-                libraryModel.pendingMasterKey = nil
+                masterKey = nil
                 slideForward = true
                 withAnimation(.easeInOut(duration: 0.3)) { step = 2 }
             }
@@ -141,17 +147,29 @@ struct NewLibraryWizard: View {
                     .buttonStyle(LascoSecondaryButtonStyle())
                     .frame(maxWidth: .infinity)
             }
-            .sheet(isPresented: $showAddS3Sheet, onDismiss: {
-                if !libraryModel.remotes.isEmpty { advanceFromRemote() }
-            }) {
-                AddS3RemoteView()
-                    .environmentObject(libraryModel)
+            .sheet(isPresented: $showAddS3Sheet) {
+                if let activeSession = directory.activeSession {
+                    AddS3RemoteView {
+                        try await activeSession.refresh()
+                        guard !activeSession.state.remotes.isEmpty else {
+                            throw LibraryDirectoryModelError.remoteUnavailableAfterRefresh
+                        }
+                        advanceFromRemote()
+                    }
+                    .environment(activeSession.repository)
+                }
             }
-            .sheet(isPresented: $showAddLocalFSSheet, onDismiss: {
-                if !libraryModel.remotes.isEmpty { advanceFromRemote() }
-            }) {
-                AddLocalFSRemoteView()
-                    .environmentObject(libraryModel)
+            .sheet(isPresented: $showAddLocalFSSheet) {
+                if let activeSession = directory.activeSession {
+                    AddLocalFSRemoteView {
+                        try await activeSession.refresh()
+                        guard !activeSession.state.remotes.isEmpty else {
+                            throw LibraryDirectoryModelError.remoteUnavailableAfterRefresh
+                        }
+                        advanceFromRemote()
+                    }
+                    .environment(activeSession.repository)
+                }
             }
         } else {
             #if os(iOS)
@@ -169,10 +187,10 @@ struct NewLibraryWizard: View {
     }
 
     private func finish() {
-        if let libId = libraryModel.lib?.libraryId() {
-            libraryModel.clearOnboardingIncomplete(libraryId: libId)
+        if let libraryID = directory.activeSession?.state.libraryID {
+            directory.clearOnboardingIncomplete(libraryID: libraryID)
         }
-        libraryModel.isOpen = true
+        directory.completeOnboarding()
         onComplete()
     }
 
@@ -193,7 +211,7 @@ struct NewLibraryWizard: View {
             }
         }
         #if os(iOS)
-        if step == 3 && libraryModel.remotes.isEmpty {
+        if step == 3 && (directory.activeSession?.state.remotes ?? []).isEmpty {
             return {
                 slideForward = false
                 withAnimation(.easeInOut(duration: 0.3)) { step = 2 }
@@ -282,7 +300,7 @@ struct NewLibraryWizard: View {
                 username: $username,
                 password: $password,
                 confirmPassword: $confirmPassword,
-                error: libraryModel.error
+                error: directory.onboarding.error
             )
 
             Spacer()
@@ -306,7 +324,7 @@ struct NewLibraryWizard: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .lineSpacing(4)
 
-            if let key = libraryModel.pendingMasterKey {
+            if let key = masterKey {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack {
                         Text(key)
@@ -380,7 +398,7 @@ struct NewLibraryWizard: View {
 
     #if os(iOS)
     private var askImportStep: some View {
-        let hasRemote = !libraryModel.remotes.isEmpty
+        let hasRemote = !(directory.activeSession?.state.remotes ?? []).isEmpty
 
         return VStack(alignment: .leading, spacing: 20) {
             Text(hasRemote ? "Import your device photos?" : "Can't import your current photo library yet.")
@@ -418,7 +436,7 @@ struct NewLibraryWizard: View {
 
     private var askImportButtons: some View {
         Group {
-            if libraryModel.remotes.isEmpty {
+            if (directory.activeSession?.state.remotes ?? []).isEmpty {
                 Button("Get started") { finish() }
                     .buttonStyle(LascoPrimaryButtonStyle())
                     .frame(maxWidth: .infinity)
@@ -512,14 +530,14 @@ struct NewLibraryWizard: View {
     }
 
     private var importOrSuccessStep: some View {
-        if let result = importResult {
+        if let result = initialImportController?.result {
             return AnyView(importSuccessStep(photos: result.photos, videos: result.videos))
         }
         return AnyView(importStep)
     }
 
     private var importOrSuccessButtons: some View {
-        if importResult != nil {
+        if initialImportController?.result != nil {
             return AnyView(
                 Button("Continue") {
                     slideForward = true
@@ -545,7 +563,7 @@ struct NewLibraryWizard: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .lineSpacing(4)
 
-            if scanLoading {
+            if initialImportController?.isScanning == true {
                 HStack(spacing: 12) {
                     ProgressView()
                         .tint(Color.Lasco.inkMuted)
@@ -553,7 +571,7 @@ struct NewLibraryWizard: View {
                         .font(LascoFont.body(14))
                         .foregroundStyle(Color.Lasco.inkMuted)
                 }
-            } else if let scan = libraryScan {
+            } else if let scan = initialImportController?.scan {
                 VStack(alignment: .leading, spacing: 0) {
                     importStatRow(label: "Photos", value: "\(scan.photoCount)")
                     importStatRow(label: "Videos", value: "\(scan.videoCount)")
@@ -576,12 +594,10 @@ struct NewLibraryWizard: View {
         .padding(.bottom, 160)
         .frame(maxWidth: .infinity, alignment: .leading)
         .task {
-            scanLoading = true
-            libraryScan = await libraryModel.scanPhotoLibrary()
-            scanLoading = false
+            await prepareInitialPhotoImport()
         }
         .sheet(isPresented: $showIgnoredDetail) {
-            if let scan = libraryScan {
+            if let scan = initialImportController?.scan {
                 IgnoredAssetsView(ignoredAssets: scan.ignoredAssets)
             }
         }
@@ -589,8 +605,8 @@ struct NewLibraryWizard: View {
 
     private var importButtons: some View {
         VStack(spacing: 12) {
-            if isBulkImporting {
-                let progress = libraryModel.bulkImportProgress
+            if initialImportController?.isImporting == true {
+                let progress = initialImportController?.progress
                 let done = progress?.done ?? 0
                 let total = max(progress?.total ?? 1, 1)
 
@@ -606,19 +622,22 @@ struct NewLibraryWizard: View {
                 .padding(.vertical, 8)
             } else {
                 Button("Import Now") {
-                    if let scan = libraryScan {
-                        isBulkImporting = true
+                    if let controller = initialImportController {
                         Task {
-                            await libraryModel.importFromPhotoLibraryWithAlbums(assets: scan.assets)
-                            isBulkImporting = false
-                            importResult = (photos: scan.photoCount, videos: scan.videoCount)
+                            await controller.start(remoteID: directory.activeSession?.state.remotes.first?.remoteId)
                         }
                     }
                 }
                 .buttonStyle(LascoPrimaryButtonStyle())
                 .frame(maxWidth: .infinity)
-                .disabled(libraryScan == nil)
-                .opacity(libraryScan == nil ? 0.45 : 1)
+                .disabled(initialImportController?.scan == nil)
+                .opacity(initialImportController?.scan == nil ? 0.45 : 1)
+
+                if let error = initialImportController?.error {
+                    Text(error)
+                        .font(LascoFont.body(13))
+                        .foregroundStyle(Color.Lasco.pink)
+                }
 
                 Button("Skip for now") {
                     slideForward = true
@@ -654,15 +673,23 @@ struct NewLibraryWizard: View {
     private var autoImportButtons: some View {
         VStack(spacing: 12) {
             Button("Yes, auto-import new photos") {
-                libraryModel.setAutoImportDeviceMedia(true)
-                finish()
+                Task {
+                    if let activeSession = directory.activeSession {
+                        try? await activeSession.repository.setAutoImportDeviceMedia(enabled: true)
+                    }
+                    finish()
+                }
             }
             .buttonStyle(LascoPrimaryButtonStyle())
             .frame(maxWidth: .infinity)
 
             Button("No, not now") {
-                libraryModel.setAutoImportDeviceMedia(false)
-                finish()
+                Task {
+                    if let activeSession = directory.activeSession {
+                        try? await activeSession.repository.setAutoImportDeviceMedia(enabled: false)
+                    }
+                    finish()
+                }
             }
             .buttonStyle(LascoSecondaryButtonStyle())
             .frame(maxWidth: .infinity)
@@ -702,6 +729,25 @@ struct NewLibraryWizard: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+    }
+
+    private func prepareInitialPhotoImport() async {
+        guard let activeSession = directory.activeSession else { return }
+        try? await activeSession.refresh()
+        guard initialImportController == nil else { return }
+        let controller = InitialPhotoImportController(
+            repository: activeSession.repository,
+            pushChunk: { remoteID in
+                switch await activeSession.syncCoordinator.push(remoteID: remoteID) {
+                case .success: nil
+                case .failed(let message): message
+                case .missingLocalMedia: "Media missing from local cache"
+                case .missingMediaOnConfiguredSources: "Some media have no known place to be copied from"
+                }
+            }
+        )
+        initialImportController = controller
+        await controller.scanPhotoLibrary()
     }
     #endif
 }

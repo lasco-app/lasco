@@ -6,86 +6,134 @@ mod types;
 
 pub use types::*;
 
+use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+#[cfg(test)]
+use std::collections::HashMap;
+
 use lasco_core::config_json::{ConfigJson, LibraryNickname};
-use lasco_core::library_json::LibraryJson;
+use lasco_core::library_json::{LibraryJson, find_library_id_by_nickname};
 use lasco_core::operations::{LibraryPassword, LibraryUsername};
 use lasco_core::session::session_load_master_key;
 
 use remotes::remote_config_to_ffi;
 
 use crate::error::LascoError;
+use crate::ids::FfiLibraryId;
+
+pub(super) fn ffi_count(value: usize) -> u64 {
+    u64::try_from(value).expect("usize fits in u64 on supported UniFFI targets")
+}
 
 fn sessions_dir(app_dir: &std::path::Path) -> std::path::PathBuf {
     app_dir.join("sessions")
 }
 
-#[uniffi::export]
+#[uniffi::export(default(app_dir = None))]
+/// # Errors
+///
+/// Returns an error if the app directory/runtime cannot be created or library state, config, or session key cannot be initialized.
+///
+/// # Panics
+///
+/// Panics if Tokio cannot construct the runtime used to initialize the library.
 pub fn ffi_create_library(
     nickname: String,
     username: String,
     password: String,
+    app_dir: Option<String>,
 ) -> Result<FfiCreateLibraryResult, LascoError> {
-    let app_dir = lasco_core::config_json::default_app_dir()?;
+    let app_dir = crate::resolve_app_dir(app_dir)?;
     let sessions = sessions_dir(&app_dir);
-    let (library_id, master_key) = tokio::runtime::Runtime::new()
-        .unwrap()
-        .block_on(lasco_core::client::create_library(
-            &app_dir,
-            nickname,
-            lasco_core::operations::LibraryUsername(username),
-            lasco_core::operations::LibraryPassword(password),
-            Some(&sessions),
-        ))?;
-    let master_key_hex = master_key.as_ref().iter().map(|b| format!("{b:02x}")).collect::<String>();
+    let (library_id, master_key) =
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(lasco_core::client::create_library(
+                &app_dir,
+                nickname,
+                lasco_core::operations::LibraryUsername(username),
+                lasco_core::operations::LibraryPassword(password),
+                Some(&sessions),
+            ))?;
+    let mut master_key_hex = String::with_capacity(master_key.as_ref().len() * 2);
+    for byte in master_key.as_ref() {
+        write!(master_key_hex, "{byte:02x}").expect("writing to a String cannot fail");
+    }
     Ok(FfiCreateLibraryResult {
-        library_id: library_id.to_string(),
+        library_id: library_id.into(),
         master_key_hex,
     })
 }
 
-#[uniffi::export]
-pub fn ffi_delete_library(library_id: String) -> Result<(), LascoError> {
-    let app_dir = lasco_core::config_json::default_app_dir()?;
+#[uniffi::export(default(app_dir = None))]
+/// # Errors
+///
+/// Returns an error if the library ID is invalid or local data, session state, or app configuration cannot be removed or updated.
+pub fn ffi_delete_library(
+    library_id: FfiLibraryId,
+    app_dir: Option<String>,
+) -> Result<(), LascoError> {
+    let app_dir = crate::resolve_app_dir(app_dir)?;
     let sessions = sessions_dir(&app_dir);
-    let uuid = uuid::Uuid::parse_str(&library_id)
-        .map_err(|e| LascoError::Other { msg: format!("invalid library id: {e}") })?;
-    let lib_id = lasco_core::identifiers::LibraryId(uuid);
+    let lib_id = library_id.try_into()?;
     lasco_core::client::delete_library(&app_dir, &lib_id, Some(&sessions))
         .map_err(|e| LascoError::Other { msg: e.to_string() })?;
     Ok(())
 }
 
-#[uniffi::export]
-pub fn list_libraries() -> Result<Vec<FfiLibraryEntry>, LascoError> {
-    let app_dir = lasco_core::config_json::default_app_dir()?;
-    let config = match ConfigJson::load(&app_dir)? {
-        Some(c) => c,
-        None => return Ok(vec![]),
+/// Rebuild an unreadable local CRDT snapshot from the encrypted local operation log.
+/// This is intentionally separate from opening: clients must obtain explicit user consent first.
+#[uniffi::export(default(app_dir = None))]
+pub fn ffi_recover_library_state(
+    nickname: String,
+    username: String,
+    password: String,
+    app_dir: Option<String>,
+) -> Result<(), LascoError> {
+    let app_dir = crate::resolve_app_dir(app_dir)?;
+    let rt =
+        tokio::runtime::Runtime::new().map_err(|e| LascoError::Other { msg: e.to_string() })?;
+    rt.block_on(lasco_core::client::recover_library_state(
+        &app_dir,
+        LibraryNickname(nickname),
+        LibraryUsername(username),
+        LibraryPassword(password),
+    ))?;
+    Ok(())
+}
+
+#[uniffi::export(default(app_dir = None))]
+/// # Errors
+///
+/// Returns an error if the application configuration cannot be read; per-library load failures are returned in each entry.
+pub fn list_libraries(app_dir: Option<String>) -> Result<Vec<FfiLibraryEntry>, LascoError> {
+    let app_dir = crate::resolve_app_dir(app_dir)?;
+    let Some(config) = ConfigJson::load(&app_dir)? else {
+        return Ok(vec![]);
     };
     Ok(config
         .libraries
         .iter()
-        .map(|(id, entry)| {
-            // The nickname lives in the index. The username lives in library.json.
+        .map(|id| {
+            // The nickname and username live in library.json.
             match LibraryJson::load(&app_dir, id) {
                 Ok(Some(lib)) => FfiLibraryEntry {
-                    id: id.to_string(),
-                    nickname: lib.nickname.0,
+                    library_id: (*id).into(),
+                    nickname: lib.library_nickname.0,
                     username: lib.default_username.map(|u| u.0),
                     load_error: None,
                 },
                 Ok(None) => FfiLibraryEntry {
-                    id: id.to_string(),
-                    nickname: entry.nickname.0.clone(),
+                    library_id: (*id).into(),
+                    nickname: id.to_string(),
                     username: None,
                     load_error: Some("library.json not found".to_string()),
                 },
                 Err(e) => FfiLibraryEntry {
-                    id: id.to_string(),
-                    nickname: entry.nickname.0.clone(),
+                    library_id: (*id).into(),
+                    nickname: id.to_string(),
                     username: None,
                     load_error: Some(e.to_string()),
                 },
@@ -96,7 +144,15 @@ pub fn list_libraries() -> Result<Vec<FfiLibraryEntry>, LascoError> {
 
 /// Test connectivity to an S3 remote using the given credentials, without
 /// saving anything. Builds an ephemeral client and lists the bucket root.
+///
+/// # Errors
+///
+/// Returns an error if the S3 client or runtime cannot be created, or the bucket cannot be listed.
 #[uniffi::export]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+)]
 pub fn ffi_test_s3_remote(
     endpoint: String,
     bucket: String,
@@ -105,66 +161,84 @@ pub fn ffi_test_s3_remote(
     access_key: String,
     secret_key: String,
 ) -> Result<(), LascoError> {
-    let path_prefix = if path_prefix.is_empty() { None } else { Some(path_prefix) };
-    let storage =
-        lasco_core::storage::StorageS3::new(endpoint, bucket, region, path_prefix, access_key, secret_key)
-            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
-    let rt = tokio::runtime::Runtime::new()
-        .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+    let path_prefix = if path_prefix.is_empty() {
+        None
+    } else {
+        Some(path_prefix)
+    };
+    let storage = lasco_core::storage::StorageS3::new(
+        &endpoint,
+        &bucket,
+        &region,
+        path_prefix.as_deref(),
+        &access_key,
+        &secret_key,
+    )
+    .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+    let rt =
+        tokio::runtime::Runtime::new().map_err(|e| LascoError::Other { msg: e.to_string() })?;
     rt.block_on(lasco_core::storage::Storage::list(&storage, ""))
-        .map_err(|e| LascoError::Other { msg: format!("remote unreachable: {e}") })?;
+        .map_err(|e| LascoError::Other {
+            msg: format!("remote unreachable: {e}"),
+        })?;
     Ok(())
 }
 
 /// Try to open a library using a cached session (OS keychain), without a password.
 /// Returns `None` if no session is cached — the caller should then prompt for credentials.
-#[uniffi::export]
+///
+/// # Errors
+///
+/// Returns an error if configuration or the session key cannot be read, or opening a cached library fails.
+#[uniffi::export(default(app_dir = None))]
 pub fn ffi_open_cached(
     nickname: Option<String>,
     username: String,
+    app_dir: Option<String>,
 ) -> Result<Option<Arc<FfiLibrary>>, LascoError> {
-    let app_dir = lasco_core::config_json::default_app_dir()?;
+    let app_dir = crate::resolve_app_dir(app_dir)?;
 
-    let config = match ConfigJson::load(&app_dir)? {
-        Some(c) => c,
-        None => return Ok(None),
+    let Some(config) = ConfigJson::load(&app_dir)? else {
+        return Ok(None);
     };
 
-    let resolved = match config.resolve_nickname(nickname.map(LibraryNickname::from)) {
-        Ok(n) => n,
-        Err(_) => return Ok(None),
+    let library_id = match nickname {
+        Some(nickname) => match find_library_id_by_nickname(&app_dir, &nickname) {
+            Ok(id) => id,
+            Err(_) => return Ok(None),
+        },
+        None => match config.get_default_library_id() {
+            Some(id) => *id,
+            None => return Ok(None),
+        },
     };
-
-    let library_id = match config.get_library_id_by_nickname(&resolved.0) {
-        Some(id) => *id,
-        None => return Ok(None),
-    };
-    let library_config = match LibraryJson::load(&app_dir, &library_id)? {
-        Some(lc) => lc,
-        None => return Ok(None),
+    let Some(library_config) = LibraryJson::load(&app_dir, &library_id)? else {
+        return Ok(None);
     };
 
     let lib_username = LibraryUsername(username);
 
     let sessions = sessions_dir(&app_dir);
-    let has_session =
-        session_load_master_key(library_id, &lib_username, Some(&sessions))
-            .map_err(|e| LascoError::Other { msg: e.to_string() })?
-            .is_some();
+    let has_session = session_load_master_key(library_id, &lib_username, Some(&sessions))
+        .map_err(|e| LascoError::Other { msg: e.to_string() })?
+        .is_some();
 
     if !has_session {
         return Ok(None);
     }
 
-    let rt = tokio::runtime::Runtime::new()
-        .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+    let rt =
+        tokio::runtime::Runtime::new().map_err(|e| LascoError::Other { msg: e.to_string() })?;
 
-    let sync_remote_id = library_config.remotes.first().map(|r| r.remote_uuid.to_string());
-    let remotes = library_config.remotes.iter().map(remote_config_to_ffi).collect();
+    let remotes = library_config
+        .remotes
+        .iter()
+        .map(remote_config_to_ffi)
+        .collect();
 
     let library = rt.block_on(lasco_core::client::open_library(
         &app_dir,
-        resolved,
+        library_config.library_nickname,
         lib_username,
         None,
         Some(&sessions),
@@ -174,8 +248,9 @@ pub fn ffi_open_cached(
         inner: library,
         rt,
         app_dir,
-        sync_remote_id,
         remotes: Mutex::new(remotes),
+        #[cfg(test)]
+        test_remotes: Mutex::new(HashMap::new()),
     })))
 }
 
@@ -183,36 +258,50 @@ pub fn ffi_open_cached(
 /// metadata and operations and opening it locally. `username`/`password` must be
 /// an existing user on the remote. When `new_username`/`new_password` are both
 /// provided, a new user is registered and used as the effective device user.
-#[uniffi::export]
-#[allow(clippy::too_many_arguments)]
+///
+/// # Errors
+///
+/// Returns an error if runtime/app setup, remote connection or authentication, local persistence, or initial synchronization fails.
+#[uniffi::export(default(app_dir = None))]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The FFI contract exposes S3 connection settings as explicit scalar parameters."
+)]
+#[allow(
+    clippy::needless_pass_by_value,
+    reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+)]
 pub fn ffi_add_existing_library_s3(
     nickname: String,
     username: String,
     password: String,
     new_username: Option<String>,
     new_password: Option<String>,
-    remote_id: String,
+    remote_name: String,
     endpoint: String,
     bucket: String,
     region: String,
     path_prefix: String,
     access_key: String,
     secret_key: String,
+    app_dir: Option<String>,
 ) -> Result<Arc<FfiLibrary>, LascoError> {
-    let rt = tokio::runtime::Runtime::new()
-        .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+    let rt =
+        tokio::runtime::Runtime::new().map_err(|e| LascoError::Other { msg: e.to_string() })?;
 
-    let app_dir = lasco_core::config_json::default_app_dir()?;
+    let app_dir = crate::resolve_app_dir(app_dir)?;
     let sessions = sessions_dir(&app_dir);
 
     let new_user = match (new_username, new_password) {
-        (Some(u), Some(p)) if !u.is_empty() => {
-            Some((LibraryUsername(u), LibraryPassword(p)))
-        }
+        (Some(u), Some(p)) if !u.is_empty() => Some((LibraryUsername(u), LibraryPassword(p))),
         _ => None,
     };
 
-    let path_prefix = if path_prefix.is_empty() { None } else { Some(path_prefix) };
+    let path_prefix = if path_prefix.is_empty() {
+        None
+    } else {
+        Some(path_prefix)
+    };
 
     let (_library_id, library) = rt
         .block_on(lasco_core::client::add_existing_library_s3(
@@ -221,7 +310,7 @@ pub fn ffi_add_existing_library_s3(
             LibraryUsername(username),
             LibraryPassword(password),
             new_user,
-            remote_id.clone(),
+            remote_name.clone(),
             endpoint,
             bucket,
             region,
@@ -232,13 +321,8 @@ pub fn ffi_add_existing_library_s3(
         ))
         .map_err(|e| LascoError::Other { msg: e.to_string() })?;
 
-    let library_config = LibraryJson::load(&app_dir, &library.library_id())?
-        .ok_or(LascoError::NotFound)?;
-    let sync_remote_id = library_config
-        .remotes
-        .iter()
-        .find(|r| r.name == remote_id)
-        .map(|r| r.remote_uuid.to_string());
+    let library_config =
+        LibraryJson::load(&app_dir, &library.library_id())?.ok_or(LascoError::NotFound)?;
     let remotes = library_config
         .remotes
         .iter()
@@ -249,8 +333,9 @@ pub fn ffi_add_existing_library_s3(
         inner: library,
         rt,
         app_dir,
-        sync_remote_id,
         remotes: Mutex::new(remotes),
+        #[cfg(test)]
+        test_remotes: Mutex::new(HashMap::new()),
     }))
 }
 
@@ -259,52 +344,85 @@ pub struct FfiLibrary {
     inner: lasco_core::library::Library,
     rt: tokio::runtime::Runtime,
     app_dir: PathBuf,
-    sync_remote_id: Option<String>,
     remotes: Mutex<Vec<FfiRemote>>,
+    #[cfg(test)]
+    test_remotes: Mutex<
+        HashMap<lasco_core::identifiers::RemoteUuid, lasco_core::storage::StorageMockMemoryFaulty>,
+    >,
 }
 
 #[uniffi::export]
 impl FfiLibrary {
     /// Open a library by nickname. Delegates config loading, storage
     /// construction, and session/master-key handling to `lasco_core::client`.
-    #[uniffi::constructor]
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if setup/configuration fails, the nickname is unknown, or credentials cannot open the library.
+    #[uniffi::constructor(default(app_dir = None))]
     pub fn open(
         nickname: Option<String>,
         username: String,
         password: String,
+        app_dir: Option<String>,
     ) -> Result<Arc<Self>, LascoError> {
-        let rt = tokio::runtime::Runtime::new()
-            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+        let rt =
+            tokio::runtime::Runtime::new().map_err(|e| LascoError::Other { msg: e.to_string() })?;
 
-        let app_dir = lasco_core::config_json::default_app_dir()?;
+        let app_dir = crate::resolve_app_dir(app_dir)?;
 
-        let config = ConfigJson::load(&app_dir)?
-            .ok_or_else(|| LascoError::Other {
-                msg: "no libraries configured".to_string(),
-            })?;
+        let config = ConfigJson::load(&app_dir)?.ok_or_else(|| LascoError::Other {
+            msg: "no libraries configured".to_string(),
+        })?;
 
-        let resolved = config
-            .resolve_nickname(nickname.map(LibraryNickname::from))
-            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
-
-        let library_id = config
-            .get_library_id_by_nickname(&resolved.0)
-            .ok_or(LascoError::NotFound)?;
+        let library_id = match nickname {
+            Some(nickname) => find_library_id_by_nickname(&app_dir, &nickname)
+                .map_err(|e| LascoError::Other { msg: e.to_string() })?,
+            None => *config
+                .get_default_library_id()
+                .ok_or(LascoError::NotFound)?,
+        };
         let library_config =
-            LibraryJson::load(&app_dir, library_id)?.ok_or(LascoError::NotFound)?;
-        let sync_remote_id = library_config.remotes.first().map(|r| r.remote_uuid.to_string());
-
-        let remotes = library_config.remotes.iter().map(remote_config_to_ffi).collect();
+            LibraryJson::load(&app_dir, &library_id)?.ok_or(LascoError::NotFound)?;
+        let remotes = library_config
+            .remotes
+            .iter()
+            .map(remote_config_to_ffi)
+            .collect();
+        let live_remote_ids = lasco_core::library_json::list_remote_ids(&library_config);
 
         let sessions = sessions_dir(&app_dir);
         let library = rt.block_on(lasco_core::client::open_library(
             &app_dir,
-            resolved,
+            library_config.library_nickname,
             LibraryUsername(username),
             Some(LibraryPassword(password)),
             Some(&sessions),
         ))?;
 
-        Ok(Arc::new(Self { inner: library, rt, app_dir, sync_remote_id, remotes: Mutex::new(remotes) }))
+        // Removing a remote deletes its directory, so this only has work to do when that could
+        // not happen, which is when a sync held the remote or the process stopped between
+        // writing library.json and deleting.
+        let _swept = library.sweep_orphan_remote_dirs(&live_remote_ids);
+
+        Ok(Arc::new(Self {
+            inner: library,
+            rt,
+            app_dir,
+            remotes: Mutex::new(remotes),
+            #[cfg(test)]
+            test_remotes: Mutex::new(HashMap::new()),
+        }))
+    }
+}
+
+#[cfg(test)]
+impl FfiLibrary {
+    pub(crate) fn register_test_remote(
+        &self,
+        remote_id: lasco_core::identifiers::RemoteUuid,
+        storage: lasco_core::storage::StorageMockMemoryFaulty,
+    ) {
+        self.test_remotes.lock().unwrap().insert(remote_id, storage);
     }
 }

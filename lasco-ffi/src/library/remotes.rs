@@ -1,34 +1,53 @@
+use lasco_core::crdt::{CrdtOperation, OperationContent};
+use lasco_core::identifiers::RemoteUuid;
+use lasco_core::library::sync::{
+    PushMediaSource, compaction,
+    remote_access::{StorageRead, StorageReadWrite},
+};
+use lasco_core::library_json::{
+    DebugLocalAndroidConfig, DebugLocalAppleConfig, FixedPathConfig, LibraryJson, RemoteConfig,
+    RemoteKind, UsbAndroidConfig, UsbAppleConfig,
+};
+use lasco_core::operations::{LibraryPassword, LibraryUsername};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
-use lasco_core::identifiers::RemoteUuid;
-use lasco_core::library_json::{save_library, DebugLocalAppleConfig, FixedPathConfig, LibraryJson, RemoteConfig, RemoteKind};
-use lasco_core::operations::{LibraryPassword, LibraryUsername, Operation};
-
-use super::{FfiKv, FfiLibrary, FfiMediaItem, FfiOperation, FfiOperationGroup, FfiRemote, FfiSyncResult};
+use super::{
+    FfiCompactionLockInfo, FfiCrdtOperation, FfiDot, FfiKv, FfiLibrary, FfiMediaItem, FfiOperation,
+    FfiRemote, ffi_count,
+};
 use crate::error::LascoError;
+use crate::ids::FfiRemoteUuid;
 
-fn parse_remote_uuid(remote_id: &str) -> Result<RemoteUuid, LascoError> {
-    remote_id
-        .parse::<uuid::Uuid>()
-        .map(RemoteUuid::from_uuid)
-        .map_err(|e| LascoError::Other { msg: format!("invalid remote id '{remote_id}': {e}") })
+fn next_media_fetch_priority(remote_count: usize) -> Result<u32, LascoError> {
+    u32::try_from(remote_count).map_err(|_| LascoError::Other {
+        msg: "remote count exceeds the persisted media-fetch priority range".to_string(),
+    })
 }
 
 #[uniffi::export]
 impl FfiLibrary {
-    pub fn list_operation_groups(&self) -> Result<Vec<FfiOperationGroup>, LascoError> {
-        let groups = self.inner.list_operation_groups()?;
-        Ok(groups.into_iter().map(|g| {
-            let ops: Vec<FfiOperation> = g.operations.into_iter().map(operation_to_ffi).collect();
-            FfiOperationGroup {
-                op_id: g.op_id.0.to_string(),
-                parent_op_id: g.parent_op_id.map(|p| p.0.to_string()),
-                operations: ops,
-                author: g.author.0,
-            }
-        }).collect())
+    /// # Errors
+    ///
+    /// Returns the newest-first half-open range `[start_pos, end_pos_exclusive)`.
+    ///
+    /// Returns an error if persisted local operations cannot be read or decoded.
+    pub fn list_operations(
+        &self,
+        start_pos: u64,
+        end_pos_exclusive: u64,
+    ) -> Result<Vec<FfiCrdtOperation>, LascoError> {
+        Ok(self
+            .inner
+            .list_operations_range(start_pos, end_pos_exclusive)?
+            .into_iter()
+            .map(crdt_operation_to_ffi)
+            .collect())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if user records cannot be read from local library state.
     pub fn user_list(&self) -> Result<Vec<String>, LascoError> {
         let users = self
             .rt
@@ -37,24 +56,93 @@ impl FfiLibrary {
         Ok(users.into_iter().map(|u| u.0).collect())
     }
 
+    /// # Errors
+    ///
+    /// Returns an error if the user key or add-user operation cannot be persisted.
     pub fn user_add(&self, username: String, password: String) -> Result<(), LascoError> {
         self.rt
-            .block_on(self.inner.user_add(LibraryUsername(username), LibraryPassword(password)))
+            .block_on(
+                self.inner
+                    .user_add(LibraryUsername(username), LibraryPassword(password)),
+            )
             .map(|_uuid| ())
             .map_err(|e| LascoError::Other { msg: e.to_string() })
     }
 
+    /// # Panics
+    ///
+    /// Panics if another thread panicked while holding the cached remote-list mutex.
     pub fn list_remotes(&self) -> Vec<FfiRemote> {
         self.remotes.lock().unwrap().clone()
     }
 
-    pub fn add_remote_fixed_path(&self, name: String, path: String) -> Result<String, LascoError> {
-        let library_id = self.inner.library_id();
-        let mut lib_config = self.load_library_json()?;
+    /// Returns the owner and creation time of this remote's compaction lock, if held.
+    pub fn inspect_compaction_lock(
+        &self,
+        remote_id: FfiRemoteUuid,
+        app_support_dir: Option<String>,
+    ) -> Result<Option<FfiCompactionLockInfo>, LascoError> {
+        let remote_id: RemoteUuid = remote_id.try_into()?;
+        let storage = self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
+        let device_id = self.load_library_json()?.device_id.to_string();
+        let info = self
+            .rt
+            .block_on(compaction::inspect_lock(&StorageRead::new(
+                storage.as_ref(),
+            )))
+            .map_err(|error| LascoError::Other {
+                msg: error.to_string(),
+            })?;
+        Ok(info.map(|lock| FfiCompactionLockInfo {
+            is_owned_by_current_device: lock.owner_device_id == device_id,
+            owner_device_id: lock.owner_device_id,
+            created_at: lock.created_at.to_rfc3339(),
+        }))
+    }
+
+    /// Removes a compaction lock only when it still names this local device as its owner.
+    /// The caller is responsible for obtaining explicit user confirmation before this call.
+    pub fn remove_own_compaction_lock(
+        &self,
+        remote_id: FfiRemoteUuid,
+        app_support_dir: Option<String>,
+    ) -> Result<bool, LascoError> {
+        let remote_id: RemoteUuid = remote_id.try_into()?;
+        let device_id = self.load_library_json()?.device_id.to_string();
+        let storage = self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
+        self.rt
+            .block_on(compaction::remove_lock_owned_by(
+                &StorageReadWrite::new(storage.as_ref()),
+                &device_id,
+            ))
+            .map_err(|error| LascoError::Other {
+                msg: error.to_string(),
+            })
+    }
+
+    /// # Errors
+    ///
+    /// Returns an error if the name already exists or library configuration cannot be read or saved.
+    ///
+    /// # Panics
+    ///
+    /// Panics if another thread panicked while holding the cached remote-list mutex during the
+    /// in-memory update after configuration is saved.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
+    pub fn add_remote_fixed_path(
+        &self,
+        name: String,
+        path: String,
+    ) -> Result<FfiRemoteUuid, LascoError> {
+        let library_json = self.library_json_read_write();
+        let mut lib_config = library_json.read()?;
 
         if lib_config.remotes.iter().any(|r| r.name == name) {
             return Err(LascoError::Other {
-                msg: format!("remote '{}' already exists", name),
+                msg: format!("remote '{name}' already exists"),
             });
         }
 
@@ -62,6 +150,9 @@ impl FfiLibrary {
         let remote_config = RemoteConfig {
             remote_uuid,
             name,
+            auto_push: true,
+            media_fetch_priority: next_media_fetch_priority(lib_config.remotes.len())?,
+            exclude_from_media_fetch: false,
             kind: RemoteKind::FixedPath(FixedPathConfig {
                 root_dir: PathBuf::from(&path),
             }),
@@ -69,24 +160,75 @@ impl FfiLibrary {
 
         let ffi_remote = remote_config_to_ffi(&remote_config);
         let is_first_remote = lib_config.remotes.is_empty();
+        lib_config.media_source_order.push(remote_uuid);
         lib_config.remotes.push(remote_config);
         if is_first_remote {
             lib_config.default_fetch_remote = Some(remote_uuid);
         }
-        save_library(&self.app_dir, &library_id, &lib_config)
+        library_json
+            .write(&lib_config)
             .map_err(|e| LascoError::Other { msg: e.to_string() })?;
 
         self.remotes.lock().unwrap().push(ffi_remote);
-        Ok(remote_uuid.to_string())
+        Ok(remote_uuid.into())
     }
 
-    pub fn add_remote_debug_local_apple(&self, name: String) -> Result<String, LascoError> {
-        let library_id = self.inner.library_id();
-        let mut lib_config = self.load_library_json()?;
+    /// Add a wired USB drive selected through Android's Storage Access
+    /// Framework. `tree_uri` is an opaque, persistable access grant.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for an empty URI, duplicate name, or failed configuration persistence.
+    pub fn add_remote_usb_android(
+        &self,
+        name: String,
+        tree_uri: String,
+    ) -> Result<FfiRemoteUuid, LascoError> {
+        if tree_uri.trim().is_empty() {
+            return Err(LascoError::Other {
+                msg: "USB drive tree URI must not be empty".to_string(),
+            });
+        }
+        self.add_remote_config(name, RemoteKind::UsbAndroid(UsbAndroidConfig { tree_uri }))
+    }
+
+    /// Add a wired USB drive selected through Apple's document picker.
+    /// `bookmark_base64` is an opaque security-scoped bookmark.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for an empty bookmark, duplicate name, or failed configuration persistence.
+    pub fn add_remote_usb_apple(
+        &self,
+        name: String,
+        bookmark_base64: String,
+    ) -> Result<FfiRemoteUuid, LascoError> {
+        if bookmark_base64.trim().is_empty() {
+            return Err(LascoError::Other {
+                msg: "USB drive bookmark must not be empty".to_string(),
+            });
+        }
+        self.add_remote_config(
+            name,
+            RemoteKind::UsbApple(UsbAppleConfig { bookmark_base64 }),
+        )
+    }
+
+    /// # Errors
+    ///
+    /// Returns an error for a duplicate name or failed library-configuration persistence.
+    ///
+    /// # Panics
+    ///
+    /// Panics if another thread panicked while holding the cached remote-list mutex during the
+    /// in-memory update after configuration is saved.
+    pub fn add_remote_debug_local_apple(&self, name: String) -> Result<FfiRemoteUuid, LascoError> {
+        let library_json = self.library_json_read_write();
+        let mut lib_config = library_json.read()?;
 
         if lib_config.remotes.iter().any(|r| r.name == name) {
             return Err(LascoError::Other {
-                msg: format!("remote '{}' already exists", name),
+                msg: format!("remote '{name}' already exists"),
             });
         }
 
@@ -94,6 +236,9 @@ impl FfiLibrary {
         let remote_config = RemoteConfig {
             remote_uuid,
             name: name.clone(),
+            auto_push: true,
+            media_fetch_priority: next_media_fetch_priority(lib_config.remotes.len())?,
+            exclude_from_media_fetch: false,
             kind: RemoteKind::DebugLocalApple(DebugLocalAppleConfig {
                 local_dir_name: name,
             }),
@@ -101,19 +246,83 @@ impl FfiLibrary {
 
         let ffi_remote = remote_config_to_ffi(&remote_config);
         let is_first_remote = lib_config.remotes.is_empty();
+        lib_config.media_source_order.push(remote_uuid);
         lib_config.remotes.push(remote_config);
         if is_first_remote {
             lib_config.default_fetch_remote = Some(remote_uuid);
         }
-        save_library(&self.app_dir, &library_id, &lib_config)
+        library_json
+            .write(&lib_config)
             .map_err(|e| LascoError::Other { msg: e.to_string() })?;
 
         self.remotes.lock().unwrap().push(ffi_remote);
-        Ok(remote_uuid.to_string())
+        Ok(remote_uuid.into())
     }
 
-    #[allow(clippy::too_many_arguments)]
-    #[allow(clippy::too_many_arguments)]
+    /// # Errors
+    ///
+    /// Returns an error for a duplicate name or failed library-configuration persistence.
+    ///
+    /// # Panics
+    ///
+    /// Panics if another thread panicked while holding the cached remote-list mutex during the
+    /// in-memory update after configuration is saved.
+    pub fn add_remote_debug_local_android(
+        &self,
+        name: String,
+    ) -> Result<FfiRemoteUuid, LascoError> {
+        let library_json = self.library_json_read_write();
+        let mut lib_config = library_json.read()?;
+
+        if lib_config.remotes.iter().any(|r| r.name == name) {
+            return Err(LascoError::Other {
+                msg: format!("remote '{name}' already exists"),
+            });
+        }
+
+        let remote_uuid = RemoteUuid::new();
+        let remote_config = RemoteConfig {
+            remote_uuid,
+            name: name.clone(),
+            auto_push: true,
+            media_fetch_priority: next_media_fetch_priority(lib_config.remotes.len())?,
+            exclude_from_media_fetch: false,
+            kind: RemoteKind::DebugLocalAndroid(DebugLocalAndroidConfig {
+                local_dir_name: name,
+            }),
+        };
+
+        let ffi_remote = remote_config_to_ffi(&remote_config);
+        let is_first_remote = lib_config.remotes.is_empty();
+        lib_config.media_source_order.push(remote_uuid);
+        lib_config.remotes.push(remote_config);
+        if is_first_remote {
+            lib_config.default_fetch_remote = Some(remote_uuid);
+        }
+        library_json
+            .write(&lib_config)
+            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+
+        self.remotes.lock().unwrap().push(ffi_remote);
+        Ok(remote_uuid.into())
+    }
+
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "The FFI contract exposes S3 connection settings as explicit scalar parameters."
+    )]
+    /// # Errors
+    ///
+    /// Returns an error for a duplicate name, failed secret-key encryption, or failed configuration persistence.
+    ///
+    /// # Panics
+    ///
+    /// Panics if another thread panicked while holding the cached remote-list mutex during the
+    /// in-memory update after configuration is saved.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
     pub fn add_remote_s3(
         &self,
         name: String,
@@ -123,13 +332,13 @@ impl FfiLibrary {
         path_prefix: String,
         access_key: String,
         secret_key: String,
-    ) -> Result<String, LascoError> {
-        let library_id = self.inner.library_id();
-        let mut lib_config = self.load_library_json()?;
+    ) -> Result<FfiRemoteUuid, LascoError> {
+        let library_json = self.library_json_read_write();
+        let mut lib_config = library_json.read()?;
 
         if lib_config.remotes.iter().any(|r| r.name == name) {
             return Err(LascoError::Other {
-                msg: format!("remote '{}' already exists", name),
+                msg: format!("remote '{name}' already exists"),
             });
         }
 
@@ -137,12 +346,19 @@ impl FfiLibrary {
             lasco_core::s3_secret::encrypt_s3_secret_key(self.inner.master_key(), &secret_key)
                 .map_err(|e| LascoError::Other { msg: e.to_string() })?;
 
-        let path_prefix = if path_prefix.is_empty() { None } else { Some(path_prefix) };
+        let path_prefix = if path_prefix.is_empty() {
+            None
+        } else {
+            Some(path_prefix)
+        };
 
         let remote_uuid = RemoteUuid::new();
         let remote_config = RemoteConfig {
             remote_uuid,
             name,
+            auto_push: true,
+            media_fetch_priority: next_media_fetch_priority(lib_config.remotes.len())?,
+            exclude_from_media_fetch: false,
             kind: RemoteKind::S3(lasco_core::library_json::S3Config {
                 endpoint,
                 bucket,
@@ -156,131 +372,484 @@ impl FfiLibrary {
 
         let ffi_remote = remote_config_to_ffi(&remote_config);
         let is_first_remote = lib_config.remotes.is_empty();
+        lib_config.media_source_order.push(remote_uuid);
         lib_config.remotes.push(remote_config);
         if is_first_remote {
             lib_config.default_fetch_remote = Some(remote_uuid);
         }
-        save_library(&self.app_dir, &library_id, &lib_config)
+        library_json
+            .write(&lib_config)
             .map_err(|e| LascoError::Other { msg: e.to_string() })?;
 
         self.remotes.lock().unwrap().push(ffi_remote);
-        Ok(remote_uuid.to_string())
+        Ok(remote_uuid.into())
     }
 
-    pub fn remove_remote(&self, remote_id: String) -> Result<(), LascoError> {
-        let library_id = self.inner.library_id();
-        let mut lib_config = self.load_library_json()?;
+    /// Removes a remote from the configuration and deletes everything this client cached
+    /// about it.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `remote_id` is invalid or unknown, if the configuration update
+    /// cannot be saved, or if a sync holds the remote, in which case the remote is already out
+    /// of the configuration and its directory is deleted on the next open.
+    ///
+    /// # Panics
+    ///
+    /// Panics if another thread panicked while holding the cached remote-list mutex during the
+    /// in-memory removal after configuration is saved.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
+    pub fn remove_remote(&self, remote_id: FfiRemoteUuid) -> Result<(), LascoError> {
+        let remote_uuid: RemoteUuid = remote_id.clone().try_into()?;
 
-        let index = lib_config
+        // The remote is claimed for the whole removal, so an operation holding it stops this
+        // before anything is written and the configuration is left as it was. Dropping the
+        // remote from the configuration inside that claim is what stops a later operation from
+        // resolving it and recreating the directory about to be deleted.
+        self.inner.forget_remote(remote_uuid, || {
+            let library_json = self.library_json_read_write();
+            let mut lib_config = library_json.read()?;
+
+            let index = lib_config
+                .remotes
+                .iter()
+                .position(|r| r.remote_uuid == remote_uuid)
+                .ok_or_else(|| LascoError::Other {
+                    msg: format!("remote '{}' not found", remote_id.value),
+                })?;
+
+            lib_config.remotes.remove(index);
+            lib_config
+                .media_source_order
+                .retain(|id| *id != remote_uuid);
+            if lib_config.default_fetch_remote == Some(remote_uuid) {
+                lib_config.default_fetch_remote = None;
+            }
+            library_json
+                .write(&lib_config)
+                .map_err(|e| LascoError::Other { msg: e.to_string() })
+        })?;
+
+        self.remotes
+            .lock()
+            .unwrap()
+            .retain(|r| r.remote_id != remote_id);
+        Ok(())
+    }
+
+    /// # Errors
+    ///
+    /// Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
+    ///
+    /// # Panics
+    ///
+    /// Panics if another thread panicked while holding the cached remote-list mutex during the
+    /// in-memory auto-push update after configuration is saved.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
+    pub fn set_remote_auto_push(
+        &self,
+        remote_id: FfiRemoteUuid,
+        enabled: bool,
+    ) -> Result<(), LascoError> {
+        let library_json = self.library_json_read_write();
+        let mut lib_config = library_json.read()?;
+        let remote_uuid: RemoteUuid = remote_id.clone().try_into()?;
+        let remote = lib_config
             .remotes
-            .iter()
-            .position(|r| r.remote_uuid.to_string() == remote_id)
+            .iter_mut()
+            .find(|r| r.remote_uuid == remote_uuid)
             .ok_or_else(|| LascoError::Other {
-                msg: format!("remote '{}' not found", remote_id),
+                msg: format!("remote '{}' not found", remote_id.value),
             })?;
 
-        lib_config.remotes.remove(index);
-        save_library(&self.app_dir, &library_id, &lib_config)
+        remote.auto_push = enabled;
+        library_json
+            .write(&lib_config)
             .map_err(|e| LascoError::Other { msg: e.to_string() })?;
 
-        self.remotes.lock().unwrap().retain(|r| r.id != remote_id);
+        if let Some(remote) = self
+            .remotes
+            .lock()
+            .unwrap()
+            .iter_mut()
+            .find(|r| r.remote_id == remote_id)
+        {
+            remote.auto_push = enabled;
+        }
         Ok(())
     }
 
-    pub fn sync(&self, app_support_dir: Option<String>) -> Result<FfiSyncResult, LascoError> {
-        let remote_id = self
-            .sync_remote_id
-            .clone()
-            .ok_or_else(|| LascoError::Other { msg: "no remotes configured".to_string() })?;
-
-        let storage = self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
-        let report = self
-            .rt
-            .block_on(self.inner.sync(storage.as_ref(), &remote_id))
-            .map_err(LascoError::from)?;
-        Ok(FfiSyncResult {
-            pushed: report.push.ops_uploaded as u32,
-            pulled: report.fetch.ops_downloaded as u32,
-        })
+    /// Returns the ordered subset of remotes used to retrieve uncached originals.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the library configuration cannot be read.
+    pub fn get_media_source_order(&self) -> Result<Vec<FfiRemoteUuid>, LascoError> {
+        let config = self.load_library_json()?;
+        Ok(config
+            .media_source_order
+            .into_iter()
+            .map(Into::into)
+            .collect())
     }
 
-    pub fn push_remote(&self, remote_id: String, app_support_dir: Option<String>) -> Result<u32, LascoError> {
-        let storage = self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
-        let report = self
-            .rt
-            .block_on(self.inner.push(storage.as_ref(), &remote_id))
-            .map_err(LascoError::from)?;
-        Ok(report.ops_uploaded as u32)
+    /// Replaces the ordered subset of remotes used to retrieve uncached originals.
+    ///
+    /// An empty list is valid and disables remote media-source lookups. Every supplied ID must
+    /// belong to a configured remote and may appear only once.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if an ID is invalid, unknown, duplicated, or the configuration cannot be
+    /// saved.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
+    pub fn set_media_source_order(&self, remote_ids: Vec<FfiRemoteUuid>) -> Result<(), LascoError> {
+        let library_json = self.library_json_read_write();
+        let mut config = library_json.read()?;
+        let configured: std::collections::HashSet<_> = config
+            .remotes
+            .iter()
+            .map(|remote| remote.remote_uuid)
+            .collect();
+        let mut ordered = Vec::with_capacity(remote_ids.len());
+        let mut seen = std::collections::HashSet::with_capacity(remote_ids.len());
+
+        for remote_id in remote_ids {
+            let remote_uuid: RemoteUuid = remote_id.clone().try_into()?;
+            if !configured.contains(&remote_uuid) {
+                return Err(LascoError::Other {
+                    msg: format!("remote '{}' not found", remote_id.value),
+                });
+            }
+            if !seen.insert(remote_uuid) {
+                return Err(LascoError::Other {
+                    msg: format!("remote '{}' appears more than once", remote_id.value),
+                });
+            }
+            ordered.push(remote_uuid);
+        }
+
+        config.media_source_order = ordered;
+        library_json
+            .write(&config)
+            .map_err(|e| LascoError::Other { msg: e.to_string() })
     }
 
-    pub fn fetch_remote(&self, remote_id: String, app_support_dir: Option<String>) -> Result<u32, LascoError> {
-        let storage = self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
+    /// # Errors
+    ///
+    /// Returns an error if the ID/configuration is invalid, storage cannot be built, or remote push fails.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
+    pub fn push_remote(
+        &self,
+        remote_id: FfiRemoteUuid,
+        app_support_dir: Option<String>,
+    ) -> Result<u64, LascoError> {
+        let remote_uuid: RemoteUuid = remote_id.clone().try_into()?;
+        let storage = self.build_storage_for_remote(&remote_uuid, app_support_dir.as_deref())?;
         let report = self
             .rt
-            .block_on(self.inner.fetch(storage.as_ref(), &remote_id))
+            .block_on(self.inner.push(storage.as_ref(), remote_uuid))
             .map_err(LascoError::from)?;
-        Ok(report.ops_downloaded as u32)
+        Ok(ffi_count(report.ops_uploaded))
     }
 
-    pub async fn sync_async(&self, app_support_dir: Option<String>) -> Result<FfiSyncResult, LascoError> {
-        let remote_id = self
-            .sync_remote_id
-            .clone()
-            .ok_or_else(|| LascoError::Other { msg: "no remotes configured".to_string() })?;
+    /// Push to `target_remote_id`, relaying absent local media from the selected
+    /// configured source remote. Callers should only use this after an explicit
+    /// user choice; ordinary and scheduled pushes remain local-only.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for invalid IDs, unavailable remote storage, failed validation, or failed relay/upload.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
+    pub fn push_remote_from_remote(
+        &self,
+        target_remote_id: FfiRemoteUuid,
+        source_remote_id: FfiRemoteUuid,
+        app_support_dir: Option<String>,
+    ) -> Result<u64, LascoError> {
+        let target_remote_uuid: RemoteUuid = target_remote_id.clone().try_into()?;
+        let source_remote_uuid: RemoteUuid = source_remote_id.clone().try_into()?;
+        let target_storage =
+            self.build_storage_for_remote(&target_remote_uuid, app_support_dir.as_deref())?;
+        let source_storage =
+            self.build_storage_for_remote(&source_remote_uuid, app_support_dir.as_deref())?;
+        let report = self
+            .rt
+            .block_on(self.inner.push_with_media_source(
+                target_storage.as_ref(),
+                target_remote_uuid,
+                PushMediaSource::FromRemote {
+                    remote_id: source_remote_uuid,
+                    storage: StorageRead::new(source_storage.as_ref()),
+                },
+            ))
+            .map_err(LascoError::from)?;
+        Ok(ffi_count(report.ops_uploaded))
+    }
 
-        let storage = self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
+    /// # Errors
+    ///
+    /// Returns an error if the ID/configuration is invalid, storage cannot be built, or remote fetch fails.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
+    pub fn fetch_remote(
+        &self,
+        remote_id: FfiRemoteUuid,
+        app_support_dir: Option<String>,
+    ) -> Result<u64, LascoError> {
+        let remote_uuid: RemoteUuid = remote_id.clone().try_into()?;
+        let storage = self.build_storage_for_remote(&remote_uuid, app_support_dir.as_deref())?;
+        let report = self
+            .rt
+            .block_on(self.inner.fetch(storage.as_ref(), remote_uuid))
+            .map_err(LascoError::from)?;
+        Ok(ffi_count(report.ops_downloaded))
+    }
+
+    /// # Errors
+    ///
+    /// Returns an error if the ID/configuration is invalid, storage cannot be built, the task fails, or remote push fails.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
+    pub async fn push_remote_async(
+        &self,
+        remote_id: FfiRemoteUuid,
+        app_support_dir: Option<String>,
+    ) -> Result<u64, LascoError> {
+        let remote_uuid: RemoteUuid = remote_id.clone().try_into()?;
+        let storage = self.build_storage_for_remote(&remote_uuid, app_support_dir.as_deref())?;
         let inner = self.inner.clone();
         let report = self
             .rt
-            .spawn(async move { inner.sync(storage.as_ref(), &remote_id).await })
+            .spawn(async move { inner.push(storage.as_ref(), remote_uuid).await })
             .await
             .map_err(|e| LascoError::Other { msg: e.to_string() })?
             .map_err(LascoError::from)?;
-        Ok(FfiSyncResult {
-            pushed: report.push.ops_uploaded as u32,
-            pulled: report.fetch.ops_downloaded as u32,
-        })
+        Ok(ffi_count(report.ops_uploaded))
     }
 
-    pub async fn push_remote_async(&self, remote_id: String, app_support_dir: Option<String>) -> Result<u32, LascoError> {
-        let storage = self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
+    /// Push using the ordered configured media sources. Preparation completes before core push
+    /// starts, and reads nothing but local files: the media cache and the media inventories.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the ID or configuration is invalid, storage cannot be built, some
+    /// data blob has no known place to be read from, or the push itself fails.
+    pub async fn push_remote_using_configured_media_sources_async(
+        &self,
+        target_remote_id: FfiRemoteUuid,
+        app_support_dir: Option<String>,
+    ) -> Result<u64, LascoError> {
+        let target: RemoteUuid = target_remote_id.try_into()?;
+        let config = self.load_library_json()?;
+        let resolution = self
+            .inner
+            .resolve_push_media(target, &config.media_source_order)?;
+        if !resolution.unresolved_data.is_empty() {
+            return Err(LascoError::from(lasco_core::error::LibraryError::Sync(
+                lasco_core::error::SyncError::MissingMediaOnConfiguredSources(
+                    resolution.unresolved_data,
+                ),
+            )));
+        }
+
+        // Only the remotes the plan names are opened. Push verifies each of them before
+        // reading anything from it.
+        let mut sources: HashMap<RemoteUuid, Box<dyn lasco_core::storage::Storage + Send + Sync>> =
+            HashMap::new();
+        for source_id in resolution.source_remote_ids() {
+            sources.insert(
+                source_id,
+                self.build_storage_for_remote(&source_id, app_support_dir.as_deref())?,
+            );
+        }
+        let target_storage = self.build_storage_for_remote(&target, app_support_dir.as_deref())?;
+        let inner = self.inner.clone();
+        let assignments = resolution.assignments;
+        // The push runs on the runtime owned by this library, not on the foreign
+        // executor driving this exported async function. Storage backends build
+        // network clients that need a Tokio context.
+        let report = self
+            .rt
+            .spawn(async move {
+                let source_reads = sources
+                    .iter()
+                    .map(|(id, storage)| (*id, StorageRead::new(storage.as_ref())))
+                    .collect();
+                inner
+                    .push_with_media_plan(
+                        target_storage.as_ref(),
+                        target,
+                        lasco_core::library::sync::PushMediaPlan {
+                            assignments,
+                            sources: source_reads,
+                        },
+                    )
+                    .await
+            })
+            .await
+            .map_err(|e| LascoError::Other { msg: e.to_string() })?
+            .map_err(LascoError::from)?;
+        Ok(ffi_count(report.ops_uploaded))
+    }
+
+    /// Confirms which media blobs a remote holds and records them in its media inventory,
+    /// without fetching. Returns how many blobs it newly confirmed.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the ID is invalid, storage cannot be built, a sync is already
+    /// running for this remote, or the remote does not belong to this library.
+    pub async fn confirm_remote_media_async(
+        &self,
+        remote_id: FfiRemoteUuid,
+        app_support_dir: Option<String>,
+    ) -> Result<u64, LascoError> {
+        let remote_uuid: RemoteUuid = remote_id.try_into()?;
+        let storage = self.build_storage_for_remote(&remote_uuid, app_support_dir.as_deref())?;
+        let inner = self.inner.clone();
+        let confirmed = self
+            .rt
+            .spawn(async move {
+                inner
+                    .confirm_remote_media(storage.as_ref(), remote_uuid)
+                    .await
+            })
+            .await
+            .map_err(|e| LascoError::Other { msg: e.to_string() })?
+            .map_err(LascoError::from)?;
+        Ok(ffi_count(confirmed))
+    }
+
+    /// # Errors
+    ///
+    /// Returns an error for invalid IDs, unavailable storage, task failure, failed validation, or failed relay/upload.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
+    pub async fn push_remote_from_remote_async(
+        &self,
+        target_remote_id: FfiRemoteUuid,
+        source_remote_id: FfiRemoteUuid,
+        app_support_dir: Option<String>,
+    ) -> Result<u64, LascoError> {
+        let target_remote_uuid: RemoteUuid = target_remote_id.clone().try_into()?;
+        let source_remote_uuid: RemoteUuid = source_remote_id.clone().try_into()?;
+        let target_storage =
+            self.build_storage_for_remote(&target_remote_uuid, app_support_dir.as_deref())?;
+        let source_storage =
+            self.build_storage_for_remote(&source_remote_uuid, app_support_dir.as_deref())?;
         let inner = self.inner.clone();
         let report = self
             .rt
-            .spawn(async move { inner.push(storage.as_ref(), &remote_id).await })
+            .spawn(async move {
+                inner
+                    .push_with_media_source(
+                        target_storage.as_ref(),
+                        target_remote_uuid,
+                        PushMediaSource::FromRemote {
+                            remote_id: source_remote_uuid,
+                            storage: StorageRead::new(source_storage.as_ref()),
+                        },
+                    )
+                    .await
+            })
             .await
             .map_err(|e| LascoError::Other { msg: e.to_string() })?
             .map_err(LascoError::from)?;
-        Ok(report.ops_uploaded as u32)
+        Ok(ffi_count(report.ops_uploaded))
     }
 
-    pub async fn fetch_remote_async(&self, remote_id: String, app_support_dir: Option<String>) -> Result<u32, LascoError> {
-        let storage = self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
+    /// # Errors
+    ///
+    /// Returns an error if the ID/configuration is invalid, storage cannot be built, the task fails, or remote fetch fails.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
+    pub async fn fetch_remote_async(
+        &self,
+        remote_id: FfiRemoteUuid,
+        app_support_dir: Option<String>,
+    ) -> Result<u64, LascoError> {
+        let remote_uuid: RemoteUuid = remote_id.clone().try_into()?;
+        let storage = self.build_storage_for_remote(&remote_uuid, app_support_dir.as_deref())?;
         let inner = self.inner.clone();
         let report = self
             .rt
-            .spawn(async move { inner.fetch(storage.as_ref(), &remote_id).await })
+            .spawn(async move { inner.fetch(storage.as_ref(), remote_uuid).await })
             .await
             .map_err(|e| LascoError::Other { msg: e.to_string() })?
             .map_err(LascoError::from)?;
-        Ok(report.ops_downloaded as u32)
+        Ok(ffi_count(report.ops_downloaded))
     }
 
-    pub fn connect_remote(&self, remote_id: String, app_support_dir: Option<String>) -> Result<(), LascoError> {
-        let storage = self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
-        let remote_uuid = parse_remote_uuid(&remote_id)?;
+    /// # Errors
+    ///
+    /// Returns an error if the ID/configuration is invalid, storage cannot be built, or remote identity cannot be verified.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
+    pub fn connect_remote(
+        &self,
+        remote_id: FfiRemoteUuid,
+        app_support_dir: Option<String>,
+    ) -> Result<(), LascoError> {
+        let remote_uuid: RemoteUuid = remote_id.clone().try_into()?;
+        let storage = self.build_storage_for_remote(&remote_uuid, app_support_dir.as_deref())?;
+        let remote = lasco_core::library::sync::remote_access::StorageRead::new(storage.as_ref());
         self.rt
-            .block_on(lasco_core::library::sync::verify_remote_identity(storage.as_ref(), remote_uuid))
-            .map_err(|e| LascoError::Other { msg: format!("remote unreachable: {e}") })?;
+            .block_on(lasco_core::library::sync::verify_remote_identity(
+                &remote,
+                remote_uuid,
+            ))
+            .map_err(|e| LascoError::Other {
+                msg: format!("remote unreachable: {e}"),
+            })?;
         Ok(())
     }
 
-    pub fn initialize_remote(&self, remote_id: String, app_support_dir: Option<String>) -> Result<(), LascoError> {
+    /// # Errors
+    ///
+    /// Returns an error if the ID is invalid or unknown, storage cannot be built, or remote initialization fails.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
+    pub fn initialize_remote(
+        &self,
+        remote_id: FfiRemoteUuid,
+        app_support_dir: Option<String>,
+    ) -> Result<(), LascoError> {
         let lib_config = self.load_library_json()?;
-        let remote_uuid = parse_remote_uuid(&remote_id)?;
-        lasco_core::library_json::find_remote_by_uuid(&lib_config, &remote_uuid)
-            .ok_or_else(|| LascoError::Other { msg: format!("remote '{}' not found", remote_id) })?;
-        let storage = self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
+        let remote_uuid = remote_id.clone().try_into()?;
+        lasco_core::library_json::find_remote_by_uuid(&lib_config, &remote_uuid).ok_or_else(
+            || LascoError::Other {
+                msg: format!("remote '{}' not found", remote_id.value),
+            },
+        )?;
+        let storage = self.build_storage_for_remote(&remote_uuid, app_support_dir.as_deref())?;
         self.rt
             .block_on(self.inner.initialize_remote(storage.as_ref(), remote_uuid))
             .map_err(LascoError::from)
@@ -288,35 +857,83 @@ impl FfiLibrary {
 }
 
 impl FfiLibrary {
+    fn add_remote_config(
+        &self,
+        name: String,
+        kind: RemoteKind,
+    ) -> Result<FfiRemoteUuid, LascoError> {
+        let library_json = self.library_json_read_write();
+        if name.trim().is_empty() {
+            return Err(LascoError::Other {
+                msg: "remote name must not be empty".to_string(),
+            });
+        }
+
+        let mut lib_config = library_json.read()?;
+
+        if lib_config.remotes.iter().any(|r| r.name == name) {
+            return Err(LascoError::Other {
+                msg: format!("remote '{name}' already exists"),
+            });
+        }
+
+        let remote_uuid = RemoteUuid::new();
+        let remote_config = RemoteConfig {
+            remote_uuid,
+            name,
+            auto_push: true,
+            media_fetch_priority: next_media_fetch_priority(lib_config.remotes.len())?,
+            exclude_from_media_fetch: false,
+            kind,
+        };
+        let ffi_remote = remote_config_to_ffi(&remote_config);
+        let is_first_remote = lib_config.remotes.is_empty();
+        lib_config.media_source_order.push(remote_uuid);
+        lib_config.remotes.push(remote_config);
+        if is_first_remote {
+            lib_config.default_fetch_remote = Some(remote_uuid);
+        }
+        library_json
+            .write(&lib_config)
+            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+
+        self.remotes.lock().unwrap().push(ffi_remote);
+        Ok(remote_uuid.into())
+    }
+
     pub(super) fn load_library_json(&self) -> Result<LibraryJson, LascoError> {
-        let library_id = self.inner.library_id();
-        LibraryJson::load(&self.app_dir, &library_id)?.ok_or(LascoError::NotFound)
+        self.library_json_read_write().read().map_err(Into::into)
+    }
+
+    pub(super) fn library_json_read_write(
+        &self,
+    ) -> lasco_core::library_json::LibraryJsonReadWrite<'_> {
+        self.inner.library_json_read_write(&self.app_dir)
     }
 
     pub(super) fn build_storage_for_remote(
         &self,
-        remote_id: &str,
+        remote_id: &RemoteUuid,
         app_support_dir: Option<&str>,
     ) -> Result<Box<dyn lasco_core::storage::Storage + Send + Sync>, LascoError> {
-        let library_id = self.inner.library_id();
+        #[cfg(test)]
+        if let Some(storage) = self.test_remotes.lock().unwrap().get(remote_id).cloned() {
+            return Ok(Box::new(storage));
+        }
+
         let lib_config = self.load_library_json()?;
 
-        // Find the requested remote and temporarily move it to the front so
-        // build_storage (which always uses index 0) builds the right storage.
-        let idx = lib_config
+        let remote = lib_config
             .remotes
             .iter()
-            .position(|r| r.remote_uuid.to_string() == remote_id)
+            .find(|remote| remote.remote_uuid == *remote_id)
             .ok_or_else(|| LascoError::Other {
-                msg: format!("remote '{}' not found", remote_id),
+                msg: format!("remote '{remote_id}' not found"),
             })?;
-        let mut reordered = lib_config;
-        reordered.remotes.swap(0, idx);
 
         lasco_core::client::build_storage(
             &self.app_dir,
-            &reordered,
-            &library_id,
+            remote,
             Some(self.inner.master_key()),
             app_support_dir.map(std::path::Path::new),
         )
@@ -340,6 +957,8 @@ pub(super) fn remote_config_to_ffi(r: &RemoteConfig) -> FfiRemote {
             None,
             Some(fs.root_dir.to_string_lossy().into_owned()),
         ),
+        RemoteKind::UsbAndroid(_) => ("usb_android".to_string(), None, None, None, None),
+        RemoteKind::UsbApple(_) => ("usb_apple".to_string(), None, None, None, None),
         RemoteKind::DebugLocalApple(cfg) => (
             "debug_local_apple".to_string(),
             None,
@@ -347,13 +966,29 @@ pub(super) fn remote_config_to_ffi(r: &RemoteConfig) -> FfiRemote {
             None,
             Some(cfg.local_dir_name.clone()),
         ),
+        RemoteKind::DebugLocalAndroid(cfg) => (
+            "debug_local_android".to_string(),
+            None,
+            None,
+            None,
+            Some(cfg.local_dir_name.clone()),
+        ),
     };
-    FfiRemote { id: r.remote_uuid.to_string(), name: r.name.clone(), kind, endpoint, bucket, region, path }
+    FfiRemote {
+        remote_id: r.remote_uuid.into(),
+        name: r.name.clone(),
+        auto_push: r.auto_push,
+        kind,
+        endpoint,
+        bucket,
+        region,
+        path,
+    }
 }
 
 pub(super) fn media_entry_to_ffi(e: lasco_core::library::media::MediaEntry) -> FfiMediaItem {
     FfiMediaItem {
-        media_id: e.media_id.to_string(),
+        media_id: e.media_id.into(),
         filename_original: e.filename_original.0,
         name: e.name.map(|n| n.0),
         date: e.date.to_rfc3339(),
@@ -362,109 +997,147 @@ pub(super) fn media_entry_to_ffi(e: lasco_core::library::media::MediaEntry) -> F
         size_bytes: e.size_bytes,
         content_hash: e.content_hash.to_hex(),
         author: e.author,
-        apple_aae_media_id: e.apple_aae_media_id.map(|id| id.to_string()),
-        apple_live_photo_media_id: e.apple_live_photo_media_id.map(|id| id.to_string()),
+        apple_aae_media_id: e.apple_aae_media_id.map(Into::into),
+        apple_live_photo_media_id: e.apple_live_photo_media_id.map(Into::into),
     }
 }
 
-fn kv(key: &str, value: impl ToString) -> FfiKv {
-    FfiKv { key: key.to_string(), value: value.to_string() }
+fn kv(key: &str, value: &impl ToString) -> FfiKv {
+    FfiKv {
+        key: key.to_string(),
+        value: value.to_string(),
+    }
 }
 
 fn opt_kv(key: &str, value: Option<impl ToString>) -> FfiKv {
-    FfiKv { key: key.to_string(), value: value.map(|v| v.to_string()).unwrap_or_default() }
+    FfiKv {
+        key: key.to_string(),
+        value: value.map(|v| v.to_string()).unwrap_or_default(),
+    }
 }
 
-pub(super) fn operation_to_ffi(op: Operation) -> FfiOperation {
+pub(super) fn crdt_operation_to_ffi(op: CrdtOperation) -> FfiCrdtOperation {
+    FfiCrdtOperation {
+        dot: FfiDot {
+            lamport_counter: op.dot.lamport_counter,
+            device_id: format!("{:032x}", op.dot.device_id.0),
+        },
+        author: op.author.0,
+        operation: operation_to_ffi(op.content, op.timestamp.to_rfc3339()),
+    }
+}
+
+#[allow(
+    clippy::too_many_lines,
+    reason = "One exhaustive conversion keeps the FFI representation aligned with every core operation variant."
+)]
+fn operation_to_ffi(op: OperationContent, timestamp: String) -> FfiOperation {
     match op {
-        Operation::MediaCreation { timestamp, media_id, filename_original, date, storage_date, size_bytes, .. } => {
-            FfiOperation {
-                kind: "MediaCreation".to_string(),
-                timestamp: timestamp.to_rfc3339(),
-                args: vec![
-                    kv("media_id", media_id),
-                    kv("filename_original", filename_original),
-                    kv("date", date.to_rfc3339()),
-                    kv("year", storage_date.year),
-                    kv("month", storage_date.month),
-                    kv("size_bytes", size_bytes),
-                ],
-            }
-        }
-        Operation::MediaRename { timestamp, media_id, name, .. } => FfiOperation {
+        OperationContent::MediaCreation(creation) => FfiOperation {
+            kind: "MediaCreation".to_string(),
+            timestamp: timestamp.clone(),
+            args: vec![
+                kv("media_id", &creation.media_id),
+                kv("filename_original", &creation.filename_original),
+                kv("date", &creation.date.to_rfc3339()),
+                kv("year", &creation.storage_date.year),
+                kv("month", &creation.storage_date.month),
+                kv("size_bytes", &creation.size_bytes),
+            ],
+        },
+        OperationContent::MediaRename { media_id, name } => FfiOperation {
             kind: "MediaRename".to_string(),
-            timestamp: timestamp.to_rfc3339(),
-            args: vec![
-                kv("media_id", media_id),
-                opt_kv("name", name),
-            ],
+            timestamp: timestamp.clone(),
+            args: vec![kv("media_id", &media_id), opt_kv("name", name)],
         },
-        Operation::MediaPropsUpdate { timestamp, media_id, key, value, .. } => FfiOperation {
+        OperationContent::MediaPropsUpdate {
+            media_id,
+            key,
+            value,
+        } => FfiOperation {
             kind: "MediaPropsUpdate".to_string(),
-            timestamp: timestamp.to_rfc3339(),
-            args: vec![kv("media_id", media_id), kv("key", key), kv("value", value)],
+            timestamp: timestamp.clone(),
+            args: vec![
+                kv("media_id", &media_id),
+                kv("key", &key),
+                kv("value", &value),
+            ],
         },
-        Operation::AlbumCreation { timestamp, album_id, name, album_id_parent, .. } => FfiOperation {
+        OperationContent::AlbumCreation {
+            album_id,
+            name,
+            parent_id,
+        } => FfiOperation {
             kind: "AlbumCreation".to_string(),
-            timestamp: timestamp.to_rfc3339(),
+            timestamp: timestamp.clone(),
             args: vec![
-                kv("album_id", album_id),
-                kv("name", name),
-                opt_kv("parent_id", album_id_parent),
+                kv("album_id", &album_id),
+                kv("name", &name),
+                opt_kv("parent_id", parent_id),
             ],
         },
-        Operation::AlbumMediaAdd { timestamp, album_id, media_id, .. } => FfiOperation {
+        OperationContent::AlbumMediaAdd { album_id, media_id } => FfiOperation {
             kind: "AlbumMediaAdd".to_string(),
-            timestamp: timestamp.to_rfc3339(),
-            args: vec![kv("album_id", album_id), kv("media_id", media_id)],
+            timestamp: timestamp.clone(),
+            args: vec![kv("album_id", &album_id), kv("media_id", &media_id)],
         },
-        Operation::AlbumMediaRemove { timestamp, album_id, media_id, .. } => FfiOperation {
+        OperationContent::AlbumMediaRemove {
+            album_id, media_id, ..
+        } => FfiOperation {
             kind: "AlbumMediaRemove".to_string(),
-            timestamp: timestamp.to_rfc3339(),
-            args: vec![kv("album_id", album_id), kv("media_id", media_id)],
+            timestamp: timestamp.clone(),
+            args: vec![kv("album_id", &album_id), kv("media_id", &media_id)],
         },
-        Operation::AlbumDeletion { timestamp, album_id, .. } => FfiOperation {
+        OperationContent::AlbumDeletion { album_id } => FfiOperation {
             kind: "AlbumDeletion".to_string(),
-            timestamp: timestamp.to_rfc3339(),
-            args: vec![kv("album_id", album_id)],
+            timestamp: timestamp.clone(),
+            args: vec![kv("album_id", &album_id)],
         },
-        Operation::AlbumRename { timestamp, album_id, name, .. } => FfiOperation {
+        OperationContent::AlbumRename { album_id, name } => FfiOperation {
             kind: "AlbumRename".to_string(),
-            timestamp: timestamp.to_rfc3339(),
-            args: vec![kv("album_id", album_id), kv("name", name)],
+            timestamp: timestamp.clone(),
+            args: vec![kv("album_id", &album_id), opt_kv("name", name)],
         },
-        Operation::AlbumReparent { timestamp, album_id, new_parent_id, .. } => FfiOperation {
+        OperationContent::AlbumReparent {
+            album_id,
+            parent_id,
+        } => FfiOperation {
             kind: "AlbumReparent".to_string(),
-            timestamp: timestamp.to_rfc3339(),
-            args: vec![kv("album_id", album_id), opt_kv("new_parent_id", new_parent_id)],
-        },
-        Operation::AlbumThumbnailSet { timestamp, album_id, media_id, .. } => FfiOperation {
-            kind: "AlbumThumbnailSet".to_string(),
-            timestamp: timestamp.to_rfc3339(),
-            args: vec![kv("album_id", album_id), opt_kv("media_id", media_id)],
-        },
-        Operation::GroupCreation { timestamp, group_id, album_id_parent, .. } => FfiOperation {
-            kind: "GroupCreation".to_string(),
-            timestamp: timestamp.to_rfc3339(),
+            timestamp: timestamp.clone(),
             args: vec![
-                kv("group_id", group_id),
-                kv("album_id_parent", album_id_parent),
+                kv("album_id", &album_id),
+                opt_kv("new_parent_id", parent_id),
             ],
         },
-        Operation::GroupMediaAdd { timestamp, group_id, media_id, .. } => FfiOperation {
+        OperationContent::AlbumThumbnailSet { album_id, media_id } => FfiOperation {
+            kind: "AlbumThumbnailSet".to_string(),
+            timestamp: timestamp.clone(),
+            args: vec![kv("album_id", &album_id), opt_kv("media_id", media_id)],
+        },
+        OperationContent::GroupCreation {
+            group_id,
+            parent_id,
+        } => FfiOperation {
+            kind: "GroupCreation".to_string(),
+            timestamp: timestamp.clone(),
+            args: vec![kv("group_id", &group_id), kv("album_id_parent", &parent_id)],
+        },
+        OperationContent::GroupMediaAdd { group_id, media_id } => FfiOperation {
             kind: "GroupMediaAdd".to_string(),
-            timestamp: timestamp.to_rfc3339(),
-            args: vec![kv("group_id", group_id), kv("media_id", media_id)],
+            timestamp: timestamp.clone(),
+            args: vec![kv("group_id", &group_id), kv("media_id", &media_id)],
         },
-        Operation::GroupMediaRemove { timestamp, group_id, media_id, .. } => FfiOperation {
+        OperationContent::GroupMediaRemove {
+            group_id, media_id, ..
+        } => FfiOperation {
             kind: "GroupMediaRemove".to_string(),
-            timestamp: timestamp.to_rfc3339(),
-            args: vec![kv("group_id", group_id), kv("media_id", media_id)],
+            timestamp: timestamp.clone(),
+            args: vec![kv("group_id", &group_id), kv("media_id", &media_id)],
         },
-        Operation::GroupDeletion { timestamp, group_id, .. } => FfiOperation {
+        OperationContent::GroupDeletion { group_id } => FfiOperation {
             kind: "GroupDeletion".to_string(),
-            timestamp: timestamp.to_rfc3339(),
-            args: vec![kv("group_id", group_id)],
+            timestamp,
+            args: vec![kv("group_id", &group_id)],
         },
     }
 }

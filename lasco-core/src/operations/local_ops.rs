@@ -1,322 +1,293 @@
+//! Append-only encrypted frames containing one `CrdtOperation` each.
+
 use std::collections::HashSet;
+use std::fs::File;
+use std::io::Read;
 use std::io::Write as _;
 
-use crate::encryption::blob::BlobEncrypted;
-use crate::encryption::blob::{decrypt_blob, encrypt_blob};
+use crate::crdt::{CrdtOperation, Dot};
+use crate::encryption::blob::{BlobEncrypted, decrypt_blob, encrypt_blob};
 use crate::encryption::blob_key::derive_blob_key;
 use crate::encryption::master_key::MasterKey;
-use crate::identifiers::OpUuid;
 use crate::operations::error::OperationError;
-
-use super::{op_group_from_cbor, op_group_to_cbor, OperationGroup};
 
 pub type Result<T> = std::result::Result<T, OperationError>;
 
-//
-// Each frame in the log has the following layout.
-//   op_id    16 bytes         (UUID bytes)
-//   blob_len  4 bytes         (u32 little-endian)
-//   blob      blob_len bytes  (encrypted OperationGroup CBOR)
-//
-// The plaintext op_id header allows cheap `read_op_ids` without decryption.
-// A trailing partial frame is silently treated as EOF (crash-safe append).
-
-const OP_ID_LEN: usize = 16;
 const BLOB_LEN_FIELD: usize = 4;
-const FRAME_HEADER: usize = OP_ID_LEN + BLOB_LEN_FIELD;
+const MAX_LOCAL_OP_BLOB_LEN: usize = 64 * 1024 * 1024;
+const LOCAL_OPS_KEY_ID: uuid::Uuid =
+    uuid::Uuid::from_u128(0x6c61_7363_6f5f_6c6f_6361_6c5f_6f70_7302);
 
-/// Read the single op group from `pending.op`. Returns `None` if the file doesn't exist.
-pub fn read_pending_op_group(
-    pending_path: &std::path::Path,
-    master_key: &MasterKey,
-) -> Result<Option<OperationGroup>> {
-    if !pending_path.exists() {
-        return Ok(None);
-    }
-    let data = std::fs::read(pending_path)?;
-    let Some((op_id, (blob_bytes, _))) = read_frame_header(&data) else {
-        return Ok(None);
-    };
-    let Ok(blob) = BlobEncrypted::from_bytes(blob_bytes) else {
-        return Ok(None);
-    };
-    let file_key = derive_blob_key(master_key, &op_id.0);
-    let Ok(plaintext) = decrypt_blob(&file_key, &blob) else {
-        return Ok(None);
-    };
-    let Ok(group) = op_group_from_cbor(&plaintext) else {
-        return Ok(None);
-    };
-    Ok(Some(group))
-}
-
-/// Overwrite `pending.op` with a single frame containing `op_group`.
-pub fn write_pending_op_group(
-    pending_path: &std::path::Path,
-    master_key: &MasterKey,
-    op_group: &OperationGroup,
-) -> Result<()> {
-    let cbor = op_group_to_cbor(op_group)?;
-    let file_key = derive_blob_key(master_key, &op_group.op_id.0);
-    let blob = encrypt_blob(&file_key, &cbor);
-    let blob_bytes = blob.to_bytes();
-
-    if let Some(parent) = pending_path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-
-    let mut file = std::fs::OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(true)
-        .open(pending_path)?;
-
-    file.write_all(op_group.op_id.0.as_bytes())?;
-    file.write_all(&(blob_bytes.len() as u32).to_le_bytes())?;
-    file.write_all(&blob_bytes)?;
-    Ok(())
-}
-
-/// Read the pending op group and delete `pending.op`. Returns `None` if the file doesn't exist.
-pub fn take_pending_op_group(
-    pending_path: &std::path::Path,
-    master_key: &MasterKey,
-) -> Result<Option<OperationGroup>> {
-    let group = read_pending_op_group(pending_path, master_key)?;
-    if group.is_some() {
-        std::fs::remove_file(pending_path)?;
-    }
-    Ok(group)
-}
-
-pub fn append_op_group(
+pub(crate) fn append_crdt_operation(
     log_path: &std::path::Path,
     master_key: &MasterKey,
-    op_group: &OperationGroup,
+    operation: &CrdtOperation,
 ) -> Result<()> {
-    let cbor = op_group_to_cbor(op_group)?;
-    let file_key = derive_blob_key(master_key, &op_group.op_id.0);
-    let blob = encrypt_blob(&file_key, &cbor);
-    let blob_bytes = blob.to_bytes();
-
     if let Some(parent) = log_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-
-    let mut file = std::fs::OpenOptions::new()
+    let frame = encode_frame(master_key, operation)?;
+    std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(log_path)?;
-
-    file.write_all(op_group.op_id.0.as_bytes())?;
-    file.write_all(&(blob_bytes.len() as u32).to_le_bytes())?;
-    file.write_all(&blob_bytes)?;
+        .open(log_path)?
+        .write_all(&frame)?;
     Ok(())
 }
 
-pub fn read_op_groups(
+/// Reads valid operations once, deduplicated by immutable dot identity.
+pub(crate) fn read_crdt_operations(
     log_path: &std::path::Path,
     master_key: &MasterKey,
-) -> Result<Vec<OperationGroup>> {
+) -> Result<Vec<CrdtOperation>> {
     if !log_path.exists() {
-        return Ok(vec![]);
+        return Ok(Vec::new());
     }
-
-    let data = std::fs::read(&log_path)?;
+    let data = std::fs::read(log_path)?;
     let mut cursor = data.as_slice();
-    let mut groups = Vec::new();
-    let mut seen_ids: HashSet<OpUuid> = HashSet::new();
-
-    loop {
-        let Some((op_id, rest)) = read_frame_header(cursor) else {
-            break;
-        };
-        let (blob_bytes, next) = rest;
-        cursor = next;
-
-        // Skip duplicates (e.g. same op appended again after re-download).
-        if seen_ids.contains(&op_id) {
-            continue;
+    let mut operations = Vec::new();
+    let mut known = HashSet::new();
+    while let Some((blob, remainder)) = read_frame(cursor)? {
+        cursor = remainder;
+        let operation = decrypt_operation(master_key, blob)?;
+        if known.insert(operation.dot) {
+            operations.push(operation);
         }
-
-        let blob = BlobEncrypted::from_bytes(blob_bytes)?;
-        let file_key = derive_blob_key(master_key, &op_id.0);
-        let plaintext = decrypt_blob(&file_key, &blob)?;
-        let group = op_group_from_cbor(&plaintext)?;
-
-        seen_ids.insert(op_id);
-        groups.push(group);
     }
-
-    Ok(groups)
+    Ok(operations)
 }
 
-pub fn read_op_ids(log_path: &std::path::Path) -> Result<HashSet<OpUuid>> {
-    if !log_path.exists() {
-        return Ok(HashSet::new());
+/// Reads a newest-first slice of the operation log without loading the full file or
+/// decrypting operations outside the requested range.
+///
+/// Positions are zero-based from the newest operation. `end_pos_exclusive` follows
+/// the usual half-open range convention.
+pub(crate) fn read_crdt_operations_range(
+    log_path: &std::path::Path,
+    master_key: &MasterKey,
+    start_pos: u64,
+    end_pos_exclusive: u64,
+) -> Result<Vec<CrdtOperation>> {
+    if end_pos_exclusive <= start_pos || !log_path.exists() {
+        return Ok(Vec::new());
     }
 
-    let data = std::fs::read(&log_path)?;
-    let mut cursor = data.as_slice();
-    let mut ids = HashSet::new();
-
-    loop {
-        let Some((op_id, (_, next))) = read_frame_header(cursor) else {
-            break;
-        };
-        cursor = next;
-        ids.insert(op_id);
+    let mut count_reader = open_log(log_path)?;
+    let mut frame_count = 0usize;
+    while read_frame_from(&mut count_reader)?.is_some() {
+        frame_count = frame_count
+            .checked_add(1)
+            .ok_or(OperationError::BlobTooLarge {
+                declared: usize::MAX,
+                maximum: usize::MAX - 1,
+            })?;
     }
 
-    Ok(ids)
+    let start_pos = usize::try_from(start_pos).unwrap_or(usize::MAX);
+    let end_pos_exclusive = usize::try_from(end_pos_exclusive).unwrap_or(usize::MAX);
+    if start_pos >= frame_count {
+        return Ok(Vec::new());
+    }
+
+    let oldest_index = frame_count.saturating_sub(end_pos_exclusive);
+    let newest_index_exclusive = frame_count.saturating_sub(start_pos);
+    let mut operations = Vec::with_capacity(newest_index_exclusive - oldest_index);
+    let mut operation_reader = open_log(log_path)?;
+
+    for index in 0..frame_count {
+        let frame =
+            read_frame_from(&mut operation_reader)?.expect("frame count was just validated");
+        if (oldest_index..newest_index_exclusive).contains(&index) {
+            operations.push(decrypt_operation(master_key, &frame)?);
+        }
+    }
+
+    operations.reverse();
+    Ok(operations)
 }
 
-/// Parses one frame header from the front of `data`.
-/// Returns `Some((op_id, (blob_bytes, remainder)))` or `None` on partial/empty frame.
-fn read_frame_header(data: &[u8]) -> Option<(OpUuid, (&[u8], &[u8]))> {
-    if data.len() < FRAME_HEADER {
-        return None;
+fn open_log(log_path: &std::path::Path) -> Result<File> {
+    Ok(File::open(log_path)?)
+}
+
+fn read_frame_from(reader: &mut impl Read) -> Result<Option<Vec<u8>>> {
+    let mut length = [0_u8; BLOB_LEN_FIELD];
+    let read = reader.read(&mut length)?;
+    if read == 0 {
+        return Ok(None);
     }
-    let op_id_bytes: [u8; OP_ID_LEN] = data[..OP_ID_LEN].try_into().unwrap();
-    let op_id = OpUuid::from_uuid(uuid::Uuid::from_bytes(op_id_bytes));
-    let blob_len = u32::from_le_bytes(data[OP_ID_LEN..FRAME_HEADER].try_into().unwrap()) as usize;
-    let rest = &data[FRAME_HEADER..];
-    if rest.len() < blob_len {
-        return None; // partial frame at EOF
+    if read < length.len() {
+        return Err(OperationError::IncompleteFrame {
+            expected: length.len(),
+            found: read,
+        });
     }
-    let (blob_bytes, next) = rest.split_at(blob_len);
-    Some((op_id, (blob_bytes, next)))
+    let length = u32::from_le_bytes(length) as usize;
+    if length == 0 {
+        return Err(OperationError::ZeroLengthBlob);
+    }
+    if length > MAX_LOCAL_OP_BLOB_LEN {
+        return Err(OperationError::BlobTooLarge {
+            declared: length,
+            maximum: MAX_LOCAL_OP_BLOB_LEN,
+        });
+    }
+
+    let mut frame = vec![0; length];
+    read_exact_frame_bytes(reader, &mut frame)?;
+    Ok(Some(frame))
+}
+
+fn read_exact_frame_bytes(reader: &mut impl Read, bytes: &mut [u8]) -> Result<()> {
+    let mut read = 0;
+    while read < bytes.len() {
+        let count = reader.read(&mut bytes[read..])?;
+        if count == 0 {
+            return Err(OperationError::IncompleteFrame {
+                expected: bytes.len(),
+                found: read,
+            });
+        }
+        read += count;
+    }
+    Ok(())
+}
+
+pub(crate) fn read_known_dots(
+    log_path: &std::path::Path,
+    master_key: &MasterKey,
+) -> Result<HashSet<Dot>> {
+    Ok(read_crdt_operations(log_path, master_key)?
+        .into_iter()
+        .map(|operation| operation.dot)
+        .collect())
+}
+
+pub(crate) fn crdt_operation_to_cbor(operation: &CrdtOperation) -> Result<Vec<u8>> {
+    let mut cbor = Vec::new();
+    ciborium::ser::into_writer(operation, &mut cbor)
+        .map_err(|error| OperationError::Serialize(error.to_string()))?;
+    Ok(cbor)
+}
+
+pub(crate) fn crdt_operation_from_cbor(bytes: &[u8]) -> Result<CrdtOperation> {
+    ciborium::de::from_reader(bytes).map_err(|error| OperationError::Deserialize(error.to_string()))
+}
+
+fn local_ops_key(master_key: &MasterKey) -> crate::encryption::blob_key::BlobKey {
+    derive_blob_key(master_key, &LOCAL_OPS_KEY_ID)
+}
+
+fn encode_frame(master_key: &MasterKey, operation: &CrdtOperation) -> Result<Vec<u8>> {
+    let plaintext = crdt_operation_to_cbor(operation)?;
+    let blob = encrypt_blob(&local_ops_key(master_key), &plaintext);
+    let bytes = blob.to_bytes();
+    if bytes.len() > MAX_LOCAL_OP_BLOB_LEN {
+        return Err(OperationError::BlobTooLarge {
+            declared: bytes.len(),
+            maximum: MAX_LOCAL_OP_BLOB_LEN,
+        });
+    }
+    let len = u32::try_from(bytes.len()).map_err(|_length_error| OperationError::BlobTooLarge {
+        declared: bytes.len(),
+        maximum: MAX_LOCAL_OP_BLOB_LEN,
+    })?;
+    let mut frame = Vec::with_capacity(BLOB_LEN_FIELD + bytes.len());
+    frame.extend_from_slice(&len.to_le_bytes());
+    frame.extend_from_slice(&bytes);
+    Ok(frame)
+}
+
+fn decrypt_operation(master_key: &MasterKey, bytes: &[u8]) -> Result<CrdtOperation> {
+    let blob = BlobEncrypted::from_bytes(bytes)?;
+    let plaintext = decrypt_blob(&local_ops_key(master_key), &blob)?;
+    crdt_operation_from_cbor(&plaintext)
+}
+
+fn read_frame(data: &[u8]) -> Result<Option<(&[u8], &[u8])>> {
+    if data.is_empty() {
+        return Ok(None);
+    }
+    if data.len() < BLOB_LEN_FIELD {
+        return Err(OperationError::IncompleteFrame {
+            expected: BLOB_LEN_FIELD,
+            found: data.len(),
+        });
+    }
+    let len = u32::from_le_bytes(data[..BLOB_LEN_FIELD].try_into().unwrap()) as usize;
+    if len == 0 {
+        return Err(OperationError::ZeroLengthBlob);
+    }
+    if len > MAX_LOCAL_OP_BLOB_LEN {
+        return Err(OperationError::BlobTooLarge {
+            declared: len,
+            maximum: MAX_LOCAL_OP_BLOB_LEN,
+        });
+    }
+    let rest = &data[BLOB_LEN_FIELD..];
+    if rest.len() < len {
+        return Err(OperationError::IncompleteFrame {
+            expected: len,
+            found: rest.len(),
+        });
+    }
+    Ok(Some(rest.split_at(len)))
 }
 
 #[cfg(test)]
 mod tests {
-    use chrono::{TimeZone, Utc};
-    use uuid::Uuid;
-
-    use crate::encryption::master_key::generate_master_key;
-    use crate::identifiers::{LibraryId, MediaUuid};
-    use crate::library::local_dirs::LocalDirs;
-    use crate::operations::{LibraryUsername, MediaFilename, Operation, StorageDate};
+    use chrono::Utc;
+    use tempfile::tempdir;
 
     use super::*;
+    use crate::crdt::{CrdtOperation, DeviceId, Dot, OperationContent};
+    use crate::operations::LibraryUsername;
 
-    fn make_log_path(tmp: &tempfile::TempDir) -> std::path::PathBuf {
-        let library_id = LibraryId(Uuid::new_v4());
-        LocalDirs::new(tmp.path().to_path_buf(), &library_id).operations_log_path()
-    }
-
-    fn sample_group(timestamp: chrono::DateTime<Utc>) -> OperationGroup {
-        OperationGroup {
-            op_id: OpUuid::from_uuid(Uuid::now_v7()),
-            parent_op_id: None,
-            author: LibraryUsername("test".to_string()),
-            operations: vec![Operation::MediaCreation {
-                timestamp,
-                media_id: MediaUuid::from_uuid(Uuid::new_v4()),
-                filename_original: MediaFilename("img.jpg".into()),
-                date: timestamp,
-                storage_date: StorageDate { year: 2024, month: 6 },
-                size_bytes: 2_097_152,
-                content_hash: crate::library::media::MediaHash::zeroed(),
-                modified_at: None,
-                gps: None,
-                apple_aae_media_id: None,
-                apple_live_photo_media_id: None,
-            }],
+    fn operation(counter: u64) -> CrdtOperation {
+        CrdtOperation {
+            dot: Dot {
+                lamport_counter: counter,
+                device_id: DeviceId(1),
+            },
+            author: LibraryUsername("alice".into()),
+            timestamp: Utc::now(),
+            content: OperationContent::GroupDeletion {
+                group_id: crate::identifiers::GroupUuid::from_uuid(uuid::Uuid::new_v4()),
+            },
         }
     }
 
     #[test]
-    fn append_then_read_round_trips_all_fields() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let log_path = make_log_path(&tmp);
-        let mk = generate_master_key();
-        let group = sample_group(Utc::now());
+    fn range_reads_newest_operations_without_loading_the_full_log() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("operations.log");
+        let key = crate::encryption::master_key::generate_master_key();
 
-        append_op_group(&log_path, &mk, &group).unwrap();
-        let groups = read_op_groups(&log_path, &mk).unwrap();
+        for counter in 1..=5 {
+            append_crdt_operation(&path, &key, &operation(counter)).unwrap();
+        }
 
-        assert_eq!(groups.len(), 1);
-        assert_eq!(groups[0].op_id.0, group.op_id.0);
-    }
+        let newest = read_crdt_operations_range(&path, &key, 0, 2).unwrap();
+        assert_eq!(
+            newest
+                .iter()
+                .map(|operation| operation.dot.lamport_counter)
+                .collect::<Vec<_>>(),
+            vec![5, 4]
+        );
 
-    #[test]
-    fn read_op_groups_returns_all_appended() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let log_path = make_log_path(&tmp);
-        let mk = generate_master_key();
-
-        let t = Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap();
-        append_op_group(&log_path, &mk, &sample_group(t)).unwrap();
-        append_op_group(&log_path, &mk, &sample_group(t)).unwrap();
-        append_op_group(&log_path, &mk, &sample_group(t)).unwrap();
-
-        let groups = read_op_groups(&log_path, &mk).unwrap();
-        assert_eq!(groups.len(), 3);
-    }
-
-    #[test]
-    fn read_op_ids_matches_appended_ids() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let log_path = make_log_path(&tmp);
-        let mk = generate_master_key();
-
-        let g1 = sample_group(Utc::now());
-        let g2 = sample_group(Utc::now());
-        append_op_group(&log_path, &mk, &g1).unwrap();
-        append_op_group(&log_path, &mk, &g2).unwrap();
-
-        let ids = read_op_ids(&log_path).unwrap();
-        assert_eq!(ids.len(), 2);
-        assert!(ids.contains(&g1.op_id));
-        assert!(ids.contains(&g2.op_id));
-    }
-
-    #[test]
-    fn empty_log_returns_empty_results() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let log_path = make_log_path(&tmp);
-        let mk = generate_master_key();
-
-        assert!(read_op_groups(&log_path, &mk).unwrap().is_empty());
-        assert!(read_op_ids(&log_path).unwrap().is_empty());
-    }
-
-    #[test]
-    fn partial_frame_at_eof_treated_as_eof() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let log_path = make_log_path(&tmp);
-        let mk = generate_master_key();
-
-        let group = sample_group(Utc::now());
-        append_op_group(&log_path, &mk, &group).unwrap();
-
-        // Truncate the log to simulate a crash mid-write (partial frame).
-        let mut data = std::fs::read(&log_path).unwrap();
-        let truncate_at = data.len() - 5;
-        data.truncate(truncate_at);
-        std::fs::write(&log_path, &data).unwrap();
-
-        // A truncated log has its partial frame silently ignored.
-        let groups = read_op_groups(&log_path, &mk).unwrap();
-        assert!(groups.is_empty(), "partial frame must be treated as EOF");
-    }
-
-    #[test]
-    fn corrupt_frame_returns_error() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let log_path = make_log_path(&tmp);
-        let mk = generate_master_key();
-
-        let group = sample_group(Utc::now());
-        append_op_group(&log_path, &mk, &group).unwrap();
-
-        // Corrupt the blob version byte in the first frame.
-        let mut data = std::fs::read(&log_path).unwrap();
-        assert!(data.len() > FRAME_HEADER, "log must have content");
-        data[FRAME_HEADER] = 0; // BLOB_FORMAT_VERSION is 1 so 0 triggers UnknownVersion
-        std::fs::write(&log_path, &data).unwrap();
-
-        assert!(read_op_groups(&log_path, &mk).is_err());
+        let older = read_crdt_operations_range(&path, &key, 2, 5).unwrap();
+        assert_eq!(
+            older
+                .iter()
+                .map(|operation| operation.dot.lamport_counter)
+                .collect::<Vec<_>>(),
+            vec![3, 2, 1]
+        );
+        assert!(
+            read_crdt_operations_range(&path, &key, 5, 10)
+                .unwrap()
+                .is_empty()
+        );
     }
 }

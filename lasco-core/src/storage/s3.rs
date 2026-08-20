@@ -4,7 +4,7 @@ use s3::creds::Credentials as S3Credentials;
 use s3::error::S3Error;
 use s3::region::Region;
 
-use super::{Result, Storage, StorageError};
+use super::{AtomicWriteMode, Result, Storage, StorageError};
 
 /// S3-compatible object storage backend.
 #[derive(Debug, Clone)]
@@ -14,19 +14,22 @@ pub struct StorageS3 {
 }
 
 impl StorageS3 {
+    /// # Errors
+    ///
+    /// Returns an error if the supplied S3 credentials or bucket configuration cannot be constructed.
     pub fn new(
-        endpoint: String,
-        bucket_name: String,
-        region: String,
-        path_prefix: Option<String>,
-        access_key: String,
-        secret_key: String,
+        endpoint: &str,
+        bucket_name: &str,
+        region: &str,
+        path_prefix: Option<&str>,
+        access_key: &str,
+        secret_key: &str,
     ) -> Result<Self> {
-        let path_prefix = normalize_path_prefix(path_prefix.as_deref().unwrap_or(""));
+        let path_prefix = normalize_path_prefix(path_prefix.unwrap_or(""));
         // For S3-compatible providers the connection host
         // comes from the region endpoint, not from a host header. Use a custom
         // region pairing the region name with the provider endpoint.
-        let endpoint = normalize_endpoint(&endpoint);
+        let endpoint = normalize_endpoint(endpoint);
         // The region is part of the SigV4 signing key and must match the
         // endpoint location (e.g. Hetzner nbg1). When left blank, derive it from
         // the endpoint host so providers like Hetzner work without guessing.
@@ -42,16 +45,18 @@ impl StorageS3 {
         let access_key = access_key.trim();
         let secret_key = secret_key.trim();
 
-        let credentials =
-            S3Credentials::new(Some(access_key), Some(secret_key), None, None, None)
-                .map_err(|e| StorageError::Other(Box::new(e)))?;
+        let credentials = S3Credentials::new(Some(access_key), Some(secret_key), None, None, None)
+            .map_err(|e| StorageError::Other(Box::new(e)))?;
 
         // Path style is needed for MinIO and other S3-compatible services.
-        let bucket = Bucket::new(&bucket_name, region, credentials)
+        let bucket = Bucket::new(bucket_name, region, credentials)
             .map_err(|e| StorageError::Other(Box::new(e)))?
             .with_path_style();
 
-        Ok(Self { bucket, path_prefix })
+        Ok(Self {
+            bucket,
+            path_prefix,
+        })
     }
 
     fn prefixed_key(&self, key: &str) -> String {
@@ -60,24 +65,43 @@ impl StorageS3 {
             None => key.to_string(),
         }
     }
-}
 
-#[async_trait]
-impl Storage for StorageS3 {
-    async fn put(&self, key: &str, data: &[u8]) -> Result<()> {
+    async fn put_object(&self, key: &str, data: &[u8]) -> Result<()> {
         self.bucket
             .put_object(self.prefixed_key(key), data)
             .await
             .map_err(|e| StorageError::Other(Box::new(e)))?;
         Ok(())
     }
+}
 
-    async fn put_if_absent(&self, key: &str, data: &[u8]) -> Result<bool> {
-        if self.exists(key).await? {
-            return Ok(false);
+#[async_trait]
+impl Storage for StorageS3 {
+    async fn put(&self, key: &str, data: &[u8]) -> Result<()> {
+        self.put_object(key, data).await
+    }
+
+    /// S3 object replacement is atomic: readers observe either the old object
+    /// or the complete replacement object.
+    async fn put_atomic(&self, key: &str, data: &[u8], mode: AtomicWriteMode) -> Result<bool> {
+        match mode {
+            AtomicWriteMode::Replace => {
+                self.put_object(key, data).await?;
+                Ok(true)
+            }
+            AtomicWriteMode::CreateIfAbsent => match self
+                .bucket
+                .put_object_builder(self.prefixed_key(key), data)
+                .with_header("if-none-match", "*")
+                .map_err(|e| StorageError::Other(Box::new(e)))?
+                .execute()
+                .await
+            {
+                Ok(_) => Ok(true),
+                Err(S3Error::HttpFailWithBody(412, _)) => Ok(false),
+                Err(e) => Err(StorageError::Other(Box::new(e))),
+            },
         }
-        self.put(key, data).await?;
-        Ok(true)
     }
 
     async fn get(&self, key: &str) -> Result<Vec<u8>> {
@@ -103,7 +127,7 @@ impl Storage for StorageS3 {
     async fn list(&self, prefix: &str) -> Result<Vec<String>> {
         let results = self
             .bucket
-            .list(self.prefixed_key(prefix), None)
+            .list(self.prefixed_key(prefix), Some("/".to_string()))
             .await
             .map_err(|e| StorageError::Other(Box::new(e)))?;
 
@@ -111,7 +135,11 @@ impl Storage for StorageS3 {
         for result in results {
             for obj in result.contents {
                 let key = match &self.path_prefix {
-                    Some(prefix) => obj.key.strip_prefix(prefix).map(|k| k.to_string()).unwrap_or(obj.key),
+                    Some(prefix) => obj
+                        .key
+                        .strip_prefix(prefix)
+                        .map(std::string::ToString::to_string)
+                        .unwrap_or(obj.key),
                     None => obj.key,
                 };
                 keys.push(key);
@@ -161,7 +189,7 @@ fn derive_region_from_endpoint(endpoint: &str) -> String {
 }
 
 fn is_not_found_error(e: &S3Error) -> bool {
-    let error_string = format!("{:?}", e);
+    let error_string = format!("{e:?}");
     error_string.contains("NoSuchKey") || error_string.contains("404")
 }
 
@@ -188,8 +216,14 @@ mod tests {
     #[test]
     fn normalize_path_prefix_adds_trailing_slash() {
         assert_eq!(normalize_path_prefix("photos"), Some("photos/".to_string()));
-        assert_eq!(normalize_path_prefix("photos/"), Some("photos/".to_string()));
-        assert_eq!(normalize_path_prefix("/photos/"), Some("photos/".to_string()));
+        assert_eq!(
+            normalize_path_prefix("photos/"),
+            Some("photos/".to_string())
+        );
+        assert_eq!(
+            normalize_path_prefix("/photos/"),
+            Some("photos/".to_string())
+        );
         assert_eq!(normalize_path_prefix(""), None);
         assert_eq!(normalize_path_prefix("  "), None);
     }
@@ -207,14 +241,25 @@ mod tests {
 
     fn make_storage() -> Option<StorageS3> {
         let (endpoint, bucket, region, path_prefix, access_key, secret_key) = get_test_config()?;
-        StorageS3::new(endpoint, bucket, region, path_prefix, access_key, secret_key).ok()
+        StorageS3::new(
+            &endpoint,
+            &bucket,
+            &region,
+            path_prefix.as_deref(),
+            &access_key,
+            &secret_key,
+        )
+        .ok()
     }
 
     #[tokio::test]
     #[ignore = "Requires S3 test environment"]
     async fn put_then_get_returns_identical_bytes() {
         let storage = make_storage().expect("S3 test config not set");
-        storage.put("test/put_get", b"hello").await.unwrap();
+        storage
+            .put_atomic("test/put_get", b"hello", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
         assert_eq!(storage.get("test/put_get").await.unwrap(), b"hello");
         storage.delete("test/put_get").await.unwrap();
     }
@@ -233,7 +278,10 @@ mod tests {
     #[ignore = "Requires S3 test environment"]
     async fn delete_removes_key() {
         let storage = make_storage().expect("S3 test config not set");
-        storage.put("test/del", b"v").await.unwrap();
+        storage
+            .put_atomic("test/del", b"v", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
         storage.delete("test/del").await.unwrap();
         assert!(matches!(
             storage.get("test/del").await,
@@ -252,9 +300,18 @@ mod tests {
     #[ignore = "Requires S3 test environment"]
     async fn list_with_prefix() {
         let storage = make_storage().expect("S3 test config not set");
-        storage.put("list/a", b"1").await.unwrap();
-        storage.put("list/b", b"2").await.unwrap();
-        storage.put("other/c", b"3").await.unwrap();
+        storage
+            .put_atomic("list/a", b"1", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
+        storage
+            .put_atomic("list/b", b"2", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
+        storage
+            .put_atomic("other/c", b"3", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
         let keys = storage.list("list/").await.unwrap();
         assert!(keys.iter().any(|k| k == "list/a"));
         assert!(keys.iter().any(|k| k == "list/b"));
@@ -272,16 +329,19 @@ mod tests {
         let base_prefix = base_prefix.unwrap_or_default();
         let prefixed_dir = format!("{}pfx-test", base_prefix.trim_end_matches('/'));
         let storage = StorageS3::new(
-            endpoint,
-            bucket,
-            region,
-            Some(prefixed_dir),
-            access_key,
-            secret_key,
+            &endpoint,
+            &bucket,
+            &region,
+            Some(&prefixed_dir),
+            &access_key,
+            &secret_key,
         )
         .unwrap();
 
-        storage.put("nested/a", b"1").await.unwrap();
+        storage
+            .put_atomic("nested/a", b"1", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
         let keys = storage.list("nested/").await.unwrap();
         assert!(keys.iter().any(|k| k == "nested/a"));
         assert_eq!(storage.get("nested/a").await.unwrap(), b"1");
@@ -297,18 +357,31 @@ mod tests {
     async fn exists_behavior() {
         let storage = make_storage().expect("S3 test config not set");
         assert!(!storage.exists("test/ex").await.unwrap());
-        storage.put("test/ex", b"v").await.unwrap();
+        storage
+            .put_atomic("test/ex", b"v", AtomicWriteMode::Replace)
+            .await
+            .unwrap();
         assert!(storage.exists("test/ex").await.unwrap());
         storage.delete("test/ex").await.unwrap();
     }
 
     #[tokio::test]
     #[ignore = "Requires S3 test environment"]
-    async fn put_if_absent_behavior() {
+    async fn create_if_absent_behavior() {
         let storage = make_storage().expect("S3 test config not set");
         storage.delete("test/absent").await.unwrap();
-        assert!(storage.put_if_absent("test/absent", b"orig").await.unwrap());
-        assert!(!storage.put_if_absent("test/absent", b"new").await.unwrap());
+        assert!(
+            storage
+                .put_atomic("test/absent", b"orig", AtomicWriteMode::CreateIfAbsent)
+                .await
+                .unwrap()
+        );
+        assert!(
+            !storage
+                .put_atomic("test/absent", b"new", AtomicWriteMode::CreateIfAbsent)
+                .await
+                .unwrap()
+        );
         assert_eq!(storage.get("test/absent").await.unwrap(), b"orig");
         storage.delete("test/absent").await.unwrap();
     }

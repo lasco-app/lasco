@@ -2,16 +2,16 @@ import SwiftUI
 import UniformTypeIdentifiers
 import PhotosUI
 
-extension FfiAlbum: @retroactive Identifiable {
-    public var id: String { albumId }
+extension FfiAlbum: Identifiable {
+    public var id: FfiAlbumUuid { albumId }
 }
 
 // MARK: - Supporting types
 
 enum ContentSelection {
     case none
-    case items(mediaIds: Set<String>, groupIds: Set<String>)
-    case albums(Set<String>)
+    case items(mediaIds: Set<FfiMediaUuid>, groupIds: Set<FfiGroupUuid>)
+    case albums(Set<FfiAlbumUuid>)
 
     var isSelecting: Bool {
         switch self {
@@ -28,22 +28,22 @@ enum ContentSelection {
         }
     }
 
-    func containsMedia(_ id: String) -> Bool {
+    func containsMedia(_ id: FfiMediaUuid) -> Bool {
         if case .items(let m, _) = self { return m.contains(id) }
         return false
     }
 
-    func containsGroup(_ id: String) -> Bool {
+    func containsGroup(_ id: FfiGroupUuid) -> Bool {
         if case .items(_, let g) = self { return g.contains(id) }
         return false
     }
 
-    func containsAlbum(_ id: String) -> Bool {
+    func containsAlbum(_ id: FfiAlbumUuid) -> Bool {
         if case .albums(let s) = self { return s.contains(id) }
         return false
     }
 
-    mutating func toggleMedia(_ id: String) {
+    mutating func toggleMedia(_ id: FfiMediaUuid) {
         switch self {
         case .none:
             self = .items(mediaIds: [id], groupIds: [])
@@ -55,7 +55,7 @@ enum ContentSelection {
         }
     }
 
-    mutating func toggleGroup(_ id: String) {
+    mutating func toggleGroup(_ id: FfiGroupUuid) {
         switch self {
         case .none:
             self = .items(mediaIds: [], groupIds: [id])
@@ -67,7 +67,7 @@ enum ContentSelection {
         }
     }
 
-    mutating func toggleAlbum(_ id: String) {
+    mutating func toggleAlbum(_ id: FfiAlbumUuid) {
         switch self {
         case .none:
             self = .albums([id])
@@ -79,17 +79,17 @@ enum ContentSelection {
         }
     }
 
-    var selectedMediaIds: Set<String> {
+    var selectedMediaIds: Set<FfiMediaUuid> {
         if case .items(let m, _) = self { return m }
         return []
     }
 
-    var selectedGroupIds: Set<String> {
+    var selectedGroupIds: Set<FfiGroupUuid> {
         if case .items(_, let g) = self { return g }
         return []
     }
 
-    var selectedAlbumIds: Set<String> {
+    var selectedAlbumIds: Set<FfiAlbumUuid> {
         if case .albums(let s) = self { return s }
         return []
     }
@@ -101,10 +101,12 @@ enum AlbumItem: Hashable, Identifiable {
     case media(FfiMediaItem)
     case group(FfiGroup)
 
-    var id: String {
+    enum ID: Hashable { case media(FfiMediaUuid), group(FfiGroupUuid) }
+
+    var id: ID {
         switch self {
-        case .media(let m): return m.mediaId
-        case .group(let g): return g.groupId
+        case .media(let m): return .media(m.mediaId)
+        case .group(let g): return .group(g.groupId)
         }
     }
 }
@@ -122,6 +124,18 @@ struct AlbumsView: View {
     @State private var path: [AlbumsDestination] = []
     @Environment(\.lascoTheme) var theme
     @Binding var pendingAlbum: FfiAlbum?
+    let repository: LibraryRepository
+    let session: LibrarySessionState
+    let importCoordinator: MediaImportCoordinator
+    @State private var model: AlbumListModel
+
+    init(repository: LibraryRepository, session: LibrarySessionState, importCoordinator: MediaImportCoordinator, pendingAlbum: Binding<FfiAlbum?>) {
+        self.repository = repository
+        self.session = session
+        self.importCoordinator = importCoordinator
+        _pendingAlbum = pendingAlbum
+        _model = State(initialValue: AlbumListModel(repository: repository))
+    }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -136,11 +150,15 @@ struct AlbumsView: View {
                             .navigationTitle("")
                             .hideSystemNavigationBar()
                     case .mediaDetail(let detail):
-                        MediaDetailView(media: detail.items, startIndex: detail.startIndex, startThumbnail: detail.startThumbnail, currentAlbumId: detail.albumId, onAlbumTap: { album in path.append(.album(album)) })
+                        MediaDetailView(source: detail.source, startPosition: detail.startPosition, repository: repository, onAlbumTap: { album in path.append(.album(album)) })
                     }
                 }
         }
         .background(theme.bg)
+        .environment(model)
+        .environment(repository)
+        .environment(importCoordinator)
+        .task { await model.start() }
         .onAppear {
             if let album = pendingAlbum {
                 path = [.album(album)]
@@ -158,22 +176,25 @@ struct AlbumsView: View {
 // MARK: - Content view
 
 struct AlbumContentView: View {
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(AlbumListModel.self) private var albumModel
+    @Environment(LibraryRepository.self) private var repository
+    @Environment(MediaImportCoordinator.self) private var importCoordinator
     @Environment(\.dismiss) private var dismiss
     @Environment(\.lascoTheme) var theme
     @Environment(ToastManager.self) var toastManager
     let album: FfiAlbum?
     @Binding var path: [AlbumsDestination]
+    @State private var detailModel: AlbumDetailModel?
 
     @State private var showingNewAlbum = false
     @State private var newAlbumName = ""
-    @State private var albumItems: [AlbumItem] = []
     @State private var albumToRename: FfiAlbum?
     @State private var renameText = ""
     @State private var showingAddMedia = false
     @State private var mediaLayout: MediaLayout = .grid
     @State private var selection: ContentSelection = .none
     @State private var showingMovePicker = false
+    @State private var showingAddToAlbumPicker = false
     @State private var showingDeleteConfirm = false
     @State private var isDropTargeted = false
     @State private var showingThumbnailPicker = false
@@ -190,18 +211,12 @@ struct AlbumContentView: View {
         return albumNames.joined(separator: " / ")
     }
 
-    private var ancestors: Set<String> {
+    private var ancestors: Set<FfiAlbumUuid> {
         Set(path.compactMap { if case .album(let a) = $0 { return a.albumId } else { return nil } })
     }
 
     private var childAlbums: [FfiAlbum] {
-        libraryModel.albums.filter {
-            $0.parentAlbumId == album?.albumId && !$0.deleted && !$0.isDisconnected
-        }
-    }
-
-    private var disconnectedAlbums: [FfiAlbum] {
-        libraryModel.albums.filter { $0.isDisconnected && !$0.deleted }
+        albumModel.albums(parentID: album?.albumId).filter { !$0.deleted }
     }
 
     // MARK: Body
@@ -250,7 +265,7 @@ struct AlbumContentView: View {
                             toastManager.show(error: "Could not read dropped files")
                             return
                         }
-                        if let err = await libraryModel.importMediaAsync(urls: urls, albumId: album.albumId) {
+                        if let err = await albumModel.importMediaAsync(urls: urls, albumID: album.albumId) {
                             toastManager.show(error: err)
                         } else {
                             toastManager.show(ok: "Imported \(urls.count) item(s) to \(album.name)")
@@ -274,7 +289,7 @@ struct AlbumContentView: View {
                 }
 
                 #if os(macOS)
-                if libraryModel.isImporting {
+                if importCoordinator.isImporting {
                     ZStack {
                         Color.black.opacity(0.45)
                         VStack(spacing: 12) {
@@ -302,16 +317,24 @@ struct AlbumContentView: View {
         .scrollContentBackground(.hidden)
         .toolbarBackButton(action: { dismiss() }, isVisible: !isRoot)
         .onAppear {
-            AppLogger.log(.info, "album shown — '\(album?.name ?? "root")' (\(album?.albumId ?? "root"))")
-            refreshMedia()
+            AppLogger.log(.info, "album shown — '\(album?.name ?? "root")' (\(album?.albumId.value ?? "root"))")
         }
-        .onChange(of: libraryModel.albums) { refreshMedia() }
-        .onChange(of: libraryModel.media) { refreshMedia() }
+        .task(id: album?.albumId) {
+            await albumModel.load(parentID: album?.albumId)
+            guard let albumID = album?.albumId else {
+                detailModel = nil
+                return
+            }
+            let model = AlbumDetailModel(albumID: albumID, repository: repository)
+            model.ascending = sortAscending
+            detailModel = model
+            await model.start()
+        }
         .sheet(isPresented: $showingNewAlbum) {
             NewAlbumSheet(title: "NEW ALBUM", name: $newAlbumName) {
                 let trimmed = newAlbumName.trimmingCharacters(in: .whitespaces)
                 guard !trimmed.isEmpty else { return }
-                libraryModel.createAlbum(name: trimmed, parentAlbumId: album?.albumId)
+                albumModel.createAlbum(name: trimmed, parentID: album?.albumId)
                 showingNewAlbum = false
             }
             .environment(\.lascoTheme, .dark)
@@ -321,7 +344,7 @@ struct AlbumContentView: View {
             NewAlbumSheet(title: "RENAME ALBUM", name: $renameText) {
                 let trimmed = renameText.trimmingCharacters(in: .whitespaces)
                 guard !trimmed.isEmpty else { return }
-                libraryModel.renameAlbum(albumId: target.albumId, name: trimmed)
+                albumModel.renameAlbum(id: target.albumId, name: trimmed)
                 albumToRename = nil
             }
             .environment(\.lascoTheme, .dark)
@@ -329,7 +352,8 @@ struct AlbumContentView: View {
         }
         .sheet(isPresented: $showingAddMedia) {
             AddMediaView(targetAlbum: album)
-                .environmentObject(libraryModel)
+                .environment(albumModel)
+                .environment(repository)
                 .environment(\.lascoTheme, .dark)
                 .preferredColorScheme(.dark)
         }
@@ -338,18 +362,23 @@ struct AlbumContentView: View {
                 .environment(\.lascoTheme, .dark)
                 .preferredColorScheme(.dark)
         }
-        #if canImport(UIKit)
+        .sheet(isPresented: $showingAddToAlbumPicker) {
+            addToAlbumPickerSheet
+                .environment(\.lascoTheme, .dark)
+                .preferredColorScheme(.dark)
+        }
         .sheet(isPresented: $showingThumbnailPicker) {
             if let albumId = album?.albumId {
                 ThumbnailPickerSheet(albumId: albumId, albumName: title, media: albumMediaItems) { mediaId in
-                    libraryModel.setAlbumThumbnail(albumId: albumId, mediaId: mediaId)
+                    albumModel.setAlbumThumbnail(albumID: albumId, mediaID: mediaId)
                     showingThumbnailPicker = false
                 }
-                .environmentObject(libraryModel)
+                .environment(repository)
                 .environment(\.lascoTheme, .dark)
                 .preferredColorScheme(.dark)
             }
         }
+        #if canImport(UIKit)
         .fileImporter(
             isPresented: $showingFileImporter,
             allowedContentTypes: [.image, .movie],
@@ -361,7 +390,7 @@ struct AlbumContentView: View {
                 toastManager.show(error: err.localizedDescription)
             case .success(let urls):
                 Task {
-                    if let err = await libraryModel.importMediaAsync(urls: urls, albumId: albumId) {
+                    if let err = await albumModel.importMediaAsync(urls: urls, albumID: albumId) {
                         toastManager.show(error: err)
                     } else {
                         toastManager.show(ok: "Imported \(urls.count) item(s)")
@@ -398,7 +427,7 @@ struct AlbumContentView: View {
                     }
                 }
                 guard !urls.isEmpty else { return }
-                if let err = await libraryModel.importMediaAsync(urls: urls, albumId: albumId) {
+                if let err = await albumModel.importMediaAsync(urls: urls, albumID: albumId) {
                     toastManager.show(error: err)
                 } else {
                     toastManager.show(ok: "Imported \(urls.count) item(s)")
@@ -413,7 +442,7 @@ struct AlbumContentView: View {
         ) {
             Button("Delete", role: .destructive) {
                 for id in selection.selectedAlbumIds {
-                    libraryModel.deleteAlbum(albumId: id)
+                    albumModel.deleteAlbum(id: id)
                 }
                 selection = .none
             }
@@ -427,29 +456,39 @@ struct AlbumContentView: View {
         albumItems.compactMap { if case .media(let m) = $0 { return m } else { return nil } }
     }
 
-    private func refreshMedia() {
-        guard let album else { return }
-        let ffi = libraryModel.albumListItemsSorted(albumId: album.albumId, ascending: sortAscending)
-        albumItems = ffi.compactMap { item in
+    private var albumItems: [AlbumItem] {
+        detailModel?.items.compactMap { item in
             switch item.kind {
             case "media": return item.media.map { .media($0) }
             case "group": return item.group.map { .group($0) }
             default: return nil
             }
-        }
+        } ?? []
+    }
+
+    private func openDetail(at position: Int) {
+        guard let albumID = album?.albumId else { return }
+        path.append(.mediaDetail(MediaDetailState(
+            source: .albumByDate(albumID: albumID, ascending: sortAscending),
+            startPosition: position
+        )))
     }
 
     // MARK: Shared content body
 
     @ViewBuilder
     private func albumContent(gridColumns: [GridItem], mediaGridColumns: [GridItem]) -> some View {
-        if childAlbums.isEmpty && albumItems.isEmpty && !(isRoot && !disconnectedAlbums.isEmpty) {
+        if childAlbums.isEmpty && albumItems.isEmpty {
             emptyState
         } else {
             if !childAlbums.isEmpty {
                 LazyVGrid(columns: gridColumns, spacing: 12) {
                     ForEach(childAlbums, id: \.albumId) { child in
                         albumCell(child)
+                            .onAppear {
+                                guard child.albumId == childAlbums.last?.albumId else { return }
+                                Task { await albumModel.loadMore(parentID: album?.albumId) }
+                            }
                     }
                 }
             }
@@ -468,27 +507,29 @@ struct AlbumContentView: View {
                             if idx < albumItems.count - 1 {
                                 Divider().background(theme.bgDeep)
                             }
+                            if idx == albumItems.count - 1 {
+                                Color.clear.frame(height: 1).onAppear {
+                                    Task { await detailModel?.loadMore() }
+                                }
+                            }
                         }
                     }
                     .background(theme.bg)
                 case .grid:
                     LazyVGrid(columns: mediaGridColumns, spacing: 3) {
                         ForEach(albumItems) { item in
-                            switch item {
-                            case .media(let m): mediaGridCell(m)
-                            case .group(let g): groupGridCell(g)
+                            Group {
+                                switch item {
+                                case .media(let m): mediaGridCell(m)
+                                case .group(let g): groupGridCell(g)
+                                }
+                            }
+                            .onAppear {
+                                guard item.id == albumItems.last?.id else { return }
+                                Task { await detailModel?.loadMore() }
                             }
                         }
                     }
-                }
-            }
-        }
-
-        if isRoot && !disconnectedAlbums.isEmpty {
-            sectionLabel("DISCONNECTED")
-            LazyVGrid(columns: gridColumns, spacing: 12) {
-                ForEach(disconnectedAlbums, id: \.albumId) { disc in
-                    disconnectedAlbumCell(disc)
                 }
             }
         }
@@ -511,47 +552,10 @@ struct AlbumContentView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer()
                 if !isRoot {
-                    Button {
-                        showingAddMedia = true
-                    } label: {
-                        Image("plus").renderingMode(.template).resizable().frame(width: 18, height: 18)
-                            .font(.system(size: 20, weight: .medium))
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(theme.ink)
-                }
-                Button {
-                    newAlbumName = ""
-                    showingNewAlbum = true
-                } label: {
-                    Image("folder").renderingMode(.template).resizable().frame(width: 18, height: 18)
-                        .font(.system(size: 20, weight: .medium))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(theme.ink)
-                if !isRoot {
-                    Menu {
-                        Button {
-                            showingFileImporter = true
-                        } label: {
-                            Label("Import from Files…", systemImage: "square.and.arrow.down")
-                        }
-                        Button {
-                            showingPhotosPicker = true
-                        } label: {
-                            Label("Import from Photos…", systemImage: "photo.on.rectangle")
-                        }
-                        Button {
-                            showingThumbnailPicker = true
-                        } label: {
-                            Label("Set thumbnail…", systemImage: "photo.badge.checkmark")
-                        }
-                    } label: {
-                        Image("ellipses-horizontal").renderingMode(.template).resizable().frame(width: 18, height: 18)
-                            .font(.system(size: 20, weight: .medium))
-                            .foregroundStyle(theme.ink)
-                    }
-                    .buttonStyle(.plain)
+                    addMenu
+                    thumbnailMenu
+                } else {
+                    newAlbumButton
                 }
             }
             if !albumItems.isEmpty {
@@ -578,26 +582,11 @@ struct AlbumContentView: View {
                 Spacer()
                 HStack(spacing: 16) {
                     if !isRoot {
-                        Button {
-                            showingAddMedia = true
-                        } label: {
-                            Image("plus").renderingMode(.template).resizable().frame(width: 18, height: 18)
-                                .font(.system(size: 20, weight: .medium))
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(theme.ink)
+                        addMenu
+                        thumbnailMenu
+                    } else {
+                        newAlbumButton
                     }
-
-                    Button {
-                        newAlbumName = ""
-                        showingNewAlbum = true
-                    } label: {
-                        Image("folder").renderingMode(.template).resizable().frame(width: 18, height: 18)
-                            .font(.system(size: 20, weight: .medium))
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(theme.ink)
-
                 }
             }
             if !albumItems.isEmpty {
@@ -609,6 +598,69 @@ struct AlbumContentView: View {
             }
         }
         .padding(.top, 20)
+    }
+
+    private var newAlbumButton: some View {
+        Button {
+            newAlbumName = ""
+            showingNewAlbum = true
+        } label: {
+            Image("plus").renderingMode(.template).resizable().frame(width: 18, height: 18)
+                .font(.system(size: 20, weight: .medium))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(theme.ink)
+        .accessibilityLabel("Create album")
+    }
+
+    private var addMenu: some View {
+        Menu {
+            #if canImport(UIKit)
+            Button {
+                showingPhotosPicker = true
+            } label: {
+                Label("Import from Photos…", systemImage: "photo.on.rectangle")
+            }
+            Button {
+                showingFileImporter = true
+            } label: {
+                Label("Import from Files…", systemImage: "square.and.arrow.down")
+            }
+            #endif
+            Button {
+                showingAddMedia = true
+            } label: {
+                Label("Add from library…", systemImage: "photo.on.rectangle.angled")
+            }
+            Button {
+                newAlbumName = ""
+                showingNewAlbum = true
+            } label: {
+                Label("Create album", systemImage: "folder.badge.plus")
+            }
+        } label: {
+            Image("plus").renderingMode(.template).resizable().frame(width: 18, height: 18)
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(theme.ink)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Add to album")
+    }
+
+    private var thumbnailMenu: some View {
+        Menu {
+            Button {
+                showingThumbnailPicker = true
+            } label: {
+                Label("Set thumbnail…", systemImage: "photo.badge.checkmark")
+            }
+        } label: {
+            Image("ellipses-horizontal").renderingMode(.template).resizable().frame(width: 18, height: 18)
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(theme.ink)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Album actions")
     }
 
     // MARK: Selection bar
@@ -634,85 +686,73 @@ struct AlbumContentView: View {
             }
 
             Spacer()
+            selectionActionsMenu
+        }
+        .padding(.horizontal, 12)
+        .background(theme.pink)
+        .overlay(Rectangle().stroke(theme.ink, lineWidth: 2).ignoresSafeArea(edges: .top))
+    }
 
-            if case .albums(let ids) = selection, ids.count == 1,
-               let albumId = ids.first,
-               let target = (childAlbums + disconnectedAlbums).first(where: { $0.albumId == albumId }) {
-                Button {
-                    albumToRename = target
-                    renameText = target.name
-                } label: {
-                    Image("pencil").renderingMode(.template).resizable().frame(width: 18, height: 18)
-                        .font(.system(size: 18, weight: .medium))
-                        .frame(width: 48, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(theme.ink)
-            }
+    @ViewBuilder
+    private var selectionActionsMenu: some View {
+        let mediaIds = selection.selectedMediaIds
+        let groupIds = selection.selectedGroupIds
+        let selectedAlbumIds = selection.selectedAlbumIds
+        let canRename = selectedAlbumIds.count == 1
+        let canGroup = mediaIds.count > 1 && groupIds.isEmpty && album != nil
+        let canAddToGroup = groupIds.count == 1 && !mediaIds.isEmpty
+        let canAddToAlbum = !mediaIds.isEmpty
+        let canMove = groupIds.isEmpty && (!mediaIds.isEmpty || !selectedAlbumIds.isEmpty)
+        let canRemove = !mediaIds.isEmpty || !groupIds.isEmpty || !selectedAlbumIds.isEmpty
 
-            let mediaIds = selection.selectedMediaIds
-            let groupIds = selection.selectedGroupIds
-
-            if mediaIds.count > 1 && groupIds.isEmpty, let albumId = album?.albumId {
-                Button {
-                    libraryModel.createGroupFromSelectedMedia(mediaIds: Array(mediaIds), albumId: albumId)
-                    selection = .none
-                } label: {
-                    Text("G")
-                        .font(LascoFont.categoryLarge())
-                        .frame(width: 48, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(theme.ink)
-            }
-
-            if groupIds.count == 1 && !mediaIds.isEmpty,
-               let groupId = groupIds.first,
-               let group = albumItems.compactMap({ if case .group(let g) = $0, g.groupId == groupId { return g } else { return nil } }).first {
-                Button {
-                    let existingIds = Set(group.mediaIds)
-                    for mediaId in mediaIds where !existingIds.contains(mediaId) {
-                        libraryModel.addMediaToGroup(groupId: groupId, mediaId: mediaId)
+        if canRename || canGroup || canAddToGroup || canAddToAlbum || canMove || canRemove {
+            Menu {
+                if canRename,
+                   let albumId = selectedAlbumIds.first,
+                   let target = childAlbums.first(where: { $0.albumId == albumId }) {
+                    Button("Rename album") {
+                        albumToRename = target
+                        renameText = target.name
                     }
-                    selection = .none
-                } label: {
-                    Text("G")
-                        .font(LascoFont.categoryLarge())
-                        .frame(width: 48, height: 44)
-                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(theme.ink)
-            }
-
-            Button {
-                showingMovePicker = true
+                if canGroup, let albumId = album?.albumId {
+                    Button("Group together") {
+                        albumModel.createGroupFromSelectedMedia(mediaIDs: Array(mediaIds), albumID: albumId)
+                        selection = .none
+                    }
+                }
+                if canAddToGroup,
+                   let groupId = groupIds.first,
+                   let group = albumItems.compactMap({ if case .group(let g) = $0, g.groupId == groupId { return g } else { return nil } }).first {
+                    Button("Add to group") {
+                        let existingIds = Set(group.mediaIds)
+                        for mediaId in mediaIds where !existingIds.contains(mediaId) {
+                            albumModel.addMediaToGroup(groupID: groupId, mediaID: mediaId)
+                        }
+                        selection = .none
+                    }
+                }
+                if canAddToAlbum {
+                    Button("Add to album…") { showingAddToAlbumPicker = true }
+                }
+                if canMove {
+                    Button("Move to…") { showingMovePicker = true }
+                }
+                if canRemove {
+                    Button(selectedAlbumIds.isEmpty ? "Remove from album" : "Delete", role: .destructive) {
+                        handleRemove()
+                    }
+                }
             } label: {
-                Image("external-link").renderingMode(.template).resizable().frame(width: 18, height: 18)
-                    .font(.system(size: 20, weight: .medium))
-                    .frame(width: 48, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(groupIds.isEmpty ? theme.ink : theme.inkMuted)
-            .disabled(!groupIds.isEmpty)
-
-            Button {
-                handleRemove()
-            } label: {
-                Image("trash").renderingMode(.template).resizable().frame(width: 18, height: 18)
+                Image("ellipses-horizontal").renderingMode(.template).resizable().frame(width: 18, height: 18)
                     .font(.system(size: 18, weight: .medium))
                     .frame(width: 48, height: 44)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .foregroundStyle(theme.ink)
+            .accessibilityLabel("Selected item actions")
         }
-        .padding(.horizontal, 12)
-        .background(theme.pink)
-        .overlay(Rectangle().stroke(theme.ink, lineWidth: 2).ignoresSafeArea(edges: .top))
     }
 
     // MARK: Layout toggle
@@ -744,7 +784,7 @@ struct AlbumContentView: View {
     private var sortToggle: some View {
         Button {
             sortAscending.toggle()
-            refreshMedia()
+            Task { await detailModel?.setSortAscending(sortAscending) }
         } label: {
             Image(systemName: sortAscending ? "arrow.up" : "arrow.down")
                 .foregroundStyle(theme.ink)
@@ -757,13 +797,25 @@ struct AlbumContentView: View {
     // MARK: Move picker sheet
 
     private var movePickerSheet: some View {
-        AlbumPickerView(title: "Move to", onSelect: { targetAlbum in
+        AlbumPickerView(repository: repository, title: "Move to", onSelect: { targetAlbum in
             handleMoveTo(targetAlbumId: targetAlbum.albumId)
             showingMovePicker = false
         }, onCancel: {
             showingMovePicker = false
         })
-        .environmentObject(libraryModel)
+        .environment(albumModel)
+        .environment(repository)
+    }
+
+    private var addToAlbumPickerSheet: some View {
+        AlbumPickerView(repository: repository, title: "Add to album", onSelect: { targetAlbum in
+            addSelectionToAlbum(targetAlbumId: targetAlbum.albumId)
+            showingAddToAlbumPicker = false
+        }, onCancel: {
+            showingAddToAlbumPicker = false
+        })
+        .environment(albumModel)
+        .environment(repository)
     }
 
     // MARK: Actions
@@ -775,10 +827,10 @@ struct AlbumContentView: View {
         case .items(let mediaIds, let groupIds):
             guard let albumId = album?.albumId else { break }
             for id in mediaIds {
-                libraryModel.removeMediaFromAlbum(albumId: albumId, mediaId: id)
+                albumModel.removeMediaFromAlbum(albumID: albumId, mediaID: id)
             }
             for id in groupIds {
-                libraryModel.deleteGroup(groupId: id)
+                albumModel.deleteGroup(groupID: id)
             }
             selection = .none
         case .albums:
@@ -786,38 +838,39 @@ struct AlbumContentView: View {
         }
     }
 
-    private func handleMoveTo(targetAlbumId: String) {
+    private func handleMoveTo(targetAlbumId: FfiAlbumUuid) {
         switch selection {
         case .none:
             break
         case .items(let mediaIds, _):
             guard let fromAlbumId = album?.albumId else { break }
             for id in mediaIds {
-                libraryModel.moveMediaToAlbum(mediaId: id, fromAlbumId: fromAlbumId, toAlbumId: targetAlbumId)
+                albumModel.moveMediaToAlbum(mediaID: id, fromAlbumID: fromAlbumId, toAlbumID: targetAlbumId)
             }
             selection = .none
         case .albums(let ids):
             for id in ids {
-                libraryModel.reparentAlbum(albumId: id, newParentAlbumId: targetAlbumId)
+                albumModel.reparentAlbum(id: id, parentID: targetAlbumId)
             }
             selection = .none
         }
     }
 
-    // MARK: Album cells
-
-    @ViewBuilder
-    private func disconnectedAlbumCell(_ disc: FfiAlbum) -> some View {
-        let parentAlbum = disc.parentAlbumId.flatMap { pid in
-            libraryModel.albums.first(where: { $0.albumId == pid })
+    private func addSelectionToAlbum(targetAlbumId: FfiAlbumUuid) {
+        guard case .items(let mediaIds, _) = selection else { return }
+        Task {
+            do {
+                for id in mediaIds {
+                    try await repository.addMediaToAlbum(albumID: targetAlbumId, mediaID: id)
+                }
+                selection = .none
+            } catch {
+                toastManager.show(error: error.localizedDescription)
+            }
         }
-        let parentInfo: String = {
-            if let name = parentAlbum?.name { return "In: \(name)" }
-            if disc.parentAlbumId != nil { return "Parent deleted" }
-            return "No parent"
-        }()
-        albumCellContent(disc, parentInfo: parentInfo)
     }
+
+    // MARK: Album cells
 
     @ViewBuilder
     private func albumCell(_ child: FfiAlbum) -> some View {
@@ -878,8 +931,7 @@ struct AlbumContentView: View {
                 if selection.isSelecting {
                     selection.toggleGroup(group.groupId)
                 } else if let idx = albumItems.firstIndex(of: .group(group)) {
-                    let thumb = group.mediaIds.first.flatMap { libraryModel.thumbnail(for: $0) }
-                    path.append(.mediaDetail(MediaDetailState(items: albumItems, startIndex: idx, albumId: album?.albumId, startThumbnail: thumb)))
+                    openDetail(at: idx)
                 }
             }
             .onLongPressGesture { selection.toggleGroup(group.groupId) }
@@ -893,8 +945,7 @@ struct AlbumContentView: View {
                 if selection.isSelecting {
                     selection.toggleGroup(group.groupId)
                 } else if let idx = albumItems.firstIndex(of: .group(group)) {
-                    let thumb = group.mediaIds.first.flatMap { libraryModel.thumbnail(for: $0) }
-                    path.append(.mediaDetail(MediaDetailState(items: albumItems, startIndex: idx, albumId: album?.albumId, startThumbnail: thumb)))
+                    openDetail(at: idx)
                 }
             }
             .onLongPressGesture { selection.toggleGroup(group.groupId) }
@@ -910,8 +961,7 @@ struct AlbumContentView: View {
                 if selection.isSelecting {
                     selection.toggleMedia(item.mediaId)
                 } else if let idx = albumItems.firstIndex(of: .media(item)) {
-                    let thumb = libraryModel.thumbnail(for: item.mediaId)
-                    path.append(.mediaDetail(MediaDetailState(items: albumItems, startIndex: idx, albumId: album?.albumId, startThumbnail: thumb)))
+                    openDetail(at: idx)
                 }
             }
             .onLongPressGesture { selection.toggleMedia(item.mediaId) }
@@ -928,8 +978,7 @@ struct AlbumContentView: View {
                 if selection.isSelecting {
                     selection.toggleMedia(item.mediaId)
                 } else if let idx = albumItems.firstIndex(of: .media(item)) {
-                    let thumb = libraryModel.thumbnail(for: item.mediaId)
-                    path.append(.mediaDetail(MediaDetailState(items: albumItems, startIndex: idx, albumId: album?.albumId, startThumbnail: thumb)))
+                    openDetail(at: idx)
                 }
             }
             .onLongPressGesture { selection.toggleMedia(item.mediaId) }
@@ -948,14 +997,14 @@ struct AlbumContentView: View {
         } else {
             if let albumId = album?.albumId {
                 Button("Set as album thumbnail") {
-                    libraryModel.setAlbumThumbnail(albumId: albumId, mediaId: item.mediaId)
+                    albumModel.setAlbumThumbnail(albumID: albumId, mediaID: item.mediaId)
                 }
                 Button("Move to…") {
                     selection = .items(mediaIds: [item.mediaId], groupIds: [])
                     showingMovePicker = true
                 }
                 Button("Remove from album", role: .destructive) {
-                    libraryModel.removeMediaFromAlbum(albumId: albumId, mediaId: item.mediaId)
+                    albumModel.removeMediaFromAlbum(albumID: albumId, mediaID: item.mediaId)
                 }
             }
         }
@@ -966,14 +1015,9 @@ struct AlbumContentView: View {
     private var emptyState: some View {
         Group {
             if isRoot {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("No albums yet.")
-                        .font(LascoFont.title())
-                        .foregroundStyle(theme.inkSub)
-                    Text("Albums will appear here once your library is synced.")
-                        .font(LascoFont.body())
-                        .foregroundStyle(theme.inkMuted)
-                }
+                Text("No albums yet")
+                    .font(LascoFont.title())
+                    .foregroundStyle(theme.inkSub)
                 .padding(20)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .lascoPanel()
@@ -1041,7 +1085,7 @@ struct AlbumCell: View {
     let album: FfiAlbum
     var parentInfo: String? = nil
     var isSelected: Bool = false
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(LibraryRepository.self) private var repository
     @Environment(\.lascoTheme) var theme
     @State private var thumbnail: Image? = nil
 
@@ -1088,8 +1132,9 @@ struct AlbumCell: View {
         }
         .task(id: album.albumId) {
             thumbnail = nil
-            if let mediaId = libraryModel.albumThumbnailMediaId(albumId: album.albumId),
-               let data = await libraryModel.thumbnailAsync(for: mediaId) {
+            let items = (try? await repository.albumItems(albumID: album.albumId, ascending: false, offset: 0, limit: 1)) ?? []
+            if let mediaId = album.thumbnailMediaId ?? items.compactMap({ $0.media?.mediaId }).first,
+               let data = try? await repository.thumbnailAsync(mediaID: mediaId) {
                 thumbnail = Image(data: data)
             }
         }
@@ -1098,13 +1143,12 @@ struct AlbumCell: View {
 
 // MARK: - ThumbnailPickerSheet
 
-#if canImport(UIKit)
 private struct ThumbnailPickerSheet: View {
-    let albumId: String
+    let albumId: FfiAlbumUuid
     let albumName: String
     let media: [FfiMediaItem]
-    let onPick: (String) -> Void
-    @EnvironmentObject var libraryModel: LibraryModel
+    let onPick: (FfiMediaUuid) -> Void
+    @Environment(LibraryRepository.self) private var repository
     @Environment(\.lascoTheme) var theme
     @Environment(\.dismiss) private var dismiss
 
@@ -1155,7 +1199,7 @@ private struct ThumbnailPickerSheet: View {
 
 private struct ThumbnailPickerCell: View {
     let item: FfiMediaItem
-    @EnvironmentObject var libraryModel: LibraryModel
+    @Environment(LibraryRepository.self) private var repository
     @Environment(\.lascoTheme) var theme
     @State private var thumbnail: Image? = nil
 
@@ -1174,13 +1218,12 @@ private struct ThumbnailPickerCell: View {
             .clipped()
             .contentShape(Rectangle())
             .task(id: item.mediaId) {
-                if let data = await libraryModel.thumbnailAsync(for: item.mediaId) {
+                if let data = try? await repository.thumbnailAsync(mediaID: item.mediaId) {
                     thumbnail = Image(data: data)
                 }
             }
     }
 }
-#endif
 
 // MARK: - NewAlbumSheet
 

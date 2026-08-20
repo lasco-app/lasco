@@ -8,6 +8,12 @@ pub enum OperationError {
     Serialize(String),
     #[error("CBOR deserialization failed: {0}")]
     Deserialize(String),
+    #[error("local operation log frame has a zero-length blob")]
+    ZeroLengthBlob,
+    #[error("local operation log blob length {declared} exceeds the {maximum}-byte limit")]
+    BlobTooLarge { declared: usize, maximum: usize },
+    #[error("local operation log frame is incomplete: expected {expected} bytes, found {found}")]
+    IncompleteFrame { expected: usize, found: usize },
     #[error(transparent)]
     Blob(#[from] BlobError),
     #[error(transparent)]
