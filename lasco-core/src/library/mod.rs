@@ -115,6 +115,80 @@ impl Library {
         self.inner.sync_policy.try_acquire_fetch_slot()
     }
 
+    /// Removes one remote, deleting everything this client caches about it, which is its last
+    /// known operation state, its media list and its compaction bookkeeping.
+    ///
+    /// `remove_from_config` runs while the remote is held and must be what drops it from
+    /// `library.json`. Holding it across both steps is what makes removal all or nothing. The
+    /// remote is claimed first, so a refusal leaves the configuration untouched, and the
+    /// configuration is written before the deletion, so no operation started afterwards can
+    /// resolve the remote and recreate the directory.
+    ///
+    /// A push writing its media list recreates the directory it writes into, which is why
+    /// deleting while an operation holds the remote is refused rather than attempted.
+    ///
+    /// # Errors
+    ///
+    /// Returns `SyncError::AlreadyRunning` if an operation holds the remote, whatever
+    /// `remove_from_config` returns, or an error if the directory cannot be removed.
+    pub fn forget_remote<E, F>(
+        &self,
+        remote_id: RemoteUuid,
+        remove_from_config: F,
+    ) -> std::result::Result<(), E>
+    where
+        F: FnOnce() -> std::result::Result<(), E>,
+        E: From<LibraryError>,
+    {
+        let remote_id_string = remote_id.to_string();
+        let _remote_guard = self
+            .try_acquire_remote_sync(&remote_id_string)
+            .ok_or_else(|| {
+                E::from(LibraryError::Sync(
+                    crate::library::sync::error::SyncError::AlreadyRunning,
+                ))
+            })?;
+
+        remove_from_config()?;
+
+        let dir = self.inner.local_dirs.remote_dir(&remote_id_string);
+        match std::fs::remove_dir_all(&dir) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(E::from(LibraryError::Io(e))),
+        }
+    }
+
+    /// Deletes every per remote directory whose remote is not in `live_remote_ids`.
+    ///
+    /// Removal deletes the directory itself, so this only has work to do when that could not
+    /// happen, which is when a sync held the remote or the process stopped between writing
+    /// `library.json` and deleting. Returns how many directories it removed.
+    #[must_use]
+    pub fn sweep_orphan_remote_dirs(&self, live_remote_ids: &[String]) -> usize {
+        let Ok(entries) = std::fs::read_dir(self.inner.local_dirs.remotes_dir()) else {
+            return 0;
+        };
+        let mut swept = 0;
+        for entry in entries.flatten() {
+            if !entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                continue;
+            }
+            let Ok(name) = entry.file_name().into_string() else {
+                continue;
+            };
+            if live_remote_ids.contains(&name) {
+                continue;
+            }
+            // A sync holding this remote would have to have been started from a configuration
+            // that still listed it, so reaching here means nothing is using the directory.
+            if std::fs::remove_dir_all(entry.path()).is_ok() {
+                swept += 1;
+            }
+        }
+        swept
+    }
+
     /// Initialize a new library with the given credentials.
     ///
     /// Writes crypto metadata (salt, sentinel, master-key file) to `local_state/library/`

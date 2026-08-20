@@ -183,6 +183,18 @@ impl LocalDirs {
         }
     }
 
+    /// `remotes/{remote_id}/`: everything this client caches about one remote.
+    #[must_use]
+    pub fn remote_dir(&self, remote_id: &str) -> PathBuf {
+        self.root.join("remotes").join(remote_id)
+    }
+
+    /// `remotes/`: the parent of every per remote directory.
+    #[must_use]
+    pub fn remotes_dir(&self) -> PathBuf {
+        self.root.join("remotes")
+    }
+
     #[must_use]
     pub fn remote_last_known_state_dir(&self, remote_id: &str) -> RemoteLastKnownStateDir {
         RemoteLastKnownStateDir {

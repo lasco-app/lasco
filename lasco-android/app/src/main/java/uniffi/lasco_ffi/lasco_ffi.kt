@@ -1710,7 +1710,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_remove_own_compaction_lock() != 13031.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_remove_remote() != 41678.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_remove_remote() != 48064.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_rename_album() != 50813.toShort()) {
@@ -2752,9 +2752,14 @@ public interface FfiLibraryInterface {
     fun `removeOwnCompactionLock`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): kotlin.Boolean
     
     /**
+     * Removes a remote from the configuration and deletes everything this client cached
+     * about it.
+     *
      * # Errors
      *
-     * Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
+     * Returns an error if `remote_id` is invalid or unknown, if the configuration update
+     * cannot be saved, or if a sync holds the remote, in which case the remote is already out
+     * of the configuration and its directory is deleted on the next open.
      *
      * # Panics
      *
@@ -4283,9 +4288,14 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
 
     
     /**
+     * Removes a remote from the configuration and deletes everything this client cached
+     * about it.
+     *
      * # Errors
      *
-     * Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
+     * Returns an error if `remote_id` is invalid or unknown, if the configuration update
+     * cannot be saved, or if a sync holds the remote, in which case the remote is already out
+     * of the configuration and its directory is deleted on the next open.
      *
      * # Panics
      *

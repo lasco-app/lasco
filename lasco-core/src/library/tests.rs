@@ -164,3 +164,126 @@ fn local_edit_is_merged_into_state() {
     assert_eq!(operations.len(), 1);
     assert_eq!(operations[0].dot.device_id, state.device_id());
 }
+
+/// Writes a media list into a remote's directory, which is the cheapest way to give that
+/// remote a directory on disk without running a sync.
+fn seed_remote_dir(lib: &Library, remote_id: &str) -> std::path::PathBuf {
+    let media_list = lib.inner.local_dirs.remote_media_list(remote_id);
+    crate::remote::MediaList::default()
+        .save(&media_list.media_list_path())
+        .unwrap();
+    let dir = lib.inner.local_dirs.remote_dir(remote_id);
+    assert!(dir.exists());
+    dir
+}
+
+#[test]
+fn forget_remote_deletes_everything_cached_about_it() {
+    let tmp = TempDir::new().unwrap();
+    let (lib, _) = make_library(&tmp);
+    let remote_id = RemoteUuid(Uuid::new_v4());
+    let other_id = RemoteUuid(Uuid::new_v4());
+    let dir = seed_remote_dir(&lib, &remote_id.to_string());
+    let other_dir = seed_remote_dir(&lib, &other_id.to_string());
+
+    lib.forget_remote::<LibraryError, _>(remote_id, || Ok(())).unwrap();
+
+    assert!(!dir.exists());
+    assert!(other_dir.exists(), "another remote must be left alone");
+}
+
+#[test]
+fn forget_remote_is_a_no_op_for_a_remote_with_no_directory() {
+    let tmp = TempDir::new().unwrap();
+    let (lib, _) = make_library(&tmp);
+
+    lib.forget_remote::<LibraryError, _>(RemoteUuid(Uuid::new_v4()), || Ok(()))
+        .unwrap();
+}
+
+// A push writing its media list recreates the directory it writes into, so deleting under a
+// running operation would undo itself and leave a directory for a remote that is gone.
+#[test]
+fn forget_remote_refuses_while_a_sync_holds_the_remote() {
+    let tmp = TempDir::new().unwrap();
+    let (lib, _) = make_library(&tmp);
+    let remote_id = RemoteUuid(Uuid::new_v4());
+    let dir = seed_remote_dir(&lib, &remote_id.to_string());
+
+    let guard = lib.try_acquire_remote_sync(&remote_id.to_string()).unwrap();
+    let mut config_written = false;
+    let error = lib
+        .forget_remote::<LibraryError, _>(remote_id, || {
+            config_written = true;
+            Ok(())
+        })
+        .unwrap_err();
+    assert!(
+        matches!(
+            error,
+            LibraryError::Sync(crate::library::sync::error::SyncError::AlreadyRunning)
+        ),
+        "expected AlreadyRunning, got {error:?}"
+    );
+    assert!(
+        !config_written,
+        "a refused removal must leave the configuration as it was"
+    );
+    assert!(dir.exists(), "the directory must survive a refused removal");
+
+    drop(guard);
+    lib.forget_remote::<LibraryError, _>(remote_id, || Ok(())).unwrap();
+    assert!(!dir.exists());
+}
+
+// The configuration is dropped inside the claim, so a later operation cannot resolve the
+// remote and recreate the directory between the two steps.
+#[test]
+fn forget_remote_drops_the_configuration_before_deleting() {
+    let tmp = TempDir::new().unwrap();
+    let (lib, _) = make_library(&tmp);
+    let remote_id = RemoteUuid(Uuid::new_v4());
+    let dir = seed_remote_dir(&lib, &remote_id.to_string());
+
+    lib.forget_remote::<LibraryError, _>(remote_id, || {
+        assert!(dir.exists(), "the directory outlives the configuration write");
+        Ok(())
+    })
+    .unwrap();
+
+    assert!(!dir.exists());
+}
+
+// Whatever the configuration write reports stops the removal, leaving the directory in place.
+#[test]
+fn forget_remote_keeps_the_directory_when_the_configuration_write_fails() {
+    let tmp = TempDir::new().unwrap();
+    let (lib, _) = make_library(&tmp);
+    let remote_id = RemoteUuid(Uuid::new_v4());
+    let dir = seed_remote_dir(&lib, &remote_id.to_string());
+
+    let error = lib
+        .forget_remote::<LibraryError, _>(remote_id, || {
+            Err(LibraryError::Io(std::io::Error::other("config write failed")))
+        })
+        .unwrap_err();
+
+    assert!(matches!(error, LibraryError::Io(_)), "got {error:?}");
+    assert!(dir.exists());
+}
+
+#[test]
+fn sweep_removes_only_the_directories_of_remotes_that_are_gone() {
+    let tmp = TempDir::new().unwrap();
+    let (lib, _) = make_library(&tmp);
+    let live_id = RemoteUuid(Uuid::new_v4());
+    let orphan_id = RemoteUuid(Uuid::new_v4());
+    let live_dir = seed_remote_dir(&lib, &live_id.to_string());
+    let orphan_dir = seed_remote_dir(&lib, &orphan_id.to_string());
+
+    assert_eq!(lib.sweep_orphan_remote_dirs(&[live_id.to_string()]), 1);
+
+    assert!(live_dir.exists());
+    assert!(!orphan_dir.exists());
+    assert_eq!(lib.sweep_orphan_remote_dirs(&[live_id.to_string()]), 0);
+}

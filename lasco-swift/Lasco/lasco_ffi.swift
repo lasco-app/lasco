@@ -1074,9 +1074,14 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     func removeOwnCompactionLock(remoteId: FfiRemoteUuid, appSupportDir: String?) throws  -> Bool
     
     /**
+     * Removes a remote from the configuration and deletes everything this client cached
+     * about it.
+     *
      * # Errors
      *
-     * Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
+     * Returns an error if `remote_id` is invalid or unknown, if the configuration update
+     * cannot be saved, or if a sync holds the remote, in which case the remote is already out
+     * of the configuration and its directory is deleted on the next open.
      *
      * # Panics
      *
@@ -2280,9 +2285,14 @@ nonisolated open func removeOwnCompactionLock(remoteId: FfiRemoteUuid, appSuppor
 }
     
     /**
+     * Removes a remote from the configuration and deletes everything this client cached
+     * about it.
+     *
      * # Errors
      *
-     * Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
+     * Returns an error if `remote_id` is invalid or unknown, if the configuration update
+     * cannot be saved, or if a sync holds the remote, in which case the remote is already out
+     * of the configuration and its directory is deleted on the next open.
      *
      * # Panics
      *
@@ -5452,7 +5462,7 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_remove_own_compaction_lock() != 13031) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_remove_remote() != 41678) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_remove_remote() != 48064) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_rename_album() != 50813) {
