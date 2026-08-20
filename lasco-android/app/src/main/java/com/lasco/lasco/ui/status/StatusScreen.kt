@@ -46,6 +46,7 @@ import com.lasco.lasco.ui.theme.lascoPanel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import uniffi.lasco_ffi.FfiRemote
+import uniffi.lasco_ffi.FfiRemoteMediaShortfall
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -69,6 +70,7 @@ fun StatusScreen(modifier: Modifier = Modifier) {
     val media by statusViewModel.media.collectAsStateWithLifecycle()
     val session by statusViewModel.sessionState.collectAsStateWithLifecycle()
     val unpushed by statusViewModel.unpushed.collectAsStateWithLifecycle()
+    val shortfall by statusViewModel.shortfall.collectAsStateWithLifecycle()
     val localStateStats by statusViewModel.localStateStats.collectAsStateWithLifecycle()
     val syncState by statusViewModel.syncState.collectAsStateWithLifecycle()
     val pushCountdownSeconds = pushCountdownSeconds(syncState.pushDeadlineElapsedMs)
@@ -79,6 +81,7 @@ fun StatusScreen(modifier: Modifier = Modifier) {
     var showCleanConfirm by remember { mutableStateOf(false) }
     var showClearThumbsConfirm by remember { mutableStateOf(false) }
     var cleanBlockedCount by remember { mutableStateOf<Int?>(null) }
+    var cleanOverrideCount by remember { mutableStateOf<Int?>(null) }
     var feedback by remember { mutableStateOf<String?>(null) }
     var pushBlocked by remember { mutableStateOf<PushBlockedState?>(null) }
 
@@ -170,8 +173,8 @@ fun StatusScreen(modifier: Modifier = Modifier) {
                         .fillMaxWidth()
                         .clickable {
                             scope.launch {
-                                val blocked = statusViewModel.mediaCountWithoutRemoteBackup()
-                                if (blocked != null) cleanBlockedCount = blocked else showCleanConfirm = true
+                                val lost = statusViewModel.mediaCountLostIfLocalMediaCleared()
+                                if (lost > 0) cleanBlockedCount = lost else showCleanConfirm = true
                             }
                         }
                         .padding(horizontal = 16.dp, vertical = 12.dp),
@@ -214,6 +217,7 @@ fun StatusScreen(modifier: Modifier = Modifier) {
                         remote = remote,
                         isDefaultFetch = remote.remoteId == session.defaultFetchRemoteId,
                         isSynced = unpushed[remote.remoteId] != true,
+                        shortfall = shortfall[remote.remoteId],
                         pushCountdownSeconds = pushCountdownSeconds.takeIf {
                             remote.remoteId in syncState.scheduledAutoPushRemoteIds && remote.autoPush
                         },
@@ -291,10 +295,35 @@ fun StatusScreen(modifier: Modifier = Modifier) {
         )
     }
     cleanBlockedCount?.let { count ->
-        LascoInfoDialog(
-            title = "Not fully backed up",
-            message = "$count item${if (count == 1) "" else "s"} not backed up on any remote. Push to a remote before cleaning local media.",
-            onDismiss = { cleanBlockedCount = null },
+        val plural = if (count == 1) "" else "s"
+        val message = "$count item$plural not confirmed on any remote. This is based on each " +
+            "remote's media list as of its last update, so some may already be there. Push to a " +
+            "remote before cleaning local media."
+        if (expertMode) {
+            LascoConfirmDialog(
+                title = "Not fully backed up",
+                message = message,
+                confirmLabel = "Clean anyway",
+                onConfirm = { cleanOverrideCount = count; cleanBlockedCount = null },
+                onCancel = { cleanBlockedCount = null },
+            )
+        } else {
+            LascoInfoDialog(
+                title = "Not fully backed up",
+                message = message,
+                onDismiss = { cleanBlockedCount = null },
+            )
+        }
+    }
+    cleanOverrideCount?.let { count ->
+        val plural = if (count == 1) "" else "s"
+        LascoConfirmDialog(
+            title = "Lose these media forever?",
+            message = "$count item$plural might be the only copy left. Cleaning deletes them " +
+                "from this device with no way to get them back.",
+            confirmLabel = "I understand, I might lose data",
+            onConfirm = { cleanOverrideCount = null; statusViewModel.cleanLocalMedia() },
+            onCancel = { cleanOverrideCount = null },
         )
     }
 }
@@ -354,6 +383,7 @@ private fun RemoteStatusCard(
     remote: FfiRemote,
     isDefaultFetch: Boolean,
     isSynced: Boolean,
+    shortfall: FfiRemoteMediaShortfall?,
     pushCountdownSeconds: Int?,
     lastPush: SyncRecord?,
     lastFetch: SyncRecord?,
@@ -374,18 +404,21 @@ private fun RemoteStatusCard(
         }
         // isSynced wins over a stale countdown, covering the window between a
         // push landing and unpushed refreshing.
+        val shortfallText = shortfall?.let { describeShortfall(it) }
         val bannerText = when {
             !isSynced && pushCountdownSeconds != null -> "local changes not pushed, pushing in ${pushCountdownSeconds}s"
-            isSynced -> "all local changes pushed"
-            else -> "local changes not pushed"
+            !isSynced -> "local changes not pushed"
+            shortfallText != null -> shortfallText
+            else -> "all local changes pushed"
         }
+        val bannerIsWarning = !isSynced || shortfallText != null
         Text(
             text = bannerText,
             style = LascoTheme.type.mono(),
             color = Color.White,
             modifier = Modifier
                 .fillMaxWidth()
-                .background(if (isSynced) colors.pink else colors.error)
+                .background(if (bannerIsWarning) colors.error else colors.pink)
                 .padding(horizontal = 16.dp, vertical = 10.dp),
         )
         SyncStatusRow(
@@ -451,3 +484,19 @@ private data class PushBlockedState(
     val sources: List<FfiRemote>,
     val mediaCount: Int,
 )
+
+/**
+ * Reads only once every operation has reached the remote, since media a remote has never been
+ * told about cannot be expected on it. A missing thumbnail has no fallback, so a remote short
+ * of thumbnails cannot be browsed from at all.
+ */
+private fun describeShortfall(shortfall: FfiRemoteMediaShortfall): String? {
+    val media = shortfall.missingFull.toInt()
+    val thumbs = shortfall.missingThumb.toInt()
+    val parts = buildList {
+        if (media > 0) add("$media media")
+        if (thumbs > 0) add("$thumbs thumbnail${if (thumbs == 1) "" else "s"}")
+    }
+    if (parts.isEmpty()) return null
+    return "${parts.joinToString(" and ")} not confirmed on remote"
+}

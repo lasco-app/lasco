@@ -9,7 +9,7 @@ use lasco_core::identifiers::RemoteUuid;
 use lasco_core::storage::StorageMockMemoryFaulty;
 
 pub(super) struct Device {
-    app_dir: TempDir,
+    pub(super) app_dir: TempDir,
     source_dir: TempDir,
     pub(super) library: std::sync::Arc<FfiLibrary>,
 }

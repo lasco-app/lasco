@@ -905,6 +905,8 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1044,7 +1046,9 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_media_by_date_range(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_media_containing_album_ids(
 ): Short
-fun uniffi_lasco_ffi_checksum_method_ffilibrary_media_ids_without_remote_backup(
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_media_count_lost_if_local_media_cleared(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_media_count_lost_if_remote_removed(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_media_in_album(
 ): Short
@@ -1058,8 +1062,6 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_neighbors(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_range(
 ): Short
-fun uniffi_lasco_ffi_checksum_method_ffilibrary_pending_media_count(
-): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_async(
@@ -1069,6 +1071,8 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_from_remote(
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_from_remote_async(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_using_configured_media_sources_async(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_remote_media_shortfall(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_remove_media_from_album(
 ): Short
@@ -1267,8 +1271,10 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_media_by_date_range(`ptr`: Pointer,`po
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_media_containing_album_ids(`ptr`: Pointer,`mediaId`: RustBuffer.ByValue,`includeViaGroups`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-fun uniffi_lasco_ffi_fn_method_ffilibrary_media_ids_without_remote_backup(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
+fun uniffi_lasco_ffi_fn_method_ffilibrary_media_count_lost_if_local_media_cleared(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+fun uniffi_lasco_ffi_fn_method_ffilibrary_media_count_lost_if_remote_removed(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_media_in_album(`ptr`: Pointer,`albumId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_move_media_to_album(`ptr`: Pointer,`mediaId`: RustBuffer.ByValue,`fromAlbumId`: RustBuffer.ByValue,`toAlbumId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1281,8 +1287,6 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date_neighbors(`ptr`: 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date_range(`ptr`: Pointer,`posStartInclusive`: Int,`posEndInclusive`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-fun uniffi_lasco_ffi_fn_method_ffilibrary_pending_media_count(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
-): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_push_remote(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_async(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,
@@ -1293,6 +1297,8 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_from_remote_async(`ptr`: P
 ): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_using_configured_media_sources_async(`ptr`: Pointer,`targetRemoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,
 ): Long
+fun uniffi_lasco_ffi_fn_method_ffilibrary_remote_media_shortfall(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_remove_media_from_album(`ptr`: Pointer,`albumId`: RustBuffer.ByValue,`mediaId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_remove_media_from_group(`ptr`: Pointer,`groupId`: RustBuffer.ByValue,`mediaId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1653,7 +1659,10 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_media_containing_album_ids() != 8372.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_media_ids_without_remote_backup() != 14902.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_media_count_lost_if_local_media_cleared() != 58380.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_media_count_lost_if_remote_removed() != 6485.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_media_in_album() != 39680.toShort()) {
@@ -1674,9 +1683,6 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_range() != 61721.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_pending_media_count() != 2390.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote() != 27651.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1692,6 +1698,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_using_configured_media_sources_async() != 9550.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_remote_media_shortfall() != 52429.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_remove_media_from_album() != 46585.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1701,7 +1710,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_remove_own_compaction_lock() != 13031.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_remove_remote() != 41678.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_remove_remote() != 48064.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_rename_album() != 50813.toShort()) {
@@ -2603,11 +2612,28 @@ public interface FfiLibraryInterface {
     fun `mediaContainingAlbumIds`(`mediaId`: FfiMediaUuid, `includeViaGroups`: kotlin.Boolean): List<FfiAlbumUuid>
     
     /**
+     * Counts the media that clearing local media would leave with no known copy anywhere.
+     *
+     * Only a remote can back up a local copy here, because the local copy is what the
+     * operation deletes. The answer is an upper bound, see `media_ids_without_backup`.
+     *
      * # Errors
      *
      * Returns an error if the library configuration cannot be read.
      */
-    fun `mediaIdsWithoutRemoteBackup`(): List<FfiMediaUuid>
+    fun `mediaCountLostIfLocalMediaCleared`(): kotlin.ULong
+    
+    /**
+     * Counts the media that removing `remote_id` would leave with no known copy anywhere.
+     *
+     * The local copy survives the removal, so it counts as a home alongside every remaining
+     * remote. The answer is an upper bound, see `media_ids_without_backup`.
+     *
+     * # Errors
+     *
+     * Returns an error if the library configuration cannot be read or `remote_id` is invalid.
+     */
+    fun `mediaCountLostIfRemoteRemoved`(`remoteId`: FfiRemoteUuid): kotlin.ULong
     
     /**
      * # Errors
@@ -2649,8 +2675,6 @@ public interface FfiLibraryInterface {
      * Returns an error when the start position exceeds the end position.
      */
     fun `orphanMediaByDateRange`(`posStartInclusive`: kotlin.UInt, `posEndInclusive`: kotlin.UInt): List<FfiMediaItem>
-    
-    fun `pendingMediaCount`(): kotlin.ULong
     
     /**
      * # Errors
@@ -2696,6 +2720,18 @@ public interface FfiLibraryInterface {
     suspend fun `pushRemoteUsingConfiguredMediaSourcesAsync`(`targetRemoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): kotlin.ULong
     
     /**
+     * What `remote_id` is not yet confirmed to hold.
+     *
+     * Only meaningful once every local operation has reached the remote, since media a remote
+     * has never been told about cannot be expected on it.
+     *
+     * # Errors
+     *
+     * Returns an error if `remote_id` is invalid.
+     */
+    fun `remoteMediaShortfall`(`remoteId`: FfiRemoteUuid): FfiRemoteMediaShortfall
+    
+    /**
      * # Errors
      *
      * Returns an error for invalid or absent IDs, missing membership, or an unpersistable operation.
@@ -2716,9 +2752,14 @@ public interface FfiLibraryInterface {
     fun `removeOwnCompactionLock`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): kotlin.Boolean
     
     /**
+     * Removes a remote from the configuration and deletes everything this client cached
+     * about it.
+     *
      * # Errors
      *
-     * Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
+     * Returns an error if `remote_id` is invalid or unknown, if the configuration update
+     * cannot be saved, or if a sync holds the remote, in which case the remote is already out
+     * of the configuration and its directory is deleted on the next open.
      *
      * # Panics
      *
@@ -3900,16 +3941,44 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
 
     
     /**
+     * Counts the media that clearing local media would leave with no known copy anywhere.
+     *
+     * Only a remote can back up a local copy here, because the local copy is what the
+     * operation deletes. The answer is an upper bound, see `media_ids_without_backup`.
+     *
      * # Errors
      *
      * Returns an error if the library configuration cannot be read.
      */
-    @Throws(LascoException::class)override fun `mediaIdsWithoutRemoteBackup`(): List<FfiMediaUuid> {
-            return FfiConverterSequenceTypeFfiMediaUuid.lift(
+    @Throws(LascoException::class)override fun `mediaCountLostIfLocalMediaCleared`(): kotlin.ULong {
+            return FfiConverterULong.lift(
     callWithPointer {
     uniffiRustCallWithError(LascoException) { _status ->
-    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_media_ids_without_remote_backup(
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_media_count_lost_if_local_media_cleared(
         it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Counts the media that removing `remote_id` would leave with no known copy anywhere.
+     *
+     * The local copy survives the removal, so it counts as a home alongside every remaining
+     * remote. The answer is an upper bound, see `media_ids_without_backup`.
+     *
+     * # Errors
+     *
+     * Returns an error if the library configuration cannot be read or `remote_id` is invalid.
+     */
+    @Throws(LascoException::class)override fun `mediaCountLostIfRemoteRemoved`(`remoteId`: FfiRemoteUuid): kotlin.ULong {
+            return FfiConverterULong.lift(
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_media_count_lost_if_remote_removed(
+        it, FfiConverterTypeFfiRemoteUuid.lower(`remoteId`),_status)
 }
     }
     )
@@ -4015,18 +4084,6 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     uniffiRustCallWithError(LascoException) { _status ->
     UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date_range(
         it, FfiConverterUInt.lower(`posStartInclusive`),FfiConverterUInt.lower(`posEndInclusive`),_status)
-}
-    }
-    )
-    }
-    
-
-    override fun `pendingMediaCount`(): kotlin.ULong {
-            return FfiConverterULong.lift(
-    callWithPointer {
-    uniffiRustCall() { _status ->
-    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_pending_media_count(
-        it, _status)
 }
     }
     )
@@ -4157,6 +4214,29 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
 
     
     /**
+     * What `remote_id` is not yet confirmed to hold.
+     *
+     * Only meaningful once every local operation has reached the remote, since media a remote
+     * has never been told about cannot be expected on it.
+     *
+     * # Errors
+     *
+     * Returns an error if `remote_id` is invalid.
+     */
+    @Throws(LascoException::class)override fun `remoteMediaShortfall`(`remoteId`: FfiRemoteUuid): FfiRemoteMediaShortfall {
+            return FfiConverterTypeFfiRemoteMediaShortfall.lift(
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_remote_media_shortfall(
+        it, FfiConverterTypeFfiRemoteUuid.lower(`remoteId`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * # Errors
      *
      * Returns an error for invalid or absent IDs, missing membership, or an unpersistable operation.
@@ -4208,9 +4288,14 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
 
     
     /**
+     * Removes a remote from the configuration and deletes everything this client cached
+     * about it.
+     *
      * # Errors
      *
-     * Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
+     * Returns an error if `remote_id` is invalid or unknown, if the configuration update
+     * cannot be saved, or if a sync holds the remote, in which case the remote is already out
+     * of the configuration and its directory is deleted on the next open.
      *
      * # Panics
      *
@@ -5291,6 +5376,42 @@ public object FfiConverterTypeFfiRemote: FfiConverterRustBuffer<FfiRemote> {
             FfiConverterOptionalString.write(value.`bucket`, buf)
             FfiConverterOptionalString.write(value.`region`, buf)
             FfiConverterOptionalString.write(value.`path`, buf)
+    }
+}
+
+
+
+/**
+ * What one remote is not yet confirmed to hold. Both counts come from the media list this
+ * client cached for that remote, so they are accurate as of its last fetch or push.
+ */
+data class FfiRemoteMediaShortfall (
+    var `missingFull`: kotlin.ULong, 
+    var `missingThumb`: kotlin.ULong
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFfiRemoteMediaShortfall: FfiConverterRustBuffer<FfiRemoteMediaShortfall> {
+    override fun read(buf: ByteBuffer): FfiRemoteMediaShortfall {
+        return FfiRemoteMediaShortfall(
+            FfiConverterULong.read(buf),
+            FfiConverterULong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FfiRemoteMediaShortfall) = (
+            FfiConverterULong.allocationSize(value.`missingFull`) +
+            FfiConverterULong.allocationSize(value.`missingThumb`)
+    )
+
+    override fun write(value: FfiRemoteMediaShortfall, buf: ByteBuffer) {
+            FfiConverterULong.write(value.`missingFull`, buf)
+            FfiConverterULong.write(value.`missingThumb`, buf)
     }
 }
 

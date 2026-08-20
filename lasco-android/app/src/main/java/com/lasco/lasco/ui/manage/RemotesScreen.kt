@@ -29,12 +29,16 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.lasco.lasco.data.LibraryRepository
 import com.lasco.lasco.data.Prefs
 import com.lasco.lasco.ui.components.LascoConfirmDialog
+import com.lasco.lasco.ui.components.LascoInfoDialog
 import com.lasco.lasco.ui.components.LascoPrimaryButton
 import com.lasco.lasco.ui.components.LascoSecondaryButton
+import com.lasco.lasco.ui.status.MediaAtRiskDialog
+import com.lasco.lasco.ui.status.MediaAtRiskRemote
 import com.lasco.lasco.ui.theme.LascoTheme
 import com.lasco.lasco.ui.theme.lascoPanel
 import kotlinx.coroutines.launch
 import uniffi.lasco_ffi.FfiRemote
+import uniffi.lasco_ffi.LascoException
 import uniffi.lasco_ffi.FfiCompactionLockInfo
 
 /**
@@ -61,11 +65,45 @@ fun RemotesScreen(
     var showAddLocalFS by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<FfiRemote?>(null) }
     var pendingLockRemoval by remember { mutableStateOf<FfiRemote?>(null) }
+    var removalBlocked by remember { mutableStateOf<RemoteRemovalBlocked?>(null) }
+    var removalBlockedByScheduledPush by remember { mutableStateOf<FfiRemote?>(null) }
+    var removalFailed by remember { mutableStateOf<String?>(null) }
     var feedback by remember { mutableStateOf<String?>(null) }
     var isUpdatingMediaSourceOrder by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val remotesById = session.remotes.associateBy { it.remoteId }
     val orderedMediaSources = session.mediaSourceOrder.mapNotNull(remotesById::get)
+
+    // Removes a remote unless this client cannot account for media once it is gone, in which
+    // case the dialog offers to refresh what the remaining remotes are known to hold first.
+    suspend fun removeRemote(remote: FfiRemote) {
+        // A scheduled push claims the remote when it fires, which would make the removal fail
+        // on timing alone. Refusing up front says so while the countdown is still visible.
+        if (remote.remoteId in syncState.scheduledAutoPushRemoteIds) {
+            removalBlockedByScheduledPush = remote
+            return
+        }
+        val lost = runCatching { repo.mediaCountLostIfRemoteRemoved(remote.remoteId) }.getOrDefault(0)
+        if (lost > 0) {
+            removalBlocked = RemoteRemovalBlocked(
+                target = remote,
+                others = session.remotes.filter { it.remoteId != remote.remoteId },
+                mediaCount = lost,
+            )
+            return
+        }
+        // A push or fetch that claimed the remote between the scheduled push check and here
+        // stops the removal, which leaves the configuration untouched. Saying so is the only
+        // way the user learns the remote is still there.
+        try {
+            repo.removeRemote(remote.remoteId)
+            feedback = "${remote.name}: removed"
+        } catch (e: LascoException.SyncBusy) {
+            removalFailed = "\"${remote.name}\" is syncing right now. Wait for it to finish, then remove it."
+        } catch (e: LascoException) {
+            removalFailed = "\"${remote.name}\" could not be removed: ${e.message ?: "unknown error"}"
+        }
+    }
 
     Column(
         modifier = modifier
@@ -186,13 +224,44 @@ fun RemotesScreen(
             title = "Delete remote",
             message = "This removes \"${remote.name}\" from this library. Data already pushed to it is not deleted.",
             onConfirm = {
-                scope.launch {
-                    repo.removeRemote(remote.remoteId)
-                    feedback = "${remote.name}: removed"
-                }
+                scope.launch { removeRemote(remote) }
                 pendingDelete = null
             },
             onCancel = { pendingDelete = null },
+        )
+    }
+    removalFailed?.let { message ->
+        LascoInfoDialog(
+            title = "Remote not removed",
+            message = message,
+            onDismiss = { removalFailed = null },
+        )
+    }
+    removalBlockedByScheduledPush?.let { remote ->
+        LascoInfoDialog(
+            title = "Push scheduled",
+            message = "A push to \"${remote.name}\" is about to run. Let it finish, or turn off " +
+                "Auto Push, then remove the remote.",
+            onDismiss = { removalBlockedByScheduledPush = null },
+        )
+    }
+    removalBlocked?.let { blocked ->
+        val plural = if (blocked.mediaCount == 1) "" else "s"
+        MediaAtRiskDialog(
+            title = "Remove remote?",
+            message = "${blocked.mediaCount} media$plural would probably be lost. This is based " +
+                "on each remote's media list as of its last update, so they may already be " +
+                "elsewhere. Update the lists you want, then try again.",
+            remotes = blocked.others.map { MediaAtRiskRemote(it, "Could already hold them") },
+            retryLabel = "Try again",
+            cancelLabel = "Cancel",
+            onConfirm = { repo.sync.confirmRemoteMedia(it) },
+            onRetry = {
+                val target = blocked.target
+                removalBlocked = null
+                scope.launch { removeRemote(target) }
+            },
+            onCancel = { removalBlocked = null },
         )
     }
     pendingLockRemoval?.let { remote ->
@@ -375,3 +444,13 @@ private fun RemoteCard(
         }
     }
 }
+
+/**
+ * The media that removing one remote would leave this client unable to place, along with the
+ * remotes whose media list could still turn out to hold them.
+ */
+private data class RemoteRemovalBlocked(
+    val target: FfiRemote,
+    val others: List<FfiRemote>,
+    val mediaCount: Int,
+)

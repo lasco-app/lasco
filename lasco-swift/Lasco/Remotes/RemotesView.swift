@@ -11,12 +11,55 @@ struct RemotesView: View {
     @State private var showAddS3 = false
     @State private var showAddLocalFS = false
     @State private var isUpdatingMediaSourceOrder = false
+    @State private var removalBlocked: RemoteRemovalBlockedContext?
+    @State private var removalBlockedByScheduledPush: FfiRemote?
+    @State private var removalFailed: String?
     let repository: LibraryRepository
     let session: LibrarySessionState
+    let syncCoordinator: SyncCoordinator
 
-    init(repository: LibraryRepository, session: LibrarySessionState) {
+    init(repository: LibraryRepository, session: LibrarySessionState, syncCoordinator: SyncCoordinator) {
         self.repository = repository
         self.session = session
+        self.syncCoordinator = syncCoordinator
+    }
+
+    /// Removes a remote unless this client cannot account for media once it is gone, in which
+    /// case the sheet offers to refresh what the remaining remotes are known to hold first.
+    /// A scheduled push claims the remote when it fires, which would make the removal fail on
+    /// timing alone. Refusing up front says so while the countdown is still visible.
+    private func isPushScheduled(for remote: FfiRemote) -> Bool {
+        remote.autoPush && syncCoordinator.nextPushDate != nil
+    }
+
+    private func removeRemote(_ remote: FfiRemote) async {
+        guard !isPushScheduled(for: remote) else {
+            removalBlockedByScheduledPush = remote
+            return
+        }
+        let count = (try? await repository.mediaCountLostIfRemoteRemoved(remoteID: remote.remoteId)) ?? 0
+        guard count > 0 else {
+            await commitRemoval(remote)
+            return
+        }
+        removalBlocked = RemoteRemovalBlockedContext(
+            target: remote,
+            others: session.remotes.filter { $0.remoteId != remote.remoteId },
+            mediaCount: count
+        )
+    }
+
+    /// A push or fetch that claimed the remote between the scheduled push check and here stops
+    /// the removal, which leaves the configuration untouched. Saying so is the only way the
+    /// user learns the remote is still there.
+    private func commitRemoval(_ remote: FfiRemote) async {
+        do {
+            try await repository.removeRemote(id: remote.remoteId)
+        } catch LascoError.SyncBusy {
+            removalFailed = "\(remote.name) is syncing right now. Wait for it to finish, then remove it."
+        } catch {
+            removalFailed = "\(remote.name) could not be removed: \(error.localizedDescription)"
+        }
     }
 
     var body: some View {
@@ -54,7 +97,7 @@ struct RemotesView: View {
                                 RemoteCard(
                                     remote: remote,
                                     isDefaultFetch: remote.remoteId == session.defaultFetchRemoteID,
-                                    onDelete: { Task { try? await repository.removeRemote(id: remote.remoteId) } },
+                                    onDelete: { Task { await removeRemote(remote) } },
                                     onTestConnection: {
                                         Task {
                                             do {
@@ -112,6 +155,52 @@ struct RemotesView: View {
             .environment(\.lascoTheme, .dark)
             .preferredColorScheme(.dark)
             .presentationDetents([.medium])
+        }
+        .alert(
+            "Remote not removed",
+            isPresented: Binding(
+                get: { removalFailed != nil },
+                set: { if !$0 { removalFailed = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            if let removalFailed {
+                Text(removalFailed)
+            }
+        }
+        .alert(
+            "Push scheduled",
+            isPresented: Binding(
+                get: { removalBlockedByScheduledPush != nil },
+                set: { if !$0 { removalBlockedByScheduledPush = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            if let remote = removalBlockedByScheduledPush {
+                Text("A push to \(remote.name) is about to run. Let it finish, or turn off Auto Push, then remove the remote.")
+            }
+        }
+        .sheet(item: $removalBlocked) { context in
+            MediaAtRiskSheet(
+                title: "Remove remote?",
+                message: "\(context.mediaLabel) would probably be lost. This is based on each remote's media list as of its last update, so they may already be elsewhere. Update the lists you want, then try again.",
+                remotes: context.others.map {
+                    MediaAtRiskRemote(remote: $0, role: "Could already hold them")
+                },
+                retryLabel: "Try again",
+                cancelLabel: "Cancel",
+                onConfirm: { await syncCoordinator.confirmRemoteMedia(remoteID: $0) },
+                onRetry: {
+                    let target = context.target
+                    removalBlocked = nil
+                    Task { await removeRemote(target) }
+                },
+                onCancel: { removalBlocked = nil }
+            )
+            .environment(\.lascoTheme, .dark)
+            .preferredColorScheme(.dark)
         }
         .sheet(isPresented: $showAddS3) {
             AddS3RemoteView()
@@ -391,5 +480,19 @@ private struct RemoteCard: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
         .lascoPanelHard()
+    }
+}
+
+/// The media that removing one remote would leave this client unable to place, along with the
+/// remotes whose media list could still turn out to hold them.
+struct RemoteRemovalBlockedContext: Identifiable {
+    let target: FfiRemote
+    let others: [FfiRemote]
+    let mediaCount: Int
+
+    var id: FfiRemoteUuid { target.remoteId }
+
+    var mediaLabel: String {
+        mediaCount == 1 ? "1 media" : "\(mediaCount) media"
     }
 }

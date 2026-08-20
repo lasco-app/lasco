@@ -524,8 +524,8 @@ final class MediaDetailModel {
 final class StatusModel {
     private(set) var mediaCount = 0
     private(set) var localStateStats: FfiLocalStateStats?
-    private(set) var mediaCountWithoutRemoteBackup: Int?
     private(set) var syncedByRemoteID: [FfiRemoteUuid: Bool] = [:]
+    private(set) var shortfallByRemoteID: [FfiRemoteUuid: FfiRemoteMediaShortfall] = [:]
     private let repository: any LibraryRepositoryProtocol
 
     init(repository: any LibraryRepositoryProtocol) {
@@ -545,22 +545,38 @@ final class StatusModel {
         do {
             async let mediaCountQuery = repository.mediaByDateCount()
             async let statsQuery = repository.localStateStats()
-            async let backupQuery = repository.mediaIDsWithoutRemoteBackup()
             async let sessionQuery = repository.sessionSnapshot()
             mediaCount = try await mediaCountQuery
             localStateStats = try await statsQuery
-            let unbacked = try await backupQuery
-            mediaCountWithoutRemoteBackup = unbacked.isEmpty ? nil : unbacked.count
             let session = try await sessionQuery
             var syncStatus: [FfiRemoteUuid: Bool] = [:]
+            var shortfalls: [FfiRemoteUuid: FfiRemoteMediaShortfall] = [:]
             for remote in session.remotes {
                 let hasUnpushedChanges = await repository.hasUnpushedChanges(remoteID: remote.remoteId)
                 syncStatus[remote.remoteId] = !hasUnpushedChanges
+                // Media a remote has never been told about cannot be expected on it, so the
+                // shortfall is only worth reading once every operation has reached it. That
+                // also keeps this off the hot path during an import, where nothing is pushed.
+                guard !hasUnpushedChanges else { continue }
+                shortfalls[remote.remoteId] = try? await repository.remoteMediaShortfall(remoteID: remote.remoteId)
             }
             syncedByRemoteID = syncStatus
+            shortfallByRemoteID = shortfalls
         } catch is CancellationError {
         } catch {
             AppLogger.log(.error, "status query failed: \(error)")
+        }
+    }
+
+    /// The number of media that clearing local media would leave with no known copy anywhere.
+    /// Queried when the user reaches for the action rather than on every refresh, because it
+    /// stats a file per media and is only ever read to answer that one question.
+    func mediaCountLostIfLocalMediaCleared() async -> Int {
+        do {
+            return try await repository.mediaCountLostIfLocalMediaCleared()
+        } catch {
+            AppLogger.log(.error, "lost-media count failed: \(error)")
+            return 0
         }
     }
 
@@ -576,6 +592,10 @@ final class StatusModel {
 
     func isSynced(remoteID: FfiRemoteUuid) -> Bool {
         syncedByRemoteID[remoteID] ?? true
+    }
+
+    func shortfall(remoteID: FfiRemoteUuid) -> FfiRemoteMediaShortfall? {
+        shortfallByRemoteID[remoteID]
     }
 }
 

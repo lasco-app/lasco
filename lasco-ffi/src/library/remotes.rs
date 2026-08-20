@@ -385,9 +385,14 @@ impl FfiLibrary {
         Ok(remote_uuid.into())
     }
 
+    /// Removes a remote from the configuration and deletes everything this client cached
+    /// about it.
+    ///
     /// # Errors
     ///
-    /// Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
+    /// Returns an error if `remote_id` is invalid or unknown, if the configuration update
+    /// cannot be saved, or if a sync holds the remote, in which case the remote is already out
+    /// of the configuration and its directory is deleted on the next open.
     ///
     /// # Panics
     ///
@@ -398,28 +403,35 @@ impl FfiLibrary {
         reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
     )]
     pub fn remove_remote(&self, remote_id: FfiRemoteUuid) -> Result<(), LascoError> {
-        let library_json = self.library_json_read_write();
-        let mut lib_config = library_json.read()?;
         let remote_uuid: RemoteUuid = remote_id.clone().try_into()?;
 
-        let index = lib_config
-            .remotes
-            .iter()
-            .position(|r| r.remote_uuid == remote_uuid)
-            .ok_or_else(|| LascoError::Other {
-                msg: format!("remote '{}' not found", remote_id.value),
-            })?;
+        // The remote is claimed for the whole removal, so an operation holding it stops this
+        // before anything is written and the configuration is left as it was. Dropping the
+        // remote from the configuration inside that claim is what stops a later operation from
+        // resolving it and recreating the directory about to be deleted.
+        self.inner.forget_remote(remote_uuid, || {
+            let library_json = self.library_json_read_write();
+            let mut lib_config = library_json.read()?;
 
-        lib_config.remotes.remove(index);
-        lib_config
-            .media_source_order
-            .retain(|id| *id != remote_uuid);
-        if lib_config.default_fetch_remote == Some(remote_uuid) {
-            lib_config.default_fetch_remote = None;
-        }
-        library_json
-            .write(&lib_config)
-            .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+            let index = lib_config
+                .remotes
+                .iter()
+                .position(|r| r.remote_uuid == remote_uuid)
+                .ok_or_else(|| LascoError::Other {
+                    msg: format!("remote '{}' not found", remote_id.value),
+                })?;
+
+            lib_config.remotes.remove(index);
+            lib_config
+                .media_source_order
+                .retain(|id| *id != remote_uuid);
+            if lib_config.default_fetch_remote == Some(remote_uuid) {
+                lib_config.default_fetch_remote = None;
+            }
+            library_json
+                .write(&lib_config)
+                .map_err(|e| LascoError::Other { msg: e.to_string() })
+        })?;
 
         self.remotes
             .lock()

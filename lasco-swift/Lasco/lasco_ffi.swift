@@ -934,11 +934,28 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     func mediaContainingAlbumIds(mediaId: FfiMediaUuid, includeViaGroups: Bool) throws  -> [FfiAlbumUuid]
     
     /**
+     * Counts the media that clearing local media would leave with no known copy anywhere.
+     *
+     * Only a remote can back up a local copy here, because the local copy is what the
+     * operation deletes. The answer is an upper bound, see `media_ids_without_backup`.
+     *
      * # Errors
      *
      * Returns an error if the library configuration cannot be read.
      */
-    func mediaIdsWithoutRemoteBackup() throws  -> [FfiMediaUuid]
+    func mediaCountLostIfLocalMediaCleared() throws  -> UInt64
+    
+    /**
+     * Counts the media that removing `remote_id` would leave with no known copy anywhere.
+     *
+     * The local copy survives the removal, so it counts as a home alongside every remaining
+     * remote. The answer is an upper bound, see `media_ids_without_backup`.
+     *
+     * # Errors
+     *
+     * Returns an error if the library configuration cannot be read or `remote_id` is invalid.
+     */
+    func mediaCountLostIfRemoteRemoved(remoteId: FfiRemoteUuid) throws  -> UInt64
     
     /**
      * # Errors
@@ -980,8 +997,6 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * Returns an error when the start position exceeds the end position.
      */
     func orphanMediaByDateRange(posStartInclusive: UInt32, posEndInclusive: UInt32) throws  -> [FfiMediaItem]
-    
-    func pendingMediaCount()  -> UInt64
     
     /**
      * # Errors
@@ -1027,6 +1042,18 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     func pushRemoteUsingConfiguredMediaSourcesAsync(targetRemoteId: FfiRemoteUuid, appSupportDir: String?) async throws  -> UInt64
     
     /**
+     * What `remote_id` is not yet confirmed to hold.
+     *
+     * Only meaningful once every local operation has reached the remote, since media a remote
+     * has never been told about cannot be expected on it.
+     *
+     * # Errors
+     *
+     * Returns an error if `remote_id` is invalid.
+     */
+    func remoteMediaShortfall(remoteId: FfiRemoteUuid) throws  -> FfiRemoteMediaShortfall
+    
+    /**
      * # Errors
      *
      * Returns an error for invalid or absent IDs, missing membership, or an unpersistable operation.
@@ -1047,9 +1074,14 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     func removeOwnCompactionLock(remoteId: FfiRemoteUuid, appSupportDir: String?) throws  -> Bool
     
     /**
+     * Removes a remote from the configuration and deletes everything this client cached
+     * about it.
+     *
      * # Errors
      *
-     * Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
+     * Returns an error if `remote_id` is invalid or unknown, if the configuration update
+     * cannot be saved, or if a sync holds the remote, in which case the remote is already out
+     * of the configuration and its directory is deleted on the next open.
      *
      * # Panics
      *
@@ -1981,13 +2013,36 @@ nonisolated open func mediaContainingAlbumIds(mediaId: FfiMediaUuid, includeViaG
 }
     
     /**
+     * Counts the media that clearing local media would leave with no known copy anywhere.
+     *
+     * Only a remote can back up a local copy here, because the local copy is what the
+     * operation deletes. The answer is an upper bound, see `media_ids_without_backup`.
+     *
      * # Errors
      *
      * Returns an error if the library configuration cannot be read.
      */
-nonisolated open func mediaIdsWithoutRemoteBackup()throws  -> [FfiMediaUuid]  {
-    return try  FfiConverterSequenceTypeFfiMediaUuid.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
-    uniffi_lasco_ffi_fn_method_ffilibrary_media_ids_without_remote_backup(self.uniffiClonePointer(),$0
+nonisolated open func mediaCountLostIfLocalMediaCleared()throws  -> UInt64  {
+    return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_media_count_lost_if_local_media_cleared(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Counts the media that removing `remote_id` would leave with no known copy anywhere.
+     *
+     * The local copy survives the removal, so it counts as a home alongside every remaining
+     * remote. The answer is an upper bound, see `media_ids_without_backup`.
+     *
+     * # Errors
+     *
+     * Returns an error if the library configuration cannot be read or `remote_id` is invalid.
+     */
+nonisolated open func mediaCountLostIfRemoteRemoved(remoteId: FfiRemoteUuid)throws  -> UInt64  {
+    return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_media_count_lost_if_remote_removed(self.uniffiClonePointer(),
+        FfiConverterTypeFfiRemoteUuid_lower(remoteId),$0
     )
 })
 }
@@ -2065,13 +2120,6 @@ nonisolated open func orphanMediaByDateRange(posStartInclusive: UInt32, posEndIn
     uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date_range(self.uniffiClonePointer(),
         FfiConverterUInt32.lower(posStartInclusive),
         FfiConverterUInt32.lower(posEndInclusive),$0
-    )
-})
-}
-    
-nonisolated open func pendingMediaCount() -> UInt64  {
-    return try!  FfiConverterUInt64.lift(try! rustCall() {
-    uniffi_lasco_ffi_fn_method_ffilibrary_pending_media_count(self.uniffiClonePointer(),$0
     )
 })
 }
@@ -2180,6 +2228,24 @@ nonisolated open func pushRemoteUsingConfiguredMediaSourcesAsync(targetRemoteId:
 }
     
     /**
+     * What `remote_id` is not yet confirmed to hold.
+     *
+     * Only meaningful once every local operation has reached the remote, since media a remote
+     * has never been told about cannot be expected on it.
+     *
+     * # Errors
+     *
+     * Returns an error if `remote_id` is invalid.
+     */
+nonisolated open func remoteMediaShortfall(remoteId: FfiRemoteUuid)throws  -> FfiRemoteMediaShortfall  {
+    return try  FfiConverterTypeFfiRemoteMediaShortfall_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_remote_media_shortfall(self.uniffiClonePointer(),
+        FfiConverterTypeFfiRemoteUuid_lower(remoteId),$0
+    )
+})
+}
+    
+    /**
      * # Errors
      *
      * Returns an error for invalid or absent IDs, missing membership, or an unpersistable operation.
@@ -2219,9 +2285,14 @@ nonisolated open func removeOwnCompactionLock(remoteId: FfiRemoteUuid, appSuppor
 }
     
     /**
+     * Removes a remote from the configuration and deletes everything this client cached
+     * about it.
+     *
      * # Errors
      *
-     * Returns an error if `remote_id` is invalid or unknown, or the configuration update cannot be saved.
+     * Returns an error if `remote_id` is invalid or unknown, if the configuration update
+     * cannot be saved, or if a sync holds the remote, in which case the remote is already out
+     * of the configuration and its directory is deleted on the next open.
      *
      * # Panics
      *
@@ -4153,6 +4224,80 @@ nonisolated public func FfiConverterTypeFfiRemote_lower(_ value: FfiRemote) -> R
 }
 
 
+/**
+ * What one remote is not yet confirmed to hold. Both counts come from the media list this
+ * client cached for that remote, so they are accurate as of its last fetch or push.
+ */
+nonisolated public struct FfiRemoteMediaShortfall {
+    public var missingFull: UInt64
+    public var missingThumb: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(missingFull: UInt64, missingThumb: UInt64) {
+        self.missingFull = missingFull
+        self.missingThumb = missingThumb
+    }
+}
+
+#if compiler(>=6)
+nonisolated extension FfiRemoteMediaShortfall: Sendable {}
+#endif
+
+
+nonisolated extension FfiRemoteMediaShortfall: Equatable, Hashable {
+    public static func ==(lhs: FfiRemoteMediaShortfall, rhs: FfiRemoteMediaShortfall) -> Bool {
+        if lhs.missingFull != rhs.missingFull {
+            return false
+        }
+        if lhs.missingThumb != rhs.missingThumb {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(missingFull)
+        hasher.combine(missingThumb)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public struct FfiConverterTypeFfiRemoteMediaShortfall: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiRemoteMediaShortfall {
+        return
+            try FfiRemoteMediaShortfall(
+                missingFull: FfiConverterUInt64.read(from: &buf), 
+                missingThumb: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiRemoteMediaShortfall, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.missingFull, into: &buf)
+        FfiConverterUInt64.write(value.missingThumb, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public func FfiConverterTypeFfiRemoteMediaShortfall_lift(_ buf: RustBuffer) throws -> FfiRemoteMediaShortfall {
+    return try FfiConverterTypeFfiRemoteMediaShortfall.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public func FfiConverterTypeFfiRemoteMediaShortfall_lower(_ value: FfiRemoteMediaShortfall) -> RustBuffer {
+    return FfiConverterTypeFfiRemoteMediaShortfall.lower(value)
+}
+
+
 nonisolated public struct FfiRemoteUuid {
     public var value: String
 
@@ -5266,7 +5411,10 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_media_containing_album_ids() != 8372) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_media_ids_without_remote_backup() != 14902) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_media_count_lost_if_local_media_cleared() != 58380) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_media_count_lost_if_remote_removed() != 6485) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_media_in_album() != 39680) {
@@ -5287,9 +5435,6 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_range() != 61721) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_pending_media_count() != 2390) {
-        return InitializationResult.apiChecksumMismatch
-    }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote() != 27651) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -5305,6 +5450,9 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_using_configured_media_sources_async() != 9550) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_remote_media_shortfall() != 52429) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_remove_media_from_album() != 46585) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -5314,7 +5462,7 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_remove_own_compaction_lock() != 13031) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_remove_remote() != 41678) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_remove_remote() != 48064) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_rename_album() != 50813) {

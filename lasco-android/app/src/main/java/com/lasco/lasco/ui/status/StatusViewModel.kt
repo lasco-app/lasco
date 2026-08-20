@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import uniffi.lasco_ffi.FfiLocalStateStats
 import uniffi.lasco_ffi.FfiMediaItem
+import uniffi.lasco_ffi.FfiRemoteMediaShortfall
 import uniffi.lasco_ffi.FfiRemoteUuid
 
 private val VIDEO_EXTENSIONS = setOf(
@@ -54,6 +55,9 @@ class StatusViewModel(
     private val _unpushed = MutableStateFlow<Map<FfiRemoteUuid, Boolean>>(emptyMap())
     val unpushed: StateFlow<Map<FfiRemoteUuid, Boolean>> = _unpushed.asStateFlow()
 
+    private val _shortfall = MutableStateFlow<Map<FfiRemoteUuid, FfiRemoteMediaShortfall>>(emptyMap())
+    val shortfall: StateFlow<Map<FfiRemoteUuid, FfiRemoteMediaShortfall>> = _shortfall.asStateFlow()
+
     private val _localStateStats = MutableStateFlow<FfiLocalStateStats?>(null)
     val localStateStats: StateFlow<FfiLocalStateStats?> = _localStateStats.asStateFlow()
 
@@ -85,14 +89,22 @@ class StatusViewModel(
     private suspend fun refreshUnpushed(remoteIds: List<FfiRemoteUuid>) {
         val updates = remoteIds.associateWith { repo.hasUnpushedChanges(it) }
         _unpushed.value = _unpushed.value + updates
+        // Media a remote has never been told about cannot be expected on it, so the shortfall
+        // is only worth reading once every operation has reached it. That also keeps this off
+        // the hot path during an import, where nothing is pushed.
+        val settled = updates.filterValues { !it }.keys
+        if (settled.isEmpty()) return
+        val shortfalls = settled.associateWith { repo.remoteMediaShortfall(it) }
+        _shortfall.value = _shortfall.value + shortfalls
     }
 
     fun refreshLocalStateStats() {
         viewModelScope.launch { _localStateStats.value = repo.localStateStats() }
     }
 
-    suspend fun mediaCountWithoutRemoteBackup(): Int? =
-        repo.mediaIdsWithoutRemoteBackup().size.takeIf { it > 0 }
+    // Queried when the user reaches for the action rather than on every refresh, because it
+    // stats a file per media and is only ever read to answer that one question.
+    suspend fun mediaCountLostIfLocalMediaCleared(): Int = repo.mediaCountLostIfLocalMediaCleared()
 
     fun cleanLocalMedia() {
         viewModelScope.launch {

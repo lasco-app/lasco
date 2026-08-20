@@ -10,7 +10,8 @@ struct StatusView: View {
     @State private var showAddS3 = false
     @State private var showAddLocalFS = false
     @State private var showCleanConfirm = false
-    @State private var cleanBlockedCount: Int? = nil
+    @State private var cleanBlockedCount: Int?
+    @State private var cleanOverrideCount: Int?
     @State private var showClearThumbsConfirm = false
     @State private var pushBlocked: PushBlockedContext?
     let repository: LibraryRepository
@@ -120,10 +121,32 @@ struct StatusView: View {
                 set: { if !$0 { cleanBlockedCount = nil } }
             )
         ) {
-            Button("OK") {}
+            if expertMode {
+                Button("Clean anyway", role: .destructive) {
+                    cleanOverrideCount = cleanBlockedCount
+                    cleanBlockedCount = nil
+                }
+            }
+            Button("OK", role: .cancel) {}
         } message: {
             if let count = cleanBlockedCount {
-                Text("\(count) item\(count == 1 ? "" : "s") not backed up on any remote. Push to a remote before cleaning local media.")
+                Text("\(count) item\(count == 1 ? "" : "s") not confirmed on any remote. This is based on each remote's media list as of its last update, so some may already be there. Push to a remote before cleaning local media.")
+            }
+        }
+        .alert(
+            "Lose these media forever?",
+            isPresented: Binding(
+                get: { cleanOverrideCount != nil },
+                set: { if !$0 { cleanOverrideCount = nil } }
+            )
+        ) {
+            Button("I understand, I might lose data", role: .destructive) {
+                Task { try? await model.cleanLocalMedia() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            if let count = cleanOverrideCount {
+                Text("\(count) item\(count == 1 ? "" : "s") might be the only copy left. Cleaning deletes them from this device with no way to get them back.")
             }
         }
     }
@@ -180,10 +203,13 @@ struct StatusView: View {
                 Divider().background(theme.inkMuted.opacity(0.2))
 
                 Button {
-                    if let count = model.mediaCountWithoutRemoteBackup {
-                        cleanBlockedCount = count
-                    } else {
-                        showCleanConfirm = true
+                    Task {
+                        let count = await model.mediaCountLostIfLocalMediaCleared()
+                        if count > 0 {
+                            cleanBlockedCount = count
+                        } else {
+                            showCleanConfirm = true
+                        }
                     }
                 } label: {
                     Text("Clean local media")
@@ -240,6 +266,7 @@ struct StatusView: View {
                         lastPush: syncCoordinator.lastPushRecords[remote.remoteId],
                         lastFetch: syncCoordinator.lastFetchRecords[remote.remoteId],
                         isSynced: isSynced(remote),
+                        shortfall: model.shortfall(remoteID: remote.remoteId),
                         nextPushDate: remote.autoPush ? syncCoordinator.nextPushDate : nil,
                         pushEnabled: syncCoordinator.isPushAllowed(remote.remoteId),
                         fetchEnabled: syncCoordinator.isFetchAllowed(remote.remoteId),
@@ -299,6 +326,7 @@ private struct RemoteStatusCard: View {
     let lastPush: SyncRecord?
     let lastFetch: SyncRecord?
     let isSynced: Bool
+    let shortfall: FfiRemoteMediaShortfall?
     let nextPushDate: Date?
     let pushEnabled: Bool
     let fetchEnabled: Bool
@@ -306,13 +334,33 @@ private struct RemoteStatusCard: View {
     let onFetch: () -> Void
 
     private func pushBannerText(now: Date) -> String {
-        guard !isSynced else { return "all local changes pushed" }
-        if let nextPushDate, nextPushDate > now {
-            let seconds = Int(nextPushDate.timeIntervalSince(now).rounded(.up))
-            return "local changes not pushed, pushing in \(seconds)s"
+        guard isSynced else {
+            if let nextPushDate, nextPushDate > now {
+                let seconds = Int(nextPushDate.timeIntervalSince(now).rounded(.up))
+                return "local changes not pushed, pushing in \(seconds)s"
+            }
+            return "local changes not pushed"
         }
-        return "local changes not pushed"
+        if let text = shortfallText { return text }
+        return "all local changes pushed"
     }
+
+    /// Reads only once every operation has reached the remote, since media a remote has never
+    /// been told about cannot be expected on it. A missing thumbnail has no fallback, so a
+    /// remote short of thumbnails cannot be browsed from at all.
+    private var shortfallText: String? {
+        guard let shortfall else { return nil }
+        let media = Int(shortfall.missingFull)
+        let thumbs = Int(shortfall.missingThumb)
+        let parts = [
+            media > 0 ? "\(media) media" : nil,
+            thumbs > 0 ? "\(thumbs) thumbnail\(thumbs == 1 ? "" : "s")" : nil,
+        ].compactMap { $0 }
+        guard !parts.isEmpty else { return nil }
+        return "\(parts.joined(separator: " and ")) not confirmed on remote"
+    }
+
+    private var bannerIsWarning: Bool { !isSynced || shortfallText != nil }
 
     private func syncLabel(_ record: SyncRecord?) -> String {
         guard let record else { return "never" }
@@ -350,7 +398,7 @@ private struct RemoteStatusCard: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
-                    .background(isSynced ? theme.pink : Color.red)
+                    .background(bannerIsWarning ? Color.red : theme.pink)
             }
 
             Divider().background(theme.inkMuted.opacity(0.2))

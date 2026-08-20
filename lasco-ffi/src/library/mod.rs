@@ -389,6 +389,7 @@ impl FfiLibrary {
             .iter()
             .map(remote_config_to_ffi)
             .collect();
+        let live_remote_ids = lasco_core::library_json::list_remote_ids(&library_config);
 
         let sessions = sessions_dir(&app_dir);
         let library = rt.block_on(lasco_core::client::open_library(
@@ -398,6 +399,11 @@ impl FfiLibrary {
             Some(LibraryPassword(password)),
             Some(&sessions),
         ))?;
+
+        // Removing a remote deletes its directory, so this only has work to do when that could
+        // not happen, which is when a sync held the remote or the process stopped between
+        // writing library.json and deleting.
+        let _swept = library.sweep_orphan_remote_dirs(&live_remote_ids);
 
         Ok(Arc::new(Self {
             inner: library,

@@ -85,7 +85,9 @@ protocol LibraryRepositoryProtocol: Sendable {
     func setMediaThumbnail(mediaID: FfiMediaUuid, data: Data) async throws
     func evictLocalData(mediaIDs: [FfiMediaUuid]) async throws
     func evictLocalThumbnails(mediaIDs: [FfiMediaUuid]) async throws
-    func mediaIDsWithoutRemoteBackup() async throws -> [FfiMediaUuid]
+    func mediaCountLostIfLocalMediaCleared() async throws -> Int
+    func mediaCountLostIfRemoteRemoved(remoteID: FfiRemoteUuid) async throws -> Int
+    func remoteMediaShortfall(remoteID: FfiRemoteUuid) async throws -> FfiRemoteMediaShortfall
     func allMediaIDs() async -> [FfiMediaUuid]
 
     func setDefaultFetchRemote(remoteID: FfiRemoteUuid?) async throws
@@ -519,9 +521,19 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         try library.evictLocalThumbnails(mediaIds: mediaIDs)
     }
 
-    func mediaIDsWithoutRemoteBackup() async throws -> [FfiMediaUuid] {
+    func mediaCountLostIfLocalMediaCleared() async throws -> Int {
         try ensureOpen()
-        return try library.mediaIdsWithoutRemoteBackup()
+        return Int(try library.mediaCountLostIfLocalMediaCleared())
+    }
+
+    func mediaCountLostIfRemoteRemoved(remoteID: FfiRemoteUuid) async throws -> Int {
+        try ensureOpen()
+        return Int(try library.mediaCountLostIfRemoteRemoved(remoteId: remoteID))
+    }
+
+    func remoteMediaShortfall(remoteID: FfiRemoteUuid) async throws -> FfiRemoteMediaShortfall {
+        try ensureOpen()
+        return try library.remoteMediaShortfall(remoteId: remoteID)
     }
 
     func allMediaIDs() async -> [FfiMediaUuid] {
@@ -764,7 +776,9 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     func setMediaThumbnail(mediaID: FfiMediaUuid, data: Data) async throws { try await storage.setMediaThumbnail(mediaID: mediaID, data: data) }
     func evictLocalData(mediaIDs: [FfiMediaUuid]) async throws { try await storage.evictLocalData(mediaIDs: mediaIDs) }
     func evictLocalThumbnails(mediaIDs: [FfiMediaUuid]) async throws { try await storage.evictLocalThumbnails(mediaIDs: mediaIDs) }
-    func mediaIDsWithoutRemoteBackup() async throws -> [FfiMediaUuid] { try await storage.mediaIDsWithoutRemoteBackup() }
+    func mediaCountLostIfLocalMediaCleared() async throws -> Int { try await storage.mediaCountLostIfLocalMediaCleared() }
+    func mediaCountLostIfRemoteRemoved(remoteID: FfiRemoteUuid) async throws -> Int { try await storage.mediaCountLostIfRemoteRemoved(remoteID: remoteID) }
+    func remoteMediaShortfall(remoteID: FfiRemoteUuid) async throws -> FfiRemoteMediaShortfall { try await storage.remoteMediaShortfall(remoteID: remoteID) }
     func allMediaIDs() async -> [FfiMediaUuid] { await storage.allMediaIDs() }
     func setDefaultFetchRemote(remoteID: FfiRemoteUuid?) async throws { try await storage.setDefaultFetchRemote(remoteID: remoteID) }
     func setRemoteAutoPush(remoteID: FfiRemoteUuid, enabled: Bool) async throws { try await storage.setRemoteAutoPush(remoteID: remoteID, enabled: enabled) }

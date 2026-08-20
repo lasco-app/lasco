@@ -44,7 +44,7 @@ struct MainView: View {
         case .status:
             StatusView(repository: repository, session: session, syncCoordinator: syncCoordinator)
         case .manage:
-            ManageView(repository: repository, session: session)
+            ManageView(repository: repository, session: session, syncCoordinator: syncCoordinator)
         }
     }
 
