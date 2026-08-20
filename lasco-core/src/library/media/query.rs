@@ -35,6 +35,23 @@ pub enum MediaListScope {
     All,
 }
 
+/// What one remote is not yet confirmed to hold, from `Library::remote_media_shortfall`.
+///
+/// A remote missing thumbnails cannot be browsed from, since a thumbnail has no fallback and
+/// a missing one leaves an empty cell.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct RemoteMediaShortfall {
+    pub missing_full: usize,
+    pub missing_thumb: usize,
+}
+
+impl RemoteMediaShortfall {
+    #[must_use]
+    pub fn is_settled(&self) -> bool {
+        self.missing_full == 0 && self.missing_thumb == 0
+    }
+}
+
 /// Selects what counts as a home for a media blob in `Library::media_ids_without_backup`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BackupScope {
@@ -401,6 +418,38 @@ impl Library {
             .local_state_media_dir()
             .data_path(year, month, &media_id)
             .exists()
+    }
+
+    /// What one remote is not yet known to hold, according to the media list this client
+    /// cached for it.
+    ///
+    /// Both counts come from that cached list, never from a live listing, so a blob this
+    /// client has not confirmed may still be on the remote. Fetch and push refresh the list,
+    /// so the counts are accurate as of this client's last exchange with that remote.
+    ///
+    /// A companion resource never has a thumbnail, so it is left out of `missing_thumb`.
+    /// Counting it would report a shortfall that no push could ever settle.
+    #[must_use]
+    pub fn remote_media_shortfall(&self, remote_id: &str) -> RemoteMediaShortfall {
+        let remote_media_list = self.inner.local_dirs.remote_media_list(remote_id);
+        let Ok(list) = self.inner.remote_media_list_lock.with_lock(
+            remote_id,
+            &remote_media_list,
+            |remote_media_list| MediaList::load_or_default(&remote_media_list.media_list_path()),
+        ) else {
+            return RemoteMediaShortfall::default();
+        };
+
+        let mut shortfall = RemoteMediaShortfall::default();
+        for entry in self.media_list(MediaListScope::All) {
+            if !list.has_full(&entry.media_id) {
+                shortfall.missing_full += 1;
+            }
+            if entry.companion_kind.is_none() && !list.has_thumb(&entry.media_id) {
+                shortfall.missing_thumb += 1;
+            }
+        }
+        shortfall
     }
 
     /// Returns the ids of media whose full blob has no known home once `scope` is applied.
@@ -786,6 +835,96 @@ mod tests {
                 .iter()
                 .all(|entry| entry.media_id != video_id),
             "the companion is invisible in the media list, which is why the count looks high"
+        );
+    }
+
+    #[tokio::test]
+    async fn shortfall_reports_both_blobs_until_each_is_confirmed() {
+        let tmp = TempDir::new().unwrap();
+        let (lib, _) = make_library(&tmp);
+        let (media_id, _) = add_media_to_album(&lib, &tmp, "img.jpg", b"photo data").await;
+
+        assert_eq!(
+            lib.remote_media_shortfall("remote-a"),
+            RemoteMediaShortfall { missing_full: 1, missing_thumb: 1 }
+        );
+
+        let path = lib
+            .inner
+            .local_dirs
+            .remote_media_list("remote-a")
+            .media_list_path();
+        let mut list = MediaList::load_or_default(&path).unwrap();
+        list.record(media_id, true, false);
+        list.save(&path).unwrap();
+        assert_eq!(
+            lib.remote_media_shortfall("remote-a"),
+            RemoteMediaShortfall { missing_full: 0, missing_thumb: 1 }
+        );
+
+        let mut list = MediaList::load_or_default(&path).unwrap();
+        list.record(media_id, false, true);
+        list.save(&path).unwrap();
+        assert!(lib.remote_media_shortfall("remote-a").is_settled());
+    }
+
+    // A companion never has a thumbnail, so counting one would report a shortfall that no
+    // push could ever settle.
+    #[tokio::test]
+    async fn shortfall_never_expects_a_thumbnail_for_a_companion() {
+        let tmp = TempDir::new().unwrap();
+        let (lib, _) = make_library(&tmp);
+        let video_src = tmp.path().join("live.mov");
+        std::fs::write(&video_src, b"motion").unwrap();
+        let video_id = lib
+            .media_add(MediaAddSource::CopyFrom(video_src), None, None, None, None)
+            .await
+            .unwrap()
+            .id();
+        let still_src = tmp.path().join("live.jpg");
+        std::fs::write(&still_src, b"pixels").unwrap();
+        let still_id = lib
+            .media_add(
+                MediaAddSource::CopyFrom(still_src),
+                None,
+                None,
+                None,
+                Some(video_id),
+            )
+            .await
+            .unwrap()
+            .id();
+
+        // Two media, but only the primary one is ever expected to have a thumbnail.
+        assert_eq!(
+            lib.remote_media_shortfall("remote-a"),
+            RemoteMediaShortfall { missing_full: 2, missing_thumb: 1 }
+        );
+
+        let path = lib
+            .inner
+            .local_dirs
+            .remote_media_list("remote-a")
+            .media_list_path();
+        let mut list = MediaList::load_or_default(&path).unwrap();
+        list.record(video_id, true, false);
+        list.record(still_id, true, true);
+        list.save(&path).unwrap();
+        assert!(
+            lib.remote_media_shortfall("remote-a").is_settled(),
+            "the companion must settle without a thumbnail"
+        );
+    }
+
+    #[tokio::test]
+    async fn shortfall_counts_everything_for_a_remote_with_no_cached_list() {
+        let tmp = TempDir::new().unwrap();
+        let (lib, _) = make_library(&tmp);
+        add_media_to_album(&lib, &tmp, "img.jpg", b"photo data").await;
+
+        assert_eq!(
+            lib.remote_media_shortfall("never-synced"),
+            RemoteMediaShortfall { missing_full: 1, missing_thumb: 1 }
         );
     }
 

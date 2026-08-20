@@ -127,6 +127,14 @@ pub struct FfiLocalStateStats {
     pub thumb_cached_bytes: u64,
 }
 
+/// What one remote is not yet confirmed to hold. Both counts come from the media list this
+/// client cached for that remote, so they are accurate as of its last fetch or push.
+#[derive(uniffi::Record, Debug)]
+pub struct FfiRemoteMediaShortfall {
+    pub missing_full: u64,
+    pub missing_thumb: u64,
+}
+
 /// Remote compaction-lock metadata. Absence of this record means no lock is held.
 #[derive(uniffi::Record, Debug)]
 pub struct FfiCompactionLockInfo {

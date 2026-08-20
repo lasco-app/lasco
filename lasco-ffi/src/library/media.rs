@@ -1,7 +1,9 @@
 use lasco_core::library::media::upload::MediaAddResult;
 
 use super::remotes::media_entry_to_ffi;
-use super::types::{FfiLocalStateStats, FfiMediaAddResult, FfiMediaNeighbors};
+use super::types::{
+    FfiLocalStateStats, FfiMediaAddResult, FfiMediaNeighbors, FfiRemoteMediaShortfall,
+};
 use super::{FfiLibrary, FfiMediaItem, ffi_count};
 use crate::error::LascoError;
 use crate::ids::{FfiAlbumUuid, FfiLibraryId, FfiMediaUuid, FfiRemoteUuid};
@@ -565,6 +567,30 @@ impl FfiLibrary {
             .into_iter()
             .map(|entry| entry.media_id.into())
             .collect()
+    }
+
+    /// What `remote_id` is not yet confirmed to hold.
+    ///
+    /// Only meaningful once every local operation has reached the remote, since media a remote
+    /// has never been told about cannot be expected on it.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `remote_id` is invalid.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
+    pub fn remote_media_shortfall(
+        &self,
+        remote_id: FfiRemoteUuid,
+    ) -> Result<FfiRemoteMediaShortfall, LascoError> {
+        let remote_uuid: RemoteUuid = remote_id.try_into()?;
+        let shortfall = self.inner.remote_media_shortfall(&remote_uuid.to_string());
+        Ok(FfiRemoteMediaShortfall {
+            missing_full: ffi_count(shortfall.missing_full),
+            missing_thumb: ffi_count(shortfall.missing_thumb),
+        })
     }
 
     /// Counts the media that clearing local media would leave with no known copy anywhere.

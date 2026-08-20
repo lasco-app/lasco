@@ -905,6 +905,8 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1069,6 +1071,8 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_from_remote(
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_from_remote_async(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_using_configured_media_sources_async(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_remote_media_shortfall(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_remove_media_from_album(
 ): Short
@@ -1293,6 +1297,8 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_from_remote_async(`ptr`: P
 ): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_using_configured_media_sources_async(`ptr`: Pointer,`targetRemoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,
 ): Long
+fun uniffi_lasco_ffi_fn_method_ffilibrary_remote_media_shortfall(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_remove_media_from_album(`ptr`: Pointer,`albumId`: RustBuffer.ByValue,`mediaId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_remove_media_from_group(`ptr`: Pointer,`groupId`: RustBuffer.ByValue,`mediaId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1690,6 +1696,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_using_configured_media_sources_async() != 9550.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_remote_media_shortfall() != 52429.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_remove_media_from_album() != 46585.toShort()) {
@@ -2709,6 +2718,18 @@ public interface FfiLibraryInterface {
      * data blob has no known place to be read from, or the push itself fails.
      */
     suspend fun `pushRemoteUsingConfiguredMediaSourcesAsync`(`targetRemoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): kotlin.ULong
+    
+    /**
+     * What `remote_id` is not yet confirmed to hold.
+     *
+     * Only meaningful once every local operation has reached the remote, since media a remote
+     * has never been told about cannot be expected on it.
+     *
+     * # Errors
+     *
+     * Returns an error if `remote_id` is invalid.
+     */
+    fun `remoteMediaShortfall`(`remoteId`: FfiRemoteUuid): FfiRemoteMediaShortfall
     
     /**
      * # Errors
@@ -4188,6 +4209,29 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
 
     
     /**
+     * What `remote_id` is not yet confirmed to hold.
+     *
+     * Only meaningful once every local operation has reached the remote, since media a remote
+     * has never been told about cannot be expected on it.
+     *
+     * # Errors
+     *
+     * Returns an error if `remote_id` is invalid.
+     */
+    @Throws(LascoException::class)override fun `remoteMediaShortfall`(`remoteId`: FfiRemoteUuid): FfiRemoteMediaShortfall {
+            return FfiConverterTypeFfiRemoteMediaShortfall.lift(
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_remote_media_shortfall(
+        it, FfiConverterTypeFfiRemoteUuid.lower(`remoteId`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * # Errors
      *
      * Returns an error for invalid or absent IDs, missing membership, or an unpersistable operation.
@@ -5322,6 +5366,42 @@ public object FfiConverterTypeFfiRemote: FfiConverterRustBuffer<FfiRemote> {
             FfiConverterOptionalString.write(value.`bucket`, buf)
             FfiConverterOptionalString.write(value.`region`, buf)
             FfiConverterOptionalString.write(value.`path`, buf)
+    }
+}
+
+
+
+/**
+ * What one remote is not yet confirmed to hold. Both counts come from the media list this
+ * client cached for that remote, so they are accurate as of its last fetch or push.
+ */
+data class FfiRemoteMediaShortfall (
+    var `missingFull`: kotlin.ULong, 
+    var `missingThumb`: kotlin.ULong
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFfiRemoteMediaShortfall: FfiConverterRustBuffer<FfiRemoteMediaShortfall> {
+    override fun read(buf: ByteBuffer): FfiRemoteMediaShortfall {
+        return FfiRemoteMediaShortfall(
+            FfiConverterULong.read(buf),
+            FfiConverterULong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FfiRemoteMediaShortfall) = (
+            FfiConverterULong.allocationSize(value.`missingFull`) +
+            FfiConverterULong.allocationSize(value.`missingThumb`)
+    )
+
+    override fun write(value: FfiRemoteMediaShortfall, buf: ByteBuffer) {
+            FfiConverterULong.write(value.`missingFull`, buf)
+            FfiConverterULong.write(value.`missingThumb`, buf)
     }
 }
 

@@ -525,6 +525,7 @@ final class StatusModel {
     private(set) var mediaCount = 0
     private(set) var localStateStats: FfiLocalStateStats?
     private(set) var syncedByRemoteID: [FfiRemoteUuid: Bool] = [:]
+    private(set) var shortfallByRemoteID: [FfiRemoteUuid: FfiRemoteMediaShortfall] = [:]
     private let repository: any LibraryRepositoryProtocol
 
     init(repository: any LibraryRepositoryProtocol) {
@@ -549,11 +550,18 @@ final class StatusModel {
             localStateStats = try await statsQuery
             let session = try await sessionQuery
             var syncStatus: [FfiRemoteUuid: Bool] = [:]
+            var shortfalls: [FfiRemoteUuid: FfiRemoteMediaShortfall] = [:]
             for remote in session.remotes {
                 let hasUnpushedChanges = await repository.hasUnpushedChanges(remoteID: remote.remoteId)
                 syncStatus[remote.remoteId] = !hasUnpushedChanges
+                // Media a remote has never been told about cannot be expected on it, so the
+                // shortfall is only worth reading once every operation has reached it. That
+                // also keeps this off the hot path during an import, where nothing is pushed.
+                guard !hasUnpushedChanges else { continue }
+                shortfalls[remote.remoteId] = try? await repository.remoteMediaShortfall(remoteID: remote.remoteId)
             }
             syncedByRemoteID = syncStatus
+            shortfallByRemoteID = shortfalls
         } catch is CancellationError {
         } catch {
             AppLogger.log(.error, "status query failed: \(error)")
@@ -584,6 +592,10 @@ final class StatusModel {
 
     func isSynced(remoteID: FfiRemoteUuid) -> Bool {
         syncedByRemoteID[remoteID] ?? true
+    }
+
+    func shortfall(remoteID: FfiRemoteUuid) -> FfiRemoteMediaShortfall? {
+        shortfallByRemoteID[remoteID]
     }
 }
 

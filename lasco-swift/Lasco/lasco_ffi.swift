@@ -1042,6 +1042,18 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     func pushRemoteUsingConfiguredMediaSourcesAsync(targetRemoteId: FfiRemoteUuid, appSupportDir: String?) async throws  -> UInt64
     
     /**
+     * What `remote_id` is not yet confirmed to hold.
+     *
+     * Only meaningful once every local operation has reached the remote, since media a remote
+     * has never been told about cannot be expected on it.
+     *
+     * # Errors
+     *
+     * Returns an error if `remote_id` is invalid.
+     */
+    func remoteMediaShortfall(remoteId: FfiRemoteUuid) throws  -> FfiRemoteMediaShortfall
+    
+    /**
      * # Errors
      *
      * Returns an error for invalid or absent IDs, missing membership, or an unpersistable operation.
@@ -2208,6 +2220,24 @@ nonisolated open func pushRemoteUsingConfiguredMediaSourcesAsync(targetRemoteId:
             liftFunc: FfiConverterUInt64.lift,
             errorHandler: FfiConverterTypeLascoError_lift
         )
+}
+    
+    /**
+     * What `remote_id` is not yet confirmed to hold.
+     *
+     * Only meaningful once every local operation has reached the remote, since media a remote
+     * has never been told about cannot be expected on it.
+     *
+     * # Errors
+     *
+     * Returns an error if `remote_id` is invalid.
+     */
+nonisolated open func remoteMediaShortfall(remoteId: FfiRemoteUuid)throws  -> FfiRemoteMediaShortfall  {
+    return try  FfiConverterTypeFfiRemoteMediaShortfall_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_remote_media_shortfall(self.uniffiClonePointer(),
+        FfiConverterTypeFfiRemoteUuid_lower(remoteId),$0
+    )
+})
 }
     
     /**
@@ -4184,6 +4214,80 @@ nonisolated public func FfiConverterTypeFfiRemote_lower(_ value: FfiRemote) -> R
 }
 
 
+/**
+ * What one remote is not yet confirmed to hold. Both counts come from the media list this
+ * client cached for that remote, so they are accurate as of its last fetch or push.
+ */
+nonisolated public struct FfiRemoteMediaShortfall {
+    public var missingFull: UInt64
+    public var missingThumb: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(missingFull: UInt64, missingThumb: UInt64) {
+        self.missingFull = missingFull
+        self.missingThumb = missingThumb
+    }
+}
+
+#if compiler(>=6)
+nonisolated extension FfiRemoteMediaShortfall: Sendable {}
+#endif
+
+
+nonisolated extension FfiRemoteMediaShortfall: Equatable, Hashable {
+    public static func ==(lhs: FfiRemoteMediaShortfall, rhs: FfiRemoteMediaShortfall) -> Bool {
+        if lhs.missingFull != rhs.missingFull {
+            return false
+        }
+        if lhs.missingThumb != rhs.missingThumb {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(missingFull)
+        hasher.combine(missingThumb)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public struct FfiConverterTypeFfiRemoteMediaShortfall: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiRemoteMediaShortfall {
+        return
+            try FfiRemoteMediaShortfall(
+                missingFull: FfiConverterUInt64.read(from: &buf), 
+                missingThumb: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiRemoteMediaShortfall, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.missingFull, into: &buf)
+        FfiConverterUInt64.write(value.missingThumb, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public func FfiConverterTypeFfiRemoteMediaShortfall_lift(_ buf: RustBuffer) throws -> FfiRemoteMediaShortfall {
+    return try FfiConverterTypeFfiRemoteMediaShortfall.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public func FfiConverterTypeFfiRemoteMediaShortfall_lower(_ value: FfiRemoteMediaShortfall) -> RustBuffer {
+    return FfiConverterTypeFfiRemoteMediaShortfall.lower(value)
+}
+
+
 nonisolated public struct FfiRemoteUuid {
     public var value: String
 
@@ -5334,6 +5438,9 @@ nonisolated private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_using_configured_media_sources_async() != 9550) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_remote_media_shortfall() != 52429) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_remove_media_from_album() != 46585) {
