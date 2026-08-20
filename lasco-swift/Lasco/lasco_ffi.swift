@@ -998,8 +998,6 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      */
     func orphanMediaByDateRange(posStartInclusive: UInt32, posEndInclusive: UInt32) throws  -> [FfiMediaItem]
     
-    func pendingMediaCount()  -> UInt64
-    
     /**
      * # Errors
      *
@@ -2105,13 +2103,6 @@ nonisolated open func orphanMediaByDateRange(posStartInclusive: UInt32, posEndIn
     uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date_range(self.uniffiClonePointer(),
         FfiConverterUInt32.lower(posStartInclusive),
         FfiConverterUInt32.lower(posEndInclusive),$0
-    )
-})
-}
-    
-nonisolated open func pendingMediaCount() -> UInt64  {
-    return try!  FfiConverterUInt64.lift(try! rustCall() {
-    uniffi_lasco_ffi_fn_method_ffilibrary_pending_media_count(self.uniffiClonePointer(),$0
     )
 })
 }
@@ -5328,9 +5319,6 @@ nonisolated private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_range() != 61721) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_pending_media_count() != 2390) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote() != 27651) {

@@ -905,8 +905,6 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
-
-
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1061,8 +1059,6 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_count(
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_neighbors(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_range(
-): Short
-fun uniffi_lasco_ffi_checksum_method_ffilibrary_pending_media_count(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote(
 ): Short
@@ -1287,8 +1283,6 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date_neighbors(`ptr`: 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date_range(`ptr`: Pointer,`posStartInclusive`: Int,`posEndInclusive`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
-fun uniffi_lasco_ffi_fn_method_ffilibrary_pending_media_count(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
-): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_push_remote(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_async(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,
@@ -1681,9 +1675,6 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_orphan_media_by_date_range() != 61721.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_pending_media_count() != 2390.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote() != 27651.toShort()) {
@@ -2675,8 +2666,6 @@ public interface FfiLibraryInterface {
      * Returns an error when the start position exceeds the end position.
      */
     fun `orphanMediaByDateRange`(`posStartInclusive`: kotlin.UInt, `posEndInclusive`: kotlin.UInt): List<FfiMediaItem>
-    
-    fun `pendingMediaCount`(): kotlin.ULong
     
     /**
      * # Errors
@@ -4069,18 +4058,6 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     uniffiRustCallWithError(LascoException) { _status ->
     UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date_range(
         it, FfiConverterUInt.lower(`posStartInclusive`),FfiConverterUInt.lower(`posEndInclusive`),_status)
-}
-    }
-    )
-    }
-    
-
-    override fun `pendingMediaCount`(): kotlin.ULong {
-            return FfiConverterULong.lift(
-    callWithPointer {
-    uniffiRustCall() { _status ->
-    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_pending_media_count(
-        it, _status)
 }
     }
     )

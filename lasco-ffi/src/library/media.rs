@@ -337,10 +337,6 @@ impl FfiLibrary {
         })
     }
 
-    pub fn pending_media_count(&self) -> u64 {
-        ffi_count(self.inner.pending_media_count().unwrap_or(0))
-    }
-
     #[allow(
         clippy::needless_pass_by_value,
         reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."

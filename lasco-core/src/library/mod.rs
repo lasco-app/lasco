@@ -324,24 +324,6 @@ impl Library {
 
     /// # Errors
     ///
-    /// Returns an error if the local media cache directory cannot be read.
-    pub fn pending_media_count(&self) -> Result<usize> {
-        let count = self
-            .local_ops_read_write()
-            .read_operations()?
-            .iter()
-            .filter(|operation| {
-                matches!(
-                    operation.content,
-                    crate::crdt::OperationContent::MediaCreation(_)
-                )
-            })
-            .count();
-        Ok(count)
-    }
-
-    /// # Errors
-    ///
     /// Returns an error if the remote's synchronization metadata cannot be read.
     pub fn has_unpushed_changes(&self, remote_id: RemoteUuid) -> Result<bool> {
         let remote_last_known_state_dir = self
