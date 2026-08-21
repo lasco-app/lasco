@@ -51,6 +51,25 @@ struct LascoCloudRemote: Sendable {
 private struct LascoCloudRemoteInfoResponse: Decodable { let remotes: [LascoCloudRemoteInfo] }
 private struct LascoCloudCredentialsResponse: Decodable { let credentials: [LascoCloudRemoteCredentials] }
 private struct LascoCloudLogin: Decodable { let token: String }
+struct LascoCloudAccount: Decodable, Sendable {
+    let email: String
+    let subscription: LascoCloudSubscription?
+}
+struct LascoCloudSubscription: Decodable, Sendable {
+    let planID: String
+    let planName: String
+    let status: String
+    let storageQuotaBytes: Int64
+    let renewsAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case planID = "plan_id"
+        case planName = "plan_name"
+        case storageQuotaBytes = "storage_quota_bytes"
+        case renewsAt = "renews_at"
+    }
+}
 private struct LascoCloudLoginRequest: Encodable {
     let email: String; let password: String; let platform: String
     let appVersion: String
@@ -111,6 +130,22 @@ actor LascoCloudClient {
                 credentials[info.id].map { LascoCloudRemote(info: info, credentials: $0) }
             }
         } catch LascoCloudError.unauthorized { KeychainTokenStore.remove(libraryID: libraryID); throw LascoCloudError.unauthorized }
+    }
+
+    func subscription(libraryID: String) async throws -> LascoCloudAccount {
+        guard let token = KeychainTokenStore.token(libraryID: libraryID) else { throw LascoCloudError.unauthorized }
+        do {
+            let response: LascoCloudAccount = try await send(
+                path: "api/v1/subscription",
+                method: "GET",
+                token: token,
+                body: nil
+            )
+            return response
+        } catch LascoCloudError.unauthorized {
+            KeychainTokenStore.remove(libraryID: libraryID)
+            throw LascoCloudError.unauthorized
+        }
     }
 
     private func send<T: Decodable>(path: String, method: String = "POST", token: String?, body: Data?) async throws -> T {

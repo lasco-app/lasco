@@ -8,6 +8,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.lasco.lasco.LascoApp
 import com.lasco.lasco.data.LibraryRepository
+import com.lasco.lasco.data.CloudAccount
 import com.lasco.lasco.data.Prefs
 import com.lasco.lasco.data.SessionState
 import com.lasco.lasco.data.SyncState
@@ -44,6 +45,8 @@ class ManageViewModel(
             repo.setAutoImportDeviceMedia(enabled)
         }
     }
+
+    suspend fun lascoCloudSubscription(): CloudAccount = repo.lascoCloudSubscription()
 
     fun setRemoteAutoPush(remoteId: uniffi.lasco_ffi.FfiRemoteUuid, enabled: Boolean) {
         viewModelScope.launch {

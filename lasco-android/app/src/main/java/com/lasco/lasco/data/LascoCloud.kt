@@ -62,6 +62,18 @@ internal class LascoCloud(private val context: Context) {
         }
     }
 
+    suspend fun subscription(libraryId: String): CloudAccount = withContext(Dispatchers.IO) {
+        val token = tokens.get(libraryId) ?: throw CloudUnauthorizedException()
+        try {
+            json.decodeFromString<CloudAccount>(
+                request("/api/v1/subscription", "GET", token, null),
+            )
+        } catch (e: CloudUnauthorizedException) {
+            tokens.remove(libraryId)
+            throw e
+        }
+    }
+
     private fun request(path: String, method: String, token: String?, body: LoginRequest?): String {
         try {
             val connection = (URL(baseUrl + path).openConnection() as HttpURLConnection).apply {
@@ -101,6 +113,17 @@ private class CloudRequestException(endpoint: String, statusCode: Int) : CloudEx
 
 @Serializable private data class LoginRequest(val email: String, val password: String, val platform: String, @SerialName("app_version") val appVersion: String)
 @Serializable internal data class CloudLogin(val token: String)
+@Serializable data class CloudAccount(
+    val email: String,
+    val subscription: CloudSubscription?,
+)
+@Serializable data class CloudSubscription(
+    @SerialName("plan_id") val planId: String,
+    @SerialName("plan_name") val planName: String,
+    val status: String,
+    @SerialName("storage_quota_bytes") val storageQuotaBytes: Long,
+    @SerialName("renews_at") val renewsAt: String,
+)
 @Serializable private data class CloudRemoteInfoResponse(val remotes: List<CloudRemoteInfo>)
 @Serializable private data class CloudCredentialsResponse(val credentials: List<CloudRemoteCredentials>)
 @Serializable private data class CloudRemoteInfo(

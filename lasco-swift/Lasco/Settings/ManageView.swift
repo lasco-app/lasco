@@ -107,7 +107,7 @@ struct ManageView: View {
                                 Task { await directory.signOut() }
                             } label: {
                                 HStack {
-                                    Text("Sign out")
+                                    Text("Sign out current library")
                                         .font(LascoFont.body())
                                         .foregroundStyle(theme.inkSub)
                                     Spacer()
@@ -122,6 +122,26 @@ struct ManageView: View {
                             .buttonStyle(.plain)
                         }
                         .lascoPanel()
+
+                        NavigationLink {
+                            LascoCloudView(libraryID: session.libraryID)
+                                .navigationBarBackButtonHidden(true)
+                        } label: {
+                            HStack {
+                                Text("Lasco Cloud")
+                                    .font(LascoFont.body())
+                                    .foregroundStyle(theme.accent)
+                                Spacer()
+                                Text("→")
+                                    .font(LascoFont.mono())
+                                    .foregroundStyle(theme.accent)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 14)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .background(theme.pink)
 
                         VStack(alignment: .leading, spacing: 0) {
                             #if canImport(UIKit)

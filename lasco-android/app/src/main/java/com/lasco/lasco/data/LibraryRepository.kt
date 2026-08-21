@@ -469,6 +469,9 @@ class LibraryRepository(
         refreshSessionState()
     }
 
+    suspend fun lascoCloudSubscription(): CloudAccount =
+        cloud.subscription(lib.libraryId().value)
+
     suspend fun addRemoteFixedPath(name: String, path: String): FfiRemoteUuid {
         val id = lib.addRemoteFixedPath(name, path)
         refreshSessionState()
