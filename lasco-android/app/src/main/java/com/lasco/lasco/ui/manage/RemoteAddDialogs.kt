@@ -63,6 +63,7 @@ private fun FullSheet(onDismiss: () -> Unit, content: @Composable ColumnScope.()
 @Composable
 fun RemoteTypePickerDialog(
     expertMode: Boolean,
+    onCloud: () -> Unit,
     onS3: () -> Unit,
     onLocalFS: () -> Unit,
     onDismiss: () -> Unit,
@@ -77,11 +78,54 @@ fun RemoteTypePickerDialog(
                 color = colors.inkMuted,
                 modifier = Modifier.padding(top = 8.dp, bottom = 32.dp),
             )
+            LascoPrimaryButton(text = "Authenticate with Lasco Cloud", onClick = onCloud)
+            Spacer(modifier = Modifier.height(12.dp))
             LascoPrimaryButton(text = "Add S3-compatible remote", onClick = onS3)
             if (expertMode) {
                 Spacer(modifier = Modifier.height(12.dp))
                 LascoPrimaryButton(text = "Add local filesystem remote", onClick = onLocalFS)
             }
+        }
+    }
+}
+
+@Composable
+fun LascoCloudLoginDialog(onDismiss: () -> Unit, onResult: (String?) -> Unit) {
+    val colors = LascoTheme.colors
+    val context = LocalContext.current
+    val repo = remember { LibraryRepository.from(context) }
+    val scope = rememberCoroutineScope()
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var submitting by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    FullSheet(onDismiss = onDismiss) {
+        Column(
+            modifier = Modifier.fillMaxWidth().weight(1f, fill = false).padding(horizontal = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text("Lasco Cloud", style = LascoTheme.type.title(26), color = colors.ink)
+            Text("Authenticate this library with your Lasco Cloud account.", style = LascoTheme.type.body(16), color = colors.inkSub)
+            LascoField(label = "Email", value = email, onValueChange = { email = it }, placeholder = "you@example.com")
+            LascoField(label = "Password", value = password, onValueChange = { password = it }, secure = true)
+            error?.let { Text(it, style = LascoTheme.type.body(13), color = colors.error) }
+        }
+        Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 20.dp)) {
+            LascoPrimaryButton(
+                text = if (submitting) "Authenticating…" else "Authenticate",
+                enabled = email.isNotBlank() && password.isNotBlank() && !submitting,
+                onClick = {
+                    submitting = true; error = null
+                    scope.launch {
+                        try {
+                            repo.authenticateLascoCloud(email, password)
+                            onDismiss(); onResult(null)
+                        } catch (e: Exception) {
+                            error = e.message?.ifBlank { null } ?: "Could not authenticate with Lasco Cloud"
+                        } finally { submitting = false }
+                    }
+                },
+            )
         }
     }
 }

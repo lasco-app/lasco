@@ -35,6 +35,7 @@ import uniffi.lasco_ffi.FfiCompactionLockInfo
 import uniffi.lasco_ffi.FfiGroupUuid
 import uniffi.lasco_ffi.FfiRemoteMediaShortfall
 import uniffi.lasco_ffi.FfiRemoteUuid
+import uniffi.lasco_ffi.FfiCloudS3Credentials
 
 /**
  * Session scoped wrapper around an opened FfiLibrary, replacing the Swift
@@ -60,6 +61,7 @@ class LibraryRepository(
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private val appContext = context.applicationContext
+    private val cloud = LascoCloud(appContext)
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -429,6 +431,27 @@ class LibraryRepository(
         val id = lib.addRemoteS3(name, endpoint, bucket, region, pathPrefix, accessKey, secretKey)
         refreshSessionState()
         return id
+    }
+
+    /** Logs this local library into Cloud and reconciles the two server-owned remotes. */
+    suspend fun authenticateLascoCloud(email: String, password: String) {
+        val libraryId = lib.libraryId().value
+        cloud.login(libraryId, email, password)
+        val credentials = cloud.storageCredentials(libraryId)
+        require(credentials.size == 2) { "Lasco Cloud must provide two storage remotes" }
+        val configured = lib.listRemotes().filter { it.kind == "lasco_cloud_s3" }.associateBy { it.path }
+        credentials.forEach { remote ->
+            val id = configured[remote.id]?.remoteId ?: lib.addRemoteCloudS3(remote.name, remote.id)
+            lib.setCloudS3Credentials(
+                id,
+                FfiCloudS3Credentials(
+                    remote.endpoint, remote.bucket, remote.region, remote.pathPrefix,
+                    remote.accessKeyId, remote.secretAccessKey, remote.sessionToken, remote.expiresAt,
+                ),
+            )
+            lib.initializeRemote(id, null)
+        }
+        refreshSessionState()
     }
 
     suspend fun addRemoteFixedPath(name: String, path: String): FfiRemoteUuid {

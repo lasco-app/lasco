@@ -63,6 +63,7 @@ fun RemotesScreen(
     var showRemotePicker by remember { mutableStateOf(false) }
     var showAddS3 by remember { mutableStateOf(false) }
     var showAddLocalFS by remember { mutableStateOf(false) }
+    var showCloudLogin by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<FfiRemote?>(null) }
     var pendingLockRemoval by remember { mutableStateOf<FfiRemote?>(null) }
     var removalBlocked by remember { mutableStateOf<RemoteRemovalBlocked?>(null) }
@@ -202,9 +203,16 @@ fun RemotesScreen(
     if (showRemotePicker) {
         RemoteTypePickerDialog(
             expertMode = expertMode,
+            onCloud = { showRemotePicker = false; showCloudLogin = true },
             onS3 = { showRemotePicker = false; showAddS3 = true },
             onLocalFS = { showRemotePicker = false; showAddLocalFS = true },
             onDismiss = { showRemotePicker = false },
+        )
+    }
+    if (showCloudLogin) {
+        LascoCloudLoginDialog(
+            onDismiss = { showCloudLogin = false },
+            onResult = { error -> feedback = error ?: "Lasco Cloud: connected" },
         )
     }
     if (showAddS3) {

@@ -9,6 +9,7 @@ struct StatusView: View {
     @State private var showRemotePicker = false
     @State private var showAddS3 = false
     @State private var showAddLocalFS = false
+    @State private var showCloudLogin = false
     @State private var showCleanConfirm = false
     @State private var cleanBlockedCount: Int?
     @State private var cleanOverrideCount: Int?
@@ -74,6 +75,7 @@ struct StatusView: View {
         .sheet(isPresented: $showRemotePicker) {
             RemoteTypePickerSheet(
                 expertMode: expertMode,
+                onCloud: { showRemotePicker = false; showCloudLogin = true },
                 onS3: { showRemotePicker = false; showAddS3 = true },
                 onLocalFS: { showRemotePicker = false; showAddLocalFS = true },
                 onDismiss: { showRemotePicker = false }
@@ -81,6 +83,11 @@ struct StatusView: View {
             .environment(\.lascoTheme, .dark)
             .preferredColorScheme(.dark)
             .presentationDetents([.medium])
+        }
+        .sheet(isPresented: $showCloudLogin) {
+            LascoCloudLoginView(repository: repository, libraryID: session.libraryID)
+                .environment(\.lascoTheme, .dark)
+                .preferredColorScheme(.dark)
         }
         .sheet(isPresented: $showAddS3) {
             AddS3RemoteView()

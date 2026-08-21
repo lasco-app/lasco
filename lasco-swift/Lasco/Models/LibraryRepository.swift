@@ -133,6 +133,23 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         self.appSupportDirectory = appSupportDirectory ?? Self.defaultAppSupportDirectory
     }
 
+    func configureLascoCloud(_ remotes: [LascoCloudRemote]) async throws {
+        try ensureOpen()
+        guard remotes.count == 2 else { throw LascoCloudError.invalidRemoteCount }
+        let existing = Dictionary(uniqueKeysWithValues: library.listRemotes().filter { $0.kind == "lasco_cloud_s3" }.compactMap { remote in remote.path.map { ($0, remote.remoteId) } })
+        for remote in remotes {
+            let remoteID: FfiRemoteUuid
+            if let configuredID = existing[remote.id] {
+                remoteID = configuredID
+            } else {
+                remoteID = try library.addRemoteCloudS3(name: remote.name, cloudStorageId: remote.id)
+            }
+            try library.setCloudS3Credentials(remoteId: remoteID, credentials: FfiCloudS3Credentials(endpoint: remote.endpoint, bucket: remote.bucket, region: remote.region, pathPrefix: remote.pathPrefix, accessKeyId: remote.accessKeyId, secretAccessKey: remote.secretAccessKey, sessionToken: remote.sessionToken, expiresAt: remote.expiresAt))
+            try library.initializeRemote(remoteId: remoteID, appSupportDir: appSupportDirectory)
+        }
+        await notify(.session)
+    }
+
     nonisolated static var defaultAppSupportDirectory: String? {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?.path
     }
@@ -720,6 +737,12 @@ final class LibraryRepository: LibraryRepositoryProtocol {
 
     init(library: FfiLibrary, appSupportDirectory: String? = nil) {
         storage = LibraryRepositoryStorage(library: library, appSupportDirectory: appSupportDirectory)
+    }
+
+    func authenticateLascoCloud(email: String, password: String, libraryID: FfiLibraryId) async throws {
+        let cloud = LascoCloudClient()
+        try await cloud.login(libraryID: libraryID.value, email: email, password: password)
+        try await storage.configureLascoCloud(try await cloud.storageCredentials(libraryID: libraryID.value))
     }
 
     func changes() async -> AsyncStream<LibraryChange> { await storage.changes() }
