@@ -74,6 +74,7 @@ fun StatusScreen(modifier: Modifier = Modifier) {
     val shortfall by statusViewModel.shortfall.collectAsStateWithLifecycle()
     val localStateStats by statusViewModel.localStateStats.collectAsStateWithLifecycle()
     val syncState by statusViewModel.syncState.collectAsStateWithLifecycle()
+    val cloudConnected = statusViewModel.isLascoCloudConnected()
     val pushCountdownSeconds = pushCountdownSeconds(syncState.pushDeadlineElapsedMs)
 
     var showRemotePicker by remember { mutableStateOf(false) }
@@ -261,6 +262,7 @@ fun StatusScreen(modifier: Modifier = Modifier) {
     if (showRemotePicker) {
         RemoteTypePickerDialog(
             expertMode = expertMode,
+            showCloud = !cloudConnected,
             onCloud = { showRemotePicker = false; showCloudLogin = true },
             onS3 = { showRemotePicker = false; showAddS3 = true },
             onLocalFS = { showRemotePicker = false; showAddLocalFS = true },

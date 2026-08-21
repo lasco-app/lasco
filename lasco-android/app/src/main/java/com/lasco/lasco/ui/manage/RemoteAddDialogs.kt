@@ -64,6 +64,7 @@ private fun FullSheet(onDismiss: () -> Unit, content: @Composable ColumnScope.()
 @Composable
 fun RemoteTypePickerDialog(
     expertMode: Boolean,
+    showCloud: Boolean,
     onCloud: () -> Unit,
     onS3: () -> Unit,
     onLocalFS: () -> Unit,
@@ -79,8 +80,10 @@ fun RemoteTypePickerDialog(
                 color = colors.inkMuted,
                 modifier = Modifier.padding(top = 8.dp, bottom = 32.dp),
             )
-            LascoPrimaryButton(text = "Authenticate with Lasco Cloud", onClick = onCloud)
-            Spacer(modifier = Modifier.height(12.dp))
+            if (showCloud) {
+                LascoPrimaryButton(text = "Authenticate with Lasco Cloud", onClick = onCloud)
+                Spacer(modifier = Modifier.height(12.dp))
+            }
             LascoPrimaryButton(text = "Add S3-compatible remote", onClick = onS3)
             if (expertMode) {
                 Spacer(modifier = Modifier.height(12.dp))

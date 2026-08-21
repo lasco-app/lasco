@@ -59,6 +59,7 @@ fun RemotesScreen(
 
     val session by manageViewModel.sessionState.collectAsStateWithLifecycle()
     val syncState by manageViewModel.syncState.collectAsStateWithLifecycle()
+    val cloudConnected = manageViewModel.isLascoCloudConnected()
 
     var showRemotePicker by remember { mutableStateOf(false) }
     var showAddS3 by remember { mutableStateOf(false) }
@@ -203,6 +204,7 @@ fun RemotesScreen(
     if (showRemotePicker) {
         RemoteTypePickerDialog(
             expertMode = expertMode,
+            showCloud = !cloudConnected,
             onCloud = { showRemotePicker = false; showCloudLogin = true },
             onS3 = { showRemotePicker = false; showAddS3 = true },
             onLocalFS = { showRemotePicker = false; showAddLocalFS = true },

@@ -10,6 +10,7 @@ struct StatusView: View {
     @State private var showAddS3 = false
     @State private var showAddLocalFS = false
     @State private var showCloudLogin = false
+    @State private var cloudConnected = false
     @State private var showCleanConfirm = false
     @State private var cleanBlockedCount: Int?
     @State private var cleanOverrideCount: Int?
@@ -75,6 +76,7 @@ struct StatusView: View {
         .sheet(isPresented: $showRemotePicker) {
             RemoteTypePickerSheet(
                 expertMode: expertMode,
+                showCloud: !cloudConnected,
                 onCloud: { showRemotePicker = false; showCloudLogin = true },
                 onS3: { showRemotePicker = false; showAddS3 = true },
                 onLocalFS: { showRemotePicker = false; showAddLocalFS = true },
@@ -88,6 +90,9 @@ struct StatusView: View {
             LascoCloudLoginView(repository: repository, libraryID: session.libraryID)
                 .environment(\.lascoTheme, .dark)
                 .preferredColorScheme(.dark)
+        }
+        .task(id: session.remotes.count) {
+            cloudConnected = await repository.isLascoCloudConnected(libraryID: session.libraryID)
         }
         .sheet(isPresented: $showAddS3) {
             AddS3RemoteView()

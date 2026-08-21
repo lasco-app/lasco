@@ -115,6 +115,7 @@ enum LibraryRepositoryError: LocalizedError {
     case closed
     case cloudRemoteAlreadyAssociated
     case cloudSignOutRequiresRemoteRemoval
+    case cloudAlreadyConnected
 
     var errorDescription: String? {
         switch self {
@@ -124,6 +125,8 @@ enum LibraryRepositoryError: LocalizedError {
             "Lasco Cloud storage is already associated with another library"
         case .cloudSignOutRequiresRemoteRemoval:
             "Remove the Lasco Cloud remotes before signing out"
+        case .cloudAlreadyConnected:
+            "Lasco Cloud is already connected for this library"
         }
     }
 }
@@ -778,6 +781,9 @@ final class LibraryRepository: LibraryRepositoryProtocol {
         onProgress: @MainActor @escaping (LascoCloudConnectionStep) -> Void = { _ in }
     ) async throws {
         let cloud = LascoCloudClient()
+        if await cloud.isLoggedIn(libraryID: libraryID.value) {
+            throw LibraryRepositoryError.cloudAlreadyConnected
+        }
         try await cloud.login(libraryID: libraryID.value, email: email, password: password)
         do {
             onProgress(.authenticated)

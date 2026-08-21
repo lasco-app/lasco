@@ -446,6 +446,9 @@ class LibraryRepository(
         onProgress: (LascoCloudConnectionStep) -> Unit = {},
     ) {
         val libraryId = lib.libraryId().value
+        if (cloud.isLoggedIn(libraryId)) {
+            throw CloudAlreadyConnectedException()
+        }
         cloud.login(libraryId, email, password)
         try {
             onProgress(LascoCloudConnectionStep.Authenticated)

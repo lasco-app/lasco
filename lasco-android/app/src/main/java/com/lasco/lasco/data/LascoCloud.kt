@@ -129,6 +129,9 @@ internal class CloudRemoteAlreadyAssociatedException : CloudException(
 internal class CloudSignOutRequiresRemoteRemovalException : CloudException(
     "Remove the Lasco Cloud remotes before signing out",
 )
+internal class CloudAlreadyConnectedException : CloudException(
+    "Lasco Cloud is already connected for this library",
+)
 private class CloudConnectionException(endpoint: String) : CloudException(
     "Couldn't reach Lasco Cloud at $endpoint. Make sure the server is running. " +
         "On a physical Android device, use your computer's LAN address instead of localhost or 127.0.0.1.",

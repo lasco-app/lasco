@@ -52,6 +52,8 @@ class StatusViewModel(
 
     val syncState: StateFlow<SyncState> = repo.sync.syncState
 
+    fun isLascoCloudConnected(): Boolean = repo.isLascoCloudConnected()
+
     private val _unpushed = MutableStateFlow<Map<FfiRemoteUuid, Boolean>>(emptyMap())
     val unpushed: StateFlow<Map<FfiRemoteUuid, Boolean>> = _unpushed.asStateFlow()
 
