@@ -1,4 +1,5 @@
 pub mod albums;
+pub mod cloud;
 pub mod error;
 pub mod groups;
 pub mod local_dirs;
@@ -78,6 +79,8 @@ pub(crate) struct LibraryInner {
     pub(crate) local_ops_read_write_lock: LocalOpsReadWriteLock,
     /// Per-remote locks for synchronous `media_list.json` read-modify-write access.
     pub(crate) remote_media_list_lock: RemoteMediaListLock,
+    /// Runtime-only Lasco Cloud API session and resolved S3 credentials.
+    pub(crate) cloud_runtime: cloud::SharedCloudRuntime,
 }
 
 #[derive(Clone)]
@@ -99,6 +102,25 @@ const _: () = {
 };
 
 impl Library {
+    /// Installs the memory-only Cloud API session for this open library.
+    pub fn set_cloud_session(
+        &self,
+        base_url: String,
+        bearer_token: String,
+    ) -> std::result::Result<(), cloud::CloudError> {
+        self.inner.cloud_runtime.set_session(base_url, bearer_token)
+    }
+
+    /// Removes the disposable Cloud API session without modifying `library.json`.
+    pub fn clear_cloud_session(&self) {
+        self.inner.cloud_runtime.clear_session();
+    }
+
+    #[must_use]
+    pub fn cloud_runtime(&self) -> cloud::SharedCloudRuntime {
+        Arc::clone(&self.inner.cloud_runtime)
+    }
+
     /// Opens exclusive synchronous access to this library's `library.json`.
     /// The returned object must not be held across an `.await`.
     pub fn library_json_read_write<'a>(&'a self, app_dir: &'a Path) -> LibraryJsonReadWrite<'a> {
@@ -241,6 +263,7 @@ impl Library {
                 library_json_read_write_lock: LibraryJsonReadWriteLock::new(),
                 local_ops_read_write_lock,
                 remote_media_list_lock: RemoteMediaListLock::new(),
+                cloud_runtime: Arc::new(cloud::CloudRuntime::default()),
             }),
         };
         Ok((library, password_uuid))
@@ -283,6 +306,7 @@ impl Library {
                 library_json_read_write_lock: LibraryJsonReadWriteLock::new(),
                 local_ops_read_write_lock,
                 remote_media_list_lock: RemoteMediaListLock::new(),
+                cloud_runtime: Arc::new(cloud::CloudRuntime::default()),
             }),
         })
     }
@@ -321,6 +345,7 @@ impl Library {
                 library_json_read_write_lock: LibraryJsonReadWriteLock::new(),
                 local_ops_read_write_lock,
                 remote_media_list_lock: RemoteMediaListLock::new(),
+                cloud_runtime: Arc::new(cloud::CloudRuntime::default()),
             }),
         })
     }

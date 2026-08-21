@@ -162,6 +162,11 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         await notify(.session)
     }
 
+    func setLascoCloudSession(_ session: LascoCloudSession) throws {
+        try ensureOpen()
+        try library.setCloudSession(baseUrl: session.baseURL, bearerToken: session.token)
+    }
+
     func validateLascoCloud(_ remotes: [LascoCloudRemote]) throws -> [String: FfiRemoteUuid] {
         try ensureOpen()
         guard remotes.count == 2 else { throw LascoCloudError.invalidRemoteCount }
@@ -786,6 +791,8 @@ final class LibraryRepository: LibraryRepositoryProtocol {
         }
         try await cloud.login(libraryID: libraryID.value, email: email, password: password)
         do {
+            let session = try await cloud.session(libraryID: libraryID.value)
+            try await storage.setLascoCloudSession(session)
             onProgress(.authenticated)
             let remotes = try await cloud.storageCredentials(libraryID: libraryID.value)
             _ = try await storage.validateLascoCloud(remotes)
@@ -801,6 +808,15 @@ final class LibraryRepository: LibraryRepositoryProtocol {
 
     func isLascoCloudConnected(libraryID: FfiLibraryId) async -> Bool {
         await LascoCloudClient().isLoggedIn(libraryID: libraryID.value)
+    }
+
+    /// Restores the memory-only Rust Cloud session after opening a library.
+    /// The first actual Cloud operation will fetch S3 credentials lazily.
+    func restoreLascoCloudSession(libraryID: FfiLibraryId) async {
+        let cloud = LascoCloudClient()
+        guard await cloud.isLoggedIn(libraryID: libraryID.value) else { return }
+        guard let session = try? await cloud.session(libraryID: libraryID.value) else { return }
+        try? await storage.setLascoCloudSession(session)
     }
 
     func signOutLascoCloud(libraryID: FfiLibraryId) async throws {

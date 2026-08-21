@@ -6,6 +6,7 @@ mod types;
 
 pub use types::*;
 
+#[cfg(test)]
 use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::path::PathBuf;
@@ -247,7 +248,6 @@ pub fn ffi_open_cached(
         rt,
         app_dir,
         remotes: Mutex::new(remotes),
-        cloud_credentials: Mutex::new(HashMap::new()),
         #[cfg(test)]
         test_remotes: Mutex::new(HashMap::new()),
     })))
@@ -333,7 +333,6 @@ pub fn ffi_add_existing_library_s3(
         rt,
         app_dir,
         remotes: Mutex::new(remotes),
-        cloud_credentials: Mutex::new(HashMap::new()),
         #[cfg(test)]
         test_remotes: Mutex::new(HashMap::new()),
     }))
@@ -345,9 +344,6 @@ pub struct FfiLibrary {
     rt: tokio::runtime::Runtime,
     app_dir: PathBuf,
     remotes: Mutex<Vec<FfiRemote>>,
-    /// Ephemeral Cloud connection details, keyed by the local remote UUID.
-    /// Never persist these: the Cloud service issues them with a short expiry.
-    cloud_credentials: Mutex<HashMap<lasco_core::identifiers::RemoteUuid, FfiCloudS3Credentials>>,
     #[cfg(test)]
     test_remotes: Mutex<
         HashMap<lasco_core::identifiers::RemoteUuid, lasco_core::storage::StorageMockMemoryFaulty>,
@@ -413,7 +409,6 @@ impl FfiLibrary {
             rt,
             app_dir,
             remotes: Mutex::new(remotes),
-            cloud_credentials: Mutex::new(HashMap::new()),
             #[cfg(test)]
             test_remotes: Mutex::new(HashMap::new()),
         }))

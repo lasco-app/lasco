@@ -846,7 +846,10 @@ mod tests {
 
         assert_eq!(
             lib.remote_media_shortfall("remote-a"),
-            RemoteMediaShortfall { missing_full: 1, missing_thumb: 1 }
+            RemoteMediaShortfall {
+                missing_full: 1,
+                missing_thumb: 1
+            }
         );
 
         let path = lib
@@ -859,7 +862,10 @@ mod tests {
         list.save(&path).unwrap();
         assert_eq!(
             lib.remote_media_shortfall("remote-a"),
-            RemoteMediaShortfall { missing_full: 0, missing_thumb: 1 }
+            RemoteMediaShortfall {
+                missing_full: 0,
+                missing_thumb: 1
+            }
         );
 
         let mut list = MediaList::load_or_default(&path).unwrap();
@@ -898,7 +904,10 @@ mod tests {
         // Two media, but only the primary one is ever expected to have a thumbnail.
         assert_eq!(
             lib.remote_media_shortfall("remote-a"),
-            RemoteMediaShortfall { missing_full: 2, missing_thumb: 1 }
+            RemoteMediaShortfall {
+                missing_full: 2,
+                missing_thumb: 1
+            }
         );
 
         let path = lib
@@ -924,7 +933,10 @@ mod tests {
 
         assert_eq!(
             lib.remote_media_shortfall("never-synced"),
-            RemoteMediaShortfall { missing_full: 1, missing_thumb: 1 }
+            RemoteMediaShortfall {
+                missing_full: 1,
+                missing_thumb: 1
+            }
         );
     }
 

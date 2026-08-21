@@ -1273,6 +1273,7 @@ dependencies = [
  "parking_lot",
  "proptest",
  "rand 0.8.6",
+ "reqwest",
  "rust-s3",
  "rustc-hash",
  "serde",
@@ -1292,6 +1293,7 @@ name = "lasco-ffi"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "jni",
  "lasco-core",
  "proptest",

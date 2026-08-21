@@ -98,6 +98,13 @@ class LibraryRepository(
 
     init {
         scope.launch { localMutations.collect { sync.schedulePush() } }
+        scope.launch(io) {
+            runCatching {
+                cloud.session(lib.libraryId().value).let { session ->
+                    lib.setCloudSession(session.baseUrl, session.token)
+                }
+            }
+        }
     }
 
     // Exists only so the onboarding wizard can build its own
@@ -451,6 +458,7 @@ class LibraryRepository(
         }
         cloud.login(libraryId, email, password)
         try {
+            cloud.session(libraryId).let { session -> lib.setCloudSession(session.baseUrl, session.token) }
             onProgress(LascoCloudConnectionStep.Authenticated)
             val credentials = cloud.storageCredentials(libraryId)
             val configured = withContext(io) {

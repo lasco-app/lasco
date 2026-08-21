@@ -59,24 +59,62 @@ impl FfiLibrary {
     ) -> Result<(), LascoError> {
         let remote_id: RemoteUuid = remote_id.try_into()?;
         let config = self.load_library_json()?;
-        let is_cloud = config.remotes.iter().any(|remote| {
-            remote.remote_uuid == remote_id && matches!(remote.kind, RemoteKind::CloudS3(_))
-        });
-        if !is_cloud {
+        let cloud_storage_id = config
+            .remotes
+            .iter()
+            .find_map(|remote| {
+                (remote.remote_uuid == remote_id).then(|| match &remote.kind {
+                    RemoteKind::CloudS3(config) => Some(config.cloud_storage_id.clone()),
+                    _ => None,
+                })
+            })
+            .flatten();
+        let Some(cloud_storage_id) = cloud_storage_id else {
             return Err(LascoError::Other {
                 msg: "remote is not a Lasco Cloud storage destination".to_string(),
             });
-        }
-        self.cloud_credentials
-            .lock()
-            .unwrap()
-            .insert(remote_id, credentials);
+        };
+        let expires_at = chrono::DateTime::parse_from_rfc3339(&credentials.expires_at)
+            .map_err(|_| LascoError::Other {
+                msg: "Lasco Cloud returned an invalid credential expiry".to_string(),
+            })?
+            .with_timezone(&chrono::Utc);
+        self.inner.cloud_runtime().install_remote(
+            remote_id,
+            cloud_storage_id,
+            lasco_core::library::cloud::CloudS3Credentials {
+                endpoint: credentials.endpoint,
+                bucket: credentials.bucket,
+                region: credentials.region,
+                path_prefix: credentials.path_prefix,
+                access_key_id: credentials.access_key_id,
+                secret_access_key: credentials.secret_access_key,
+                session_token: credentials.session_token,
+                expires_at,
+            },
+        );
         Ok(())
     }
 
-    /// Removes all ephemeral Cloud credentials, for example after sign-out.
+    /// Installs a memory-only Cloud API session. The runtime uses this token to
+    /// lazily refresh expiring S3 credentials during long-running operations.
+    pub fn set_cloud_session(
+        &self,
+        base_url: String,
+        bearer_token: String,
+    ) -> Result<(), LascoError> {
+        self.inner
+            .set_cloud_session(base_url, bearer_token)
+            .map_err(|error| LascoError::Other {
+                msg: error.to_string(),
+            })
+    }
+
+    /// Removes all ephemeral Cloud credentials and the Cloud API session, for
+    /// example after sign-out.
     pub fn clear_cloud_s3_credentials(&self) {
-        self.cloud_credentials.lock().unwrap().clear();
+        self.inner.cloud_runtime().clear_credentials();
+        self.inner.clear_cloud_session();
     }
     /// # Errors
     ///
@@ -982,27 +1020,14 @@ impl FfiLibrary {
                 msg: format!("remote '{remote_id}' not found"),
             })?;
 
-        if matches!(&remote.kind, RemoteKind::CloudS3(_)) {
-            let credentials = self
-                .cloud_credentials
-                .lock()
-                .unwrap()
-                .get(remote_id)
-                .cloned()
-                .ok_or_else(|| LascoError::Other {
-                    msg: format!("Lasco Cloud credentials required for remote '{remote_id}'"),
-                })?;
-            return lasco_core::storage::StorageS3::new_with_session_token(
-                &credentials.endpoint,
-                &credentials.bucket,
-                &credentials.region,
-                (!credentials.path_prefix.is_empty()).then_some(credentials.path_prefix.as_str()),
-                &credentials.access_key_id,
-                &credentials.secret_access_key,
-                credentials.session_token.as_deref(),
-            )
-            .map(|storage| Box::new(storage) as Box<dyn lasco_core::storage::Storage + Send + Sync>)
-            .map_err(|e| LascoError::Other { msg: e.to_string() });
+        if let RemoteKind::CloudS3(cloud) = &remote.kind {
+            self.inner
+                .cloud_runtime()
+                .register_remote(*remote_id, cloud.cloud_storage_id.clone());
+            return Ok(Box::new(lasco_core::storage::StorageLascoCloudS3::new(
+                *remote_id,
+                self.inner.cloud_runtime(),
+            )));
         }
 
         lasco_core::client::build_storage(

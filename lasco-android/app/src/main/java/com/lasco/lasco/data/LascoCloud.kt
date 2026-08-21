@@ -36,6 +36,11 @@ internal class LascoCloud(private val context: Context) {
 
     fun isLoggedIn(libraryId: String): Boolean = tokens.get(libraryId) != null
 
+    fun session(libraryId: String): CloudSession = CloudSession(
+        baseUrl = baseUrl,
+        token = tokens.get(libraryId) ?: throw CloudUnauthorizedException(),
+    )
+
     suspend fun storageCredentials(libraryId: String): List<CloudRemote> = withContext(Dispatchers.IO) {
         val token = tokens.get(libraryId) ?: throw CloudUnauthorizedException()
         try {
@@ -143,6 +148,7 @@ private class CloudRequestException(endpoint: String, statusCode: Int) : CloudEx
 @Serializable private data class LoginRequest(val email: String, val password: String, val platform: String, @SerialName("app_version") val appVersion: String)
 @Serializable private data class CloudRemoteLibraryIdRequest(@SerialName("library_id") val libraryId: String)
 @Serializable internal data class CloudLogin(val token: String)
+internal data class CloudSession(val baseUrl: String, val token: String)
 @Serializable data class CloudAccount(
     val email: String,
     val subscription: CloudSubscription?,

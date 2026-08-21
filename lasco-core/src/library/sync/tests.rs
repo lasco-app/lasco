@@ -179,7 +179,8 @@ async fn fetch_rejects_across_different_remotes() {
 
     // Meanwhile a push against a distinct remote is unaffected.
     assert!(
-        lib.try_acquire_remote_sync(&REMOTE_ID.to_string()).is_some(),
+        lib.try_acquire_remote_sync(&REMOTE_ID.to_string())
+            .is_some(),
         "push/fetch against a different remote must still be allowed"
     );
 }

@@ -696,7 +696,8 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     func allMediaIds()  -> [FfiMediaUuid]
     
     /**
-     * Removes all ephemeral Cloud credentials, for example after sign-out.
+     * Removes all ephemeral Cloud credentials and the Cloud API session, for
+     * example after sign-out.
      */
     func clearCloudS3Credentials() 
     
@@ -1143,6 +1144,12 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     func setCloudS3Credentials(remoteId: FfiRemoteUuid, credentials: FfiCloudS3Credentials) throws 
     
     /**
+     * Installs a memory-only Cloud API session. The runtime uses this token to
+     * lazily refresh expiring S3 credentials during long-running operations.
+     */
+    func setCloudSession(baseUrl: String, bearerToken: String) throws 
+    
+    /**
      * # Errors
      *
      * Returns an error if the library config cannot be read or saved, or `remote_id` is invalid or unconfigured.
@@ -1540,7 +1547,8 @@ nonisolated open func allMediaIds() -> [FfiMediaUuid]  {
 }
     
     /**
-     * Removes all ephemeral Cloud credentials, for example after sign-out.
+     * Removes all ephemeral Cloud credentials and the Cloud API session, for
+     * example after sign-out.
      */
 nonisolated open func clearCloudS3Credentials()  {try! rustCall() {
     uniffi_lasco_ffi_fn_method_ffilibrary_clear_cloud_s3_credentials(self.uniffiClonePointer(),$0
@@ -2417,6 +2425,18 @@ nonisolated open func setCloudS3Credentials(remoteId: FfiRemoteUuid, credentials
     uniffi_lasco_ffi_fn_method_ffilibrary_set_cloud_s3_credentials(self.uniffiClonePointer(),
         FfiConverterTypeFfiRemoteUuid_lower(remoteId),
         FfiConverterTypeFfiCloudS3Credentials_lower(credentials),$0
+    )
+}
+}
+    
+    /**
+     * Installs a memory-only Cloud API session. The runtime uses this token to
+     * lazily refresh expiring S3 credentials during long-running operations.
+     */
+nonisolated open func setCloudSession(baseUrl: String, bearerToken: String)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_set_cloud_session(self.uniffiClonePointer(),
+        FfiConverterString.lower(baseUrl),
+        FfiConverterString.lower(bearerToken),$0
     )
 }
 }
@@ -5473,7 +5493,7 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_all_media_ids() != 28671) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_clear_cloud_s3_credentials() != 39490) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_clear_cloud_s3_credentials() != 4880) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_confirm_remote_media_async() != 59085) {
@@ -5660,6 +5680,9 @@ nonisolated private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_set_cloud_s3_credentials() != 755) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_set_cloud_session() != 6165) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_set_default_fetch_remote() != 3089) {

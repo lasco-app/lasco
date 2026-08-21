@@ -913,6 +913,8 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1103,6 +1105,8 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_set_album_thumbnail(
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_set_auto_import_device_media(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_set_cloud_s3_credentials(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_set_cloud_session(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_set_default_fetch_remote(
 ): Short
@@ -1335,6 +1339,8 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_set_auto_import_device_media(`ptr`: Po
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_set_cloud_s3_credentials(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`credentials`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_lasco_ffi_fn_method_ffilibrary_set_cloud_session(`ptr`: Pointer,`baseUrl`: RustBuffer.ByValue,`bearerToken`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_set_default_fetch_remote(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_set_media_source_order(`ptr`: Pointer,`remoteIds`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1566,7 +1572,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_all_media_ids() != 28671.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_clear_cloud_s3_credentials() != 39490.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_clear_cloud_s3_credentials() != 4880.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_confirm_remote_media_async() != 59085.toShort()) {
@@ -1753,6 +1759,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_set_cloud_s3_credentials() != 755.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_set_cloud_session() != 6165.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_set_default_fetch_remote() != 3089.toShort()) {
@@ -2401,7 +2410,8 @@ public interface FfiLibraryInterface {
     fun `allMediaIds`(): List<FfiMediaUuid>
     
     /**
-     * Removes all ephemeral Cloud credentials, for example after sign-out.
+     * Removes all ephemeral Cloud credentials and the Cloud API session, for
+     * example after sign-out.
      */
     fun `clearCloudS3Credentials`()
     
@@ -2846,6 +2856,12 @@ public interface FfiLibraryInterface {
      * Credentials are intentionally forgotten when this FFI library closes.
      */
     fun `setCloudS3Credentials`(`remoteId`: FfiRemoteUuid, `credentials`: FfiCloudS3Credentials)
+    
+    /**
+     * Installs a memory-only Cloud API session. The runtime uses this token to
+     * lazily refresh expiring S3 credentials during long-running operations.
+     */
+    fun `setCloudSession`(`baseUrl`: kotlin.String, `bearerToken`: kotlin.String)
     
     /**
      * # Errors
@@ -3324,7 +3340,8 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
 
     
     /**
-     * Removes all ephemeral Cloud credentials, for example after sign-out.
+     * Removes all ephemeral Cloud credentials and the Cloud API session, for
+     * example after sign-out.
      */override fun `clearCloudS3Credentials`()
         = 
     callWithPointer {
@@ -4484,6 +4501,22 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     uniffiRustCallWithError(LascoException) { _status ->
     UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_set_cloud_s3_credentials(
         it, FfiConverterTypeFfiRemoteUuid.lower(`remoteId`),FfiConverterTypeFfiCloudS3Credentials.lower(`credentials`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Installs a memory-only Cloud API session. The runtime uses this token to
+     * lazily refresh expiring S3 credentials during long-running operations.
+     */
+    @Throws(LascoException::class)override fun `setCloudSession`(`baseUrl`: kotlin.String, `bearerToken`: kotlin.String)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_set_cloud_session(
+        it, FfiConverterString.lower(`baseUrl`),FfiConverterString.lower(`bearerToken`),_status)
 }
     }
     

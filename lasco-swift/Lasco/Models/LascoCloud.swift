@@ -51,6 +51,11 @@ struct LascoCloudRemote: Sendable {
     }
 }
 
+struct LascoCloudSession: Sendable {
+    let baseURL: String
+    let token: String
+}
+
 private struct LascoCloudRemoteInfoResponse: Decodable { let remotes: [LascoCloudRemoteInfo] }
 private struct LascoCloudCredentialsResponse: Decodable { let credentials: [LascoCloudRemoteCredentials] }
 private struct LascoCloudLogin: Decodable { let token: String }
@@ -130,6 +135,13 @@ actor LascoCloudClient {
 
     func isLoggedIn(libraryID: String) -> Bool {
         KeychainTokenStore.token(libraryID: libraryID) != nil
+    }
+
+    func session(libraryID: String) throws -> LascoCloudSession {
+        guard let token = KeychainTokenStore.token(libraryID: libraryID) else {
+            throw LascoCloudError.unauthorized
+        }
+        return LascoCloudSession(baseURL: baseURL.absoluteString, token: token)
     }
 
     func storageCredentials(libraryID: String) async throws -> [LascoCloudRemote] {
