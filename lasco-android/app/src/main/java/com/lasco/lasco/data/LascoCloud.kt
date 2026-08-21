@@ -20,7 +20,7 @@ import java.security.KeyStore
 internal class LascoCloud(private val context: Context) {
     private val tokens = CloudTokenStore(context)
     private val json = Json { ignoreUnknownKeys = true }
-    private val baseUrl = BuildConfig.LASCO_CLOUD_URL.trimEnd('/')
+    private val baseUrl get() = DevelopmentCloudEndpoint.activeUrl(context).trimEnd('/')
 
     suspend fun login(libraryId: String, email: String, password: String): CloudLogin = withContext(Dispatchers.IO) {
         val response = request("/api/v1/sessions", null, LoginRequest(email, password, "android", BuildConfig.VERSION_NAME))

@@ -12,6 +12,9 @@ import CoreText
 struct LascoApp: App {
     @State private var directory = LibraryDirectoryModel()
     @State private var toastManager = ToastManager()
+    #if DEBUG
+    @State private var showDevelopmentEndpointPrompt = true
+    #endif
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -69,6 +72,13 @@ struct LascoApp: App {
             .environment(\.lascoTheme, directory.isOpen ? .dark : .plaster)
             .tint(directory.isOpen ? LascoTheme.dark.pink : LascoTheme.plaster.pink)
             .task { await directory.start() }
+            #if DEBUG
+            .sheet(isPresented: $showDevelopmentEndpointPrompt) {
+                DevelopmentCloudEndpointView(isPresented: $showDevelopmentEndpointPrompt)
+                    .environment(\.lascoTheme, directory.isOpen ? .dark : .plaster)
+                    .preferredColorScheme(.dark)
+            }
+            #endif
         }
         .windowResizability(directory.isOpen ? .contentMinSize : .contentSize)
         #if canImport(UIKit)

@@ -37,7 +37,13 @@ enum LascoCloudError: LocalizedError { case unauthorized; case invalidRemoteCoun
 
 actor LascoCloudClient {
     private let baseURL: URL
-    init() { baseURL = URL(string: Bundle.main.object(forInfoDictionaryKey: "LASCO_CLOUD_URL") as? String ?? "https://api.lasco.cloud")! }
+    init() {
+        #if DEBUG
+        baseURL = URL(string: DevelopmentCloudEndpoint.url)!
+        #else
+        baseURL = URL(string: Bundle.main.object(forInfoDictionaryKey: "LASCO_CLOUD_URL") as? String ?? "https://api.lasco.cloud")!
+        #endif
+    }
 
     func login(libraryID: String, email: String, password: String) async throws {
         let request = LascoCloudLoginRequest(email: email, password: password, platform: "ios", appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0")
