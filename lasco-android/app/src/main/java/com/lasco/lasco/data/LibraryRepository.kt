@@ -60,6 +60,12 @@ class LibraryRepository(
     private val prefs: Prefs,
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
+    enum class LascoCloudConnectionStep {
+        Authenticated,
+        CredentialsReceived,
+        RemotesConfigured,
+    }
+
     private val appContext = context.applicationContext
     private val cloud = LascoCloud(appContext)
 
@@ -434,23 +440,32 @@ class LibraryRepository(
     }
 
     /** Logs this local library into Cloud and reconciles the two server-owned remotes. */
-    suspend fun authenticateLascoCloud(email: String, password: String) {
+    suspend fun authenticateLascoCloud(
+        email: String,
+        password: String,
+        onProgress: (LascoCloudConnectionStep) -> Unit = {},
+    ) {
         val libraryId = lib.libraryId().value
         cloud.login(libraryId, email, password)
+        onProgress(LascoCloudConnectionStep.Authenticated)
         val credentials = cloud.storageCredentials(libraryId)
-        require(credentials.size == 2) { "Lasco Cloud must provide two storage remotes" }
-        val configured = lib.listRemotes().filter { it.kind == "lasco_cloud_s3" }.associateBy { it.path }
-        credentials.forEach { remote ->
-            val id = configured[remote.id]?.remoteId ?: lib.addRemoteCloudS3(remote.name, remote.id)
-            lib.setCloudS3Credentials(
-                id,
-                FfiCloudS3Credentials(
-                    remote.endpoint, remote.bucket, remote.region, remote.pathPrefix,
-                    remote.accessKeyId, remote.secretAccessKey, remote.sessionToken, remote.expiresAt,
-                ),
-            )
-            lib.initializeRemote(id, null)
+        onProgress(LascoCloudConnectionStep.CredentialsReceived)
+        withContext(io) {
+            val configured = lib.listRemotes().filter { it.kind == "lasco_cloud_s3" }.associateBy { it.path }
+            credentials.forEach { remote ->
+                val id = configured[remote.id]?.remoteId ?: lib.addRemoteCloudS3(remote.name, remote.id)
+                lib.setCloudS3Credentials(
+                    id,
+                    FfiCloudS3Credentials(
+                        remote.endpoint, remote.bucket, remote.region, remote.pathPrefix,
+                        remote.accessKeyId, remote.secretAccessKey, null, remote.expiresAt,
+                    ),
+                )
+                lib.initializeRemote(id, appDir)
+                lib.connectRemote(id, appDir)
+            }
         }
+        onProgress(LascoCloudConnectionStep.RemotesConfigured)
         refreshSessionState()
     }
 
