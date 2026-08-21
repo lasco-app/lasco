@@ -13,7 +13,7 @@ struct DevelopmentCloudEndpointView: View {
                 Text("Development server")
                     .font(LascoFont.title(26))
                     .foregroundStyle(theme.ink)
-                Text("Enter the Lasco Cloud address for this development build.")
+                Text("Enter the Lasco Cloud address for this development build. On a physical iPhone, use your Mac's LAN address (for example, http://192.168.1.10:3000), not localhost.")
                     .font(LascoFont.body())
                     .foregroundStyle(theme.inkSub)
                 FieldLabel(text: "Address and port")

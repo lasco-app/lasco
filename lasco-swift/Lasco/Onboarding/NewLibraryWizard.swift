@@ -16,6 +16,7 @@ struct NewLibraryWizard: View {
     @State private var username = ""
     @State private var password = ""
     @State private var confirmPassword = ""
+    @State private var showCloudLoginSheet = false
     @State private var showAddS3Sheet = false
     @State private var showAddLocalFSSheet = false
     @State private var masterKeyCopied = false
@@ -135,6 +136,9 @@ struct NewLibraryWizard: View {
             .frame(maxWidth: .infinity)
         } else if step == 2 {
             VStack(spacing: 12) {
+                Button("Authenticate with Lasco Cloud") { showCloudLoginSheet = true }
+                    .buttonStyle(LascoPrimaryButtonStyle())
+                    .frame(maxWidth: .infinity)
                 Button("Add S3-compatible remote") { showAddS3Sheet = true }
                     .buttonStyle(LascoPrimaryButtonStyle())
                     .frame(maxWidth: .infinity)
@@ -146,6 +150,21 @@ struct NewLibraryWizard: View {
                 Button("Skip for now") { advanceFromRemote() }
                     .buttonStyle(LascoSecondaryButtonStyle())
                     .frame(maxWidth: .infinity)
+            }
+            .sheet(isPresented: $showCloudLoginSheet) {
+                if let activeSession = directory.activeSession {
+                    LascoCloudLoginView(
+                        repository: activeSession.repository,
+                        libraryID: activeSession.state.libraryID,
+                        onRemoteReady: {
+                            try await activeSession.refresh()
+                            guard !activeSession.state.remotes.isEmpty else {
+                                throw LibraryDirectoryModelError.remoteUnavailableAfterRefresh
+                            }
+                            advanceFromRemote()
+                        }
+                    )
+                }
             }
             .sheet(isPresented: $showAddS3Sheet) {
                 if let activeSession = directory.activeSession {

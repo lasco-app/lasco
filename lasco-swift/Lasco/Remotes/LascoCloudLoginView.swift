@@ -6,10 +6,23 @@ struct LascoCloudLoginView: View {
     @Environment(\.lascoTheme) private var theme
     let repository: LibraryRepository
     let libraryID: FfiLibraryId
+    let onRemoteReady: @MainActor () async throws -> Void
     @State private var email = ""
     @State private var password = ""
     @State private var submitting = false
     @State private var error: String?
+    @State private var completedSteps: [String] = []
+    @State private var currentStep: String?
+
+    init(
+        repository: LibraryRepository,
+        libraryID: FfiLibraryId,
+        onRemoteReady: @escaping @MainActor () async throws -> Void = {}
+    ) {
+        self.repository = repository
+        self.libraryID = libraryID
+        self.onRemoteReady = onRemoteReady
+    }
 
     var body: some View {
         ZStack {
@@ -21,15 +34,42 @@ struct LascoCloudLoginView: View {
                 TextField("you@example.com", text: $email).textFieldStyle(.plain).lascoInput().textInputAutocapitalization(.never).autocorrectionDisabled()
                 FieldLabel(text: "Password")
                 SecureField("", text: $password).textFieldStyle(.plain).lascoInput()
+                if !completedSteps.isEmpty || currentStep != nil {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(completedSteps, id: \.self) { step in
+                            Label(step, systemImage: "checkmark.circle.fill")
+                                .font(LascoFont.body(13))
+                                .foregroundStyle(theme.ok)
+                        }
+                        if let currentStep {
+                            Text(currentStep)
+                                .font(LascoFont.body(13))
+                                .foregroundStyle(theme.inkSub)
+                        }
+                    }
+                }
                 if let error { Text(error).font(LascoFont.body(13)).foregroundStyle(theme.error) }
                 Spacer()
-                Button(submitting ? "Authenticating…" : "Authenticate") {
-                    submitting = true; error = nil
+                Button(submitting ? (currentStep ?? "Authenticating…") : "Authenticate") {
+                    submitting = true
+                    error = nil
+                    completedSteps = []
+                    currentStep = "Authenticating…"
                     Task {
                         do {
-                            try await repository.authenticateLascoCloud(email: email, password: password, libraryID: libraryID)
+                            try await repository.authenticateLascoCloud(
+                                email: email,
+                                password: password,
+                                libraryID: libraryID,
+                                onProgress: updateConnectionProgress
+                            )
+                            currentStep = "Refreshing this library…"
+                            try await onRemoteReady()
                             toastManager.show(ok: "Lasco Cloud: connected"); dismiss()
-                        } catch { self.error = error.localizedDescription }
+                        } catch {
+                            self.error = error.localizedDescription
+                            currentStep = nil
+                        }
                         submitting = false
                     }
                 }
@@ -37,6 +77,19 @@ struct LascoCloudLoginView: View {
                 .disabled(email.isEmpty || password.isEmpty || submitting)
             }
             .padding(32)
+        }
+    }
+
+    private func updateConnectionProgress(_ step: LibraryRepository.LascoCloudConnectionStep) {
+        switch step {
+        case .authenticated:
+            completedSteps.append("Authentication successful")
+            currentStep = "Retrieving storage credentials…"
+        case .credentialsReceived:
+            completedSteps.append("Storage credentials received")
+            currentStep = "Configuring storage remotes…"
+        case .remotesConfigured:
+            completedSteps.append("Storage remotes configured")
         }
     }
 }

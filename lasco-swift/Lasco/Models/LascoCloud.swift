@@ -1,7 +1,35 @@
 import Foundation
 import Security
 
-struct LascoCloudRemote: Decodable, Sendable {
+private struct LascoCloudRemoteInfo: Decodable, Sendable {
+    let id: String
+    let name: String
+    let endpoint: String
+    let bucket: String
+    let region: String
+    let pathPrefix: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, endpoint, bucket, region
+        case pathPrefix = "path_prefix"
+    }
+}
+
+private struct LascoCloudRemoteCredentials: Decodable, Sendable {
+    let id: String
+    let accessKeyId: String
+    let secretAccessKey: String
+    let expiresAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case accessKeyId = "access_key_id"
+        case secretAccessKey = "secret_access_key"
+        case expiresAt = "expires_at"
+    }
+}
+
+struct LascoCloudRemote: Sendable {
     let id: String
     let name: String
     let endpoint: String
@@ -10,20 +38,18 @@ struct LascoCloudRemote: Decodable, Sendable {
     let pathPrefix: String
     let accessKeyId: String
     let secretAccessKey: String
-    let sessionToken: String?
     let expiresAt: String
 
-    enum CodingKeys: String, CodingKey {
-        case id, name, endpoint, bucket, region
-        case pathPrefix = "path_prefix"
-        case accessKeyId = "access_key_id"
-        case secretAccessKey = "secret_access_key"
-        case sessionToken = "session_token"
-        case expiresAt = "expires_at"
+    fileprivate init(info: LascoCloudRemoteInfo, credentials: LascoCloudRemoteCredentials) {
+        id = info.id; name = info.name; endpoint = info.endpoint; bucket = info.bucket
+        region = info.region; pathPrefix = info.pathPrefix
+        accessKeyId = credentials.accessKeyId; secretAccessKey = credentials.secretAccessKey
+        expiresAt = credentials.expiresAt
     }
 }
 
-struct LascoCloudCredentialsResponse: Decodable, Sendable { let remotes: [LascoCloudRemote] }
+private struct LascoCloudRemoteInfoResponse: Decodable { let remotes: [LascoCloudRemoteInfo] }
+private struct LascoCloudCredentialsResponse: Decodable { let credentials: [LascoCloudRemoteCredentials] }
 private struct LascoCloudLogin: Decodable { let token: String }
 private struct LascoCloudLoginRequest: Encodable {
     let email: String; let password: String; let platform: String
@@ -31,8 +57,27 @@ private struct LascoCloudLoginRequest: Encodable {
     enum CodingKeys: String, CodingKey { case email, password, platform; case appVersion = "app_version" }
 }
 
-enum LascoCloudError: LocalizedError { case unauthorized; case invalidRemoteCount
-    var errorDescription: String? { self == .unauthorized ? "Authenticate with Lasco Cloud again" : "Lasco Cloud must provide two storage remotes" }
+enum LascoCloudError: LocalizedError {
+    case unauthorized
+    case invalidRemoteCount
+    case invalidResponse(endpoint: String, detail: String)
+    case connectionFailed(endpoint: String)
+    case requestFailed(endpoint: String, statusCode: Int)
+
+    var errorDescription: String? {
+        switch self {
+        case .unauthorized:
+            "Authenticate with Lasco Cloud again"
+        case .invalidRemoteCount:
+            "Lasco Cloud must provide two storage remotes"
+        case .invalidResponse(let endpoint, let detail):
+            "Lasco Cloud returned an invalid response from \(endpoint): \(detail)"
+        case .connectionFailed(let endpoint):
+            "Couldn't reach Lasco Cloud at \(endpoint). Make sure the server is running. On a physical iPhone, use your Mac's LAN address instead of localhost or 127.0.0.1."
+        case .requestFailed(let endpoint, let statusCode):
+            "Lasco Cloud request to \(endpoint) failed (HTTP \(statusCode))."
+        }
+    }
 }
 
 actor LascoCloudClient {
@@ -55,23 +100,74 @@ actor LascoCloudClient {
     func storageCredentials(libraryID: String) async throws -> [LascoCloudRemote] {
         guard let token = KeychainTokenStore.token(libraryID: libraryID) else { throw LascoCloudError.unauthorized }
         do {
-            let response: LascoCloudCredentialsResponse = try await send(
-                path: "api/v1/storage-credentials", token: token, body: nil
-            )
-            return response.remotes
+            let info: LascoCloudRemoteInfoResponse = try await send(path: "api/v1/remotes", method: "GET", token: token, body: nil)
+            let response: LascoCloudCredentialsResponse = try await send(path: "api/v1/storage-credentials", method: "POST", token: token, body: nil)
+            let credentials = Dictionary(uniqueKeysWithValues: response.credentials.map { ($0.id, $0) })
+            guard info.remotes.count == 2, credentials.count == info.remotes.count,
+                  info.remotes.allSatisfy({ credentials[$0.id] != nil }) else {
+                throw LascoCloudError.invalidRemoteCount
+            }
+            return info.remotes.compactMap { info in
+                credentials[info.id].map { LascoCloudRemote(info: info, credentials: $0) }
+            }
         } catch LascoCloudError.unauthorized { KeychainTokenStore.remove(libraryID: libraryID); throw LascoCloudError.unauthorized }
     }
 
-    private func send<T: Decodable>(path: String, token: String?, body: Data?) async throws -> T {
+    private func send<T: Decodable>(path: String, method: String = "POST", token: String?, body: Data?) async throws -> T {
         var request = URLRequest(url: baseURL.appending(path: path))
-        request.httpMethod = "POST"; request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpMethod = method; request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         if let body { request.httpBody = body; request.setValue("application/json", forHTTPHeaderField: "Content-Type") }
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch let error as URLError where isConnectionError(error) {
+            throw LascoCloudError.connectionFailed(endpoint: baseURL.absoluteString)
+        }
         guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
         if http.statusCode == 401 { throw LascoCloudError.unauthorized }
-        guard (200..<300).contains(http.statusCode) else { throw URLError(.badServerResponse) }
-        return try JSONDecoder().decode(T.self, from: data)
+        guard (200..<300).contains(http.statusCode) else {
+            throw LascoCloudError.requestFailed(endpoint: path, statusCode: http.statusCode)
+        }
+        do {
+            return try JSONDecoder().decode(T.self, from: data)
+        } catch {
+            AppLogger.log(.error, "Lasco Cloud response decode failed for \(path): \(error)")
+            throw LascoCloudError.invalidResponse(endpoint: path, detail: decodingDiagnostic(error))
+        }
+    }
+
+    private func decodingDiagnostic(_ error: Error) -> String {
+        guard let error = error as? DecodingError else { return error.localizedDescription }
+
+        func path(_ context: DecodingError.Context) -> String {
+            let values = context.codingPath.map(\.stringValue)
+            return values.isEmpty ? "the response root" : values.joined(separator: ".")
+        }
+
+        switch error {
+        case .keyNotFound(let key, let context):
+            return "Missing required field '\(key.stringValue)' at \(path(context)). \(context.debugDescription)"
+        case .typeMismatch(let type, let context):
+            return "Expected \(type) at \(path(context)), but received a different type. \(context.debugDescription)"
+        case .valueNotFound(let type, let context):
+            return "Expected a non-null \(type) at \(path(context)). \(context.debugDescription)"
+        case .dataCorrupted(let context):
+            return "Malformed data at \(path(context)). \(context.debugDescription)"
+        @unknown default:
+            return error.localizedDescription
+        }
+    }
+
+    private func isConnectionError(_ error: URLError) -> Bool {
+        switch error.code {
+        case .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed, .networkConnectionLost,
+                .notConnectedToInternet, .timedOut:
+            true
+        default:
+            false
+        }
     }
 }
 
