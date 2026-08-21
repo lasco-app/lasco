@@ -113,9 +113,15 @@ protocol LibraryRepositoryProtocol: Sendable {
 
 enum LibraryRepositoryError: LocalizedError {
     case closed
+    case cloudRemoteAlreadyAssociated
 
     var errorDescription: String? {
-        "The library session is closed."
+        switch self {
+        case .closed:
+            "The library session is closed."
+        case .cloudRemoteAlreadyAssociated:
+            "Lasco Cloud storage is already associated with another library"
+        }
     }
 }
 
@@ -135,8 +141,7 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
 
     func configureLascoCloud(_ remotes: [LascoCloudRemote]) async throws {
         try ensureOpen()
-        guard remotes.count == 2 else { throw LascoCloudError.invalidRemoteCount }
-        let existing = Dictionary(uniqueKeysWithValues: library.listRemotes().filter { $0.kind == "lasco_cloud_s3" }.compactMap { remote in remote.path.map { ($0, remote.remoteId) } })
+        let existing = try validateLascoCloud(remotes)
         for remote in remotes {
             let remoteID: FfiRemoteUuid
             if let configuredID = existing[remote.id] {
@@ -149,6 +154,18 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
             try library.connectRemote(remoteId: remoteID, appSupportDir: appSupportDirectory)
         }
         await notify(.session)
+    }
+
+    func validateLascoCloud(_ remotes: [LascoCloudRemote]) throws -> [String: FfiRemoteUuid] {
+        try ensureOpen()
+        guard remotes.count == 2 else { throw LascoCloudError.invalidRemoteCount }
+        let existing = Dictionary(uniqueKeysWithValues: library.listRemotes().filter { $0.kind == "lasco_cloud_s3" }.compactMap { remote in remote.path.map { ($0, remote.remoteId) } })
+        guard remotes.allSatisfy({ remote in
+            remote.libraryID == nil || (remote.libraryID == libraryID.value && existing[remote.id] != nil)
+        }) else {
+            throw LibraryRepositoryError.cloudRemoteAlreadyAssociated
+        }
+        return existing
     }
 
     nonisolated static var defaultAppSupportDirectory: String? {
@@ -756,8 +773,10 @@ final class LibraryRepository: LibraryRepositoryProtocol {
         try await cloud.login(libraryID: libraryID.value, email: email, password: password)
         onProgress(.authenticated)
         let remotes = try await cloud.storageCredentials(libraryID: libraryID.value)
+        _ = try await storage.validateLascoCloud(remotes)
         onProgress(.credentialsReceived)
         try await storage.configureLascoCloud(remotes)
+        try await cloud.setRemoteLibraryIDs(libraryID: libraryID.value, remoteIDs: remotes.map(\.id))
         onProgress(.remotesConfigured)
     }
 

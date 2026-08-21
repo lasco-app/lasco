@@ -3,6 +3,7 @@ import Security
 
 private struct LascoCloudRemoteInfo: Decodable, Sendable {
     let id: String
+    let libraryID: String?
     let name: String
     let endpoint: String
     let bucket: String
@@ -11,6 +12,7 @@ private struct LascoCloudRemoteInfo: Decodable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case id, name, endpoint, bucket, region
+        case libraryID = "library_id"
         case pathPrefix = "path_prefix"
     }
 }
@@ -31,6 +33,7 @@ private struct LascoCloudRemoteCredentials: Decodable, Sendable {
 
 struct LascoCloudRemote: Sendable {
     let id: String
+    let libraryID: String?
     let name: String
     let endpoint: String
     let bucket: String
@@ -41,7 +44,7 @@ struct LascoCloudRemote: Sendable {
     let expiresAt: String
 
     fileprivate init(info: LascoCloudRemoteInfo, credentials: LascoCloudRemoteCredentials) {
-        id = info.id; name = info.name; endpoint = info.endpoint; bucket = info.bucket
+        id = info.id; libraryID = info.libraryID; name = info.name; endpoint = info.endpoint; bucket = info.bucket
         region = info.region; pathPrefix = info.pathPrefix
         accessKeyId = credentials.accessKeyId; secretAccessKey = credentials.secretAccessKey
         expiresAt = credentials.expiresAt
@@ -74,6 +77,11 @@ private struct LascoCloudLoginRequest: Encodable {
     let email: String; let password: String; let platform: String
     let appVersion: String
     enum CodingKeys: String, CodingKey { case email, password, platform; case appVersion = "app_version" }
+}
+private struct LascoCloudRemoteLibraryIDRequest: Encodable {
+    let libraryID: String
+
+    enum CodingKeys: String, CodingKey { case libraryID = "library_id" }
 }
 
 enum LascoCloudError: LocalizedError {
@@ -132,6 +140,24 @@ actor LascoCloudClient {
         } catch LascoCloudError.unauthorized { KeychainTokenStore.remove(libraryID: libraryID); throw LascoCloudError.unauthorized }
     }
 
+    func setRemoteLibraryIDs(libraryID: String, remoteIDs: [String]) async throws {
+        guard let token = KeychainTokenStore.token(libraryID: libraryID) else { throw LascoCloudError.unauthorized }
+        do {
+            let body = try JSONEncoder().encode(LascoCloudRemoteLibraryIDRequest(libraryID: libraryID))
+            for remoteID in remoteIDs {
+                try await sendNoContent(
+                    path: "api/v1/remotes/\(remoteID)/library-id",
+                    method: "PUT",
+                    token: token,
+                    body: body
+                )
+            }
+        } catch LascoCloudError.unauthorized {
+            KeychainTokenStore.remove(libraryID: libraryID)
+            throw LascoCloudError.unauthorized
+        }
+    }
+
     func subscription(libraryID: String) async throws -> LascoCloudAccount {
         guard let token = KeychainTokenStore.token(libraryID: libraryID) else { throw LascoCloudError.unauthorized }
         do {
@@ -149,6 +175,20 @@ actor LascoCloudClient {
     }
 
     private func send<T: Decodable>(path: String, method: String = "POST", token: String?, body: Data?) async throws -> T {
+        let data = try await sendData(path: path, method: method, token: token, body: body)
+        do {
+            return try JSONDecoder().decode(T.self, from: data)
+        } catch {
+            AppLogger.log(.error, "Lasco Cloud response decode failed for \(path): \(error)")
+            throw LascoCloudError.invalidResponse(endpoint: path, detail: decodingDiagnostic(error))
+        }
+    }
+
+    private func sendNoContent(path: String, method: String, token: String?, body: Data?) async throws {
+        _ = try await sendData(path: path, method: method, token: token, body: body)
+    }
+
+    private func sendData(path: String, method: String = "POST", token: String?, body: Data?) async throws -> Data {
         var request = URLRequest(url: baseURL.appending(path: path))
         request.httpMethod = method; request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
@@ -165,12 +205,7 @@ actor LascoCloudClient {
         guard (200..<300).contains(http.statusCode) else {
             throw LascoCloudError.requestFailed(endpoint: path, statusCode: http.statusCode)
         }
-        do {
-            return try JSONDecoder().decode(T.self, from: data)
-        } catch {
-            AppLogger.log(.error, "Lasco Cloud response decode failed for \(path): \(error)")
-            throw LascoCloudError.invalidResponse(endpoint: path, detail: decodingDiagnostic(error))
-        }
+        return data
     }
 
     private func decodingDiagnostic(_ error: Error) -> String {

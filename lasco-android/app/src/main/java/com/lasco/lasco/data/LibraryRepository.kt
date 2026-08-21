@@ -449,9 +449,19 @@ class LibraryRepository(
         cloud.login(libraryId, email, password)
         onProgress(LascoCloudConnectionStep.Authenticated)
         val credentials = cloud.storageCredentials(libraryId)
+        val configured = withContext(io) {
+            val configured = lib.listRemotes().filter { it.kind == "lasco_cloud_s3" }.associateBy { it.path }
+            if (credentials.any { remote ->
+                    remote.libraryId != null &&
+                        (remote.libraryId != libraryId || remote.id !in configured)
+                }
+            ) {
+                throw CloudRemoteAlreadyAssociatedException()
+            }
+            configured
+        }
         onProgress(LascoCloudConnectionStep.CredentialsReceived)
         withContext(io) {
-            val configured = lib.listRemotes().filter { it.kind == "lasco_cloud_s3" }.associateBy { it.path }
             credentials.forEach { remote ->
                 val id = configured[remote.id]?.remoteId ?: lib.addRemoteCloudS3(remote.name, remote.id)
                 lib.setCloudS3Credentials(
@@ -465,6 +475,7 @@ class LibraryRepository(
                 lib.connectRemote(id, appDir)
             }
         }
+        cloud.setRemoteLibraryIds(libraryId, credentials.map { it.id })
         onProgress(LascoCloudConnectionStep.RemotesConfigured)
         refreshSessionState()
     }

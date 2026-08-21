@@ -135,10 +135,10 @@ fun LascoCloudLoginDialog(onDismiss: () -> Unit, onResult: (String?) -> Unit) {
                                 when (step) {
                                     LibraryRepository.LascoCloudConnectionStep.Authenticated -> {
                                         completedSteps += "Authentication successful"
-                                        currentStep = "Retrieving storage credentials…"
+                                        currentStep = "Checking Cloud storage…"
                                     }
                                     LibraryRepository.LascoCloudConnectionStep.CredentialsReceived -> {
-                                        completedSteps += "Storage credentials received"
+                                        completedSteps += "Cloud storage verified"
                                         currentStep = "Configuring storage remotes…"
                                     }
                                     LibraryRepository.LascoCloudConnectionStep.RemotesConfigured -> {

@@ -24,7 +24,7 @@ internal class LascoCloud(private val context: Context) {
     private val baseUrl get() = DevelopmentCloudEndpoint.activeUrl(context).trimEnd('/')
 
     suspend fun login(libraryId: String, email: String, password: String): CloudLogin = withContext(Dispatchers.IO) {
-        val response = request("/api/v1/sessions", "POST", null, LoginRequest(email, password, "android", BuildConfig.VERSION_NAME))
+        val response = request("/api/v1/sessions", "POST", null, json.encodeToString(LoginRequest(email, password, "android", BuildConfig.VERSION_NAME)))
         val login = json.decodeFromString<CloudLogin>(response)
         tokens.put(libraryId, login.token)
         login
@@ -46,6 +46,7 @@ internal class LascoCloud(private val context: Context) {
                 val credential = checkNotNull(credentials[remote.id])
                 CloudRemote(
                     id = remote.id,
+                    libraryId = remote.libraryId,
                     name = remote.name,
                     endpoint = remote.endpoint,
                     bucket = remote.bucket,
@@ -55,6 +56,19 @@ internal class LascoCloud(private val context: Context) {
                     secretAccessKey = credential.secretAccessKey,
                     expiresAt = credential.expiresAt,
                 )
+            }
+        } catch (e: CloudUnauthorizedException) {
+            tokens.remove(libraryId)
+            throw e
+        }
+    }
+
+    suspend fun setRemoteLibraryIds(libraryId: String, remoteIds: List<String>) = withContext(Dispatchers.IO) {
+        val token = tokens.get(libraryId) ?: throw CloudUnauthorizedException()
+        try {
+            val body = json.encodeToString(CloudRemoteLibraryIdRequest(libraryId))
+            remoteIds.forEach { remoteId ->
+                request("/api/v1/remotes/$remoteId/library-id", "PUT", token, body)
             }
         } catch (e: CloudUnauthorizedException) {
             tokens.remove(libraryId)
@@ -74,7 +88,7 @@ internal class LascoCloud(private val context: Context) {
         }
     }
 
-    private fun request(path: String, method: String, token: String?, body: LoginRequest?): String {
+    private fun request(path: String, method: String, token: String?, body: String?): String {
         try {
             val connection = (URL(baseUrl + path).openConnection() as HttpURLConnection).apply {
                 requestMethod = method
@@ -83,7 +97,7 @@ internal class LascoCloud(private val context: Context) {
                 if (body != null) {
                     doOutput = true
                     setRequestProperty("Content-Type", "application/json")
-                    outputStream.use { it.write(json.encodeToString(body).encodeToByteArray()) }
+                    outputStream.use { it.write(body.encodeToByteArray()) }
                 }
             }
             val code = connection.responseCode
@@ -103,6 +117,9 @@ internal class LascoCloud(private val context: Context) {
 internal sealed class CloudException(message: String) : IllegalStateException(message)
 internal class CloudUnauthorizedException : CloudException("Authenticate with Lasco Cloud again")
 internal class CloudInvalidRemoteCountException : CloudException("Lasco Cloud must provide two storage remotes")
+internal class CloudRemoteAlreadyAssociatedException : CloudException(
+    "Lasco Cloud storage is already associated with another library",
+)
 private class CloudConnectionException(endpoint: String) : CloudException(
     "Couldn't reach Lasco Cloud at $endpoint. Make sure the server is running. " +
         "On a physical Android device, use your computer's LAN address instead of localhost or 127.0.0.1.",
@@ -112,6 +129,7 @@ private class CloudRequestException(endpoint: String, statusCode: Int) : CloudEx
 )
 
 @Serializable private data class LoginRequest(val email: String, val password: String, val platform: String, @SerialName("app_version") val appVersion: String)
+@Serializable private data class CloudRemoteLibraryIdRequest(@SerialName("library_id") val libraryId: String)
 @Serializable internal data class CloudLogin(val token: String)
 @Serializable data class CloudAccount(
     val email: String,
@@ -129,6 +147,7 @@ private class CloudRequestException(endpoint: String, statusCode: Int) : CloudEx
 @Serializable private data class CloudRemoteInfo(
     val id: String, val name: String, val endpoint: String, val bucket: String, val region: String,
     @SerialName("path_prefix") val pathPrefix: String,
+    @SerialName("library_id") val libraryId: String?,
 )
 @Serializable private data class CloudRemoteCredentials(
     val id: String, @SerialName("access_key_id") val accessKeyId: String,
@@ -136,7 +155,7 @@ private class CloudRequestException(endpoint: String, statusCode: Int) : CloudEx
     @SerialName("expires_at") val expiresAt: String,
 )
 @Serializable internal data class CloudRemote(
-    val id: String, val name: String, val endpoint: String, val bucket: String, val region: String,
+    val id: String, val libraryId: String?, val name: String, val endpoint: String, val bucket: String, val region: String,
     val pathPrefix: String, val accessKeyId: String, val secretAccessKey: String,
     @SerialName("expires_at") val expiresAt: String,
 )
