@@ -447,41 +447,55 @@ class LibraryRepository(
     ) {
         val libraryId = lib.libraryId().value
         cloud.login(libraryId, email, password)
-        onProgress(LascoCloudConnectionStep.Authenticated)
-        val credentials = cloud.storageCredentials(libraryId)
-        val configured = withContext(io) {
-            val configured = lib.listRemotes().filter { it.kind == "lasco_cloud_s3" }.associateBy { it.path }
-            if (credentials.any { remote ->
-                    remote.libraryId != null &&
-                        (remote.libraryId != libraryId || remote.id !in configured)
+        try {
+            onProgress(LascoCloudConnectionStep.Authenticated)
+            val credentials = cloud.storageCredentials(libraryId)
+            val configured = withContext(io) {
+                val configured = lib.listRemotes().filter { it.kind == "lasco_cloud_s3" }.associateBy { it.path }
+                if (credentials.any { remote ->
+                        remote.libraryId != null &&
+                            (remote.libraryId != libraryId || remote.id !in configured)
+                    }
+                ) {
+                    throw CloudRemoteAlreadyAssociatedException()
                 }
-            ) {
-                throw CloudRemoteAlreadyAssociatedException()
+                configured
             }
-            configured
-        }
-        onProgress(LascoCloudConnectionStep.CredentialsReceived)
-        withContext(io) {
-            credentials.forEach { remote ->
-                val id = configured[remote.id]?.remoteId ?: lib.addRemoteCloudS3(remote.name, remote.id)
-                lib.setCloudS3Credentials(
-                    id,
-                    FfiCloudS3Credentials(
-                        remote.endpoint, remote.bucket, remote.region, remote.pathPrefix,
-                        remote.accessKeyId, remote.secretAccessKey, null, remote.expiresAt,
-                    ),
-                )
-                lib.initializeRemote(id, appDir)
-                lib.connectRemote(id, appDir)
+            onProgress(LascoCloudConnectionStep.CredentialsReceived)
+            withContext(io) {
+                credentials.forEach { remote ->
+                    val id = configured[remote.id]?.remoteId ?: lib.addRemoteCloudS3(remote.name, remote.id)
+                    lib.setCloudS3Credentials(
+                        id,
+                        FfiCloudS3Credentials(
+                            remote.endpoint, remote.bucket, remote.region, remote.pathPrefix,
+                            remote.accessKeyId, remote.secretAccessKey, null, remote.expiresAt,
+                        ),
+                    )
+                    lib.initializeRemote(id, appDir)
+                    lib.connectRemote(id, appDir)
+                }
             }
+            cloud.setRemoteLibraryIds(libraryId, credentials.map { it.id })
+            onProgress(LascoCloudConnectionStep.RemotesConfigured)
+            refreshSessionState()
+        } catch (error: Throwable) {
+            cloud.logout(libraryId)
+            throw error
         }
-        cloud.setRemoteLibraryIds(libraryId, credentials.map { it.id })
-        onProgress(LascoCloudConnectionStep.RemotesConfigured)
-        refreshSessionState()
     }
 
     suspend fun lascoCloudSubscription(): CloudAccount =
         cloud.subscription(lib.libraryId().value)
+
+    fun isLascoCloudConnected(): Boolean = cloud.isLoggedIn(lib.libraryId().value)
+
+    suspend fun signOutLascoCloud() = withContext(io) {
+        if (lib.listRemotes().any { it.kind == "lasco_cloud_s3" }) {
+            throw CloudSignOutRequiresRemoteRemovalException()
+        }
+        cloud.logout(lib.libraryId().value)
+    }
 
     suspend fun addRemoteFixedPath(name: String, path: String): FfiRemoteUuid {
         val id = lib.addRemoteFixedPath(name, path)

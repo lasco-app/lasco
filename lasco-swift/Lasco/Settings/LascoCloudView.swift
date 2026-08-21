@@ -1,12 +1,16 @@
 import SwiftUI
 
 struct LascoCloudView: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.lascoTheme) private var theme
+    let repository: LibraryRepository
     let libraryID: FfiLibraryId
+    let onSignedOut: @MainActor () -> Void
 
     @State private var account: LascoCloudAccount?
     @State private var error: String?
     @State private var isLoading = true
+    @State private var isSigningOut = false
 
     var body: some View {
         ZStack {
@@ -44,6 +48,23 @@ struct LascoCloudView: View {
                     .padding(16)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .lascoPanel()
+
+                    Button(isSigningOut ? "Signing out…" : "Sign out") {
+                        isSigningOut = true
+                        error = nil
+                        Task {
+                            do {
+                                try await repository.signOutLascoCloud(libraryID: libraryID)
+                                onSignedOut()
+                                dismiss()
+                            } catch {
+                                self.error = error.localizedDescription
+                            }
+                            isSigningOut = false
+                        }
+                    }
+                    .buttonStyle(LascoPrimaryButtonStyle())
+                    .disabled(isSigningOut)
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 20)

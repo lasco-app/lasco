@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -75,6 +76,12 @@ fun ManageScreen(
         key = "manage",
         factory = ManageViewModel.Factory,
     )
+    val session by manageViewModel.sessionState.collectAsStateWithLifecycle()
+    var cloudConnected by remember { mutableStateOf(manageViewModel.isLascoCloudConnected()) }
+
+    LaunchedEffect(session.remotes.size) {
+        cloudConnected = manageViewModel.isLascoCloudConnected()
+    }
 
     NavDisplay(
         backStack = backStack,
@@ -104,6 +111,7 @@ fun ManageScreen(
                     onOpenUsers = { backStack.add(UsersKey) },
                     onOpenOperations = { backStack.add(OperationsKey) },
                     onOpenLascoCloud = { backStack.add(LascoCloudKey) },
+                    cloudConnected = cloudConnected,
                     onSignedOut = onSignedOut,
                     onDeleteLibrary = onDeleteLibrary,
                     manageViewModel = manageViewModel,
@@ -134,6 +142,10 @@ fun ManageScreen(
                     modifier = Modifier.fillMaxSize(),
                     onBack = { backStack.removeLastOrNull() },
                     manageViewModel = manageViewModel,
+                    onSignedOut = {
+                        cloudConnected = false
+                        backStack.removeLastOrNull()
+                    },
                 )
             }
         },
@@ -147,6 +159,7 @@ private fun ManageRootScreen(
     onOpenUsers: () -> Unit,
     onOpenOperations: () -> Unit,
     onOpenLascoCloud: () -> Unit,
+    cloudConnected: Boolean,
     onSignedOut: () -> Unit,
     onDeleteLibrary: () -> Unit,
     manageViewModel: ManageViewModel,
@@ -189,16 +202,18 @@ private fun ManageRootScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Column(modifier = Modifier.fillMaxWidth().background(colors.pink)) {
-            ManageRow(
-                label = "Lasco Cloud",
-                onClick = onOpenLascoCloud,
-                labelColor = colors.accent,
-                arrowColor = colors.accent,
-            )
-        }
+        if (cloudConnected) {
+            Column(modifier = Modifier.fillMaxWidth().background(colors.pink)) {
+                ManageRow(
+                    label = "Lasco Cloud",
+                    onClick = onOpenLascoCloud,
+                    labelColor = colors.accent,
+                    arrowColor = colors.accent,
+                )
+            }
 
-        Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+        }
 
         Column(modifier = Modifier.fillMaxWidth().lascoPanel()) {
             ManageToggleRow(

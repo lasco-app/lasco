@@ -9,6 +9,7 @@ struct ManageView: View {
     @State private var showOperations = false
     @State private var showDeleteConfirm = false
     @State private var showLicense = false
+    @State private var cloudConnected = false
     @AppStorage("expertMode") private var expertMode = false
     let repository: LibraryRepository
     let session: LibrarySessionState
@@ -123,25 +124,29 @@ struct ManageView: View {
                         }
                         .lascoPanel()
 
-                        NavigationLink {
-                            LascoCloudView(libraryID: session.libraryID)
+                        if cloudConnected {
+                            NavigationLink {
+                                LascoCloudView(repository: repository, libraryID: session.libraryID) {
+                                    cloudConnected = false
+                                }
                                 .navigationBarBackButtonHidden(true)
-                        } label: {
-                            HStack {
-                                Text("Lasco Cloud")
-                                    .font(LascoFont.body())
-                                    .foregroundStyle(theme.accent)
-                                Spacer()
-                                Text("→")
-                                    .font(LascoFont.mono())
-                                    .foregroundStyle(theme.accent)
+                            } label: {
+                                HStack {
+                                    Text("Lasco Cloud")
+                                        .font(LascoFont.body())
+                                        .foregroundStyle(theme.accent)
+                                    Spacer()
+                                    Text("→")
+                                        .font(LascoFont.mono())
+                                        .foregroundStyle(theme.accent)
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 14)
+                                .contentShape(Rectangle())
                             }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 14)
-                            .contentShape(Rectangle())
+                            .buttonStyle(.plain)
+                            .background(theme.pink)
                         }
-                        .buttonStyle(.plain)
-                        .background(theme.pink)
 
                         VStack(alignment: .leading, spacing: 0) {
                             #if canImport(UIKit)
@@ -256,6 +261,9 @@ struct ManageView: View {
                 .scrollContentBackground(.hidden)
                 .navigationTitle("")
                 .hideSystemNavigationBar()
+            }
+            .task(id: session.remotes.count) {
+                cloudConnected = await repository.isLascoCloudConnected(libraryID: session.libraryID)
             }
         }
         .background(theme.bg)

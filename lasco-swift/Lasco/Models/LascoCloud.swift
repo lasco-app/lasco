@@ -124,6 +124,14 @@ actor LascoCloudClient {
         try KeychainTokenStore.save(login.token, libraryID: libraryID)
     }
 
+    func logout(libraryID: String) {
+        KeychainTokenStore.remove(libraryID: libraryID)
+    }
+
+    func isLoggedIn(libraryID: String) -> Bool {
+        KeychainTokenStore.token(libraryID: libraryID) != nil
+    }
+
     func storageCredentials(libraryID: String) async throws -> [LascoCloudRemote] {
         guard let token = KeychainTokenStore.token(libraryID: libraryID) else { throw LascoCloudError.unauthorized }
         do {

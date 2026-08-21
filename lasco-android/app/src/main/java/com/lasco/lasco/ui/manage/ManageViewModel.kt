@@ -48,6 +48,10 @@ class ManageViewModel(
 
     suspend fun lascoCloudSubscription(): CloudAccount = repo.lascoCloudSubscription()
 
+    fun isLascoCloudConnected(): Boolean = repo.isLascoCloudConnected()
+
+    suspend fun signOutLascoCloud() = repo.signOutLascoCloud()
+
     fun setRemoteAutoPush(remoteId: uniffi.lasco_ffi.FfiRemoteUuid, enabled: Boolean) {
         viewModelScope.launch {
             repo.setRemoteAutoPush(remoteId, enabled)

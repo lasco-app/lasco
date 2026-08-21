@@ -30,6 +30,12 @@ internal class LascoCloud(private val context: Context) {
         login
     }
 
+    fun logout(libraryId: String) {
+        tokens.remove(libraryId)
+    }
+
+    fun isLoggedIn(libraryId: String): Boolean = tokens.get(libraryId) != null
+
     suspend fun storageCredentials(libraryId: String): List<CloudRemote> = withContext(Dispatchers.IO) {
         val token = tokens.get(libraryId) ?: throw CloudUnauthorizedException()
         try {
@@ -119,6 +125,9 @@ internal class CloudUnauthorizedException : CloudException("Authenticate with La
 internal class CloudInvalidRemoteCountException : CloudException("Lasco Cloud must provide two storage remotes")
 internal class CloudRemoteAlreadyAssociatedException : CloudException(
     "Lasco Cloud storage is already associated with another library",
+)
+internal class CloudSignOutRequiresRemoteRemovalException : CloudException(
+    "Remove the Lasco Cloud remotes before signing out",
 )
 private class CloudConnectionException(endpoint: String) : CloudException(
     "Couldn't reach Lasco Cloud at $endpoint. Make sure the server is running. " +

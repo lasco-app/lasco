@@ -14,6 +14,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -22,22 +23,27 @@ import com.lasco.lasco.data.CloudAccount
 import com.lasco.lasco.data.CloudSubscription
 import com.lasco.lasco.ui.theme.LascoTheme
 import com.lasco.lasco.ui.theme.lascoPanel
+import com.lasco.lasco.ui.components.LascoPrimaryButton
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 @Composable
 fun LascoCloudScreen(
     modifier: Modifier = Modifier,
     onBack: () -> Unit,
     manageViewModel: ManageViewModel,
+    onSignedOut: () -> Unit,
 ) {
     val colors = LascoTheme.colors
     val session by manageViewModel.sessionState.collectAsStateWithLifecycle()
     var account by remember { mutableStateOf<CloudAccount?>(null) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
+    var signingOut by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(session.libraryId) {
         loading = true
@@ -78,6 +84,26 @@ fun LascoCloudScreen(
                 else -> CloudAccountDetails(account = account!!)
             }
         }
+
+        LascoPrimaryButton(
+            text = if (signingOut) "Signing out…" else "Sign out",
+            enabled = !signingOut,
+            onClick = {
+                signingOut = true
+                error = null
+                scope.launch {
+                    try {
+                        manageViewModel.signOutLascoCloud()
+                        onSignedOut()
+                    } catch (exception: Exception) {
+                        error = exception.message ?: "Could not sign out of Lasco Cloud."
+                    } finally {
+                        signingOut = false
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+        )
     }
 }
 

@@ -114,6 +114,7 @@ protocol LibraryRepositoryProtocol: Sendable {
 enum LibraryRepositoryError: LocalizedError {
     case closed
     case cloudRemoteAlreadyAssociated
+    case cloudSignOutRequiresRemoteRemoval
 
     var errorDescription: String? {
         switch self {
@@ -121,6 +122,8 @@ enum LibraryRepositoryError: LocalizedError {
             "The library session is closed."
         case .cloudRemoteAlreadyAssociated:
             "Lasco Cloud storage is already associated with another library"
+        case .cloudSignOutRequiresRemoteRemoval:
+            "Remove the Lasco Cloud remotes before signing out"
         }
     }
 }
@@ -633,6 +636,11 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         await notify(.session)
     }
 
+    func hasLascoCloudRemotes() throws -> Bool {
+        try ensureOpen()
+        return library.listRemotes().contains { $0.kind == "lasco_cloud_s3" }
+    }
+
     func initializeRemote(id: FfiRemoteUuid) async throws {
         try ensureOpen()
         try library.initializeRemote(remoteId: id, appSupportDir: appSupportDirectory)
@@ -771,13 +779,29 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     ) async throws {
         let cloud = LascoCloudClient()
         try await cloud.login(libraryID: libraryID.value, email: email, password: password)
-        onProgress(.authenticated)
-        let remotes = try await cloud.storageCredentials(libraryID: libraryID.value)
-        _ = try await storage.validateLascoCloud(remotes)
-        onProgress(.credentialsReceived)
-        try await storage.configureLascoCloud(remotes)
-        try await cloud.setRemoteLibraryIDs(libraryID: libraryID.value, remoteIDs: remotes.map(\.id))
-        onProgress(.remotesConfigured)
+        do {
+            onProgress(.authenticated)
+            let remotes = try await cloud.storageCredentials(libraryID: libraryID.value)
+            _ = try await storage.validateLascoCloud(remotes)
+            onProgress(.credentialsReceived)
+            try await storage.configureLascoCloud(remotes)
+            try await cloud.setRemoteLibraryIDs(libraryID: libraryID.value, remoteIDs: remotes.map(\.id))
+            onProgress(.remotesConfigured)
+        } catch {
+            await cloud.logout(libraryID: libraryID.value)
+            throw error
+        }
+    }
+
+    func isLascoCloudConnected(libraryID: FfiLibraryId) async -> Bool {
+        await LascoCloudClient().isLoggedIn(libraryID: libraryID.value)
+    }
+
+    func signOutLascoCloud(libraryID: FfiLibraryId) async throws {
+        if try await storage.hasLascoCloudRemotes() {
+            throw LibraryRepositoryError.cloudSignOutRequiresRemoteRemoval
+        }
+        await LascoCloudClient().logout(libraryID: libraryID.value)
     }
 
     func changes() async -> AsyncStream<LibraryChange> { await storage.changes() }
