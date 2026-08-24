@@ -35,7 +35,6 @@ import uniffi.lasco_ffi.FfiCompactionLockInfo
 import uniffi.lasco_ffi.FfiGroupUuid
 import uniffi.lasco_ffi.FfiRemoteMediaShortfall
 import uniffi.lasco_ffi.FfiRemoteUuid
-import uniffi.lasco_ffi.FfiCloudS3Credentials
 
 /**
  * Session scoped wrapper around an opened FfiLibrary, replacing the Swift
@@ -460,7 +459,7 @@ class LibraryRepository(
         try {
             cloud.session(libraryId).let { session -> lib.setCloudSession(session.baseUrl, session.token) }
             onProgress(LascoCloudConnectionStep.Authenticated)
-            val credentials = cloud.storageCredentials(libraryId)
+            val credentials = cloud.storageDestinations(libraryId)
             val configured = withContext(io) {
                 val configured = lib.listRemotes().filter { it.kind == "lasco_cloud_s3" }.associateBy { it.path }
                 if (credentials.any { remote ->
@@ -476,13 +475,6 @@ class LibraryRepository(
             withContext(io) {
                 credentials.forEach { remote ->
                     val id = configured[remote.id]?.remoteId ?: lib.addRemoteCloudS3(remote.name, remote.id)
-                    lib.setCloudS3Credentials(
-                        id,
-                        FfiCloudS3Credentials(
-                            remote.endpoint, remote.bucket, remote.region, remote.pathPrefix,
-                            remote.accessKeyId, remote.secretAccessKey, null, remote.expiresAt,
-                        ),
-                    )
                     lib.initializeRemote(id, appDir)
                     lib.connectRemote(id, appDir)
                 }

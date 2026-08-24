@@ -106,20 +106,6 @@ pub struct FfiRemote {
     pub path: Option<String>,
 }
 
-/// Short-lived connection material for one Lasco Cloud storage destination.
-/// This record is accepted only at runtime and is never written to library.json.
-#[derive(uniffi::Record, Debug, Clone)]
-pub struct FfiCloudS3Credentials {
-    pub endpoint: String,
-    pub bucket: String,
-    pub region: String,
-    pub path_prefix: String,
-    pub access_key_id: String,
-    pub secret_access_key: String,
-    pub session_token: Option<String>,
-    pub expires_at: String,
-}
-
 #[derive(uniffi::Record, Debug)]
 pub struct FfiKv {
     pub key: String,

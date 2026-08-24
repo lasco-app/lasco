@@ -29,9 +29,8 @@ pub struct RemoteConfig {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RemoteKind {
     S3(S3Config),
-    /// Lasco-managed S3 storage. Connection credentials are deliberately not
-    /// persisted: the native client obtains a short-lived session for this
-    /// stable storage identity and injects it into the FFI at runtime.
+    /// Lasco-managed S3 storage. The stable storage identity is persisted here;
+    /// resolved S3 credentials live in the encrypted local Cloud runtime cache.
     #[serde(rename = "lasco_cloud_s3", alias = "cloud_s3")]
     CloudS3(CloudS3Config),
     FixedPath(FixedPathConfig),

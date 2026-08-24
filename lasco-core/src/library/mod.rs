@@ -1,5 +1,6 @@
 pub mod albums;
 pub mod cloud;
+mod cloud_runtime_cache;
 pub mod error;
 pub mod groups;
 pub mod local_dirs;
@@ -79,7 +80,7 @@ pub(crate) struct LibraryInner {
     pub(crate) local_ops_read_write_lock: LocalOpsReadWriteLock,
     /// Per-remote locks for synchronous `media_list.json` read-modify-write access.
     pub(crate) remote_media_list_lock: RemoteMediaListLock,
-    /// Runtime-only Lasco Cloud API session and resolved S3 credentials.
+    /// Lasco Cloud API session and locally encrypted resolved S3 credential cache.
     pub(crate) cloud_runtime: cloud::SharedCloudRuntime,
 }
 
@@ -251,6 +252,11 @@ impl Library {
             &master_key,
             &initial_crdt,
         )?;
+        let cloud_runtime = Arc::new(cloud::CloudRuntime::open(
+            local_dirs.cloud_runtime_path(),
+            library_id,
+            &master_key,
+        ));
 
         let library = Library {
             inner: Arc::new(LibraryInner {
@@ -263,7 +269,7 @@ impl Library {
                 library_json_read_write_lock: LibraryJsonReadWriteLock::new(),
                 local_ops_read_write_lock,
                 remote_media_list_lock: RemoteMediaListLock::new(),
-                cloud_runtime: Arc::new(cloud::CloudRuntime::default()),
+                cloud_runtime,
             }),
         };
         Ok((library, password_uuid))
@@ -295,6 +301,11 @@ impl Library {
             &local_dirs,
             &master_key,
         )?;
+        let cloud_runtime = Arc::new(cloud::CloudRuntime::open(
+            local_dirs.cloud_runtime_path(),
+            local_dirs.library_id(),
+            &master_key,
+        ));
         Ok(Library {
             inner: Arc::new(LibraryInner {
                 library_id: local_dirs.library_id(),
@@ -306,7 +317,7 @@ impl Library {
                 library_json_read_write_lock: LibraryJsonReadWriteLock::new(),
                 local_ops_read_write_lock,
                 remote_media_list_lock: RemoteMediaListLock::new(),
-                cloud_runtime: Arc::new(cloud::CloudRuntime::default()),
+                cloud_runtime,
             }),
         })
     }
@@ -334,6 +345,11 @@ impl Library {
             &local_dirs,
             &master_key,
         )?;
+        let cloud_runtime = Arc::new(cloud::CloudRuntime::open(
+            local_dirs.cloud_runtime_path(),
+            library_id,
+            &master_key,
+        ));
         Ok(Library {
             inner: Arc::new(LibraryInner {
                 master_key,
@@ -345,7 +361,7 @@ impl Library {
                 library_json_read_write_lock: LibraryJsonReadWriteLock::new(),
                 local_ops_read_write_lock,
                 remote_media_list_lock: RemoteMediaListLock::new(),
-                cloud_runtime: Arc::new(cloud::CloudRuntime::default()),
+                cloud_runtime,
             }),
         })
     }
