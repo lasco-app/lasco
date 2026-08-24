@@ -913,8 +913,6 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
-
-
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1103,8 +1101,6 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_reparent_album(
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_set_album_thumbnail(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_set_auto_import_device_media(
-): Short
-fun uniffi_lasco_ffi_checksum_method_ffilibrary_set_cloud_s3_credentials(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_set_cloud_session(
 ): Short
@@ -1337,8 +1333,6 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_set_album_thumbnail(`ptr`: Pointer,`al
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_set_auto_import_device_media(`ptr`: Pointer,`enabled`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
-fun uniffi_lasco_ffi_fn_method_ffilibrary_set_cloud_s3_credentials(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`credentials`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_set_cloud_session(`ptr`: Pointer,`baseUrl`: RustBuffer.ByValue,`bearerToken`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_set_default_fetch_remote(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1527,7 +1521,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_add_media_to_group() != 3438.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_cloud_s3() != 63606.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_cloud_s3() != 65035.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_debug_local_android() != 10217.toShort()) {
@@ -1756,9 +1750,6 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_set_auto_import_device_media() != 2768.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_set_cloud_s3_credentials() != 755.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_set_cloud_session() != 6165.toShort()) {
@@ -2278,8 +2269,8 @@ public interface FfiLibraryInterface {
     fun `addMediaToGroup`(`groupId`: FfiGroupUuid, `mediaId`: FfiMediaUuid)
     
     /**
-     * Adds one Lasco Cloud storage destination. It becomes usable once the
-     * native client supplies its short-lived connection credentials.
+     * Adds one Lasco Cloud storage destination. The core resolves and caches
+     * its short-lived S3 credentials when the remote is first used.
      */
     fun `addRemoteCloudS3`(`name`: kotlin.String, `cloudStorageId`: kotlin.String): FfiRemoteUuid
     
@@ -2852,12 +2843,6 @@ public interface FfiLibraryInterface {
     fun `setAutoImportDeviceMedia`(`enabled`: kotlin.Boolean)
     
     /**
-     * Replaces in-memory credentials for one configured Lasco Cloud remote.
-     * Credentials are intentionally forgotten when this FFI library closes.
-     */
-    fun `setCloudS3Credentials`(`remoteId`: FfiRemoteUuid, `credentials`: FfiCloudS3Credentials)
-    
-    /**
      * Installs a memory-only Cloud API session. The runtime uses this token to
      * lazily refresh expiring S3 credentials during long-running operations.
      */
@@ -3044,8 +3029,8 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
 
     
     /**
-     * Adds one Lasco Cloud storage destination. It becomes usable once the
-     * native client supplies its short-lived connection credentials.
+     * Adds one Lasco Cloud storage destination. The core resolves and caches
+     * its short-lived S3 credentials when the remote is first used.
      */
     @Throws(LascoException::class)override fun `addRemoteCloudS3`(`name`: kotlin.String, `cloudStorageId`: kotlin.String): FfiRemoteUuid {
             return FfiConverterTypeFfiRemoteUuid.lift(
@@ -4492,22 +4477,6 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
 
     
     /**
-     * Replaces in-memory credentials for one configured Lasco Cloud remote.
-     * Credentials are intentionally forgotten when this FFI library closes.
-     */
-    @Throws(LascoException::class)override fun `setCloudS3Credentials`(`remoteId`: FfiRemoteUuid, `credentials`: FfiCloudS3Credentials)
-        = 
-    callWithPointer {
-    uniffiRustCallWithError(LascoException) { _status ->
-    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_set_cloud_s3_credentials(
-        it, FfiConverterTypeFfiRemoteUuid.lower(`remoteId`),FfiConverterTypeFfiCloudS3Credentials.lower(`credentials`),_status)
-}
-    }
-    
-    
-
-    
-    /**
      * Installs a memory-only Cloud API session. The runtime uses this token to
      * lazily refresh expiring S3 credentials during long-running operations.
      */
@@ -4827,66 +4796,6 @@ public object FfiConverterTypeFfiAlbumUuid: FfiConverterRustBuffer<FfiAlbumUuid>
 
     override fun write(value: FfiAlbumUuid, buf: ByteBuffer) {
             FfiConverterString.write(value.`value`, buf)
-    }
-}
-
-
-
-/**
- * Short-lived connection material for one Lasco Cloud storage destination.
- * This record is accepted only at runtime and is never written to library.json.
- */
-data class FfiCloudS3Credentials (
-    var `endpoint`: kotlin.String, 
-    var `bucket`: kotlin.String, 
-    var `region`: kotlin.String, 
-    var `pathPrefix`: kotlin.String, 
-    var `accessKeyId`: kotlin.String, 
-    var `secretAccessKey`: kotlin.String, 
-    var `sessionToken`: kotlin.String?, 
-    var `expiresAt`: kotlin.String
-) {
-    
-    companion object
-}
-
-/**
- * @suppress
- */
-public object FfiConverterTypeFfiCloudS3Credentials: FfiConverterRustBuffer<FfiCloudS3Credentials> {
-    override fun read(buf: ByteBuffer): FfiCloudS3Credentials {
-        return FfiCloudS3Credentials(
-            FfiConverterString.read(buf),
-            FfiConverterString.read(buf),
-            FfiConverterString.read(buf),
-            FfiConverterString.read(buf),
-            FfiConverterString.read(buf),
-            FfiConverterString.read(buf),
-            FfiConverterOptionalString.read(buf),
-            FfiConverterString.read(buf),
-        )
-    }
-
-    override fun allocationSize(value: FfiCloudS3Credentials) = (
-            FfiConverterString.allocationSize(value.`endpoint`) +
-            FfiConverterString.allocationSize(value.`bucket`) +
-            FfiConverterString.allocationSize(value.`region`) +
-            FfiConverterString.allocationSize(value.`pathPrefix`) +
-            FfiConverterString.allocationSize(value.`accessKeyId`) +
-            FfiConverterString.allocationSize(value.`secretAccessKey`) +
-            FfiConverterOptionalString.allocationSize(value.`sessionToken`) +
-            FfiConverterString.allocationSize(value.`expiresAt`)
-    )
-
-    override fun write(value: FfiCloudS3Credentials, buf: ByteBuffer) {
-            FfiConverterString.write(value.`endpoint`, buf)
-            FfiConverterString.write(value.`bucket`, buf)
-            FfiConverterString.write(value.`region`, buf)
-            FfiConverterString.write(value.`pathPrefix`, buf)
-            FfiConverterString.write(value.`accessKeyId`, buf)
-            FfiConverterString.write(value.`secretAccessKey`, buf)
-            FfiConverterOptionalString.write(value.`sessionToken`, buf)
-            FfiConverterString.write(value.`expiresAt`, buf)
     }
 }
 

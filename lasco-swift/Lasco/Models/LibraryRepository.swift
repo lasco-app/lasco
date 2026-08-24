@@ -155,7 +155,6 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
             } else {
                 remoteID = try library.addRemoteCloudS3(name: remote.name, cloudStorageId: remote.id)
             }
-            try library.setCloudS3Credentials(remoteId: remoteID, credentials: FfiCloudS3Credentials(endpoint: remote.endpoint, bucket: remote.bucket, region: remote.region, pathPrefix: remote.pathPrefix, accessKeyId: remote.accessKeyId, secretAccessKey: remote.secretAccessKey, sessionToken: nil, expiresAt: remote.expiresAt))
             try library.initializeRemote(remoteId: remoteID, appSupportDir: appSupportDirectory)
             try library.connectRemote(remoteId: remoteID, appSupportDir: appSupportDirectory)
         }
@@ -794,7 +793,7 @@ final class LibraryRepository: LibraryRepositoryProtocol {
             let session = try await cloud.session(libraryID: libraryID.value)
             try await storage.setLascoCloudSession(session)
             onProgress(.authenticated)
-            let remotes = try await cloud.storageCredentials(libraryID: libraryID.value)
+            let remotes = try await cloud.storageDestinations(libraryID: libraryID.value)
             _ = try await storage.validateLascoCloud(remotes)
             onProgress(.credentialsReceived)
             try await storage.configureLascoCloud(remotes)
@@ -810,8 +809,9 @@ final class LibraryRepository: LibraryRepositoryProtocol {
         await LascoCloudClient().isLoggedIn(libraryID: libraryID.value)
     }
 
-    /// Restores the memory-only Rust Cloud session after opening a library.
-    /// The first actual Cloud operation will fetch S3 credentials lazily.
+    /// Restores the memory-only Rust Cloud API session after opening a library.
+    /// The first actual Cloud operation uses Rust's encrypted credential cache
+    /// when valid, otherwise refreshes S3 credentials lazily.
     func restoreLascoCloudSession(libraryID: FfiLibraryId) async {
         let cloud = LascoCloudClient()
         guard await cloud.isLoggedIn(libraryID: libraryID.value) else { return }

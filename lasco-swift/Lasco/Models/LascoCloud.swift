@@ -17,20 +17,6 @@ private struct LascoCloudRemoteInfo: Decodable, Sendable {
     }
 }
 
-private struct LascoCloudRemoteCredentials: Decodable, Sendable {
-    let id: String
-    let accessKeyId: String
-    let secretAccessKey: String
-    let expiresAt: String
-
-    enum CodingKeys: String, CodingKey {
-        case id
-        case accessKeyId = "access_key_id"
-        case secretAccessKey = "secret_access_key"
-        case expiresAt = "expires_at"
-    }
-}
-
 struct LascoCloudRemote: Sendable {
     let id: String
     let libraryID: String?
@@ -39,15 +25,9 @@ struct LascoCloudRemote: Sendable {
     let bucket: String
     let region: String
     let pathPrefix: String
-    let accessKeyId: String
-    let secretAccessKey: String
-    let expiresAt: String
-
-    fileprivate init(info: LascoCloudRemoteInfo, credentials: LascoCloudRemoteCredentials) {
+    fileprivate init(info: LascoCloudRemoteInfo) {
         id = info.id; libraryID = info.libraryID; name = info.name; endpoint = info.endpoint; bucket = info.bucket
         region = info.region; pathPrefix = info.pathPrefix
-        accessKeyId = credentials.accessKeyId; secretAccessKey = credentials.secretAccessKey
-        expiresAt = credentials.expiresAt
     }
 }
 
@@ -57,7 +37,6 @@ struct LascoCloudSession: Sendable {
 }
 
 private struct LascoCloudRemoteInfoResponse: Decodable { let remotes: [LascoCloudRemoteInfo] }
-private struct LascoCloudCredentialsResponse: Decodable { let credentials: [LascoCloudRemoteCredentials] }
 private struct LascoCloudLogin: Decodable { let token: String }
 struct LascoCloudAccount: Decodable, Sendable {
     let email: String
@@ -144,19 +123,14 @@ actor LascoCloudClient {
         return LascoCloudSession(baseURL: baseURL.absoluteString, token: token)
     }
 
-    func storageCredentials(libraryID: String) async throws -> [LascoCloudRemote] {
+    func storageDestinations(libraryID: String) async throws -> [LascoCloudRemote] {
         guard let token = KeychainTokenStore.token(libraryID: libraryID) else { throw LascoCloudError.unauthorized }
         do {
             let info: LascoCloudRemoteInfoResponse = try await send(path: "api/v1/remotes", method: "GET", token: token, body: nil)
-            let response: LascoCloudCredentialsResponse = try await send(path: "api/v1/storage-credentials", method: "POST", token: token, body: nil)
-            let credentials = Dictionary(uniqueKeysWithValues: response.credentials.map { ($0.id, $0) })
-            guard info.remotes.count == 2, credentials.count == info.remotes.count,
-                  info.remotes.allSatisfy({ credentials[$0.id] != nil }) else {
+            guard info.remotes.count == 2 else {
                 throw LascoCloudError.invalidRemoteCount
             }
-            return info.remotes.compactMap { info in
-                credentials[info.id].map { LascoCloudRemote(info: info, credentials: $0) }
-            }
+            return info.remotes.map(LascoCloudRemote.init)
         } catch LascoCloudError.unauthorized { KeychainTokenStore.remove(libraryID: libraryID); throw LascoCloudError.unauthorized }
     }
 

@@ -155,6 +155,12 @@ impl LocalDirs {
         self.root.join("library.json")
     }
 
+    /// Encrypted, local-only cache of resolved Lasco Cloud S3 credentials.
+    #[must_use]
+    pub fn cloud_runtime_path(&self) -> PathBuf {
+        self.root.join("cloud-runtime.enc")
+    }
+
     #[must_use]
     pub fn local_state_library_dir(&self) -> LocalStateLibraryDir {
         LocalStateLibraryDir {

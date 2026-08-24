@@ -13,8 +13,8 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use super::{
-    FfiCloudS3Credentials, FfiCompactionLockInfo, FfiCrdtOperation, FfiDot, FfiKv, FfiLibrary,
-    FfiMediaItem, FfiOperation, FfiRemote, ffi_count,
+    FfiCompactionLockInfo, FfiCrdtOperation, FfiDot, FfiKv, FfiLibrary, FfiMediaItem, FfiOperation,
+    FfiRemote, ffi_count,
 };
 use crate::error::LascoError;
 use crate::ids::FfiRemoteUuid;
@@ -27,8 +27,8 @@ fn next_media_fetch_priority(remote_count: usize) -> Result<u32, LascoError> {
 
 #[uniffi::export]
 impl FfiLibrary {
-    /// Adds one Lasco Cloud storage destination. It becomes usable once the
-    /// native client supplies its short-lived connection credentials.
+    /// Adds one Lasco Cloud storage destination. The core resolves and caches
+    /// its short-lived S3 credentials when the remote is first used.
     pub fn add_remote_cloud_s3(
         &self,
         name: String,
@@ -48,52 +48,6 @@ impl FfiLibrary {
             name,
             RemoteKind::CloudS3(CloudS3Config { cloud_storage_id }),
         )
-    }
-
-    /// Replaces in-memory credentials for one configured Lasco Cloud remote.
-    /// Credentials are intentionally forgotten when this FFI library closes.
-    pub fn set_cloud_s3_credentials(
-        &self,
-        remote_id: FfiRemoteUuid,
-        credentials: FfiCloudS3Credentials,
-    ) -> Result<(), LascoError> {
-        let remote_id: RemoteUuid = remote_id.try_into()?;
-        let config = self.load_library_json()?;
-        let cloud_storage_id = config
-            .remotes
-            .iter()
-            .find_map(|remote| {
-                (remote.remote_uuid == remote_id).then(|| match &remote.kind {
-                    RemoteKind::CloudS3(config) => Some(config.cloud_storage_id.clone()),
-                    _ => None,
-                })
-            })
-            .flatten();
-        let Some(cloud_storage_id) = cloud_storage_id else {
-            return Err(LascoError::Other {
-                msg: "remote is not a Lasco Cloud storage destination".to_string(),
-            });
-        };
-        let expires_at = chrono::DateTime::parse_from_rfc3339(&credentials.expires_at)
-            .map_err(|_| LascoError::Other {
-                msg: "Lasco Cloud returned an invalid credential expiry".to_string(),
-            })?
-            .with_timezone(&chrono::Utc);
-        self.inner.cloud_runtime().install_remote(
-            remote_id,
-            cloud_storage_id,
-            lasco_core::library::cloud::CloudS3Credentials {
-                endpoint: credentials.endpoint,
-                bucket: credentials.bucket,
-                region: credentials.region,
-                path_prefix: credentials.path_prefix,
-                access_key_id: credentials.access_key_id,
-                secret_access_key: credentials.secret_access_key,
-                session_token: credentials.session_token,
-                expires_at,
-            },
-        );
-        Ok(())
     }
 
     /// Installs a memory-only Cloud API session. The runtime uses this token to
@@ -510,6 +464,11 @@ impl FfiLibrary {
                     msg: format!("remote '{}' not found", remote_id.value),
                 })?;
 
+            let cloud_storage_id = match &lib_config.remotes[index].kind {
+                RemoteKind::CloudS3(config) => Some(config.cloud_storage_id.clone()),
+                _ => None,
+            };
+
             lib_config.remotes.remove(index);
             lib_config
                 .media_source_order
@@ -519,7 +478,13 @@ impl FfiLibrary {
             }
             library_json
                 .write(&lib_config)
-                .map_err(|e| LascoError::Other { msg: e.to_string() })
+                .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+            if let Some(cloud_storage_id) = cloud_storage_id {
+                self.inner
+                    .cloud_runtime()
+                    .forget_storage_id(&cloud_storage_id);
+            }
+            Ok::<(), LascoError>(())
         })?;
 
         self.remotes

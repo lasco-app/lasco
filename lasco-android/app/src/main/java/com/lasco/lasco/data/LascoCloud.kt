@@ -41,33 +41,16 @@ internal class LascoCloud(private val context: Context) {
         token = tokens.get(libraryId) ?: throw CloudUnauthorizedException(),
     )
 
-    suspend fun storageCredentials(libraryId: String): List<CloudRemote> = withContext(Dispatchers.IO) {
+    suspend fun storageDestinations(libraryId: String): List<CloudRemote> = withContext(Dispatchers.IO) {
         val token = tokens.get(libraryId) ?: throw CloudUnauthorizedException()
         try {
             val remotes = json.decodeFromString<CloudRemoteInfoResponse>(
                 request("/api/v1/remotes", "GET", token, null),
             ).remotes
-            val credentials = json.decodeFromString<CloudCredentialsResponse>(
-                request("/api/v1/storage-credentials", "POST", token, null),
-            ).credentials.associateBy { it.id }
-            if (remotes.size != 2 || credentials.size != remotes.size || remotes.any { it.id !in credentials }) {
+            if (remotes.size != 2) {
                 throw CloudInvalidRemoteCountException()
             }
-            remotes.map { remote ->
-                val credential = checkNotNull(credentials[remote.id])
-                CloudRemote(
-                    id = remote.id,
-                    libraryId = remote.libraryId,
-                    name = remote.name,
-                    endpoint = remote.endpoint,
-                    bucket = remote.bucket,
-                    region = remote.region,
-                    pathPrefix = remote.pathPrefix,
-                    accessKeyId = credential.accessKeyId,
-                    secretAccessKey = credential.secretAccessKey,
-                    expiresAt = credential.expiresAt,
-                )
-            }
+            remotes.map { remote -> CloudRemote(remote.id, remote.libraryId, remote.name, remote.endpoint, remote.bucket, remote.region, remote.pathPrefix) }
         } catch (e: CloudUnauthorizedException) {
             tokens.remove(libraryId)
             throw e
@@ -161,21 +144,14 @@ internal data class CloudSession(val baseUrl: String, val token: String)
     @SerialName("renews_at") val renewsAt: String,
 )
 @Serializable private data class CloudRemoteInfoResponse(val remotes: List<CloudRemoteInfo>)
-@Serializable private data class CloudCredentialsResponse(val credentials: List<CloudRemoteCredentials>)
 @Serializable private data class CloudRemoteInfo(
     val id: String, val name: String, val endpoint: String, val bucket: String, val region: String,
     @SerialName("path_prefix") val pathPrefix: String,
     @SerialName("library_id") val libraryId: String?,
 )
-@Serializable private data class CloudRemoteCredentials(
-    val id: String, @SerialName("access_key_id") val accessKeyId: String,
-    @SerialName("secret_access_key") val secretAccessKey: String,
-    @SerialName("expires_at") val expiresAt: String,
-)
 @Serializable internal data class CloudRemote(
     val id: String, val libraryId: String?, val name: String, val endpoint: String, val bucket: String, val region: String,
-    val pathPrefix: String, val accessKeyId: String, val secretAccessKey: String,
-    @SerialName("expires_at") val expiresAt: String,
+    val pathPrefix: String,
 )
 
 /** A small Keystore-backed encrypted preference, avoiding tokens in normal preferences. */
