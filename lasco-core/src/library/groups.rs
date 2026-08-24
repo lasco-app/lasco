@@ -105,11 +105,7 @@ impl Library {
             .views
             .groups_by_album
             .get(&album_id)
-            .map(|ids| {
-                ids.iter()
-                    .filter_map(|gid| state.group(*gid))
-                    .collect()
-            })
+            .map(|ids| ids.iter().filter_map(|gid| state.group(*gid)).collect())
             .unwrap_or_default();
         Ok(entries)
     }

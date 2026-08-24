@@ -46,7 +46,8 @@ rand = "0.8"
 thiserror = "2"
 async-trait = "0.1"
 parking_lot = "0.12"
-tokio = { version = "1", features = ["rt", "macros"] }
+tokio = { version = "1", features = ["rt", "macros", "sync"] }
+reqwest = { version = "0.12", default-features = false, features = ["default-tls", "json"] }
 zeroize = { version = "1", features = ["derive"] }
 tracing = "0.1"
 rustc-hash = "2"

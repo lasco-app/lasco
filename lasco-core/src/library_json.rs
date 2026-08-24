@@ -29,6 +29,11 @@ pub struct RemoteConfig {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RemoteKind {
     S3(S3Config),
+    /// Lasco-managed S3 storage. Connection credentials are deliberately not
+    /// persisted: the native client obtains a short-lived session for this
+    /// stable storage identity and injects it into the FFI at runtime.
+    #[serde(rename = "lasco_cloud_s3", alias = "cloud_s3")]
+    CloudS3(CloudS3Config),
     FixedPath(FixedPathConfig),
     UsbAndroid(UsbAndroidConfig),
     UsbApple(UsbAppleConfig),
@@ -48,6 +53,15 @@ pub struct S3Config {
     pub secret_key_encrypted: String,
     /// Human-readable description of the encryption scheme.
     pub secret_key_encryption_description: String,
+}
+
+/// Persistent identity for one Lasco Cloud storage destination.
+///
+/// `cloud_storage_id` is opaque and stable even when the service moves the
+/// underlying bucket, prefix, region, or provider.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloudS3Config {
+    pub cloud_storage_id: String,
 }
 
 /// Trusts a stored absolute path, e.g. a USB or external drive.
@@ -425,6 +439,20 @@ mod tests {
         let deserialized: LibraryJson = serde_json::from_str(&json).unwrap();
         assert_eq!(deserialized.library_nickname.0, "test");
         assert!(!json.contains("upload_album"));
+    }
+
+    #[test]
+    fn cloud_s3_serializes_with_lasco_prefix_and_reads_legacy_name() {
+        let kind = RemoteKind::CloudS3(CloudS3Config {
+            cloud_storage_id: "cloud-remote".to_string(),
+        });
+        let json = serde_json::to_string(&kind).unwrap();
+        assert!(json.contains("lasco_cloud_s3"));
+
+        let legacy: RemoteKind =
+            serde_json::from_str(r#"{"kind":"cloud_s3","cloud_storage_id":"cloud-remote"}"#)
+                .unwrap();
+        assert!(matches!(legacy, RemoteKind::CloudS3(_)));
     }
 
     #[test]

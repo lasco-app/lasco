@@ -34,7 +34,7 @@ import uniffi.lasco_ffi.FfiMediaItem
  * rounded corners that don't match the app's "no radius, ever" panel look.
  */
 @Composable
-private fun LascoDialogShell(onDismiss: () -> Unit, content: @Composable () -> Unit) {
+fun LascoDialogShell(onDismiss: () -> Unit, content: @Composable () -> Unit) {
     val colors = LascoTheme.colors
     Dialog(onDismissRequest = onDismiss) {
         Column(

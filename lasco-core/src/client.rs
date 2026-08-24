@@ -66,6 +66,7 @@ pub fn build_storage(
                 &secret_key,
             )?))
         }
+        RemoteKind::CloudS3(_) => bail!("Lasco Cloud credentials must be supplied at runtime"),
     }
 }
 

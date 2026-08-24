@@ -29,6 +29,7 @@ import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import kotlinx.coroutines.launch
 import com.lasco.lasco.LascoApp
+import com.lasco.lasco.BuildConfig
 import com.lasco.lasco.data.LascoRepository
 import com.lasco.lasco.data.LibraryRepository
 import com.lasco.lasco.data.Prefs
@@ -36,6 +37,8 @@ import com.lasco.lasco.ui.library.LibraryListScreen
 import com.lasco.lasco.ui.library.LibraryListViewModel
 import com.lasco.lasco.ui.library.LibraryOpenScreen
 import com.lasco.lasco.ui.components.LascoPrimaryButton
+import com.lasco.lasco.ui.components.DevelopmentCloudEndpointDialog
+import com.lasco.lasco.data.DevelopmentCloudEndpoint
 import com.lasco.lasco.ui.onboarding.AddExistingLibraryScreen
 import com.lasco.lasco.ui.onboarding.NewLibraryWizardScreen
 import com.lasco.lasco.ui.onboarding.OnboardingResume
@@ -92,6 +95,7 @@ fun LascoRoot(modifier: Modifier = Modifier, onLibraryOpenChanged: (Boolean) -> 
     val libraryListState by libraryListViewModel.uiState.collectAsStateWithLifecycle()
 
     var screen by remember { mutableStateOf<Screen?>(null) }
+    var showDevelopmentEndpointPrompt by remember { mutableStateOf(BuildConfig.DEBUG) }
 
     LaunchedEffect(libraryListState.loading, libraryListState.libraries) {
         if (screen != null || libraryListState.loading) return@LaunchedEffect
@@ -216,6 +220,13 @@ fun LascoRoot(modifier: Modifier = Modifier, onLibraryOpenChanged: (Boolean) -> 
             onLibraryOpened = { screen = Screen.Opened },
             modifier = modifier,
         )
+    }
+
+    if (showDevelopmentEndpointPrompt) {
+        DevelopmentCloudEndpointDialog { endpoint ->
+            DevelopmentCloudEndpoint.setUrl(context, endpoint)
+            showDevelopmentEndpointPrompt = false
+        }
     }
 }
 

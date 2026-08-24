@@ -6,12 +6,11 @@ mod types;
 
 pub use types::*;
 
+#[cfg(test)]
+use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-
-#[cfg(test)]
-use std::collections::HashMap;
 
 use lasco_core::config_json::{ConfigJson, LibraryNickname};
 use lasco_core::library_json::{LibraryJson, find_library_id_by_nickname};

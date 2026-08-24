@@ -40,6 +40,7 @@ import com.lasco.lasco.ui.components.LascoInfoDialog
 import com.lasco.lasco.ui.components.LascoPrimaryButton
 import com.lasco.lasco.ui.manage.AddLocalFSRemoteDialog
 import com.lasco.lasco.ui.manage.AddS3RemoteDialog
+import com.lasco.lasco.ui.manage.LascoCloudLoginDialog
 import com.lasco.lasco.ui.manage.RemoteTypePickerDialog
 import com.lasco.lasco.ui.theme.LascoTheme
 import com.lasco.lasco.ui.theme.lascoPanel
@@ -73,11 +74,13 @@ fun StatusScreen(modifier: Modifier = Modifier) {
     val shortfall by statusViewModel.shortfall.collectAsStateWithLifecycle()
     val localStateStats by statusViewModel.localStateStats.collectAsStateWithLifecycle()
     val syncState by statusViewModel.syncState.collectAsStateWithLifecycle()
+    val cloudConnected = statusViewModel.isLascoCloudConnected()
     val pushCountdownSeconds = pushCountdownSeconds(syncState.pushDeadlineElapsedMs)
 
     var showRemotePicker by remember { mutableStateOf(false) }
     var showAddS3 by remember { mutableStateOf(false) }
     var showAddLocalFS by remember { mutableStateOf(false) }
+    var showCloudLogin by remember { mutableStateOf(false) }
     var showCleanConfirm by remember { mutableStateOf(false) }
     var showClearThumbsConfirm by remember { mutableStateOf(false) }
     var cleanBlockedCount by remember { mutableStateOf<Int?>(null) }
@@ -259,9 +262,17 @@ fun StatusScreen(modifier: Modifier = Modifier) {
     if (showRemotePicker) {
         RemoteTypePickerDialog(
             expertMode = expertMode,
+            showCloud = !cloudConnected,
+            onCloud = { showRemotePicker = false; showCloudLogin = true },
             onS3 = { showRemotePicker = false; showAddS3 = true },
             onLocalFS = { showRemotePicker = false; showAddLocalFS = true },
             onDismiss = { showRemotePicker = false },
+        )
+    }
+    if (showCloudLogin) {
+        LascoCloudLoginDialog(
+            onDismiss = { showCloudLogin = false },
+            onResult = { error -> feedback = error ?: "Lasco Cloud: connected" },
         )
     }
     if (showAddS3) {

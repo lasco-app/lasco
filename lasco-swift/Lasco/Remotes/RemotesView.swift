@@ -10,6 +10,8 @@ struct RemotesView: View {
     @State private var showRemotePicker = false
     @State private var showAddS3 = false
     @State private var showAddLocalFS = false
+    @State private var showCloudLogin = false
+    @State private var cloudConnected = false
     @State private var isUpdatingMediaSourceOrder = false
     @State private var removalBlocked: RemoteRemovalBlockedContext?
     @State private var removalBlockedByScheduledPush: FfiRemote?
@@ -148,6 +150,8 @@ struct RemotesView: View {
         .sheet(isPresented: $showRemotePicker) {
             RemoteTypePickerSheet(
                 expertMode: expertMode,
+                showCloud: !cloudConnected,
+                onCloud: { showRemotePicker = false; showCloudLogin = true },
                 onS3: { showRemotePicker = false; showAddS3 = true },
                 onLocalFS: { showRemotePicker = false; showAddLocalFS = true },
                 onDismiss: { showRemotePicker = false }
@@ -207,6 +211,14 @@ struct RemotesView: View {
                 .environment(repository)
                 .environment(\.lascoTheme, .dark)
                 .preferredColorScheme(.dark)
+        }
+        .sheet(isPresented: $showCloudLogin) {
+            LascoCloudLoginView(repository: repository, libraryID: session.libraryID)
+                .environment(\.lascoTheme, .dark)
+                .preferredColorScheme(.dark)
+        }
+        .task(id: session.remotes.count) {
+            cloudConnected = await repository.isLascoCloudConnected(libraryID: session.libraryID)
         }
         .sheet(isPresented: $showAddLocalFS) {
             AddLocalFSRemoteView()
@@ -269,6 +281,8 @@ struct RemotesView: View {
 
 struct RemoteTypePickerSheet: View {
     let expertMode: Bool
+    let showCloud: Bool
+    let onCloud: () -> Void
     let onS3: () -> Void
     let onLocalFS: () -> Void
     let onDismiss: () -> Void
@@ -301,6 +315,11 @@ struct RemoteTypePickerSheet: View {
                     .padding(.bottom, 32)
 
                 VStack(spacing: 12) {
+                    if showCloud {
+                        Button("Authenticate with Lasco Cloud", action: onCloud)
+                            .buttonStyle(LascoPrimaryButtonStyle())
+                            .frame(maxWidth: .infinity)
+                    }
                     Button("Add S3-compatible remote", action: onS3)
                         .buttonStyle(LascoPrimaryButtonStyle())
                         .frame(maxWidth: .infinity)

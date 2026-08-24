@@ -35,6 +35,7 @@ import uniffi.lasco_ffi.FfiCompactionLockInfo
 import uniffi.lasco_ffi.FfiGroupUuid
 import uniffi.lasco_ffi.FfiRemoteMediaShortfall
 import uniffi.lasco_ffi.FfiRemoteUuid
+import uniffi.lasco_ffi.FfiCloudS3Credentials
 
 /**
  * Session scoped wrapper around an opened FfiLibrary, replacing the Swift
@@ -59,7 +60,14 @@ class LibraryRepository(
     private val prefs: Prefs,
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
+    enum class LascoCloudConnectionStep {
+        Authenticated,
+        CredentialsReceived,
+        RemotesConfigured,
+    }
+
     private val appContext = context.applicationContext
+    private val cloud = LascoCloud(appContext)
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -90,6 +98,13 @@ class LibraryRepository(
 
     init {
         scope.launch { localMutations.collect { sync.schedulePush() } }
+        scope.launch(io) {
+            runCatching {
+                cloud.session(lib.libraryId().value).let { session ->
+                    lib.setCloudSession(session.baseUrl, session.token)
+                }
+            }
+        }
     }
 
     // Exists only so the onboarding wizard can build its own
@@ -429,6 +444,68 @@ class LibraryRepository(
         val id = lib.addRemoteS3(name, endpoint, bucket, region, pathPrefix, accessKey, secretKey)
         refreshSessionState()
         return id
+    }
+
+    /** Logs this local library into Cloud and reconciles the two server-owned remotes. */
+    suspend fun authenticateLascoCloud(
+        email: String,
+        password: String,
+        onProgress: (LascoCloudConnectionStep) -> Unit = {},
+    ) {
+        val libraryId = lib.libraryId().value
+        if (cloud.isLoggedIn(libraryId)) {
+            throw CloudAlreadyConnectedException()
+        }
+        cloud.login(libraryId, email, password)
+        try {
+            cloud.session(libraryId).let { session -> lib.setCloudSession(session.baseUrl, session.token) }
+            onProgress(LascoCloudConnectionStep.Authenticated)
+            val credentials = cloud.storageCredentials(libraryId)
+            val configured = withContext(io) {
+                val configured = lib.listRemotes().filter { it.kind == "lasco_cloud_s3" }.associateBy { it.path }
+                if (credentials.any { remote ->
+                        remote.libraryId != null &&
+                            (remote.libraryId != libraryId || remote.id !in configured)
+                    }
+                ) {
+                    throw CloudRemoteAlreadyAssociatedException()
+                }
+                configured
+            }
+            onProgress(LascoCloudConnectionStep.CredentialsReceived)
+            withContext(io) {
+                credentials.forEach { remote ->
+                    val id = configured[remote.id]?.remoteId ?: lib.addRemoteCloudS3(remote.name, remote.id)
+                    lib.setCloudS3Credentials(
+                        id,
+                        FfiCloudS3Credentials(
+                            remote.endpoint, remote.bucket, remote.region, remote.pathPrefix,
+                            remote.accessKeyId, remote.secretAccessKey, null, remote.expiresAt,
+                        ),
+                    )
+                    lib.initializeRemote(id, appDir)
+                    lib.connectRemote(id, appDir)
+                }
+            }
+            cloud.setRemoteLibraryIds(libraryId, credentials.map { it.id })
+            onProgress(LascoCloudConnectionStep.RemotesConfigured)
+            refreshSessionState()
+        } catch (error: Throwable) {
+            cloud.logout(libraryId)
+            throw error
+        }
+    }
+
+    suspend fun lascoCloudSubscription(): CloudAccount =
+        cloud.subscription(lib.libraryId().value)
+
+    fun isLascoCloudConnected(): Boolean = cloud.isLoggedIn(lib.libraryId().value)
+
+    suspend fun signOutLascoCloud() = withContext(io) {
+        if (lib.listRemotes().any { it.kind == "lasco_cloud_s3" }) {
+            throw CloudSignOutRequiresRemoteRemovalException()
+        }
+        cloud.logout(lib.libraryId().value)
     }
 
     suspend fun addRemoteFixedPath(name: String, path: String): FfiRemoteUuid {

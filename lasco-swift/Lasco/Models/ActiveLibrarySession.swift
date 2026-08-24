@@ -18,6 +18,9 @@ final class ActiveLibrarySession {
         self.syncCoordinator = SyncCoordinator(repository: repository, session: state)
         self.mediaImportCoordinator = MediaImportCoordinator(repository: repository)
         self.autoPhotoImportCoordinator = AutoPhotoImportCoordinator(repository: repository, session: state)
+        Task { [weak repository] in
+            await repository?.restoreLascoCloudSession(libraryID: state.libraryID)
+        }
         listenerTask = Task { [weak state, weak syncCoordinator] in
             guard let state, let syncCoordinator else { return }
             await state.listen(using: repository) {

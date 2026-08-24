@@ -56,6 +56,7 @@ import com.lasco.lasco.ui.components.LascoPrimaryButton
 import com.lasco.lasco.ui.components.LascoSecondaryButton
 import com.lasco.lasco.ui.manage.AddLocalFSRemoteDialog
 import com.lasco.lasco.ui.manage.AddS3RemoteDialog
+import com.lasco.lasco.ui.manage.LascoCloudLoginDialog
 import com.lasco.lasco.ui.manage.ManageViewModel
 import com.lasco.lasco.ui.theme.LascoTheme
 import com.lasco.lasco.ui.theme.lascoPanel
@@ -323,6 +324,7 @@ private fun RemoteStep(onAdvance: () -> Unit) {
 
     var showAddS3 by remember { mutableStateOf(false) }
     var showAddLocalFS by remember { mutableStateOf(false) }
+    var showCloudLogin by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -353,6 +355,7 @@ private fun RemoteStep(onAdvance: () -> Unit) {
                 .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            LascoPrimaryButton(text = "Authenticate with Lasco Cloud", onClick = { showCloudLogin = true })
             LascoPrimaryButton(text = "Add S3-compatible remote", onClick = { showAddS3 = true })
             if (expertMode) {
                 LascoSecondaryButton(text = "Add local filesystem remote", onClick = { showAddLocalFS = true })
@@ -365,6 +368,12 @@ private fun RemoteStep(onAdvance: () -> Unit) {
         AddS3RemoteDialog(
             onDismiss = { showAddS3 = false },
             onResult = { _, _ -> onAdvance() },
+        )
+    }
+    if (showCloudLogin) {
+        LascoCloudLoginDialog(
+            onDismiss = { showCloudLogin = false },
+            onResult = { error -> if (error == null) onAdvance() },
         )
     }
     if (showAddLocalFS) {

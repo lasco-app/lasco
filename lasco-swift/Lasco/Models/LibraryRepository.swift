@@ -113,9 +113,21 @@ protocol LibraryRepositoryProtocol: Sendable {
 
 enum LibraryRepositoryError: LocalizedError {
     case closed
+    case cloudRemoteAlreadyAssociated
+    case cloudSignOutRequiresRemoteRemoval
+    case cloudAlreadyConnected
 
     var errorDescription: String? {
-        "The library session is closed."
+        switch self {
+        case .closed:
+            "The library session is closed."
+        case .cloudRemoteAlreadyAssociated:
+            "Lasco Cloud storage is already associated with another library"
+        case .cloudSignOutRequiresRemoteRemoval:
+            "Remove the Lasco Cloud remotes before signing out"
+        case .cloudAlreadyConnected:
+            "Lasco Cloud is already connected for this library"
+        }
     }
 }
 
@@ -131,6 +143,40 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         self.library = library
         self.libraryID = library.libraryId()
         self.appSupportDirectory = appSupportDirectory ?? Self.defaultAppSupportDirectory
+    }
+
+    func configureLascoCloud(_ remotes: [LascoCloudRemote]) async throws {
+        try ensureOpen()
+        let existing = try validateLascoCloud(remotes)
+        for remote in remotes {
+            let remoteID: FfiRemoteUuid
+            if let configuredID = existing[remote.id] {
+                remoteID = configuredID
+            } else {
+                remoteID = try library.addRemoteCloudS3(name: remote.name, cloudStorageId: remote.id)
+            }
+            try library.setCloudS3Credentials(remoteId: remoteID, credentials: FfiCloudS3Credentials(endpoint: remote.endpoint, bucket: remote.bucket, region: remote.region, pathPrefix: remote.pathPrefix, accessKeyId: remote.accessKeyId, secretAccessKey: remote.secretAccessKey, sessionToken: nil, expiresAt: remote.expiresAt))
+            try library.initializeRemote(remoteId: remoteID, appSupportDir: appSupportDirectory)
+            try library.connectRemote(remoteId: remoteID, appSupportDir: appSupportDirectory)
+        }
+        await notify(.session)
+    }
+
+    func setLascoCloudSession(_ session: LascoCloudSession) throws {
+        try ensureOpen()
+        try library.setCloudSession(baseUrl: session.baseURL, bearerToken: session.token)
+    }
+
+    func validateLascoCloud(_ remotes: [LascoCloudRemote]) throws -> [String: FfiRemoteUuid] {
+        try ensureOpen()
+        guard remotes.count == 2 else { throw LascoCloudError.invalidRemoteCount }
+        let existing = Dictionary(uniqueKeysWithValues: library.listRemotes().filter { $0.kind == "lasco_cloud_s3" }.compactMap { remote in remote.path.map { ($0, remote.remoteId) } })
+        guard remotes.allSatisfy({ remote in
+            remote.libraryID == nil || (remote.libraryID == libraryID.value && existing[remote.id] != nil)
+        }) else {
+            throw LibraryRepositoryError.cloudRemoteAlreadyAssociated
+        }
+        return existing
     }
 
     nonisolated static var defaultAppSupportDirectory: String? {
@@ -598,6 +644,11 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         await notify(.session)
     }
 
+    func hasLascoCloudRemotes() throws -> Bool {
+        try ensureOpen()
+        return library.listRemotes().contains { $0.kind == "lasco_cloud_s3" }
+    }
+
     func initializeRemote(id: FfiRemoteUuid) async throws {
         try ensureOpen()
         try library.initializeRemote(remoteId: id, appSupportDir: appSupportDirectory)
@@ -720,6 +771,59 @@ final class LibraryRepository: LibraryRepositoryProtocol {
 
     init(library: FfiLibrary, appSupportDirectory: String? = nil) {
         storage = LibraryRepositoryStorage(library: library, appSupportDirectory: appSupportDirectory)
+    }
+
+    enum LascoCloudConnectionStep: Sendable {
+        case authenticated
+        case credentialsReceived
+        case remotesConfigured
+    }
+
+    func authenticateLascoCloud(
+        email: String,
+        password: String,
+        libraryID: FfiLibraryId,
+        onProgress: @MainActor @escaping (LascoCloudConnectionStep) -> Void = { _ in }
+    ) async throws {
+        let cloud = LascoCloudClient()
+        if await cloud.isLoggedIn(libraryID: libraryID.value) {
+            throw LibraryRepositoryError.cloudAlreadyConnected
+        }
+        try await cloud.login(libraryID: libraryID.value, email: email, password: password)
+        do {
+            let session = try await cloud.session(libraryID: libraryID.value)
+            try await storage.setLascoCloudSession(session)
+            onProgress(.authenticated)
+            let remotes = try await cloud.storageCredentials(libraryID: libraryID.value)
+            _ = try await storage.validateLascoCloud(remotes)
+            onProgress(.credentialsReceived)
+            try await storage.configureLascoCloud(remotes)
+            try await cloud.setRemoteLibraryIDs(libraryID: libraryID.value, remoteIDs: remotes.map(\.id))
+            onProgress(.remotesConfigured)
+        } catch {
+            await cloud.logout(libraryID: libraryID.value)
+            throw error
+        }
+    }
+
+    func isLascoCloudConnected(libraryID: FfiLibraryId) async -> Bool {
+        await LascoCloudClient().isLoggedIn(libraryID: libraryID.value)
+    }
+
+    /// Restores the memory-only Rust Cloud session after opening a library.
+    /// The first actual Cloud operation will fetch S3 credentials lazily.
+    func restoreLascoCloudSession(libraryID: FfiLibraryId) async {
+        let cloud = LascoCloudClient()
+        guard await cloud.isLoggedIn(libraryID: libraryID.value) else { return }
+        guard let session = try? await cloud.session(libraryID: libraryID.value) else { return }
+        try? await storage.setLascoCloudSession(session)
+    }
+
+    func signOutLascoCloud(libraryID: FfiLibraryId) async throws {
+        if try await storage.hasLascoCloudRemotes() {
+            throw LibraryRepositoryError.cloudSignOutRequiresRemoteRemoval
+        }
+        await LascoCloudClient().logout(libraryID: libraryID.value)
     }
 
     func changes() async -> AsyncStream<LibraryChange> { await storage.changes() }

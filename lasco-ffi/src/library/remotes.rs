@@ -5,16 +5,16 @@ use lasco_core::library::sync::{
     remote_access::{StorageRead, StorageReadWrite},
 };
 use lasco_core::library_json::{
-    DebugLocalAndroidConfig, DebugLocalAppleConfig, FixedPathConfig, LibraryJson, RemoteConfig,
-    RemoteKind, UsbAndroidConfig, UsbAppleConfig,
+    CloudS3Config, DebugLocalAndroidConfig, DebugLocalAppleConfig, FixedPathConfig, LibraryJson,
+    RemoteConfig, RemoteKind, UsbAndroidConfig, UsbAppleConfig,
 };
 use lasco_core::operations::{LibraryPassword, LibraryUsername};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
 use super::{
-    FfiCompactionLockInfo, FfiCrdtOperation, FfiDot, FfiKv, FfiLibrary, FfiMediaItem, FfiOperation,
-    FfiRemote, ffi_count,
+    FfiCloudS3Credentials, FfiCompactionLockInfo, FfiCrdtOperation, FfiDot, FfiKv, FfiLibrary,
+    FfiMediaItem, FfiOperation, FfiRemote, ffi_count,
 };
 use crate::error::LascoError;
 use crate::ids::FfiRemoteUuid;
@@ -27,6 +27,95 @@ fn next_media_fetch_priority(remote_count: usize) -> Result<u32, LascoError> {
 
 #[uniffi::export]
 impl FfiLibrary {
+    /// Adds one Lasco Cloud storage destination. It becomes usable once the
+    /// native client supplies its short-lived connection credentials.
+    pub fn add_remote_cloud_s3(
+        &self,
+        name: String,
+        cloud_storage_id: String,
+    ) -> Result<FfiRemoteUuid, LascoError> {
+        if cloud_storage_id.trim().is_empty() {
+            return Err(LascoError::Other {
+                msg: "cloud storage id must not be empty".to_string(),
+            });
+        }
+        if self.load_library_json()?.remotes.iter().any(|remote| {
+            matches!(&remote.kind, RemoteKind::CloudS3(config) if config.cloud_storage_id == cloud_storage_id)
+        }) {
+            return Err(LascoError::Other { msg: "Lasco Cloud storage is already configured".to_string() });
+        }
+        self.add_remote_config(
+            name,
+            RemoteKind::CloudS3(CloudS3Config { cloud_storage_id }),
+        )
+    }
+
+    /// Replaces in-memory credentials for one configured Lasco Cloud remote.
+    /// Credentials are intentionally forgotten when this FFI library closes.
+    pub fn set_cloud_s3_credentials(
+        &self,
+        remote_id: FfiRemoteUuid,
+        credentials: FfiCloudS3Credentials,
+    ) -> Result<(), LascoError> {
+        let remote_id: RemoteUuid = remote_id.try_into()?;
+        let config = self.load_library_json()?;
+        let cloud_storage_id = config
+            .remotes
+            .iter()
+            .find_map(|remote| {
+                (remote.remote_uuid == remote_id).then(|| match &remote.kind {
+                    RemoteKind::CloudS3(config) => Some(config.cloud_storage_id.clone()),
+                    _ => None,
+                })
+            })
+            .flatten();
+        let Some(cloud_storage_id) = cloud_storage_id else {
+            return Err(LascoError::Other {
+                msg: "remote is not a Lasco Cloud storage destination".to_string(),
+            });
+        };
+        let expires_at = chrono::DateTime::parse_from_rfc3339(&credentials.expires_at)
+            .map_err(|_| LascoError::Other {
+                msg: "Lasco Cloud returned an invalid credential expiry".to_string(),
+            })?
+            .with_timezone(&chrono::Utc);
+        self.inner.cloud_runtime().install_remote(
+            remote_id,
+            cloud_storage_id,
+            lasco_core::library::cloud::CloudS3Credentials {
+                endpoint: credentials.endpoint,
+                bucket: credentials.bucket,
+                region: credentials.region,
+                path_prefix: credentials.path_prefix,
+                access_key_id: credentials.access_key_id,
+                secret_access_key: credentials.secret_access_key,
+                session_token: credentials.session_token,
+                expires_at,
+            },
+        );
+        Ok(())
+    }
+
+    /// Installs a memory-only Cloud API session. The runtime uses this token to
+    /// lazily refresh expiring S3 credentials during long-running operations.
+    pub fn set_cloud_session(
+        &self,
+        base_url: String,
+        bearer_token: String,
+    ) -> Result<(), LascoError> {
+        self.inner
+            .set_cloud_session(base_url, bearer_token)
+            .map_err(|error| LascoError::Other {
+                msg: error.to_string(),
+            })
+    }
+
+    /// Removes all ephemeral Cloud credentials and the Cloud API session, for
+    /// example after sign-out.
+    pub fn clear_cloud_s3_credentials(&self) {
+        self.inner.cloud_runtime().clear_credentials();
+        self.inner.clear_cloud_session();
+    }
     /// # Errors
     ///
     /// Returns the newest-first half-open range `[start_pos, end_pos_exclusive)`.
@@ -931,6 +1020,16 @@ impl FfiLibrary {
                 msg: format!("remote '{remote_id}' not found"),
             })?;
 
+        if let RemoteKind::CloudS3(cloud) = &remote.kind {
+            self.inner
+                .cloud_runtime()
+                .register_remote(*remote_id, cloud.cloud_storage_id.clone());
+            return Ok(Box::new(lasco_core::storage::StorageLascoCloudS3::new(
+                *remote_id,
+                self.inner.cloud_runtime(),
+            )));
+        }
+
         lasco_core::client::build_storage(
             &self.app_dir,
             remote,
@@ -949,6 +1048,13 @@ pub(super) fn remote_config_to_ffi(r: &RemoteConfig) -> FfiRemote {
             Some(s3.bucket.clone()),
             Some(s3.region.clone()),
             s3.path_prefix.clone(),
+        ),
+        RemoteKind::CloudS3(cloud) => (
+            "lasco_cloud_s3".to_string(),
+            None,
+            None,
+            None,
+            Some(cloud.cloud_storage_id.clone()),
         ),
         RemoteKind::FixedPath(fs) => (
             "fixed_path".to_string(),
