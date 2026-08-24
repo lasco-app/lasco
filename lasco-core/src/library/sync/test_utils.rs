@@ -100,7 +100,7 @@ pub async fn stamp_remote(storage: &dyn crate::storage::Storage, remote_id: Remo
         .put_atomic(
             &format!("remote_id_{remote_id}"),
             b"",
-            AtomicWriteMode::CreateIfAbsent,
+            AtomicWriteMode::Replace,
         )
         .await
         .unwrap();
@@ -108,7 +108,7 @@ pub async fn stamp_remote(storage: &dyn crate::storage::Storage, remote_id: Remo
         .put_atomic(
             &format!("library/{}", crate::library::library_format_sentinel()),
             b"",
-            AtomicWriteMode::CreateIfAbsent,
+            AtomicWriteMode::Replace,
         )
         .await
         .unwrap();

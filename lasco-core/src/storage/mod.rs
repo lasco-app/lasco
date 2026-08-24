@@ -18,8 +18,6 @@ pub type Result<T> = std::result::Result<T, StorageError>;
 pub enum AtomicWriteMode {
     /// Atomically replace any existing value.
     Replace,
-    /// Atomically create the value only when the key is absent.
-    CreateIfAbsent,
 }
 
 #[async_trait]
@@ -28,9 +26,7 @@ pub trait Storage: Send + Sync {
     async fn put(&self, key: &str, data: &[u8]) -> Result<()>;
     /// Atomically publishes `data` according to `mode`, without exposing a partial value.
     ///
-    /// Returns whether this invocation published the value. `Replace` always returns `true`;
-    /// `CreateIfAbsent` returns `false` and leaves the existing value untouched when the key
-    /// already exists. Backends must implement the existence check and publication as one action.
+    /// Returns whether this invocation published the value. `Replace` always returns `true`.
     async fn put_atomic(&self, key: &str, data: &[u8], mode: AtomicWriteMode) -> Result<bool>;
     async fn get(&self, key: &str) -> Result<Vec<u8>>;
     async fn delete(&self, key: &str) -> Result<()>;

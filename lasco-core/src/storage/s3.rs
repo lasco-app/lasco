@@ -116,18 +116,6 @@ impl Storage for StorageS3 {
                 self.put_object(key, data).await?;
                 Ok(true)
             }
-            AtomicWriteMode::CreateIfAbsent => match self
-                .bucket
-                .put_object_builder(self.prefixed_key(key), data)
-                .with_header("if-none-match", "*")
-                .map_err(|e| StorageError::Other(Box::new(e)))?
-                .execute()
-                .await
-            {
-                Ok(_) => Ok(true),
-                Err(S3Error::HttpFailWithBody(412, _)) => Ok(false),
-                Err(e) => Err(StorageError::Other(Box::new(e))),
-            },
         }
     }
 
@@ -390,26 +378,5 @@ mod tests {
             .unwrap();
         assert!(storage.exists("test/ex").await.unwrap());
         storage.delete("test/ex").await.unwrap();
-    }
-
-    #[tokio::test]
-    #[ignore = "Requires S3 test environment"]
-    async fn create_if_absent_behavior() {
-        let storage = make_storage().expect("S3 test config not set");
-        storage.delete("test/absent").await.unwrap();
-        assert!(
-            storage
-                .put_atomic("test/absent", b"orig", AtomicWriteMode::CreateIfAbsent)
-                .await
-                .unwrap()
-        );
-        assert!(
-            !storage
-                .put_atomic("test/absent", b"new", AtomicWriteMode::CreateIfAbsent)
-                .await
-                .unwrap()
-        );
-        assert_eq!(storage.get("test/absent").await.unwrap(), b"orig");
-        storage.delete("test/absent").await.unwrap();
     }
 }

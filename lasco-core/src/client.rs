@@ -335,14 +335,29 @@ pub async fn add_existing_library_s3(
             let mk_name = format!("mk_{}_{}.enc", new_username.0, new_uuid);
             let mk_bytes = std::fs::read(lib_dir.path().join(&mk_name))
                 .with_context(|| format!("failed to read {mk_name}"))?;
-            storage
-                .put_atomic(
-                    &format!("library/{mk_name}"),
-                    &mk_bytes,
-                    crate::storage::AtomicWriteMode::CreateIfAbsent,
-                )
+            let remote_key = format!("library/{mk_name}");
+            if storage
+                .exists(&remote_key)
                 .await
-                .map_err(|e| anyhow::anyhow!("failed to upload new user key: {e}"))?;
+                .map_err(|e| anyhow::anyhow!("failed to check new user key: {e}"))?
+            {
+                let remote_bytes = storage
+                    .get(&remote_key)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("failed to read existing new user key: {e}"))?;
+                if remote_bytes != mk_bytes {
+                    bail!("existing remote master-key file differs: {remote_key}");
+                }
+            } else {
+                storage
+                    .put_atomic(
+                        &remote_key,
+                        &mk_bytes,
+                        crate::storage::AtomicWriteMode::Replace,
+                    )
+                    .await
+                    .map_err(|e| anyhow::anyhow!("failed to upload new user key: {e}"))?;
+            }
 
             let library = Library::open_with_master_key(
                 local_dirs,
