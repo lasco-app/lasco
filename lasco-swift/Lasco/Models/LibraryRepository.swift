@@ -161,9 +161,48 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         await notify(.session)
     }
 
-    func setLascoCloudSession(_ session: LascoCloudSession) throws {
+    func configureLascoCloudAuth() async throws {
         try ensureOpen()
-        try library.setCloudSession(baseUrl: session.baseURL, bearerToken: session.token)
+        try await library.configureLascoCloudAuth(baseUrl: LascoCloudEndpoint.url)
+    }
+
+    func lascoCloudLogin(email: String, password: String) async throws {
+        try ensureOpen()
+        try await library.lascoCloudLogin(
+            email: email,
+            password: password,
+            platform: "ios",
+            appVersion: LascoCloudEndpoint.appVersion
+        )
+    }
+
+    func lascoCloudRemotes() async throws -> [LascoCloudRemote] {
+        try ensureOpen()
+        return try await library.lascoCloudListRemotes().map { LascoCloudRemote(ffi: $0) }
+    }
+
+    func assignLascoCloudRemotesToThisLibrary(remoteIDs: [String]) async throws {
+        try ensureOpen()
+        try await library.lascoCloudAssignRemotesToThisLibrary(remoteIds: remoteIDs)
+    }
+
+    func lascoCloudAccount() async throws -> LascoCloudAccount {
+        try ensureOpen()
+        return LascoCloudAccount(ffi: try await library.lascoCloudSubscription())
+    }
+
+    func isLascoCloudAuthenticated() -> Bool {
+        !closed && library.lascoCloudIsAuthenticated()
+    }
+
+    func revokeLascoCloudSession() async throws {
+        try ensureOpen()
+        try await library.lascoCloudRevokeSession()
+    }
+
+    func clearLascoCloudAuthAndCredentials() async throws {
+        try ensureOpen()
+        try await library.clearLascoCloudAuthAndCredentials()
     }
 
     func validateLascoCloud(_ remotes: [LascoCloudRemote]) throws -> [String: FfiRemoteUuid] {
@@ -774,7 +813,7 @@ final class LibraryRepository: LibraryRepositoryProtocol {
 
     enum LascoCloudConnectionStep: Sendable {
         case authenticated
-        case credentialsReceived
+        case remotesValidated
         case remotesConfigured
     }
 
@@ -784,46 +823,45 @@ final class LibraryRepository: LibraryRepositoryProtocol {
         libraryID: FfiLibraryId,
         onProgress: @MainActor @escaping (LascoCloudConnectionStep) -> Void = { _ in }
     ) async throws {
-        let cloud = LascoCloudClient()
-        if await cloud.isLoggedIn(libraryID: libraryID.value) {
+        try await storage.configureLascoCloudAuth()
+        if await storage.isLascoCloudAuthenticated() {
             throw LibraryRepositoryError.cloudAlreadyConnected
         }
-        try await cloud.login(libraryID: libraryID.value, email: email, password: password)
+        try await storage.lascoCloudLogin(email: email, password: password)
         do {
-            let session = try await cloud.session(libraryID: libraryID.value)
-            try await storage.setLascoCloudSession(session)
             onProgress(.authenticated)
-            let remotes = try await cloud.storageDestinations(libraryID: libraryID.value)
+            let remotes = try await storage.lascoCloudRemotes()
             _ = try await storage.validateLascoCloud(remotes)
-            onProgress(.credentialsReceived)
+            onProgress(.remotesValidated)
             try await storage.configureLascoCloud(remotes)
-            try await cloud.setRemoteLibraryIDs(libraryID: libraryID.value, remoteIDs: remotes.map(\.id))
+            try await storage.assignLascoCloudRemotesToThisLibrary(remoteIDs: remotes.map(\.id))
             onProgress(.remotesConfigured)
         } catch {
-            await cloud.logout(libraryID: libraryID.value)
+            try? await storage.revokeLascoCloudSession()
+            try? await storage.clearLascoCloudAuthAndCredentials()
             throw error
         }
     }
 
     func isLascoCloudConnected(libraryID: FfiLibraryId) async -> Bool {
-        await LascoCloudClient().isLoggedIn(libraryID: libraryID.value)
+        await storage.isLascoCloudAuthenticated()
     }
 
-    /// Restores the memory-only Rust Cloud API session after opening a library.
-    /// The first actual Cloud operation uses Rust's encrypted credential cache
-    /// when valid, otherwise refreshes S3 credentials lazily.
+    /// Configures the Rust-owned Lasco Cloud auth manager after opening a library.
+    /// It loads the session from secure storage; storage credentials stay lazy.
     func restoreLascoCloudSession(libraryID: FfiLibraryId) async {
-        let cloud = LascoCloudClient()
-        guard await cloud.isLoggedIn(libraryID: libraryID.value) else { return }
-        guard let session = try? await cloud.session(libraryID: libraryID.value) else { return }
-        try? await storage.setLascoCloudSession(session)
+        try? await storage.configureLascoCloudAuth()
     }
 
     func signOutLascoCloud(libraryID: FfiLibraryId) async throws {
         if try await storage.hasLascoCloudRemotes() {
             throw LibraryRepositoryError.cloudSignOutRequiresRemoteRemoval
         }
-        await LascoCloudClient().logout(libraryID: libraryID.value)
+        try await storage.revokeLascoCloudSession()
+    }
+
+    func lascoCloudSubscription(libraryID: FfiLibraryId) async throws -> LascoCloudAccount {
+        try await storage.lascoCloudAccount()
     }
 
     func changes() async -> AsyncStream<LibraryChange> { await storage.changes() }

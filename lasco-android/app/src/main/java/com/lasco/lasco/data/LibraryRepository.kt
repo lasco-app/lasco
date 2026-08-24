@@ -1,6 +1,7 @@
 package com.lasco.lasco.data
 
 import android.content.Context
+import com.lasco.lasco.BuildConfig
 import com.lasco.lasco.LascoApp
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -66,7 +67,6 @@ class LibraryRepository(
     }
 
     private val appContext = context.applicationContext
-    private val cloud = LascoCloud(appContext)
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -99,9 +99,7 @@ class LibraryRepository(
         scope.launch { localMutations.collect { sync.schedulePush() } }
         scope.launch(io) {
             runCatching {
-                cloud.session(lib.libraryId().value).let { session ->
-                    lib.setCloudSession(session.baseUrl, session.token)
-                }
+                lib.configureLascoCloudAuth(DevelopmentCloudEndpoint.activeUrl(appContext))
             }
         }
     }
@@ -452,14 +450,16 @@ class LibraryRepository(
         onProgress: (LascoCloudConnectionStep) -> Unit = {},
     ) {
         val libraryId = lib.libraryId().value
-        if (cloud.isLoggedIn(libraryId)) {
+        lib.configureLascoCloudAuth(DevelopmentCloudEndpoint.activeUrl(appContext))
+        if (lib.lascoCloudIsAuthenticated()) {
             throw CloudAlreadyConnectedException()
         }
-        cloud.login(libraryId, email, password)
+        lib.lascoCloudLogin(email, password, "android", BuildConfig.VERSION_NAME)
         try {
-            cloud.session(libraryId).let { session -> lib.setCloudSession(session.baseUrl, session.token) }
             onProgress(LascoCloudConnectionStep.Authenticated)
-            val credentials = cloud.storageDestinations(libraryId)
+            val credentials = lib.lascoCloudListRemotes().map { remote ->
+                CloudRemote(remote.id, remote.libraryId, remote.name, remote.endpoint, remote.bucket, remote.region, remote.pathPrefix)
+            }
             val configured = withContext(io) {
                 val configured = lib.listRemotes().filter { it.kind == "lasco_cloud_s3" }.associateBy { it.path }
                 if (credentials.any { remote ->
@@ -479,25 +479,32 @@ class LibraryRepository(
                     lib.connectRemote(id, appDir)
                 }
             }
-            cloud.setRemoteLibraryIds(libraryId, credentials.map { it.id })
+            lib.lascoCloudAssignRemotesToThisLibrary(credentials.map { it.id })
             onProgress(LascoCloudConnectionStep.RemotesConfigured)
             refreshSessionState()
         } catch (error: Throwable) {
-            cloud.logout(libraryId)
+            lib.clearLascoCloudAuthAndCredentials()
             throw error
         }
     }
 
     suspend fun lascoCloudSubscription(): CloudAccount =
-        cloud.subscription(lib.libraryId().value)
+        lib.lascoCloudSubscription().let { account ->
+            CloudAccount(
+                email = account.email,
+                subscription = account.subscription?.let { subscription ->
+                    CloudSubscription(subscription.planId, subscription.planName, subscription.status, subscription.storageQuotaBytes.toLong(), subscription.renewsAt)
+                },
+            )
+        }
 
-    fun isLascoCloudConnected(): Boolean = cloud.isLoggedIn(lib.libraryId().value)
+    fun isLascoCloudConnected(): Boolean = lib.lascoCloudIsAuthenticated()
 
     suspend fun signOutLascoCloud() = withContext(io) {
         if (lib.listRemotes().any { it.kind == "lasco_cloud_s3" }) {
             throw CloudSignOutRequiresRemoteRemovalException()
         }
-        cloud.logout(lib.libraryId().value)
+        lib.lascoCloudRevokeSession()
     }
 
     suspend fun addRemoteFixedPath(name: String, path: String): FfiRemoteUuid {

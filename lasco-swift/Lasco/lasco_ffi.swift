@@ -695,11 +695,9 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     
     func allMediaIds()  -> [FfiMediaUuid]
     
-    /**
-     * Removes all ephemeral Cloud credentials and the Cloud API session, for
-     * example after sign-out.
-     */
-    func clearCloudS3Credentials() 
+    func clearLascoCloudAuthAndCredentials() async throws 
+    
+    func configureLascoCloudAuth(baseUrl: String) async throws 
     
     /**
      * Confirms which media blobs a remote holds and records them in its media inventory,
@@ -862,6 +860,18 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * Returns the owner and creation time of this remote's compaction lock, if held.
      */
     func inspectCompactionLock(remoteId: FfiRemoteUuid, appSupportDir: String?) throws  -> FfiCompactionLockInfo?
+    
+    func lascoCloudAssignRemotesToThisLibrary(remoteIds: [String]) async throws 
+    
+    func lascoCloudIsAuthenticated()  -> Bool
+    
+    func lascoCloudListRemotes() async throws  -> [FfiLascoCloudRemote]
+    
+    func lascoCloudLogin(email: String, password: String, platform: String, appVersion: String) async throws 
+    
+    func lascoCloudRevokeSession() async throws 
+    
+    func lascoCloudSubscription() async throws  -> FfiLascoCloudAccount
     
     func libraryId()  -> FfiLibraryId
     
@@ -1136,12 +1146,6 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * Returns an error if the library configuration is missing, malformed, or cannot be saved.
      */
     func setAutoImportDeviceMedia(enabled: Bool) throws 
-    
-    /**
-     * Installs a memory-only Cloud API session. The runtime uses this token to
-     * lazily refresh expiring S3 credentials during long-running operations.
-     */
-    func setCloudSession(baseUrl: String, bearerToken: String) throws 
     
     /**
      * # Errors
@@ -1540,14 +1544,38 @@ nonisolated open func allMediaIds() -> [FfiMediaUuid]  {
 })
 }
     
-    /**
-     * Removes all ephemeral Cloud credentials and the Cloud API session, for
-     * example after sign-out.
-     */
-nonisolated open func clearCloudS3Credentials()  {try! rustCall() {
-    uniffi_lasco_ffi_fn_method_ffilibrary_clear_cloud_s3_credentials(self.uniffiClonePointer(),$0
-    )
+nonisolated open func clearLascoCloudAuthAndCredentials()async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_lasco_ffi_fn_method_ffilibrary_clear_lasco_cloud_auth_and_credentials(
+                    self.uniffiClonePointer()
+                    
+                )
+            },
+            pollFunc: ffi_lasco_ffi_rust_future_poll_void,
+            completeFunc: ffi_lasco_ffi_rust_future_complete_void,
+            freeFunc: ffi_lasco_ffi_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeLascoError_lift
+        )
 }
+    
+nonisolated open func configureLascoCloudAuth(baseUrl: String)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_lasco_ffi_fn_method_ffilibrary_configure_lasco_cloud_auth(
+                    self.uniffiClonePointer(),
+                    FfiConverterString.lower(baseUrl)
+                )
+            },
+            pollFunc: ffi_lasco_ffi_rust_future_poll_void,
+            completeFunc: ffi_lasco_ffi_rust_future_complete_void,
+            freeFunc: ffi_lasco_ffi_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeLascoError_lift
+        )
 }
     
     /**
@@ -1897,6 +1925,98 @@ nonisolated open func inspectCompactionLock(remoteId: FfiRemoteUuid, appSupportD
         FfiConverterOptionString.lower(appSupportDir),$0
     )
 })
+}
+    
+nonisolated open func lascoCloudAssignRemotesToThisLibrary(remoteIds: [String])async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_assign_remotes_to_this_library(
+                    self.uniffiClonePointer(),
+                    FfiConverterSequenceString.lower(remoteIds)
+                )
+            },
+            pollFunc: ffi_lasco_ffi_rust_future_poll_void,
+            completeFunc: ffi_lasco_ffi_rust_future_complete_void,
+            freeFunc: ffi_lasco_ffi_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeLascoError_lift
+        )
+}
+    
+nonisolated open func lascoCloudIsAuthenticated() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_is_authenticated(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+nonisolated open func lascoCloudListRemotes()async throws  -> [FfiLascoCloudRemote]  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_list_remotes(
+                    self.uniffiClonePointer()
+                    
+                )
+            },
+            pollFunc: ffi_lasco_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_lasco_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_lasco_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterSequenceTypeFfiLascoCloudRemote.lift,
+            errorHandler: FfiConverterTypeLascoError_lift
+        )
+}
+    
+nonisolated open func lascoCloudLogin(email: String, password: String, platform: String, appVersion: String)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_login(
+                    self.uniffiClonePointer(),
+                    FfiConverterString.lower(email),FfiConverterString.lower(password),FfiConverterString.lower(platform),FfiConverterString.lower(appVersion)
+                )
+            },
+            pollFunc: ffi_lasco_ffi_rust_future_poll_void,
+            completeFunc: ffi_lasco_ffi_rust_future_complete_void,
+            freeFunc: ffi_lasco_ffi_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeLascoError_lift
+        )
+}
+    
+nonisolated open func lascoCloudRevokeSession()async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_revoke_session(
+                    self.uniffiClonePointer()
+                    
+                )
+            },
+            pollFunc: ffi_lasco_ffi_rust_future_poll_void,
+            completeFunc: ffi_lasco_ffi_rust_future_complete_void,
+            freeFunc: ffi_lasco_ffi_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeLascoError_lift
+        )
+}
+    
+nonisolated open func lascoCloudSubscription()async throws  -> FfiLascoCloudAccount  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_subscription(
+                    self.uniffiClonePointer()
+                    
+                )
+            },
+            pollFunc: ffi_lasco_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_lasco_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_lasco_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeFfiLascoCloudAccount_lift,
+            errorHandler: FfiConverterTypeLascoError_lift
+        )
 }
     
 nonisolated open func libraryId() -> FfiLibraryId  {
@@ -2407,18 +2527,6 @@ nonisolated open func setAlbumThumbnail(albumId: FfiAlbumUuid, mediaId: FfiMedia
 nonisolated open func setAutoImportDeviceMedia(enabled: Bool)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_set_auto_import_device_media(self.uniffiClonePointer(),
         FfiConverterBool.lower(enabled),$0
-    )
-}
-}
-    
-    /**
-     * Installs a memory-only Cloud API session. The runtime uses this token to
-     * lazily refresh expiring S3 credentials during long-running operations.
-     */
-nonisolated open func setCloudSession(baseUrl: String, bearerToken: String)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
-    uniffi_lasco_ffi_fn_method_ffilibrary_set_cloud_session(self.uniffiClonePointer(),
-        FfiConverterString.lower(baseUrl),
-        FfiConverterString.lower(bearerToken),$0
     )
 }
 }
@@ -3342,6 +3450,280 @@ nonisolated public func FfiConverterTypeFfiKv_lift(_ buf: RustBuffer) throws -> 
 #endif
 nonisolated public func FfiConverterTypeFfiKv_lower(_ value: FfiKv) -> RustBuffer {
     return FfiConverterTypeFfiKv.lower(value)
+}
+
+
+nonisolated public struct FfiLascoCloudAccount {
+    public var email: String
+    public var subscription: FfiLascoCloudSubscription?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(email: String, subscription: FfiLascoCloudSubscription?) {
+        self.email = email
+        self.subscription = subscription
+    }
+}
+
+#if compiler(>=6)
+nonisolated extension FfiLascoCloudAccount: Sendable {}
+#endif
+
+
+nonisolated extension FfiLascoCloudAccount: Equatable, Hashable {
+    public static func ==(lhs: FfiLascoCloudAccount, rhs: FfiLascoCloudAccount) -> Bool {
+        if lhs.email != rhs.email {
+            return false
+        }
+        if lhs.subscription != rhs.subscription {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(email)
+        hasher.combine(subscription)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public struct FfiConverterTypeFfiLascoCloudAccount: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiLascoCloudAccount {
+        return
+            try FfiLascoCloudAccount(
+                email: FfiConverterString.read(from: &buf), 
+                subscription: FfiConverterOptionTypeFfiLascoCloudSubscription.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiLascoCloudAccount, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.email, into: &buf)
+        FfiConverterOptionTypeFfiLascoCloudSubscription.write(value.subscription, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public func FfiConverterTypeFfiLascoCloudAccount_lift(_ buf: RustBuffer) throws -> FfiLascoCloudAccount {
+    return try FfiConverterTypeFfiLascoCloudAccount.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public func FfiConverterTypeFfiLascoCloudAccount_lower(_ value: FfiLascoCloudAccount) -> RustBuffer {
+    return FfiConverterTypeFfiLascoCloudAccount.lower(value)
+}
+
+
+nonisolated public struct FfiLascoCloudRemote {
+    public var id: String
+    public var libraryId: String?
+    public var name: String
+    public var endpoint: String
+    public var bucket: String
+    public var region: String
+    public var pathPrefix: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, libraryId: String?, name: String, endpoint: String, bucket: String, region: String, pathPrefix: String) {
+        self.id = id
+        self.libraryId = libraryId
+        self.name = name
+        self.endpoint = endpoint
+        self.bucket = bucket
+        self.region = region
+        self.pathPrefix = pathPrefix
+    }
+}
+
+#if compiler(>=6)
+nonisolated extension FfiLascoCloudRemote: Sendable {}
+#endif
+
+
+nonisolated extension FfiLascoCloudRemote: Equatable, Hashable {
+    public static func ==(lhs: FfiLascoCloudRemote, rhs: FfiLascoCloudRemote) -> Bool {
+        if lhs.id != rhs.id {
+            return false
+        }
+        if lhs.libraryId != rhs.libraryId {
+            return false
+        }
+        if lhs.name != rhs.name {
+            return false
+        }
+        if lhs.endpoint != rhs.endpoint {
+            return false
+        }
+        if lhs.bucket != rhs.bucket {
+            return false
+        }
+        if lhs.region != rhs.region {
+            return false
+        }
+        if lhs.pathPrefix != rhs.pathPrefix {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+        hasher.combine(libraryId)
+        hasher.combine(name)
+        hasher.combine(endpoint)
+        hasher.combine(bucket)
+        hasher.combine(region)
+        hasher.combine(pathPrefix)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public struct FfiConverterTypeFfiLascoCloudRemote: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiLascoCloudRemote {
+        return
+            try FfiLascoCloudRemote(
+                id: FfiConverterString.read(from: &buf), 
+                libraryId: FfiConverterOptionString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                endpoint: FfiConverterString.read(from: &buf), 
+                bucket: FfiConverterString.read(from: &buf), 
+                region: FfiConverterString.read(from: &buf), 
+                pathPrefix: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiLascoCloudRemote, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterOptionString.write(value.libraryId, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.endpoint, into: &buf)
+        FfiConverterString.write(value.bucket, into: &buf)
+        FfiConverterString.write(value.region, into: &buf)
+        FfiConverterString.write(value.pathPrefix, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public func FfiConverterTypeFfiLascoCloudRemote_lift(_ buf: RustBuffer) throws -> FfiLascoCloudRemote {
+    return try FfiConverterTypeFfiLascoCloudRemote.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public func FfiConverterTypeFfiLascoCloudRemote_lower(_ value: FfiLascoCloudRemote) -> RustBuffer {
+    return FfiConverterTypeFfiLascoCloudRemote.lower(value)
+}
+
+
+nonisolated public struct FfiLascoCloudSubscription {
+    public var planId: String
+    public var planName: String
+    public var status: String
+    public var storageQuotaBytes: UInt64
+    public var renewsAt: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(planId: String, planName: String, status: String, storageQuotaBytes: UInt64, renewsAt: String) {
+        self.planId = planId
+        self.planName = planName
+        self.status = status
+        self.storageQuotaBytes = storageQuotaBytes
+        self.renewsAt = renewsAt
+    }
+}
+
+#if compiler(>=6)
+nonisolated extension FfiLascoCloudSubscription: Sendable {}
+#endif
+
+
+nonisolated extension FfiLascoCloudSubscription: Equatable, Hashable {
+    public static func ==(lhs: FfiLascoCloudSubscription, rhs: FfiLascoCloudSubscription) -> Bool {
+        if lhs.planId != rhs.planId {
+            return false
+        }
+        if lhs.planName != rhs.planName {
+            return false
+        }
+        if lhs.status != rhs.status {
+            return false
+        }
+        if lhs.storageQuotaBytes != rhs.storageQuotaBytes {
+            return false
+        }
+        if lhs.renewsAt != rhs.renewsAt {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(planId)
+        hasher.combine(planName)
+        hasher.combine(status)
+        hasher.combine(storageQuotaBytes)
+        hasher.combine(renewsAt)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public struct FfiConverterTypeFfiLascoCloudSubscription: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiLascoCloudSubscription {
+        return
+            try FfiLascoCloudSubscription(
+                planId: FfiConverterString.read(from: &buf), 
+                planName: FfiConverterString.read(from: &buf), 
+                status: FfiConverterString.read(from: &buf), 
+                storageQuotaBytes: FfiConverterUInt64.read(from: &buf), 
+                renewsAt: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiLascoCloudSubscription, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.planId, into: &buf)
+        FfiConverterString.write(value.planName, into: &buf)
+        FfiConverterString.write(value.status, into: &buf)
+        FfiConverterUInt64.write(value.storageQuotaBytes, into: &buf)
+        FfiConverterString.write(value.renewsAt, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public func FfiConverterTypeFfiLascoCloudSubscription_lift(_ buf: RustBuffer) throws -> FfiLascoCloudSubscription {
+    return try FfiConverterTypeFfiLascoCloudSubscription.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public func FfiConverterTypeFfiLascoCloudSubscription_lower(_ value: FfiLascoCloudSubscription) -> RustBuffer {
+    return FfiConverterTypeFfiLascoCloudSubscription.lower(value)
 }
 
 
@@ -4689,6 +5071,30 @@ nonisolated fileprivate struct FfiConverterOptionTypeFfiGroup: FfiConverterRustB
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+nonisolated fileprivate struct FfiConverterOptionTypeFfiLascoCloudSubscription: FfiConverterRustBuffer {
+    typealias SwiftType = FfiLascoCloudSubscription?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeFfiLascoCloudSubscription.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeFfiLascoCloudSubscription.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 nonisolated fileprivate struct FfiConverterOptionTypeFfiMediaItem: FfiConverterRustBuffer {
     typealias SwiftType = FfiMediaItem?
 
@@ -4928,6 +5334,31 @@ nonisolated fileprivate struct FfiConverterSequenceTypeFfiKv: FfiConverterRustBu
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeFfiKv.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated fileprivate struct FfiConverterSequenceTypeFfiLascoCloudRemote: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiLascoCloudRemote]
+
+    public static func write(_ value: [FfiLascoCloudRemote], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiLascoCloudRemote.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiLascoCloudRemote] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiLascoCloudRemote]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiLascoCloudRemote.read(from: &buf))
         }
         return seq
     }
@@ -5353,7 +5784,10 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_all_media_ids() != 28671) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_clear_cloud_s3_credentials() != 4880) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_clear_lasco_cloud_auth_and_credentials() != 41699) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_configure_lasco_cloud_auth() != 39402) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_confirm_remote_media_async() != 59085) {
@@ -5429,6 +5863,24 @@ nonisolated private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_inspect_compaction_lock() != 42815) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_assign_remotes_to_this_library() != 56961) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_is_authenticated() != 28183) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_list_remotes() != 63306) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_login() != 39324) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_revoke_session() != 42955) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_subscription() != 11111) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_library_id() != 29748) {
@@ -5537,9 +5989,6 @@ nonisolated private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_set_auto_import_device_media() != 2768) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_set_cloud_session() != 6165) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_set_default_fetch_remote() != 3089) {

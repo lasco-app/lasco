@@ -82,7 +82,7 @@ struct LascoCloudView: View {
         isLoading = true
         error = nil
         do {
-            account = try await LascoCloudClient().subscription(libraryID: libraryID.value)
+            account = try await repository.lascoCloudSubscription(libraryID: libraryID)
         } catch {
             self.error = error.localizedDescription
         }
