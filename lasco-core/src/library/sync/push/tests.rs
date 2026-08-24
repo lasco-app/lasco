@@ -736,7 +736,7 @@ async fn push_confirms_media_already_on_target_before_uploading() {
     );
     let blob = source.get(&data_key).await.unwrap();
     target
-        .put_atomic(&data_key, &blob, AtomicWriteMode::CreateIfAbsent)
+        .put_atomic(&data_key, &blob, AtomicWriteMode::Replace)
         .await
         .unwrap();
     remove_local_media(&lib, media_id);
@@ -800,7 +800,7 @@ async fn push_uploads_thumbnail_when_only_the_data_blob_is_on_target() {
     ))
     .unwrap();
     target
-        .put_atomic(&data_key, &data_blob, AtomicWriteMode::CreateIfAbsent)
+        .put_atomic(&data_key, &data_blob, AtomicWriteMode::Replace)
         .await
         .unwrap();
 
@@ -1126,7 +1126,7 @@ async fn push_with_plan_relays_a_thumbnail_from_its_assigned_source() {
     );
     let data_blob = source.get(&data_key).await.unwrap();
     target
-        .put_atomic(&data_key, &data_blob, AtomicWriteMode::CreateIfAbsent)
+        .put_atomic(&data_key, &data_blob, AtomicWriteMode::Replace)
         .await
         .unwrap();
     remove_local_media(&lib, media_id);

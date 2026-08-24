@@ -400,7 +400,7 @@ async fn fetch_confirms_media_uploaded_after_its_op_was_merged() {
     );
 
     storage
-        .put_atomic(&data_key, &blob, AtomicWriteMode::CreateIfAbsent)
+        .put_atomic(&data_key, &blob, AtomicWriteMode::Replace)
         .await
         .unwrap();
 
@@ -646,7 +646,7 @@ async fn confirm_remote_media_records_without_fetching() {
     );
 
     storage
-        .put_atomic(&data_key, &blob, AtomicWriteMode::CreateIfAbsent)
+        .put_atomic(&data_key, &blob, AtomicWriteMode::Replace)
         .await
         .unwrap();
 

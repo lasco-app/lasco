@@ -173,7 +173,7 @@ impl Library {
         let remote = StorageReadWrite::new(storage);
         let marker_key = format!("remote_id_{remote_uuid}");
         remote
-            .put_atomic(&marker_key, b"", AtomicWriteMode::CreateIfAbsent)
+            .put_atomic(&marker_key, b"", AtomicWriteMode::Replace)
             .await
             .map_err(|e| LibraryError::Io(std::io::Error::other(e.to_string())))?;
 

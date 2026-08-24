@@ -246,8 +246,7 @@ impl Library {
             }
         };
 
-        // Master-key files are immutable credentials. Propagate every local one with a
-        // non-overwriting write after identity verification; never delete or replace a remote key.
+        // Master-key files are immutable credentials. Do not replace a pre-existing remote key.
         for entry in std::fs::read_dir(access.local_state_library_dir.path())? {
             let entry = entry?;
             let path = entry.path();
@@ -262,15 +261,31 @@ impl Library {
                 continue;
             }
             let data = std::fs::read(&path)?;
-            access
+            let key = format!("library/{name}");
+            if access
                 .storage
-                .put_atomic(
-                    &format!("library/{name}"),
-                    &data,
-                    AtomicWriteMode::CreateIfAbsent,
-                )
+                .exists(&key)
                 .await
-                .map_err(SyncError::RemoteUnreachable)?;
+                .map_err(SyncError::RemoteUnreachable)?
+            {
+                let remote_data = access
+                    .storage
+                    .get(&key)
+                    .await
+                    .map_err(SyncError::RemoteUnreachable)?;
+                if remote_data != data {
+                    return Err(SyncError::RemoteOperationInvalid(format!(
+                        "existing master-key file differs: {key}"
+                    ))
+                    .into());
+                }
+            } else {
+                access
+                    .storage
+                    .put_atomic(&key, &data, AtomicWriteMode::Replace)
+                    .await
+                    .map_err(SyncError::RemoteUnreachable)?;
+            }
         }
 
         // Relay blobs never belong in normal library state. A unique OS temporary directory
@@ -531,11 +546,9 @@ impl Library {
                 };
                 data_uploaded = access
                     .storage
-                    .put_atomic(&data_key, &bytes, AtomicWriteMode::CreateIfAbsent)
+                    .put_atomic(&data_key, &bytes, AtomicWriteMode::Replace)
                     .await
                     .map_err(SyncError::RemoteUnreachable)?;
-                // A non-overwriting write that published nothing means the blob was already
-                // there, so the target holds it either way.
                 data_present = true;
                 if let Some(path) = staged_data {
                     std::fs::remove_file(path)?;
@@ -553,7 +566,7 @@ impl Library {
                     let bytes = std::fs::read(&thumb_path)?;
                     access
                         .storage
-                        .put_atomic(&thumb_key, &bytes, AtomicWriteMode::CreateIfAbsent)
+                        .put_atomic(&thumb_key, &bytes, AtomicWriteMode::Replace)
                         .await
                         .map_err(SyncError::RemoteUnreachable)?;
                     thumb_present = true;
@@ -570,7 +583,7 @@ impl Library {
                             Ok((bytes, path)) => {
                                 access
                                     .storage
-                                    .put_atomic(&thumb_key, &bytes, AtomicWriteMode::CreateIfAbsent)
+                                    .put_atomic(&thumb_key, &bytes, AtomicWriteMode::Replace)
                                     .await
                                     .map_err(SyncError::RemoteUnreachable)?;
                                 std::fs::remove_file(path)?;

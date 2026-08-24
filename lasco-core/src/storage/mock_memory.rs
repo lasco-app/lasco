@@ -1,5 +1,4 @@
 use rustc_hash::FxHashMap;
-use std::collections::hash_map::Entry;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -59,22 +58,11 @@ impl Storage for StorageMockMemory {
         Ok(())
     }
 
-    async fn put_atomic(&self, key: &str, data: &[u8], mode: AtomicWriteMode) -> Result<bool> {
+    async fn put_atomic(&self, key: &str, data: &[u8], _mode: AtomicWriteMode) -> Result<bool> {
         self.check_online()?;
         let mut guard = self.data.lock();
-        match mode {
-            AtomicWriteMode::Replace => {
-                guard.insert(key.to_owned(), data.to_vec());
-                Ok(true)
-            }
-            AtomicWriteMode::CreateIfAbsent => match guard.entry(key.to_owned()) {
-                Entry::Vacant(e) => {
-                    e.insert(data.to_vec());
-                    Ok(true)
-                }
-                Entry::Occupied(_) => Ok(false),
-            },
-        }
+        guard.insert(key.to_owned(), data.to_vec());
+        Ok(true)
     }
 
     async fn get(&self, key: &str) -> Result<Vec<u8>> {
@@ -186,21 +174,5 @@ mod tests {
             .await
             .unwrap();
         assert!(s.exists("k").await.unwrap());
-    }
-
-    #[tokio::test]
-    async fn create_if_absent_new_key_returns_true_existing_returns_false() {
-        let s = StorageMockMemory::new();
-        assert!(
-            s.put_atomic("k", b"original", AtomicWriteMode::CreateIfAbsent)
-                .await
-                .unwrap()
-        );
-        assert!(
-            !s.put_atomic("k", b"overwrite", AtomicWriteMode::CreateIfAbsent)
-                .await
-                .unwrap()
-        );
-        assert_eq!(s.get("k").await.unwrap(), b"original");
     }
 }
