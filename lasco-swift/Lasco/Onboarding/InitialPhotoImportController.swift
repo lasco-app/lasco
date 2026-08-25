@@ -8,14 +8,29 @@ import Photos
 @MainActor
 @Observable
 final class InitialPhotoImportController {
-    typealias PushChunk = @MainActor (_ remoteID: FfiRemoteUuid) async -> String?
+    typealias UploadProgress = @MainActor @Sendable (Double) -> Void
+    typealias PushChunk = @MainActor (_ remoteID: FfiRemoteUuid, _ onUploadProgress: @escaping UploadProgress) async -> String?
+
+    struct ImportProgress: Equatable {
+        let backedUp: Int
+        let total: Int
+        let phase: ImportPhase
+    }
+
+    enum ImportPhase: Equatable {
+        case preparingLibrary
+        case adding(range: ClosedRange<Int>, completed: Int)
+        case uploading(range: ClosedRange<Int>, progress: Double)
+        case finalizing(range: ClosedRange<Int>)
+        case savingAlbums
+    }
 
     private static let chunkSize = 32
 
     private(set) var scan: PhotoLibraryImporter.LibraryScan?
     private(set) var isScanning = false
     private(set) var isImporting = false
-    private(set) var progress: (done: Int, total: Int)?
+    private(set) var progress: ImportProgress?
     private(set) var result: (photos: Int, videos: Int)?
     private(set) var error: String?
 
@@ -45,7 +60,7 @@ final class InitialPhotoImportController {
         error = nil
         result = nil
         isImporting = true
-        progress = (0, scan.assets.count)
+        progress = ImportProgress(backedUp: 0, total: scan.assets.count, phase: .preparingLibrary)
         let task = Task { await self.performImport(scan: scan, remoteID: remoteID) }
         importTask = task
         await task.value
@@ -76,14 +91,17 @@ final class InitialPhotoImportController {
         }
 
         var assetMediaMap: [String: [FfiMediaUuid]] = [:]
-        for chunkStart in stride(from: 0, to: scan.assets.count, by: Self.chunkSize) {
+        var backedUp = 0
+        for (_, chunkStart) in stride(from: 0, to: scan.assets.count, by: Self.chunkSize).enumerated() {
             guard !Task.isCancelled else {
                 await repository.notifyPhotoImportChanged(initialImport: true)
                 return
             }
             let chunkEnd = min(chunkStart + Self.chunkSize, scan.assets.count)
             let chunk = Array(scan.assets[chunkStart..<chunkEnd])
+            let range = (chunkStart + 1)...chunkEnd
             var chunkMediaIDs: [FfiMediaUuid] = []
+            var importedInChunk = 0
 
             for (offset, asset) in chunk.enumerated() {
                 guard !Task.isCancelled else {
@@ -96,21 +114,55 @@ final class InitialPhotoImportController {
                         assetMediaMap[asset.localIdentifier] = imported.linkableMediaIDs
                     }
                     chunkMediaIDs.append(contentsOf: imported.allMediaIDs)
+                    if !imported.allMediaIDs.isEmpty {
+                        importedInChunk += 1
+                    }
                 } catch {
                     AppLogger.log(.error, "initial photo import failed for \(asset.localIdentifier): \(error)")
                 }
-                progress = (chunkStart + offset + 1, scan.assets.count)
+                progress = ImportProgress(
+                    backedUp: backedUp,
+                    total: scan.assets.count,
+                    phase: .adding(range: range, completed: offset + 1)
+                )
             }
 
             guard !Task.isCancelled else {
                 await repository.notifyPhotoImportChanged(initialImport: true)
                 return
             }
-            if let error = await pushChunk(remoteID) {
+            progress = ImportProgress(
+                backedUp: backedUp,
+                total: scan.assets.count,
+                phase: .uploading(range: range, progress: 0)
+            )
+            let backedUpBeforeChunk = backedUp
+            if let error = await pushChunk(remoteID, { [weak self] fraction in
+                guard let self else { return }
+                let phase: ImportPhase
+                if fraction < 1 {
+                    phase = .uploading(range: range, progress: min(max(fraction, 0), 1))
+                } else {
+                    // The upload callback covers originals only. Thumbnails, operations,
+                    // and compaction still need to finish before the push returns.
+                    phase = .finalizing(range: range)
+                }
+                self.progress = ImportProgress(
+                    backedUp: backedUpBeforeChunk,
+                    total: scan.assets.count,
+                    phase: phase
+                )
+            }) {
                 self.error = error
                 await repository.notifyPhotoImportChanged(initialImport: true)
                 return // The failed chunk remains local for recovery.
             }
+            backedUp += importedInChunk
+            progress = ImportProgress(
+                backedUp: backedUp,
+                total: scan.assets.count,
+                phase: .finalizing(range: range)
+            )
             guard !Task.isCancelled else {
                 await repository.notifyPhotoImportChanged(initialImport: true)
                 return
@@ -128,12 +180,13 @@ final class InitialPhotoImportController {
             await repository.notifyPhotoImportChanged(initialImport: true)
             return
         }
+        progress = ImportProgress(backedUp: backedUp, total: scan.assets.count, phase: .savingAlbums)
         await linkAlbumMemberships(nodes: nodes, albumIDMap: albumIDMap, assetMediaMap: assetMediaMap)
         guard !Task.isCancelled else {
             await repository.notifyPhotoImportChanged(initialImport: true)
             return
         }
-        if let error = await pushChunk(remoteID) {
+        if let error = await pushChunk(remoteID, { _ in }) {
             self.error = error
             await repository.notifyPhotoImportChanged(initialImport: true)
             return

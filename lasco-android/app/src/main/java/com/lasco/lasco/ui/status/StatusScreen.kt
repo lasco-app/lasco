@@ -1,6 +1,12 @@
 package com.lasco.lasco.ui.status
 
 import android.os.SystemClock
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -27,6 +33,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -228,6 +237,8 @@ fun StatusScreen(modifier: Modifier = Modifier) {
                         lastFetch = fetchRecords[remote.remoteId],
                         pushEnabled = remote.remoteId !in syncState.busyRemoteIds,
                         fetchEnabled = remote.remoteId !in syncState.busyRemoteIds && !syncState.fetchInProgress,
+                        isPushing = remote.remoteId in syncState.pushingRemoteIds,
+                        pushUploadProgress = syncState.pushUploadProgress[remote.remoteId],
                         onPush = { scope.launch { runPush(remote) } },
                         onFetch = {
                             scope.launch {
@@ -400,6 +411,8 @@ private fun RemoteStatusCard(
     lastFetch: SyncRecord?,
     pushEnabled: Boolean,
     fetchEnabled: Boolean,
+    isPushing: Boolean,
+    pushUploadProgress: Float?,
     onPush: () -> Unit,
     onFetch: () -> Unit,
 ) {
@@ -437,6 +450,8 @@ private fun RemoteStatusCard(
             failed = lastPush?.success == false,
             dateLabel = lastPush?.let { syncLabel(it.epochMillis) } ?: "never",
             enabled = pushEnabled,
+            isInProgress = isPushing,
+            progress = pushUploadProgress,
             onClick = onPush,
         )
         SyncStatusRow(
@@ -457,21 +472,59 @@ private fun SyncStatusRow(
     dateLabel: String,
     isDefaultFetch: Boolean = false,
     enabled: Boolean,
+    isInProgress: Boolean = false,
+    progress: Float? = null,
     onClick: () -> Unit,
 ) {
     val colors = LascoTheme.colors
-    Row(
+    val fillFraction by animateFloatAsState(
+        targetValue = (progress ?: 0f).coerceIn(0f, 1f),
+        animationSpec = tween(durationMillis = 180),
+        label = "push upload fill",
+    )
+    val shimmerTransition = rememberInfiniteTransition(label = "push upload shimmer")
+    val shimmerPhase by shimmerTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(animation = tween(durationMillis = 1_200, easing = LinearEasing)),
+        label = "push upload shimmer phase",
+    )
+    Box(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(enabled = enabled, indication = null, interactionSource = null) { onClick() }
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .drawBehind {
+                if (!isInProgress) return@drawBehind
+                drawRect(color = colors.pink.copy(alpha = 0.16f))
+                val fillWidth = size.width * fillFraction
+                if (fillWidth > 0f) {
+                    drawRect(color = colors.pink.copy(alpha = 0.65f), size = Size(fillWidth, size.height))
+                }
+                // At 0%, a file is in flight but none has completed. Keep the marquee moving
+                // across the whole row; after the first completion it is clipped to the fill.
+                val marqueeWidth = if (progress == null || fillWidth == 0f) size.width else fillWidth
+                val glintWidth = minOf(size.width * 0.38f, 120f)
+                val glintX = -glintWidth + (marqueeWidth + glintWidth) * shimmerPhase
+                val visibleStart = maxOf(glintX, 0f)
+                val visibleEnd = minOf(glintX + glintWidth, marqueeWidth)
+                if (visibleEnd > visibleStart) {
+                    drawRect(
+                        color = colors.pink,
+                        topLeft = Offset(visibleStart, 0f),
+                        size = Size(visibleEnd - visibleStart, size.height),
+                    )
+                }
+            },
     ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
         if (failed) {
             Box(modifier = Modifier.height(7.dp).width(7.dp).background(colors.error))
             Spacer(modifier = Modifier.width(8.dp))
         }
-        Text(text = label, style = LascoTheme.type.body(), color = colors.inkSub)
+        Text(text = if (isInProgress) "Pushing" else label, style = LascoTheme.type.body(), color = colors.inkSub)
         if (isDefaultFetch) {
             Spacer(modifier = Modifier.width(8.dp))
             Text(
@@ -482,7 +535,10 @@ private fun SyncStatusRow(
             )
         }
         Spacer(modifier = Modifier.weight(1f))
-        Text(text = dateLabel, style = LascoTheme.type.mono(), color = colors.inkMuted)
+        if (!isInProgress) {
+            Text(text = dateLabel, style = LascoTheme.type.mono(), color = colors.inkMuted)
+        }
+        }
     }
 }
 

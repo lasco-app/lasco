@@ -689,16 +689,17 @@ private fun ImportStep(
                 if (importState is ImportState.Importing) {
                     val importing = importState as ImportState.Importing
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        LinearProgressIndicator(
-                            progress = { if (importing.total > 0) importing.done.toFloat() / importing.total else 0f },
-                            color = colors.ink,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
                         Text(
-                            text = "${importing.done} of ${importing.total}",
+                            text = "Backed up ${importing.backedUp} of ${importing.total} items",
                             style = LascoTheme.type.mono(13),
                             color = colors.inkMuted,
                         )
+                        LinearProgressIndicator(
+                            progress = { if (importing.total > 0) importing.backedUp.toFloat() / importing.total else 0f },
+                            color = colors.ink,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        InitialImportPhaseProgress(phase = importing.phase)
                     }
                 }
             }
@@ -723,6 +724,55 @@ private fun ImportStep(
                     LascoSecondaryButton(text = "Skip for now", onClick = onDone)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun InitialImportPhaseProgress(phase: ImportPhase) {
+    val colors = LascoTheme.colors
+    when (phase) {
+        ImportPhase.PreparingLibrary -> Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CircularProgressIndicator(color = colors.inkMuted, modifier = Modifier.height(14.dp).width(14.dp))
+            Text(text = "Preparing your library…", style = LascoTheme.type.body(14), color = colors.inkMuted)
+        }
+        is ImportPhase.Adding -> {
+            Text(
+                text = "Adding items ${phase.range.first}–${phase.range.last}",
+                style = LascoTheme.type.body(14),
+                color = colors.inkMuted,
+            )
+            LinearProgressIndicator(
+                progress = { phase.completed.toFloat() / (phase.range.last - phase.range.first + 1) },
+                color = colors.inkMuted,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        is ImportPhase.Uploading -> {
+            Text(
+                text = "Uploading items ${phase.range.first}–${phase.range.last}",
+                style = LascoTheme.type.body(14),
+                color = colors.inkMuted,
+            )
+            LinearProgressIndicator(
+                progress = { phase.progress },
+                color = colors.inkMuted,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        is ImportPhase.Finalizing -> Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CircularProgressIndicator(color = colors.inkMuted, modifier = Modifier.height(14.dp).width(14.dp))
+            Text(
+                text = "Finalising backup for items ${phase.range.first}–${phase.range.last}…",
+                style = LascoTheme.type.body(14),
+                color = colors.inkMuted,
+            )
         }
     }
 }

@@ -626,17 +626,20 @@ struct NewLibraryWizard: View {
         VStack(spacing: 12) {
             if initialImportController?.isImporting == true {
                 let progress = initialImportController?.progress
-                let done = progress?.done ?? 0
+                let backedUp = progress?.backedUp ?? 0
                 let total = max(progress?.total ?? 1, 1)
 
                 VStack(spacing: 8) {
-                    ProgressView(value: Double(done), total: Double(total))
-                        .tint(Color.Lasco.ink)
-                        .frame(maxWidth: .infinity)
-                    Text("\(done) of \(total)")
+                    Text("Backed up \(backedUp) of \(total) items")
                         .font(LascoFont.mono(13))
                         .foregroundStyle(Color.Lasco.inkMuted)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    ProgressView(value: Double(backedUp), total: Double(total))
+                        .tint(Color.Lasco.ink)
+                        .frame(maxWidth: .infinity)
+                    if let phase = progress?.phase {
+                        InitialImportPhaseView(phase: phase)
+                    }
                 }
                 .padding(.vertical, 8)
             } else {
@@ -756,8 +759,11 @@ struct NewLibraryWizard: View {
         guard initialImportController == nil else { return }
         let controller = InitialPhotoImportController(
             repository: activeSession.repository,
-            pushChunk: { remoteID in
-                switch await activeSession.syncCoordinator.push(remoteID: remoteID) {
+            pushChunk: { remoteID, onUploadProgress in
+                switch await activeSession.syncCoordinator.push(
+                    remoteID: remoteID,
+                    onUploadProgress: onUploadProgress
+                ) {
                 case .success: nil
                 case .failed(let message): message
                 case .missingLocalMedia: "Media missing from local cache"
@@ -770,3 +776,54 @@ struct NewLibraryWizard: View {
     }
     #endif
 }
+
+#if os(iOS)
+private struct InitialImportPhaseView: View {
+    let phase: InitialPhotoImportController.ImportPhase
+
+    var body: some View {
+        switch phase {
+        case .preparingLibrary:
+            InitialImportActivityLabel("Preparing your library…")
+        case .adding(let range, let completed):
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Adding items \(range.lowerBound)–\(range.upperBound)")
+                    .font(LascoFont.body(14))
+                    .foregroundStyle(Color.Lasco.inkMuted)
+                ProgressView(value: Double(completed), total: Double(range.count))
+                    .tint(Color.Lasco.inkMuted)
+            }
+        case .uploading(let range, let progress):
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Uploading items \(range.lowerBound)–\(range.upperBound)")
+                    .font(LascoFont.body(14))
+                    .foregroundStyle(Color.Lasco.inkMuted)
+                ProgressView(value: progress)
+                    .tint(Color.Lasco.inkMuted)
+            }
+        case .finalizing(let range):
+            InitialImportActivityLabel("Finalising backup for items \(range.lowerBound)–\(range.upperBound)…")
+        case .savingAlbums:
+            InitialImportActivityLabel("Saving albums…")
+        }
+    }
+}
+
+private struct InitialImportActivityLabel: View {
+    let title: String
+
+    init(_ title: String) {
+        self.title = title
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ProgressView().tint(Color.Lasco.inkMuted)
+            Text(title)
+                .font(LascoFont.body(14))
+                .foregroundStyle(Color.Lasco.inkMuted)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+#endif

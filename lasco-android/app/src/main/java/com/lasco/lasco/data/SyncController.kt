@@ -1,21 +1,25 @@
 package com.lasco.lasco.data
 
 import android.os.SystemClock
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.selects.onTimeout
-import kotlinx.coroutines.selects.select
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import uniffi.lasco_ffi.FfiLibrary
 import uniffi.lasco_ffi.FfiMediaId
 import uniffi.lasco_ffi.LascoException
 import uniffi.lasco_ffi.FfiRemoteUuid
+import uniffi.lasco_ffi.PushProgressSink
+import java.util.UUID
+import java.util.concurrent.atomic.AtomicLong
 
 sealed interface PushResult {
     data object Success : PushResult
@@ -41,9 +45,8 @@ sealed interface ConfirmMediaResult {
  * lives here and not on SessionState. Records push/fetch results into Prefs,
  * the Android equivalent of Swift's lastPushRecords/lastFetchRecords.
  *
- * Pushes, fetches and the auto push countdown are serialized through one
- * command loop, so a manual push can never race a scheduled one and the
- * countdown can never disagree with what is actually running.
+ * Rust owns sync admission. This controller starts each request immediately and
+ * tracks it only so the UI reflects the operations that are actually in flight.
  */
 class SyncController(
     private val lib: FfiLibrary,
@@ -54,83 +57,31 @@ class SyncController(
     private val _syncState = MutableStateFlow(SyncState())
     val syncState: StateFlow<SyncState> = _syncState.asStateFlow()
 
-    private sealed interface Cmd {
-        data object Mutated : Cmd
-        data object StopCountdown : Cmd
-        data class Push(val remoteId: FfiRemoteUuid, val ack: CompletableDeferred<PushResult>) : Cmd
-        data class Fetch(val remoteId: FfiRemoteUuid, val ack: CompletableDeferred<String?>) : Cmd
-        data class ConfirmMedia(
-            val remoteId: FfiRemoteUuid,
-            val ack: CompletableDeferred<ConfirmMediaResult>,
-        ) : Cmd
-    }
+    private enum class OperationKind { Push, Fetch, Confirm }
 
-    private val commands = Channel<Cmd>(Channel.UNLIMITED)
+    private data class ActiveOperation(
+        val remoteId: FfiRemoteUuid,
+        val kind: OperationKind,
+        val completion: kotlinx.coroutines.CompletableDeferred<Unit>,
+    )
 
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private val loop = scope.launch {
-        // The schedule itself. Recomputing the timeout from it on every pass
-        // means commands arriving mid wait cannot push the deadline back,
-        // however often they arrive.
-        var deadline: Long? = null
-        var scheduledAutoPushRemoteIds = emptySet<FfiRemoteUuid>()
-        try {
-            while (true) {
-                val cmd = select<Cmd?> {
-                    commands.onReceiveCatching { it.getOrNull() }
-                    deadline?.let { onTimeout(it - SystemClock.elapsedRealtime()) { null } }
-                }
-                if (cmd == null && commands.isClosedForReceive) break
-                if (cmd == null) {
-                    val candidateRemoteIds = scheduledAutoPushRemoteIds
-                    deadline = null
-                    scheduledAutoPushRemoteIds = emptySet()
-                    publishCountdown(null, emptySet())
-                    pushScheduledRemotes(candidateRemoteIds)
-                    continue
-                }
-                when (cmd) {
-                    Cmd.Mutated -> if (deadline == null) {
-                        val candidateRemoteIds = lib.listRemotes()
-                            .filter { it.autoPush }
-                            .map { it.remoteId }
-                            .toSet()
-                        if (candidateRemoteIds.isNotEmpty()) {
-                            deadline = SystemClock.elapsedRealtime() + PUSH_DELAY_MS
-                            scheduledAutoPushRemoteIds = candidateRemoteIds
-                            publishCountdown(deadline, candidateRemoteIds)
-                        }
-                    }
-                    Cmd.StopCountdown -> {
-                        deadline = null
-                        scheduledAutoPushRemoteIds = emptySet()
-                        publishCountdown(null, emptySet())
-                    }
-                    is Cmd.Push -> {
-                        deadline = null
-                        scheduledAutoPushRemoteIds = emptySet()
-                        publishCountdown(null, emptySet())
-                        cmd.ack.complete(push(cmd.remoteId, isAutomatic = false))
-                    }
-                    is Cmd.Fetch -> cmd.ack.complete(fetch(cmd.remoteId))
-                    is Cmd.ConfirmMedia -> cmd.ack.complete(confirmMedia(cmd.remoteId))
-                }
-            }
-        } finally {
-            drainPendingAcks()
-        }
-    }
+    private val operationMutex = Mutex()
+    private val activeOperations = mutableMapOf<UUID, ActiveOperation>()
+    private val scheduleCancellationEpoch = AtomicLong(0)
+    private var scheduledAutoPushJob: Job? = null
+    private var closed = false
 
     // Edits made while a push is already scheduled ride along with it rather
     // than pushing the deadline back, so a steady stream of edits still gets
     // pushed within the window instead of starving.
     fun schedulePush() {
-        commands.trySend(Cmd.Mutated)
+        val cancellationEpoch = scheduleCancellationEpoch.get()
+        scope.launch { schedulePushIfNeeded(cancellationEpoch) }
     }
 
     // No effect on a push already running.
     fun stopScheduledPush() {
-        commands.trySend(Cmd.StopCountdown)
+        scope.launch { cancelScheduledPush() }
     }
 
     fun setIncrementalImportState(state: IncrementalImportState) {
@@ -140,55 +91,66 @@ class SyncController(
     /**
      * Pushes one remote, returning an error message or null on success,
      * mirroring Swift's LibraryModel.pushRemote. Clears any pending countdown
-     * and queues behind a push or fetch already running.
+     * and immediately asks Rust to start the operation.
      */
-    suspend fun pushRemote(remoteId: FfiRemoteUuid): PushResult {
-        val ack = CompletableDeferred<PushResult>()
-        commands.send(Cmd.Push(remoteId, ack))
-        return ack.await()
+    suspend fun pushRemote(
+        remoteId: FfiRemoteUuid,
+        onUploadProgress: ((Float) -> Unit)? = null,
+    ): PushResult {
+        cancelScheduledPush()
+        return push(remoteId, isAutomatic = false, onUploadProgress = onUploadProgress)
     }
 
     /**
-     * Fetches one remote, returning an error message or null on success,
-     * mirroring Swift's LibraryModel.fetchRemote. Queues behind a push or
-     * fetch already running.
-     */
-    /**
      * Updates one remote's media list without fetching, which is how a user resolves a push
-     * blocked by an out-of-date media list. Queues behind a push or fetch already running.
+     * blocked by an out-of-date media list.
      */
     suspend fun confirmRemoteMedia(remoteId: FfiRemoteUuid): ConfirmMediaResult {
-        val ack = CompletableDeferred<ConfirmMediaResult>()
-        commands.send(Cmd.ConfirmMedia(remoteId, ack))
-        return ack.await()
+        return confirmMedia(remoteId)
     }
 
     suspend fun fetchRemoteWithResult(remoteId: FfiRemoteUuid): String? {
-        val ack = CompletableDeferred<String?>()
-        commands.send(Cmd.Fetch(remoteId, ack))
-        return ack.await()
+        return fetch(remoteId)
     }
 
-    // Stops the schedule and waits for a push or fetch in flight to finish,
+    // Stops the schedule and waits for operations already in flight to finish,
     // since the caller is usually about to delete the library files it is
     // still reading.
     suspend fun close() {
-        commands.close()
-        loop.join()
-    }
-
-    private suspend fun pushScheduledRemotes(candidateRemoteIds: Set<FfiRemoteUuid>) {
-        for (remote in lib.listRemotes().filter { it.remoteId in candidateRemoteIds && it.autoPush }) {
-            push(remote.remoteId, isAutomatic = true)
+        val completions = operationMutex.withLock {
+            closed = true
+            scheduleCancellationEpoch.incrementAndGet()
+            scheduledAutoPushJob?.cancel()
+            scheduledAutoPushJob = null
+            publishCountdown(null, emptySet())
+            activeOperations.values.map { it.completion }
         }
+        completions.awaitAll()
     }
 
-    private suspend fun push(remoteId: FfiRemoteUuid, isAutomatic: Boolean): PushResult {
-        _syncState.update { it.copy(busyRemoteIds = it.busyRemoteIds + remoteId) }
+    private suspend fun push(
+        remoteId: FfiRemoteUuid,
+        isAutomatic: Boolean,
+        onUploadProgress: ((Float) -> Unit)? = null,
+    ): PushResult {
+        val operationId = UUID.randomUUID()
+        val operation = beginOperation(operationId, remoteId, OperationKind.Push)
+            ?: return PushResult.Failed("Library closed")
+        val progress = object : PushProgressSink {
+            override fun uploadProgress(fraction: Double) {
+                _syncState.update {
+                    if (remoteId !in it.pushingRemoteIds) it
+                    else it.copy(pushUploadProgress = it.pushUploadProgress + (remoteId to fraction.toFloat()))
+                }
+                onUploadProgress?.invoke(fraction.toFloat())
+            }
+        }
         return try {
-            lib.pushRemoteUsingConfiguredMediaSourcesAsync(remoteId, null)
+            lib.pushRemoteUsingConfiguredMediaSourcesAsync(remoteId, null, progress)
             prefs.recordPush(remoteId, success = true)
             PushResult.Success
+        } catch (e: LascoException.SyncBusy) {
+            PushResult.Failed("A conflicting sync is already in progress")
         } catch (e: LascoException.MissingLocalMedia) {
             prefs.recordPush(remoteId, success = false)
             PushResult.MissingLocalMedia(e.mediaIds)
@@ -204,34 +166,118 @@ class SyncController(
             prefs.recordPush(remoteId, success = false)
             PushResult.Failed(e.message?.ifBlank { null } ?: "Push failed")
         } finally {
-            _syncState.update { it.copy(busyRemoteIds = it.busyRemoteIds - remoteId) }
+            endOperation(operationId, operation)
         }
     }
 
     // Refreshes what this client knows of the media one remote holds, without fetching.
     private suspend fun confirmMedia(remoteId: FfiRemoteUuid): ConfirmMediaResult {
-        _syncState.update { it.copy(busyRemoteIds = it.busyRemoteIds + remoteId) }
+        val operationId = UUID.randomUUID()
+        val operation = beginOperation(operationId, remoteId, OperationKind.Confirm)
+            ?: return ConfirmMediaResult.Failed("Library closed")
         return try {
             ConfirmMediaResult.Confirmed(lib.confirmRemoteMediaAsync(remoteId, null))
+        } catch (e: LascoException.SyncBusy) {
+            ConfirmMediaResult.Failed("A conflicting sync is already in progress")
         } catch (e: Exception) {
             ConfirmMediaResult.Failed(e.message?.ifBlank { null } ?: "Could not update the media list")
         } finally {
-            _syncState.update { it.copy(busyRemoteIds = it.busyRemoteIds - remoteId) }
+            endOperation(operationId, operation)
         }
     }
 
     private suspend fun fetch(remoteId: FfiRemoteUuid): String? {
-        _syncState.update { it.copy(busyRemoteIds = it.busyRemoteIds + remoteId, fetchInProgress = true) }
+        val operationId = UUID.randomUUID()
+        val operation = beginOperation(operationId, remoteId, OperationKind.Fetch)
+            ?: return "Library closed"
         return try {
             lib.fetchRemoteAsync(remoteId, null)
             prefs.recordFetch(remoteId, success = true)
             onLibraryChanged()
             null
+        } catch (e: LascoException.SyncBusy) {
+            "A conflicting sync is already in progress"
         } catch (e: Exception) {
             prefs.recordFetch(remoteId, success = false)
             e.message?.ifBlank { null } ?: "Fetch failed"
         } finally {
-            _syncState.update { it.copy(busyRemoteIds = it.busyRemoteIds - remoteId, fetchInProgress = false) }
+            endOperation(operationId, operation)
+        }
+    }
+
+    private suspend fun schedulePushIfNeeded(cancellationEpoch: Long) {
+        val remoteIds = lib.listRemotes()
+            .filter { it.autoPush }
+            .map { it.remoteId }
+            .toSet()
+        if (remoteIds.isEmpty()) return
+        operationMutex.withLock {
+            if (closed || cancellationEpoch != scheduleCancellationEpoch.get() || scheduledAutoPushJob != null) return
+            publishCountdown(SystemClock.elapsedRealtime() + PUSH_DELAY_MS, remoteIds)
+            scheduledAutoPushJob = scope.launch {
+                delay(PUSH_DELAY_MS)
+                fireScheduledPushes(remoteIds, cancellationEpoch)
+            }
+        }
+    }
+
+    private suspend fun cancelScheduledPush() {
+        scheduleCancellationEpoch.incrementAndGet()
+        operationMutex.withLock {
+            scheduledAutoPushJob?.cancel()
+            scheduledAutoPushJob = null
+            publishCountdown(null, emptySet())
+        }
+    }
+
+    private suspend fun fireScheduledPushes(candidateRemoteIds: Set<FfiRemoteUuid>, cancellationEpoch: Long) {
+        operationMutex.withLock {
+            if (closed || cancellationEpoch != scheduleCancellationEpoch.get()) return
+            scheduledAutoPushJob = null
+            publishCountdown(null, emptySet())
+        }
+        val remotes = lib.listRemotes().filter { it.remoteId in candidateRemoteIds && it.autoPush }
+        coroutineScope {
+            for (remote in remotes) {
+                launch { push(remote.remoteId, isAutomatic = true) }
+            }
+        }
+    }
+
+    private suspend fun beginOperation(
+        operationId: UUID,
+        remoteId: FfiRemoteUuid,
+        kind: OperationKind,
+    ): ActiveOperation? = operationMutex.withLock {
+        if (closed) return@withLock null
+        ActiveOperation(remoteId, kind, kotlinx.coroutines.CompletableDeferred<Unit>()).also { operation ->
+            activeOperations[operationId] = operation
+            publishOperationState()
+        }
+    }
+
+    private suspend fun endOperation(operationId: UUID, operation: ActiveOperation) {
+        operationMutex.withLock {
+            activeOperations.remove(operationId)
+            publishOperationState()
+            operation.completion.complete(Unit)
+        }
+    }
+
+    private fun publishOperationState() {
+        val operations = activeOperations.values
+        val busyRemoteIds = operations.mapTo(mutableSetOf()) { it.remoteId }
+        val pushingRemoteIds = operations
+            .filter { it.kind == OperationKind.Push }
+            .mapTo(mutableSetOf()) { it.remoteId }
+        val fetchInProgress = operations.any { it.kind == OperationKind.Fetch }
+        _syncState.update {
+            it.copy(
+                busyRemoteIds = busyRemoteIds,
+                pushingRemoteIds = pushingRemoteIds,
+                pushUploadProgress = it.pushUploadProgress.filterKeys { remoteId -> remoteId in pushingRemoteIds },
+                fetchInProgress = fetchInProgress,
+            )
         }
     }
 
@@ -241,20 +287,6 @@ class SyncController(
                 pushDeadlineElapsedMs = deadline,
                 scheduledAutoPushRemoteIds = remoteIds,
             )
-        }
-    }
-
-    // A caller still awaiting an ack when the library closes under it must not
-    // hang forever.
-    private fun drainPendingAcks() {
-        while (true) {
-            val cmd = commands.tryReceive().getOrNull() ?: break
-            when (cmd) {
-                is Cmd.Push -> cmd.ack.complete(PushResult.Failed("Library closed"))
-                is Cmd.Fetch -> cmd.ack.complete("Library closed")
-                is Cmd.ConfirmMedia -> cmd.ack.complete(ConfirmMediaResult.Failed("Library closed"))
-                Cmd.Mutated, Cmd.StopCountdown -> {}
-            }
         }
     }
 
