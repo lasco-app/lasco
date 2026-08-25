@@ -93,9 +93,12 @@ class SyncController(
      * mirroring Swift's LibraryModel.pushRemote. Clears any pending countdown
      * and immediately asks Rust to start the operation.
      */
-    suspend fun pushRemote(remoteId: FfiRemoteUuid): PushResult {
+    suspend fun pushRemote(
+        remoteId: FfiRemoteUuid,
+        onUploadProgress: ((Float) -> Unit)? = null,
+    ): PushResult {
         cancelScheduledPush()
-        return push(remoteId, isAutomatic = false)
+        return push(remoteId, isAutomatic = false, onUploadProgress = onUploadProgress)
     }
 
     /**
@@ -125,7 +128,11 @@ class SyncController(
         completions.awaitAll()
     }
 
-    private suspend fun push(remoteId: FfiRemoteUuid, isAutomatic: Boolean): PushResult {
+    private suspend fun push(
+        remoteId: FfiRemoteUuid,
+        isAutomatic: Boolean,
+        onUploadProgress: ((Float) -> Unit)? = null,
+    ): PushResult {
         val operationId = UUID.randomUUID()
         val operation = beginOperation(operationId, remoteId, OperationKind.Push)
             ?: return PushResult.Failed("Library closed")
@@ -135,6 +142,7 @@ class SyncController(
                     if (remoteId !in it.pushingRemoteIds) it
                     else it.copy(pushUploadProgress = it.pushUploadProgress + (remoteId to fraction.toFloat()))
                 }
+                onUploadProgress?.invoke(fraction.toFloat())
             }
         }
         return try {

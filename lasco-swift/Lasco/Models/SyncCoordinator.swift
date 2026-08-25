@@ -74,7 +74,11 @@ final class SyncCoordinator {
         _ = await fetch(remoteID: remoteID)
     }
 
-    func push(remoteID: FfiRemoteUuid, isAutomatic: Bool = false) async -> PushResult {
+    func push(
+        remoteID: FfiRemoteUuid,
+        isAutomatic: Bool = false,
+        onUploadProgress: (@MainActor @Sendable (Double) -> Void)? = nil
+    ) async -> PushResult {
         // A manual push supersedes the pending automatic push. Only the timer is
         // cancelled; an upload that has already started is left to finish.
         if !isAutomatic {
@@ -90,6 +94,7 @@ final class SyncCoordinator {
             Task { @MainActor [weak self] in
                 guard self?.activePushes[remoteID]?.contains(operationID) == true else { return }
                 self?.pushUploadProgress[remoteID] = fraction
+                onUploadProgress?(fraction)
             }
         }
         do {
