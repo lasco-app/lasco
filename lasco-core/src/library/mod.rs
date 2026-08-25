@@ -3,6 +3,8 @@ pub mod cloud;
 mod cloud_runtime_cache;
 pub mod error;
 pub mod groups;
+pub mod lasco_cloud_auth;
+pub mod lasco_cloud_auth_store;
 pub mod local_dirs;
 mod local_ops_read_write;
 pub mod media;
@@ -103,18 +105,19 @@ const _: () = {
 };
 
 impl Library {
-    /// Installs the memory-only Cloud API session for this open library.
-    pub fn set_cloud_session(
+    /// Restores this library's persisted Lasco Cloud session into its runtime.
+    pub async fn configure_lasco_cloud_auth(
         &self,
         base_url: String,
-        bearer_token: String,
     ) -> std::result::Result<(), cloud::CloudError> {
-        self.inner.cloud_runtime.set_session(base_url, bearer_token)
+        self.inner.cloud_runtime.configure_auth(base_url).await
     }
 
-    /// Removes the disposable Cloud API session without modifying `library.json`.
-    pub fn clear_cloud_session(&self) {
-        self.inner.cloud_runtime.clear_session();
+    /// Erases this library's Lasco Cloud session and cached B2 credentials.
+    pub async fn clear_lasco_cloud_auth_and_credentials(
+        &self,
+    ) -> std::result::Result<(), cloud::CloudError> {
+        self.inner.cloud_runtime.clear_auth_and_credentials().await
     }
 
     #[must_use]

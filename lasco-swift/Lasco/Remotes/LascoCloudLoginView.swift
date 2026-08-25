@@ -85,8 +85,8 @@ struct LascoCloudLoginView: View {
         case .authenticated:
             completedSteps.append("Authentication successful")
             currentStep = "Checking Cloud storage…"
-        case .credentialsReceived:
-            completedSteps.append("Cloud storage verified")
+        case .remotesValidated:
+            completedSteps.append("Cloud storage configuration verified")
             currentStep = "Configuring storage remotes…"
         case .remotesConfigured:
             completedSteps.append("Storage remotes configured")

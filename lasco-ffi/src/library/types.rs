@@ -6,6 +6,32 @@ pub struct FfiCreateLibraryResult {
     pub master_key_hex: String,
 }
 
+#[derive(uniffi::Record, Debug)]
+pub struct FfiLascoCloudRemote {
+    pub id: String,
+    pub library_id: Option<String>,
+    pub name: String,
+    pub endpoint: String,
+    pub bucket: String,
+    pub region: String,
+    pub path_prefix: String,
+}
+
+#[derive(uniffi::Record, Debug)]
+pub struct FfiLascoCloudAccount {
+    pub email: String,
+    pub subscription: Option<FfiLascoCloudSubscription>,
+}
+
+#[derive(uniffi::Record, Debug)]
+pub struct FfiLascoCloudSubscription {
+    pub plan_id: String,
+    pub plan_name: String,
+    pub status: String,
+    pub storage_quota_bytes: u64,
+    pub renews_at: String,
+}
+
 // already_existed is true when a media with the same content hash was already
 // in the library, in which case media_id is the existing entry and nothing was
 // written. Callers use it to skip work they would otherwise redo, such as

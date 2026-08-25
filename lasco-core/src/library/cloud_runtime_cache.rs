@@ -113,6 +113,11 @@ impl CloudRuntimeCache {
         atomic_file::write(&self.path, &bytes).map_err(CacheError::Io)
     }
 
+    /// Atomically replaces the cache with an empty encrypted credential map.
+    pub(crate) fn clear(&self) -> Result<(), CacheError> {
+        self.save(&HashMap::new())
+    }
+
     pub(crate) fn path(&self) -> &Path {
         &self.path
     }

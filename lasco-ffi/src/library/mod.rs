@@ -1,4 +1,5 @@
 mod albums;
+mod cloud;
 mod groups;
 mod media;
 mod remotes;

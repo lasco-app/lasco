@@ -50,26 +50,6 @@ impl FfiLibrary {
         )
     }
 
-    /// Installs a memory-only Cloud API session. The runtime uses this token to
-    /// lazily refresh expiring S3 credentials during long-running operations.
-    pub fn set_cloud_session(
-        &self,
-        base_url: String,
-        bearer_token: String,
-    ) -> Result<(), LascoError> {
-        self.inner
-            .set_cloud_session(base_url, bearer_token)
-            .map_err(|error| LascoError::Other {
-                msg: error.to_string(),
-            })
-    }
-
-    /// Removes all ephemeral Cloud credentials and the Cloud API session, for
-    /// example after sign-out.
-    pub fn clear_cloud_s3_credentials(&self) {
-        self.inner.cloud_runtime().clear_credentials();
-        self.inner.clear_cloud_session();
-    }
     /// # Errors
     ///
     /// Returns the newest-first half-open range `[start_pos, end_pos_exclusive)`.

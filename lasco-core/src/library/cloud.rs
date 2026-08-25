@@ -5,13 +5,13 @@ use std::sync::Arc;
 
 use chrono::{DateTime, Duration, Utc};
 use parking_lot::Mutex;
-use serde::Deserialize;
 use tokio::sync::Mutex as AsyncMutex;
 
 use crate::encryption::master_key::MasterKey;
 use crate::identifiers::{LibraryId, RemoteUuid};
 
 use super::cloud_runtime_cache::{CachedCloudS3Credentials, CloudRuntimeCache};
+use super::lasco_cloud_auth::{LascoCloudAuthError, LascoCloudAuthManager};
 
 /// Refresh when one minute or less remains. This keeps a long upload from
 /// starting an S3 request with credentials that will expire mid-operation.
@@ -37,15 +37,9 @@ pub struct CloudRemoteState {
 
 #[derive(Default)]
 struct CloudRuntimeState {
-    session: Option<CloudSession>,
+    auth: Option<Arc<LascoCloudAuthManager>>,
     remotes: HashMap<RemoteUuid, CloudRemoteState>,
     credentials_by_storage_id: HashMap<String, CloudS3Credentials>,
-}
-
-#[derive(Clone)]
-struct CloudSession {
-    base_url: String,
-    bearer_token: String,
 }
 
 /// Shared Cloud state for one open library.
@@ -55,7 +49,7 @@ struct CloudSession {
 pub struct CloudRuntime {
     state: Mutex<CloudRuntimeState>,
     refresh_lock: AsyncMutex<()>,
-    client: reqwest::Client,
+    library_id: LibraryId,
     cache: CloudRuntimeCache,
 }
 
@@ -84,35 +78,46 @@ impl CloudRuntime {
         };
         Self {
             state: Mutex::new(CloudRuntimeState {
-                session: None,
+                auth: None,
                 remotes: HashMap::new(),
                 credentials_by_storage_id,
             }),
             refresh_lock: AsyncMutex::new(()),
-            client: reqwest::Client::new(),
+            library_id,
             cache,
         }
     }
-    pub fn set_session(&self, base_url: String, bearer_token: String) -> Result<(), CloudError> {
-        let base_url = base_url.trim().trim_end_matches('/').to_string();
-        if base_url.is_empty() || bearer_token.trim().is_empty() {
+    pub async fn configure_auth(&self, base_url: String) -> Result<(), CloudError> {
+        if base_url.trim().is_empty() {
             return Err(CloudError::InvalidSession);
         }
-        self.state.lock().session = Some(CloudSession {
-            base_url,
-            bearer_token,
-        });
+        let auth = LascoCloudAuthManager::new(self.library_id, base_url);
+        auth.restore().await.map_err(CloudError::Auth)?;
+        self.state.lock().auth = Some(auth);
         Ok(())
     }
 
-    pub fn clear_session(&self) {
-        self.state.lock().session = None;
+    pub fn lasco_cloud_auth(&self) -> Option<Arc<LascoCloudAuthManager>> {
+        self.state.lock().auth.clone()
     }
 
-    pub fn clear_credentials(&self) {
-        for remote in self.state.lock().remotes.values_mut() {
+    pub async fn clear_auth_and_credentials(&self) -> Result<(), CloudError> {
+        let auth = self.state.lock().auth.take();
+        if let Some(auth) = auth {
+            auth.clear_local_session().await.map_err(CloudError::Auth)?;
+        }
+        self.clear_persisted_credentials()
+    }
+
+    pub fn clear_persisted_credentials(&self) -> Result<(), CloudError> {
+        let mut state = self.state.lock();
+        state.credentials_by_storage_id.clear();
+        for remote in state.remotes.values_mut() {
             remote.credentials = None;
         }
+        self.cache
+            .clear()
+            .map_err(|error| CloudError::Cache(error.to_string()))
     }
 
     pub fn register_remote(&self, remote_id: RemoteUuid, cloud_storage_id: String) {
@@ -183,29 +188,33 @@ impl CloudRuntime {
     }
 
     async fn refresh_all_unlocked(&self) -> Result<(), CloudError> {
-        let session = self
+        let auth = self
             .state
             .lock()
-            .session
+            .auth
             .clone()
             .ok_or(CloudError::SessionUnavailable)?;
-        let remotes: CloudRemotesResponse = self
-            .request_json(&session, reqwest::Method::GET, "api/v1/remotes")
-            .await?;
-        let credential_response: CloudCredentialsResponse = self
-            .request_json(
-                &session,
-                reqwest::Method::POST,
-                "api/v1/storage-credentials",
-            )
-            .await?;
+        let remotes = match auth.list_remotes().await {
+            Ok(remotes) => remotes,
+            Err(error @ LascoCloudAuthError::LoginRequired) => {
+                self.clear_persisted_credentials()?;
+                return Err(CloudError::Auth(error));
+            }
+            Err(error) => return Err(CloudError::Auth(error)),
+        };
+        let credential_response = match auth.storage_credentials().await {
+            Ok(credentials) => credentials,
+            Err(error @ LascoCloudAuthError::LoginRequired) => {
+                self.clear_persisted_credentials()?;
+                return Err(CloudError::Auth(error));
+            }
+            Err(error) => return Err(CloudError::Auth(error)),
+        };
         let infos = remotes
-            .remotes
             .into_iter()
             .map(|info| (info.id.clone(), info))
             .collect::<HashMap<_, _>>();
         let credentials = credential_response
-            .credentials
             .into_iter()
             .map(|credential| (credential.id.clone(), credential))
             .collect::<HashMap<_, _>>();
@@ -286,27 +295,6 @@ impl CloudRuntime {
             tracing::warn!("failed to remove Lasco Cloud credentials from cache: {error}");
         }
     }
-
-    async fn request_json<T: for<'de> Deserialize<'de>>(
-        &self,
-        session: &CloudSession,
-        method: reqwest::Method,
-        path: &str,
-    ) -> Result<T, CloudError> {
-        let url = format!("{}/{}", session.base_url, path);
-        let response = self
-            .client
-            .request(method, url)
-            .bearer_auth(&session.bearer_token)
-            .send()
-            .await
-            .map_err(CloudError::Request)?;
-        if response.status() == reqwest::StatusCode::UNAUTHORIZED {
-            return Err(CloudError::SessionExpired);
-        }
-        let response = response.error_for_status().map_err(CloudError::Request)?;
-        response.json().await.map_err(CloudError::Request)
-    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -315,6 +303,8 @@ pub enum CloudError {
     SessionUnavailable,
     #[error("Lasco Cloud session has expired; authenticate again")]
     SessionExpired,
+    #[error(transparent)]
+    Auth(#[from] LascoCloudAuthError),
     #[error("Lasco Cloud session details are invalid")]
     InvalidSession,
     #[error("Lasco Cloud credentials are not available")]
@@ -355,35 +345,6 @@ fn from_cached(credentials: CachedCloudS3Credentials) -> CloudS3Credentials {
         session_token: credentials.session_token,
         expires_at: credentials.expires_at,
     }
-}
-
-#[derive(Deserialize)]
-struct CloudRemotesResponse {
-    remotes: Vec<CloudRemoteInfo>,
-}
-
-#[derive(Deserialize)]
-struct CloudRemoteInfo {
-    id: String,
-    endpoint: String,
-    bucket: String,
-    region: String,
-    path_prefix: String,
-}
-
-#[derive(Deserialize)]
-struct CloudCredentialsResponse {
-    credentials: Vec<CloudCredentials>,
-}
-
-#[derive(Deserialize)]
-struct CloudCredentials {
-    id: String,
-    access_key_id: String,
-    secret_access_key: String,
-    #[serde(default)]
-    session_token: Option<String>,
-    expires_at: String,
 }
 
 /// Shared handle stored by `LibraryInner` and cloned into Cloud storage wrappers.
@@ -430,25 +391,20 @@ mod tests {
         let path = directory.path().join("cloud-runtime.enc");
         let remote_id = RemoteUuid::new();
         let runtime = CloudRuntime::open(path.clone(), library_id, &master_key);
-        runtime
-            .state
-            .lock()
-            .credentials_by_storage_id
-            .insert(
-                "cloud-1".to_string(),
-                CloudS3Credentials {
-                    endpoint: "https://s3.example".to_string(),
-                    bucket: "bucket".to_string(),
-                    region: "region".to_string(),
-                    path_prefix: String::new(),
-                    access_key_id: "key".to_string(),
-                    secret_access_key: "secret".to_string(),
-                    session_token: None,
-                    expires_at: Utc::now() + Duration::hours(1),
-                },
-            );
+        runtime.state.lock().credentials_by_storage_id.insert(
+            "cloud-1".to_string(),
+            CloudS3Credentials {
+                endpoint: "https://s3.example".to_string(),
+                bucket: "bucket".to_string(),
+                region: "region".to_string(),
+                path_prefix: String::new(),
+                access_key_id: "key".to_string(),
+                secret_access_key: "secret".to_string(),
+                session_token: None,
+                expires_at: Utc::now() + Duration::hours(1),
+            },
+        );
         runtime.persist_locked(&runtime.state.lock()).unwrap();
-        runtime.clear_credentials();
 
         let reopened = CloudRuntime::open(path, library_id, &master_key);
         reopened.register_remote(remote_id, "cloud-1".to_string());
