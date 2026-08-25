@@ -1,7 +1,7 @@
 use lasco_core::crdt::{CrdtOperation, OperationContent};
 use lasco_core::identifiers::RemoteUuid;
 use lasco_core::library::sync::{
-    PushMediaSource, compaction,
+    PushMediaSource, PushProgressObserver, compaction,
     remote_access::{StorageRead, StorageReadWrite},
 };
 use lasco_core::library_json::{
@@ -18,6 +18,26 @@ use super::{
 };
 use crate::error::LascoError;
 use crate::ids::FfiRemoteUuid;
+
+/// Receives completed full-media upload progress for one Push invocation.
+///
+/// Calls arrive on Lasco's Rust runtime thread. Implementations must return quickly and must
+/// marshal any UI work onto their platform's UI dispatcher.
+#[uniffi::export(callback_interface)]
+pub trait PushProgressSink: Send + Sync {
+    fn upload_progress(&self, fraction: f64);
+}
+
+struct FfiPushProgressObserver {
+    sink: Box<dyn PushProgressSink>,
+}
+
+impl PushProgressObserver for FfiPushProgressObserver {
+    fn media_upload_progress(&self, uploaded: usize, total: usize) {
+        debug_assert!(total > 0);
+        self.sink.upload_progress(uploaded as f64 / total as f64);
+    }
+}
 
 fn next_media_fetch_priority(remote_count: usize) -> Result<u32, LascoError> {
     u32::try_from(remote_count).map_err(|_| LascoError::Other {
@@ -692,6 +712,7 @@ impl FfiLibrary {
         &self,
         target_remote_id: FfiRemoteUuid,
         app_support_dir: Option<String>,
+        progress: Box<dyn PushProgressSink>,
     ) -> Result<u64, LascoError> {
         let target: RemoteUuid = target_remote_id.try_into()?;
         let config = self.load_library_json()?;
@@ -719,6 +740,7 @@ impl FfiLibrary {
         let target_storage = self.build_storage_for_remote(&target, app_support_dir.as_deref())?;
         let inner = self.inner.clone();
         let assignments = resolution.assignments;
+        let progress = FfiPushProgressObserver { sink: progress };
         // The push runs on the runtime owned by this library, not on the foreign
         // executor driving this exported async function. Storage backends build
         // network clients that need a Tokio context.
@@ -730,13 +752,14 @@ impl FfiLibrary {
                     .map(|(id, storage)| (*id, StorageRead::new(storage.as_ref())))
                     .collect();
                 inner
-                    .push_with_media_plan(
+                    .push_with_media_plan_and_progress(
                         target_storage.as_ref(),
                         target,
                         lasco_core::library::sync::PushMediaPlan {
                             assignments,
                             sources: source_reads,
                         },
+                        Some(&progress),
                     )
                     .await
             })

@@ -124,10 +124,7 @@ pub(super) struct CompactionLockToken {
     lock: CompactionLockRecord,
 }
 
-async fn lock_is_held(
-    storage: &StorageRead<'_>,
-    token: &CompactionLockToken,
-) -> Result<bool> {
+async fn lock_is_held(storage: &StorageRead<'_>, token: &CompactionLockToken) -> Result<bool> {
     Ok(read_lock_record(storage)
         .await?
         .as_ref()
@@ -173,9 +170,12 @@ pub(super) async fn try_acquire_lock(
         .await
         .map_err(SyncError::RemoteUnreachable)?;
 
-    Ok(lock_is_held(&storage.as_read(), &CompactionLockToken { lock: lock.clone() })
-        .await?
-        .then_some(CompactionLockToken { lock }))
+    Ok(lock_is_held(
+        &storage.as_read(),
+        &CompactionLockToken { lock: lock.clone() },
+    )
+    .await?
+    .then_some(CompactionLockToken { lock }))
 }
 
 /// Releases the compaction lock.
@@ -338,15 +338,19 @@ mod tests {
 
         let first = try_acquire_lock(&access, DeviceId(1)).await.unwrap();
         assert!(first.is_some());
-        assert!(try_acquire_lock(&access, DeviceId(2))
-            .await
-            .unwrap()
-            .is_none());
+        assert!(
+            try_acquire_lock(&access, DeviceId(2))
+                .await
+                .unwrap()
+                .is_none()
+        );
 
         release_lock(&access, first.unwrap()).await.unwrap();
-        assert!(try_acquire_lock(&access, DeviceId(2))
-            .await
-            .unwrap()
-            .is_some());
+        assert!(
+            try_acquire_lock(&access, DeviceId(2))
+                .await
+                .unwrap()
+                .is_some()
+        );
     }
 }

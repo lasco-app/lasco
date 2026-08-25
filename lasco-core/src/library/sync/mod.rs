@@ -30,6 +30,15 @@ pub struct SyncReportPush {
     pub compactions_run: usize,
 }
 
+/// Receives the user-facing portion of Push progress.
+///
+/// Push determines the total only after it has confirmed the target's media
+/// inventory. Both values count full media blobs, never thumbnails, operations,
+/// or compaction work.
+pub trait PushProgressObserver: Send + Sync {
+    fn media_upload_progress(&self, uploaded: usize, total: usize);
+}
+
 /// Controls how [`Library::push`] obtains media that is absent from the local cache.
 ///
 /// The default intentionally does not download from another remote. This keeps Push from
@@ -266,6 +275,7 @@ impl Library {
                 },
                 remote_id,
                 PushMediaSource::LocalOnly,
+                None,
             )
             .await?;
         Ok(SyncReport {

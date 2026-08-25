@@ -282,6 +282,8 @@ struct StatusView: View {
                         nextPushDate: remote.autoPush ? syncCoordinator.nextPushDate : nil,
                         pushEnabled: syncCoordinator.isPushAllowed(remote.remoteId),
                         fetchEnabled: syncCoordinator.isFetchAllowed(remote.remoteId),
+                        isPushing: syncCoordinator.pushingRemotes.contains(remote.remoteId),
+                        pushUploadProgress: syncCoordinator.pushUploadProgress[remote.remoteId],
                         onPush: { Task { await push(remote) } },
                         onFetch: {
                             Task {
@@ -342,6 +344,8 @@ private struct RemoteStatusCard: View {
     let nextPushDate: Date?
     let pushEnabled: Bool
     let fetchEnabled: Bool
+    let isPushing: Bool
+    let pushUploadProgress: Double?
     let onPush: () -> Void
     let onFetch: () -> Void
 
@@ -415,7 +419,15 @@ private struct RemoteStatusCard: View {
 
             Divider().background(theme.inkMuted.opacity(0.2))
 
-            SyncStatusRow(label: "Push", record: lastPush, dateLabel: syncLabel(lastPush), enabled: pushEnabled, action: onPush)
+            SyncStatusRow(
+                label: "Push",
+                record: lastPush,
+                dateLabel: syncLabel(lastPush),
+                enabled: pushEnabled,
+                isInProgress: isPushing,
+                progress: pushUploadProgress,
+                action: onPush
+            )
             Divider().background(theme.inkMuted.opacity(0.2))
             SyncStatusRow(label: "Fetch", record: lastFetch, dateLabel: syncLabel(lastFetch), isDefaultFetch: isDefaultFetch, enabled: fetchEnabled, action: onFetch)
         }
@@ -431,35 +443,76 @@ private struct SyncStatusRow: View {
     let dateLabel: String
     var isDefaultFetch: Bool = false
     var enabled: Bool = true
+    var isInProgress: Bool = false
+    var progress: Double?
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 8) {
-                if let record, !record.success {
-                    Circle()
-                        .fill(Color.red)
-                        .frame(width: 7, height: 7)
+            ZStack(alignment: .leading) {
+                if isInProgress {
+                    TimelineView(.animation) { context in
+                        GeometryReader { proxy in
+                            let width = proxy.size.width
+                            let fraction = progress.map { min(max($0, 0), 1) }
+                            let fillWidth = width * (fraction ?? 0)
+                            // A zero fraction is a known upload plan whose first item is still
+                            // in flight. Keep the full marquee until something has completed.
+                            let marqueeWidth = fraction == nil || fillWidth == 0 ? width : fillWidth
+                            let glintWidth = min(width * 0.38, 120)
+                            let phase = context.date.timeIntervalSinceReferenceDate
+                                .truncatingRemainder(dividingBy: 1.2) / 1.2
+                            let glintX = -glintWidth + (marqueeWidth + glintWidth) * phase
+
+                            ZStack(alignment: .leading) {
+                                Rectangle().fill(theme.pink.opacity(0.16))
+                                if fillWidth > 0 {
+                                    Rectangle()
+                                        .fill(theme.pink.opacity(0.65))
+                                        .frame(width: fillWidth)
+                                }
+                                Rectangle()
+                                    .fill(theme.pink)
+                                    .frame(width: glintWidth)
+                                    .offset(x: glintX)
+                                    .mask(
+                                        Rectangle()
+                                            .frame(width: marqueeWidth, alignment: .leading)
+                                    )
+                            }
+                            .clipShape(Rectangle())
+                        }
+                    }
                 }
-                Text(label)
-                    .font(LascoFont.body())
-                    .foregroundStyle(theme.inkSub)
-                if isDefaultFetch {
-                    Text("default fetch")
-                        .font(.system(size: 10))
-                        .foregroundStyle(theme.pink)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(theme.pink.opacity(0.12))
-                        .clipShape(Capsule())
+
+                HStack(spacing: 8) {
+                    if let record, !record.success {
+                        Circle()
+                            .fill(Color.red)
+                            .frame(width: 7, height: 7)
+                    }
+                    Text(isInProgress ? "Pushing" : label)
+                        .font(LascoFont.body())
+                        .foregroundStyle(theme.inkSub)
+                    if isDefaultFetch {
+                        Text("default fetch")
+                            .font(.system(size: 10))
+                            .foregroundStyle(theme.pink)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(theme.pink.opacity(0.12))
+                            .clipShape(Capsule())
+                    }
+                    Spacer()
+                    if !isInProgress {
+                        Text(dateLabel)
+                            .font(LascoFont.mono())
+                            .foregroundStyle(theme.inkMuted)
+                    }
                 }
-                Spacer()
-                Text(dateLabel)
-                    .font(LascoFont.mono())
-                    .foregroundStyle(theme.inkMuted)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

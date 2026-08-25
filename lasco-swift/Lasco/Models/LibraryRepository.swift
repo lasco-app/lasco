@@ -105,7 +105,7 @@ protocol LibraryRepositoryProtocol: Sendable {
     func inspectCompactionLock(remoteID: FfiRemoteUuid) async throws -> FfiCompactionLockInfo?
     func removeOwnCompactionLock(remoteID: FfiRemoteUuid) async throws -> Bool
 
-    func push(remoteID: FfiRemoteUuid) async throws -> UInt64
+    func push(remoteID: FfiRemoteUuid, progress: any PushProgressSink) async throws -> UInt64
     func fetch(remoteID: FfiRemoteUuid) async throws -> UInt64
     func confirmRemoteMedia(remoteID: FfiRemoteUuid) async throws -> UInt64
     func close() async
@@ -712,11 +712,12 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         return try library.removeOwnCompactionLock(remoteId: remoteID, appSupportDir: appSupportDirectory)
     }
 
-    func push(remoteID: FfiRemoteUuid) async throws -> UInt64 {
+    func push(remoteID: FfiRemoteUuid, progress: any PushProgressSink) async throws -> UInt64 {
         try ensureOpen()
         let result = try await library.pushRemoteUsingConfiguredMediaSourcesAsync(
             targetRemoteId: remoteID,
-            appSupportDir: appSupportDirectory
+            appSupportDir: appSupportDirectory,
+            progress: progress
         )
         // A successful push changes the per-remote local/remote state. Publish it
         // so status consumers don't have to be recreated before showing it.
@@ -936,7 +937,9 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     func hasUnpushedChanges(remoteID: FfiRemoteUuid) async -> Bool { await storage.hasUnpushedChanges(remoteID: remoteID) }
     func inspectCompactionLock(remoteID: FfiRemoteUuid) async throws -> FfiCompactionLockInfo? { try await storage.inspectCompactionLock(remoteID: remoteID) }
     func removeOwnCompactionLock(remoteID: FfiRemoteUuid) async throws -> Bool { try await storage.removeOwnCompactionLock(remoteID: remoteID) }
-    func push(remoteID: FfiRemoteUuid) async throws -> UInt64 { try await storage.push(remoteID: remoteID) }
+    func push(remoteID: FfiRemoteUuid, progress: any PushProgressSink) async throws -> UInt64 {
+        try await storage.push(remoteID: remoteID, progress: progress)
+    }
     func fetch(remoteID: FfiRemoteUuid) async throws -> UInt64 { try await storage.fetch(remoteID: remoteID) }
     func confirmRemoteMedia(remoteID: FfiRemoteUuid) async throws -> UInt64 { try await storage.confirmRemoteMedia(remoteID: remoteID) }
     func close() async { await storage.close() }

@@ -19,7 +19,8 @@ use super::media_inventory::{KnownMedia, confirm_known_media};
 use super::remote_access::{StorageRead, StorageReadWrite};
 use super::{
     MediaBlob, PlannedMediaSource, PushMediaPlan, PushMediaResolution, PushMediaSource,
-    SyncReportPush, map_op_err, verify_remote_identity, verify_remote_library_format,
+    PushProgressObserver, SyncReportPush, map_op_err, verify_remote_identity,
+    verify_remote_library_format,
 };
 
 /// Where to read one thumbnail that is not cached locally.
@@ -162,8 +163,25 @@ impl Library {
         remote_id: RemoteUuid,
         plan: PushMediaPlan<'_>,
     ) -> Result<SyncReportPush, LibraryError> {
-        self.push_with_media_source(storage, remote_id, PushMediaSource::Plan(plan))
+        self.push_with_media_plan_and_progress(storage, remote_id, plan, None)
             .await
+    }
+
+    /// Push with a media plan and an optional observer for completed full-media uploads.
+    pub async fn push_with_media_plan_and_progress(
+        &self,
+        storage: &dyn crate::storage::Storage,
+        remote_id: RemoteUuid,
+        plan: PushMediaPlan<'_>,
+        progress: Option<&dyn PushProgressObserver>,
+    ) -> Result<SyncReportPush, LibraryError> {
+        self.push_with_media_source_and_progress(
+            storage,
+            remote_id,
+            PushMediaSource::Plan(plan),
+            progress,
+        )
+        .await
     }
     /// # Errors
     ///
@@ -173,8 +191,13 @@ impl Library {
         storage: &dyn crate::storage::Storage,
         remote_id: RemoteUuid,
     ) -> Result<SyncReportPush, LibraryError> {
-        self.push_with_media_source(storage, remote_id, PushMediaSource::LocalOnly)
-            .await
+        self.push_with_media_source_and_progress(
+            storage,
+            remote_id,
+            PushMediaSource::LocalOnly,
+            None,
+        )
+        .await
     }
 
     /// Push with an explicit policy for media absent from the local cache.
@@ -187,6 +210,19 @@ impl Library {
         storage: &dyn crate::storage::Storage,
         remote_id: RemoteUuid,
         media_source: PushMediaSource<'_>,
+    ) -> Result<SyncReportPush, LibraryError> {
+        self.push_with_media_source_and_progress(storage, remote_id, media_source, None)
+            .await
+    }
+
+    /// Push with an explicit media source and an optional observer for completed full-media
+    /// uploads.
+    pub async fn push_with_media_source_and_progress(
+        &self,
+        storage: &dyn crate::storage::Storage,
+        remote_id: RemoteUuid,
+        media_source: PushMediaSource<'_>,
+        progress: Option<&dyn PushProgressObserver>,
     ) -> Result<SyncReportPush, LibraryError> {
         let remote_id_string = remote_id.to_string();
         let _guard = self
@@ -210,6 +246,7 @@ impl Library {
             },
             remote_id,
             media_source,
+            progress,
         )
         .await
     }
@@ -223,6 +260,7 @@ impl Library {
         access: PushAccess<'_>,
         remote_id: RemoteUuid,
         media_source: PushMediaSource<'_>,
+        progress: Option<&dyn PushProgressObserver>,
     ) -> Result<SyncReportPush, LibraryError> {
         let master_key = &self.inner.master_key;
 
@@ -475,6 +513,12 @@ impl Library {
         };
 
         let mut media_uploaded = 0usize;
+        let media_upload_total = media_pending.iter().filter(|item| item.needs_data).count();
+        if media_upload_total > 0 {
+            if let Some(observer) = progress {
+                observer.media_upload_progress(0, media_upload_total);
+            }
+        }
 
         for item in &media_pending {
             let data_key = format!(
@@ -616,6 +660,9 @@ impl Library {
 
             if data_uploaded {
                 media_uploaded += 1;
+                if let Some(observer) = progress {
+                    observer.media_upload_progress(media_uploaded, media_upload_total);
+                }
             }
         }
 
