@@ -85,6 +85,13 @@ fun LascoCloudScreen(
             }
         }
 
+        Text(
+            text = "To delete your account, sign in from a browser at getlasco.app.",
+            style = LascoTheme.type.body(),
+            color = colors.inkMuted,
+            modifier = Modifier.padding(top = 16.dp),
+        )
+
         LascoPrimaryButton(
             text = if (signingOut) "Signing out…" else "Sign out",
             enabled = !signingOut,
