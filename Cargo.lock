@@ -1534,6 +1534,7 @@ dependencies = [
  "chrono",
  "ciborium",
  "directories",
+ "futures-util",
  "hkdf",
  "jni",
  "keyring",
