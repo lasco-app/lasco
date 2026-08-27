@@ -40,6 +40,7 @@ data class WizardUiState(
     val libraryId: String? = null,
     val nickname: String? = null,
     val masterKeyHex: String? = null,
+    val hasRemote: Boolean = false,
     val deviceScan: DeviceScan? = null,
     val scanning: Boolean = false,
     val importState: ImportState = ImportState.Idle,
@@ -82,7 +83,12 @@ class NewLibraryWizardViewModel(
         reset(clearAppSession = false)
         this.sessionId = sessionId
         val step = checkpoint.toStep()
-        _uiState.value = WizardUiState(step = step, libraryId = libraryId, nickname = nickname)
+        _uiState.value = WizardUiState(
+            step = step,
+            libraryId = libraryId,
+            nickname = nickname,
+            hasRemote = hasConfiguredRemote(),
+        )
         observeImportState()
     }
 
@@ -118,8 +124,14 @@ class NewLibraryWizardViewModel(
         _uiState.value = _uiState.value.copy(masterKeyHex = null)
         moveTo(WizardStep.AddRemote)
     }
-    fun remoteCompleted() = moveTo(WizardStep.ChooseDeviceImport)
-    fun skipRemote() = moveTo(WizardStep.ChooseDeviceImport)
+    fun remoteCompleted() {
+        _uiState.value = _uiState.value.copy(hasRemote = hasConfiguredRemote())
+        moveTo(WizardStep.ChooseDeviceImport)
+    }
+    fun skipRemote() {
+        _uiState.value = _uiState.value.copy(hasRemote = false)
+        moveTo(WizardStep.ChooseDeviceImport)
+    }
     fun chooseDeviceImport() = moveTo(WizardStep.GrantMediaAccess)
     fun mediaAccessGranted() = moveTo(WizardStep.GrantLocationAccess)
     fun locationAccessGranted() = moveTo(WizardStep.ImportDeviceMedia)
@@ -201,6 +213,9 @@ class NewLibraryWizardViewModel(
         next.toCheckpoint()?.let { prefs.setOnboardingCheckpoint(FfiLibraryId(libraryId), it) }
             ?: prefs.clearOnboardingIncomplete(FfiLibraryId(libraryId))
     }
+
+    private fun hasConfiguredRemote(): Boolean =
+        app.librarySession?.sessionState?.value?.remotes?.isNotEmpty() == true
 
     private fun controllerOrNull(): InitialImportController? {
         if (initialImportController == null) {

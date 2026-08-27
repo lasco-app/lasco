@@ -166,8 +166,13 @@ fun NewLibraryWizardScreen(
                     WizardStep.SaveRecoveryKey -> MasterKeyStep(masterKeyHex = state.masterKeyHex)
                     WizardStep.AddRemote -> RemoteStep(onAdvance = viewModel::remoteCompleted)
                     WizardStep.ChooseDeviceImport -> AskImportStep(
+                        hasRemote = state.hasRemote,
                         onImport = viewModel::chooseDeviceImport,
                         onSkip = viewModel::skipDeviceImport,
+                        onGetStarted = {
+                            viewModel.complete()
+                            onComplete()
+                        },
                     )
                     WizardStep.GrantMediaAccess -> PermissionStep(
                         autoSkip = state.slideForward,
@@ -385,7 +390,12 @@ private fun RemoteStep(onAdvance: () -> Unit) {
 }
 
 @Composable
-private fun AskImportStep(onImport: () -> Unit, onSkip: () -> Unit) {
+private fun AskImportStep(
+    hasRemote: Boolean,
+    onImport: () -> Unit,
+    onSkip: () -> Unit,
+    onGetStarted: () -> Unit,
+) {
     val colors = LascoTheme.colors
     Column(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -396,13 +406,25 @@ private fun AskImportStep(onImport: () -> Unit, onSkip: () -> Unit) {
                 .padding(top = 40.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            Text(text = "Import your device photos?", style = LascoTheme.type.title(26), color = colors.ink)
             Text(
-                text = "Lasco can import the photos and videos in your camera folder and back them up to your remote. Albums are not replicated, and photos stored outside the camera folder are not imported.",
-                style = LascoTheme.type.body(16),
-                color = colors.inkSub,
+                text = if (hasRemote) "Import your device photos?" else "Can't import your current photo library yet.",
+                style = LascoTheme.type.title(26),
+                color = colors.ink,
             )
-            Text(text = "Nothing is deleted from your device.", style = LascoTheme.type.body(16), color = colors.inkSub)
+            if (hasRemote) {
+                Text(
+                    text = "Lasco can import the photos and videos in your camera folder and back them up to your remote. Albums are not replicated, and photos stored outside the camera folder are not imported.",
+                    style = LascoTheme.type.body(16),
+                    color = colors.inkSub,
+                )
+                Text(text = "Nothing is deleted from your device.", style = LascoTheme.type.body(16), color = colors.inkSub)
+            } else {
+                Text(
+                    text = "Because there is no remote yet, it would mean that everything should be saved twice locally on your device.",
+                    style = LascoTheme.type.body(16),
+                    color = colors.inkSub,
+                )
+            }
         }
 
         Column(
@@ -412,8 +434,12 @@ private fun AskImportStep(onImport: () -> Unit, onSkip: () -> Unit) {
                 .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            LascoPrimaryButton(text = "Yes, import my photos", onClick = onImport)
-            LascoSecondaryButton(text = "No, not now", onClick = onSkip)
+            if (hasRemote) {
+                LascoPrimaryButton(text = "Yes, import my photos", onClick = onImport)
+                LascoSecondaryButton(text = "No, not now", onClick = onSkip)
+            } else {
+                LascoPrimaryButton(text = "Get started", onClick = onGetStarted)
+            }
         }
     }
 }

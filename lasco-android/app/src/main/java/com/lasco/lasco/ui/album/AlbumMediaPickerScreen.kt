@@ -121,7 +121,9 @@ private fun PickerTab(label: String, selected: Boolean, onClick: () -> Unit) {
     Text(
         text = label,
         style = LascoTheme.type.body(),
-        color = if (selected) colors.ink else Color.White,
+        // The picker header is pink in both themes. `colors.ink` is white in
+        // dark mode, so the active tab needs a fixed dark foreground on white.
+        color = if (selected) Color(0xFF1A1A1A) else Color.White,
         modifier = Modifier
             .background(if (selected) Color.White else Color.White.copy(alpha = 0.2f))
             .clickable(onClick = onClick)
