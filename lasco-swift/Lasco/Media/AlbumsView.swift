@@ -351,11 +351,13 @@ struct AlbumContentView: View {
             .preferredColorScheme(.dark)
         }
         .sheet(isPresented: $showingAddMedia) {
-            AddMediaView(targetAlbum: album)
-                .environment(albumModel)
-                .environment(repository)
-                .environment(\.lascoTheme, .dark)
-                .preferredColorScheme(.dark)
+            if let album {
+                AddMediaView(targetAlbum: album, repository: repository)
+                    .environment(albumModel)
+                    .environment(repository)
+                    .environment(\.lascoTheme, .dark)
+                    .preferredColorScheme(.dark)
+            }
         }
         .sheet(isPresented: $showingMovePicker) {
             movePickerSheet
@@ -616,15 +618,19 @@ struct AlbumContentView: View {
     private var addMenu: some View {
         Menu {
             #if canImport(UIKit)
-            Button {
-                showingPhotosPicker = true
+            Menu {
+                Button {
+                    showingPhotosPicker = true
+                } label: {
+                    Label("Import from Photos…", systemImage: "photo.on.rectangle")
+                }
+                Button {
+                    showingFileImporter = true
+                } label: {
+                    Label("Import from Files…", systemImage: "square.and.arrow.down")
+                }
             } label: {
-                Label("Import from Photos…", systemImage: "photo.on.rectangle")
-            }
-            Button {
-                showingFileImporter = true
-            } label: {
-                Label("Import from Files…", systemImage: "square.and.arrow.down")
+                Label("Import and add…", systemImage: "square.and.arrow.down.on.square")
             }
             #endif
             Button {

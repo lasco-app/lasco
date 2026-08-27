@@ -134,6 +134,7 @@ fun AlbumListScreen(
     var showAddToAlbumPicker by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showMediaPicker by remember { mutableStateOf(false) }
+    var pickerDisabledIds by remember { mutableStateOf(setOf<FfiMediaUuid>()) }
     DisposableEffect(showMediaPicker) {
         onPickerVisibleChange(showMediaPicker)
         onDispose { onPickerVisibleChange(false) }
@@ -143,6 +144,11 @@ fun AlbumListScreen(
     var isImporting by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
+    LaunchedEffect(showMediaPicker, albumId) {
+        if (showMediaPicker && albumId != null) {
+            pickerDisabledIds = repo.mediaInAlbum(albumId).map { it.mediaId }.toSet()
+        }
+    }
     fun importUris(uris: List<Uri>) {
         if (uris.isNotEmpty() && albumId != null) {
             isImporting = true
@@ -405,7 +411,7 @@ fun AlbumListScreen(
     if (showMediaPicker && albumId != null) {
         AlbumMediaPickerScreen(
             destAlbumName = albumName ?: "Album",
-            disabledIds = remember(entries.itemSnapshotList) { entries.itemSnapshotList.items.mapNotNull { (it as? AlbumEntry.Item)?.item?.media?.mediaId }.toSet() },
+            disabledIds = pickerDisabledIds,
             onConfirm = { ids ->
                 showMediaPicker = false
                 scope.launch { for (id in ids) repo.addMediaToAlbum(albumId, id) }
@@ -436,6 +442,7 @@ private fun AlbumHeader(
 ) {
     val colors = LascoTheme.colors
     var showAddMenu by remember { mutableStateOf(false) }
+    var showImportAndAddMenu by remember { mutableStateOf(false) }
     var showMoreMenu by remember { mutableStateOf(false) }
     Column {
         if (onBack != null) {
@@ -482,17 +489,10 @@ private fun AlbumHeader(
                         )
                         DropdownMenu(expanded = showAddMenu, onDismissRequest = { showAddMenu = false }) {
                             DropdownMenuItem(
-                                text = { Text("Import photo") },
+                                text = { Text("Import and add…") },
                                 onClick = {
                                     showAddMenu = false
-                                    onImportPhotos()
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Import file") },
-                                onClick = {
-                                    showAddMenu = false
-                                    onImportFiles?.invoke()
+                                    showImportAndAddMenu = true
                                 },
                             )
                             DropdownMenuItem(
@@ -507,6 +507,22 @@ private fun AlbumHeader(
                                 onClick = {
                                     showAddMenu = false
                                     onNewAlbum()
+                                },
+                            )
+                        }
+                        DropdownMenu(expanded = showImportAndAddMenu, onDismissRequest = { showImportAndAddMenu = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Import from Photos") },
+                                onClick = {
+                                    showImportAndAddMenu = false
+                                    onImportPhotos()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Import from Files") },
+                                onClick = {
+                                    showImportAndAddMenu = false
+                                    onImportFiles?.invoke()
                                 },
                             )
                         }
