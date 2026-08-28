@@ -171,6 +171,25 @@ struct SettingsView: View {
                     Divider()
                         .background(theme.inkMuted.opacity(0.2))
 
+                    Link(destination: URL(string: "https://getlasco.app/terms-of-service")!) {
+                        HStack {
+                            Text("Terms of Service")
+                                .font(LascoFont.body())
+                                .foregroundStyle(theme.inkSub)
+                            Spacer()
+                            Text("→")
+                                .font(LascoFont.mono())
+                                .foregroundStyle(theme.inkMuted)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    Divider()
+                        .background(theme.inkMuted.opacity(0.2))
+
                     HStack {
                         Text("Version")
                             .font(LascoFont.body())

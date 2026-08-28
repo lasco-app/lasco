@@ -44,6 +44,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
 private const val PRIVACY_POLICY_URL = "https://getlasco.app/privacy-policy"
+private const val TERMS_OF_SERVICE_URL = "https://getlasco.app/terms-of-service"
 
 @Serializable
 private data object ManageRootKey : NavKey
@@ -238,6 +239,11 @@ private fun ManageRootScreen(
             ManageRow(
                 label = "Privacy Policy",
                 onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(PRIVACY_POLICY_URL))) },
+            )
+            HorizontalDivider(color = colors.ink, thickness = 1.dp)
+            ManageRow(
+                label = "Terms of Service",
+                onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(TERMS_OF_SERVICE_URL))) },
             )
         }
 
