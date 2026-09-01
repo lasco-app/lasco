@@ -43,7 +43,7 @@ struct NewLibraryWizard: View {
     }
 
     #if os(iOS)
-    private var totalSteps: Int { 7 }
+    private var totalSteps: Int { 8 }
     #else
     private var totalSteps: Int { 3 }
     #endif
@@ -71,7 +71,8 @@ struct NewLibraryWizard: View {
                         case 3: askImportStep
                         case 4: permissionStep
                         case 5: importOrSuccessStep
-                        default: autoImportStep
+                        case 6: autoImportStep
+                        default: autoImportInfoStep
                         #else
                         default: remoteStep
                         #endif
@@ -198,8 +199,10 @@ struct NewLibraryWizard: View {
                 permissionButtons
             } else if step == 5 {
                 importOrSuccessButtons
-            } else {
+            } else if step == 6 {
                 autoImportButtons
+            } else {
+                autoImportInfoButtons
             }
             #endif
         }
@@ -699,7 +702,8 @@ struct NewLibraryWizard: View {
                     if let activeSession = directory.activeSession {
                         try? await activeSession.repository.setAutoImportDeviceMedia(enabled: true)
                     }
-                    finish()
+                    slideForward = true
+                    withAnimation(.easeInOut(duration: 0.3)) { step = 7 }
                 }
             }
             .buttonStyle(LascoPrimaryButtonStyle())
@@ -716,6 +720,32 @@ struct NewLibraryWizard: View {
             .buttonStyle(LascoSecondaryButtonStyle())
             .frame(maxWidth: .infinity)
         }
+    }
+
+    private var autoImportInfoStep: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text("Auto-import is on")
+                .font(LascoFont.title(26))
+                .foregroundStyle(Color.Lasco.ink)
+
+            Text("For now, auto-import runs only when you open Lasco.")
+                .font(LascoFont.body(16))
+                .foregroundStyle(Color.Lasco.inkSub)
+                .fixedSize(horizontal: false, vertical: true)
+                .lineSpacing(4)
+
+            Spacer()
+        }
+        .padding(.horizontal, 32)
+        .padding(.top, 40)
+        .padding(.bottom, 120)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var autoImportInfoButtons: some View {
+        Button("Get started", action: finish)
+            .buttonStyle(LascoPrimaryButtonStyle())
+            .frame(maxWidth: .infinity)
     }
 
     private func importSuccessStep(photos: Int, videos: Int) -> some View {

@@ -9,6 +9,8 @@ extension LascoError {
             return "That library could not be found."
         case .SyncBusy:
             return "A sync is already in progress."
+        case .CloudQuotaExceeded(let msg):
+            return "Lasco Cloud storage quota would be exceeded: \(msg)"
         case .MissingLocalMedia:
             return "Some media are not available locally."
         case .MissingMediaOnConfiguredSources:

@@ -128,7 +128,7 @@ fun NewLibraryWizardScreen(
             }
             Spacer(modifier = Modifier.weight(1f))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                for (i in 0 until 8) {
+                for (i in 0 until 9) {
                     Box(
                         modifier = Modifier
                             .width(if (i == state.step.progressIndex()) 20.dp else 8.dp)
@@ -192,6 +192,9 @@ fun NewLibraryWizardScreen(
                         onNo = {
                             viewModel.setAutoImport(false, onComplete)
                         },
+                    )
+                    WizardStep.AutoImportInfo -> AutoImportInfoStep(
+                        onDone = { viewModel.finishAutoImportSetup(onComplete) },
                     )
                 }
             }
@@ -844,6 +847,37 @@ private fun AutoImportStep(onYes: () -> Unit, onNo: () -> Unit) {
         ) {
             LascoPrimaryButton(text = "Yes, auto-import new photos", onClick = onYes)
             LascoSecondaryButton(text = "No, not now", onClick = onNo)
+        }
+    }
+}
+
+@Composable
+private fun AutoImportInfoStep(onDone: () -> Unit) {
+    val colors = LascoTheme.colors
+    Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(horizontal = 32.dp)
+                .padding(top = 40.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            Text(text = "Auto-import is on", style = LascoTheme.type.title(26), color = colors.ink)
+            Text(
+                text = "For now, auto-import runs only when you open Lasco.",
+                style = LascoTheme.type.body(16),
+                color = colors.inkSub,
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 32.dp)
+                .padding(bottom = 24.dp),
+        ) {
+            LascoPrimaryButton(text = "Get started", onClick = onDone)
         }
     }
 }

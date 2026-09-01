@@ -28,6 +28,7 @@ sealed interface WizardStep {
     data object GrantLocationAccess : WizardStep
     data object ImportDeviceMedia : WizardStep
     data object ChooseAutoImport : WizardStep
+    data object AutoImportInfo : WizardStep
 }
 
 enum class BackResult { ExitWizard, Consumed, NoOp }
@@ -56,6 +57,7 @@ fun WizardStep.progressIndex() = when (this) {
     WizardStep.GrantLocationAccess -> 5
     WizardStep.ImportDeviceMedia -> 6
     WizardStep.ChooseAutoImport -> 7
+    WizardStep.AutoImportInfo -> 8
 }
 
 class NewLibraryWizardViewModel(
@@ -147,6 +149,14 @@ class NewLibraryWizardViewModel(
         viewModelScope.launch {
             try {
                 app.librarySession?.setAutoImportDeviceMedia(enabled)
+                if (enabled) {
+                    _uiState.value = _uiState.value.copy(
+                        step = WizardStep.AutoImportInfo,
+                        slideForward = true,
+                        error = null,
+                    )
+                    return@launch
+                }
                 _uiState.value.libraryId?.let { prefs.clearOnboardingIncomplete(FfiLibraryId(it)) }
                 complete()
                 onSuccess()
@@ -154,6 +164,12 @@ class NewLibraryWizardViewModel(
                 _uiState.value = _uiState.value.copy(error = e.message ?: "Could not save auto-import setting")
             }
         }
+    }
+
+    fun finishAutoImportSetup(onSuccess: () -> Unit) {
+        _uiState.value.libraryId?.let { prefs.clearOnboardingIncomplete(FfiLibraryId(it)) }
+        complete()
+        onSuccess()
     }
 
     fun scanDeviceMedia() {
@@ -261,7 +277,7 @@ class NewLibraryWizardViewModel(
         WizardStep.GrantMediaAccess -> WizardCheckpoint.GrantMediaAccess
         WizardStep.GrantLocationAccess -> WizardCheckpoint.GrantLocationAccess
         WizardStep.ImportDeviceMedia -> WizardCheckpoint.ImportDeviceMedia
-        WizardStep.ChooseAutoImport -> WizardCheckpoint.ChooseAutoImport
+        WizardStep.ChooseAutoImport, WizardStep.AutoImportInfo -> WizardCheckpoint.ChooseAutoImport
         WizardStep.CreateLibrary, WizardStep.SaveRecoveryKey -> null
     }
 

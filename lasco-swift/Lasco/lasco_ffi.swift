@@ -899,6 +899,8 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     
     func lascoCloudRevokeSession() async throws 
     
+    func lascoCloudStorageUsage() async throws  -> UInt64
+    
     func lascoCloudSubscription() async throws  -> FfiLascoCloudAccount
     
     func libraryId()  -> FfiLibraryId
@@ -2047,6 +2049,23 @@ nonisolated open func lascoCloudRevokeSession()async throws   {
             completeFunc: ffi_lasco_ffi_rust_future_complete_void,
             freeFunc: ffi_lasco_ffi_rust_future_free_void,
             liftFunc: { $0 },
+            errorHandler: FfiConverterTypeLascoError_lift
+        )
+}
+    
+nonisolated open func lascoCloudStorageUsage()async throws  -> UInt64  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_storage_usage(
+                    self.uniffiClonePointer()
+                    
+                )
+            },
+            pollFunc: ffi_lasco_ffi_rust_future_poll_u64,
+            completeFunc: ffi_lasco_ffi_rust_future_complete_u64,
+            freeFunc: ffi_lasco_ffi_rust_future_free_u64,
+            liftFunc: FfiConverterUInt64.lift,
             errorHandler: FfiConverterTypeLascoError_lift
         )
 }
@@ -6062,6 +6081,9 @@ nonisolated private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_revoke_session() != 42955) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_storage_usage() != 5814) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_subscription() != 11111) {
