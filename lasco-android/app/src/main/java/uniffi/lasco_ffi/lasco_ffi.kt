@@ -946,6 +946,8 @@ internal open class UniffiVTableCallbackInterfacePushProgressSink(
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1066,6 +1068,8 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_initialize_remote(
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_inspect_compaction_lock(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_assign_remotes_to_this_library(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_check_initial_import(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_is_authenticated(
 ): Short
@@ -1312,6 +1316,8 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_initialize_remote(`ptr`: Pointer,`remo
 fun uniffi_lasco_ffi_fn_method_ffilibrary_inspect_compaction_lock(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_assign_remotes_to_this_library(`ptr`: Pointer,`remoteIds`: RustBuffer.ByValue,
+): Long
+fun uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_check_initial_import(`ptr`: Pointer,`mediaBytes`: Long,
 ): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_is_authenticated(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
@@ -1710,6 +1716,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_assign_remotes_to_this_library() != 56961.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_check_initial_import() != 34656.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_is_authenticated() != 28183.toShort()) {
@@ -2704,6 +2713,12 @@ public interface FfiLibraryInterface {
     fun `inspectCompactionLock`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): FfiCompactionLockInfo?
     
     suspend fun `lascoCloudAssignRemotesToThisLibrary`(`remoteIds`: List<kotlin.String>)
+    
+    /**
+     * Rejects an initial import that cannot fit on the configured Cloud remotes.
+     * Only media data bytes are supplied; state and generated thumbnails are excluded.
+     */
+    suspend fun `lascoCloudCheckInitialImport`(`mediaBytes`: kotlin.ULong)
     
     fun `lascoCloudIsAuthenticated`(): kotlin.Boolean
     
@@ -3975,6 +3990,32 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
             UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_assign_remotes_to_this_library(
                 thisPtr,
                 FfiConverterSequenceString.lower(`remoteIds`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_poll_void(future, callback, continuation) },
+        { future, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_complete_void(future, continuation) },
+        { future -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_free_void(future) },
+        // lift function
+        { Unit },
+        
+        // Error FFI converter
+        LascoException.ErrorHandler,
+    )
+    }
+
+    
+    /**
+     * Rejects an initial import that cannot fit on the configured Cloud remotes.
+     * Only media data bytes are supplied; state and generated thumbnails are excluded.
+     */
+    @Throws(LascoException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `lascoCloudCheckInitialImport`(`mediaBytes`: kotlin.ULong) {
+        return uniffiRustCallAsync(
+        callWithPointer { thisPtr ->
+            UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_check_initial_import(
+                thisPtr,
+                FfiConverterULong.lower(`mediaBytes`),
             )
         },
         { future, callback, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_poll_void(future, callback, continuation) },
@@ -5962,6 +6003,14 @@ sealed class LascoException: kotlin.Exception() {
             get() = ""
     }
     
+    class CloudQuotaExceeded(
+        
+        val `msg`: kotlin.String
+        ) : LascoException() {
+        override val message
+            get() = "msg=${ `msg` }"
+    }
+    
     class MissingLocalMedia(
         
         val `mediaIds`: List<FfiMediaId>
@@ -6019,17 +6068,20 @@ public object FfiConverterTypeLascoError : FfiConverterRustBuffer<LascoException
             1 -> LascoException.InvalidCredentials()
             2 -> LascoException.NotFound()
             3 -> LascoException.SyncBusy()
-            4 -> LascoException.MissingLocalMedia(
-                FfiConverterSequenceTypeFfiMediaId.read(buf),
-                )
-            5 -> LascoException.MissingMediaOnConfiguredSources(
-                FfiConverterSequenceTypeFfiMediaId.read(buf),
-                )
-            6 -> LascoException.CrdtRecoveryAvailable()
-            7 -> LascoException.Storage(
+            4 -> LascoException.CloudQuotaExceeded(
                 FfiConverterString.read(buf),
                 )
-            8 -> LascoException.Other(
+            5 -> LascoException.MissingLocalMedia(
+                FfiConverterSequenceTypeFfiMediaId.read(buf),
+                )
+            6 -> LascoException.MissingMediaOnConfiguredSources(
+                FfiConverterSequenceTypeFfiMediaId.read(buf),
+                )
+            7 -> LascoException.CrdtRecoveryAvailable()
+            8 -> LascoException.Storage(
+                FfiConverterString.read(buf),
+                )
+            9 -> LascoException.Other(
                 FfiConverterString.read(buf),
                 )
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
@@ -6049,6 +6101,11 @@ public object FfiConverterTypeLascoError : FfiConverterRustBuffer<LascoException
             is LascoException.SyncBusy -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
+            )
+            is LascoException.CloudQuotaExceeded -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`msg`)
             )
             is LascoException.MissingLocalMedia -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
@@ -6091,27 +6148,32 @@ public object FfiConverterTypeLascoError : FfiConverterRustBuffer<LascoException
                 buf.putInt(3)
                 Unit
             }
-            is LascoException.MissingLocalMedia -> {
+            is LascoException.CloudQuotaExceeded -> {
                 buf.putInt(4)
-                FfiConverterSequenceTypeFfiMediaId.write(value.`mediaIds`, buf)
+                FfiConverterString.write(value.`msg`, buf)
                 Unit
             }
-            is LascoException.MissingMediaOnConfiguredSources -> {
+            is LascoException.MissingLocalMedia -> {
                 buf.putInt(5)
                 FfiConverterSequenceTypeFfiMediaId.write(value.`mediaIds`, buf)
                 Unit
             }
-            is LascoException.CrdtRecoveryAvailable -> {
+            is LascoException.MissingMediaOnConfiguredSources -> {
                 buf.putInt(6)
+                FfiConverterSequenceTypeFfiMediaId.write(value.`mediaIds`, buf)
+                Unit
+            }
+            is LascoException.CrdtRecoveryAvailable -> {
+                buf.putInt(7)
                 Unit
             }
             is LascoException.Storage -> {
-                buf.putInt(7)
+                buf.putInt(8)
                 FfiConverterString.write(value.`msg`, buf)
                 Unit
             }
             is LascoException.Other -> {
-                buf.putInt(8)
+                buf.putInt(9)
                 FfiConverterString.write(value.`msg`, buf)
                 Unit
             }

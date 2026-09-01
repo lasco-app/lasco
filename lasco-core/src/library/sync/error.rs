@@ -14,6 +14,8 @@ pub enum SyncError {
     Operation(#[from] OperationError),
     #[error("sync already running on this client")]
     AlreadyRunning,
+    #[error("Lasco Cloud storage quota would be exceeded: {0}")]
+    CloudQuotaExceeded(String),
     #[error("remote history was rewritten: {0}")]
     RemoteHistoryRewritten(String),
     #[error("remote operation file is invalid: {0}")]

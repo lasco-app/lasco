@@ -39,6 +39,9 @@ pub trait PushProgressObserver: Send + Sync {
     fn media_upload_progress(&self, uploaded: usize, total: usize);
 }
 
+/// Optional control-plane gate for a push. It is deliberately separate from
+/// `Storage`: S3 only stores objects; Cloud quota is a Lasco API concern.
+
 /// Controls how [`Library::push`] obtains media that is absent from the local cache.
 ///
 /// The default intentionally does not download from another remote. This keeps Push from
@@ -275,6 +278,7 @@ impl Library {
                 },
                 remote_id,
                 PushMediaSource::LocalOnly,
+                None,
                 None,
             )
             .await?;
