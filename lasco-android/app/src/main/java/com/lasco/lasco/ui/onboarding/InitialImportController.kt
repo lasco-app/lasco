@@ -129,6 +129,16 @@ class InitialImportController(
                 return
             }
 
+            // Lasco Cloud's two newly assigned remotes are empty during initial
+            // onboarding. Ask its control plane before creating any library data.
+            // Non-Cloud libraries are a no-op in the shared FFI method.
+            try {
+                lib.lascoCloudCheckInitialImport(scan.totalBytes.toULong())
+            } catch (e: Throwable) {
+                _importState.value = ImportState.Error(e.message ?: "This import does not fit in Lasco Cloud storage")
+                return
+            }
+
             // Every row would fail the original read without this, so it is worth
             // one error up front instead of a run that imports nothing. No
             // watermark is stamped, granting the permission and coming back has

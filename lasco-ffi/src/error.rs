@@ -9,6 +9,8 @@ pub enum LascoError {
     NotFound,
     #[error("sync already in progress")]
     SyncBusy,
+    #[error("Lasco Cloud storage quota would be exceeded: {msg}")]
+    CloudQuotaExceeded { msg: String },
     #[error("media missing from local cache")]
     MissingLocalMedia { media_ids: Vec<FfiMediaId> },
     #[error("no known place to get some media from")]
@@ -27,6 +29,7 @@ impl From<LibraryError> for LascoError {
             LibraryError::MediaNotFound(_) | LibraryError::AlbumNotFound(_) => LascoError::NotFound,
             LibraryError::Storage(_) => LascoError::Storage { msg: e.to_string() },
             LibraryError::Sync(SyncError::AlreadyRunning) => LascoError::SyncBusy,
+            LibraryError::Sync(SyncError::CloudQuotaExceeded(msg)) => LascoError::CloudQuotaExceeded { msg },
             LibraryError::Sync(SyncError::MissingLocalMedia(ids)) => {
                 LascoError::MissingLocalMedia {
                     media_ids: ids.into_iter().map(FfiMediaId::from).collect(),

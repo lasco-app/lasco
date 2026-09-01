@@ -11,7 +11,7 @@ use crate::encryption::master_key::MasterKey;
 use crate::identifiers::{LibraryId, RemoteUuid};
 
 use super::cloud_runtime_cache::{CachedCloudS3Credentials, CloudRuntimeCache};
-use super::lasco_cloud_auth::{LascoCloudAuthError, LascoCloudAuthManager};
+use super::lasco_cloud_auth::{LascoCloudAuthError, LascoCloudAuthManager, LascoCloudStorageUsageCheck};
 
 /// Refresh when one minute or less remains. This keeps a long upload from
 /// starting an S3 request with credentials that will expire mid-operation.
@@ -101,6 +101,38 @@ impl CloudRuntime {
         self.state.lock().auth.clone()
     }
 
+    pub async fn check_storage_usage(
+        &self, remote_id: &RemoteUuid, media_bytes: u64,
+    ) -> Result<LascoCloudStorageUsageCheck, CloudError> {
+        let (auth, storage_id) = {
+            let state = self.state.lock();
+            (state.auth.clone().ok_or(CloudError::SessionUnavailable)?, state.remotes.get(remote_id).ok_or(CloudError::CredentialsUnavailable)?.cloud_storage_id.clone())
+        };
+        auth.check_storage_usage(vec![(storage_id, media_bytes)]).await.map_err(CloudError::Auth)
+    }
+
+    pub async fn check_storage_usage_for_remotes(
+        &self, remote_ids: &[RemoteUuid], media_bytes_each: u64,
+    ) -> Result<LascoCloudStorageUsageCheck, CloudError> {
+        let (auth, storage_ids) = {
+            let state = self.state.lock();
+            let auth = state.auth.clone().ok_or(CloudError::SessionUnavailable)?;
+            let ids = remote_ids.iter().map(|id| state.remotes.get(id).ok_or(CloudError::CredentialsUnavailable).map(|r| r.cloud_storage_id.clone())).collect::<Result<Vec<_>, _>>()?;
+            (auth, ids)
+        };
+        auth.check_storage_usage(storage_ids.into_iter().map(|id| (id, media_bytes_each)).collect()).await.map_err(CloudError::Auth)
+    }
+
+    pub async fn confirm_storage_usage(
+        &self, remote_id: &RemoteUuid, media_bytes: u64,
+    ) -> Result<(), CloudError> {
+        let (auth, storage_id) = {
+            let state = self.state.lock();
+            (state.auth.clone().ok_or(CloudError::SessionUnavailable)?, state.remotes.get(remote_id).ok_or(CloudError::CredentialsUnavailable)?.cloud_storage_id.clone())
+        };
+        auth.confirm_storage_usage(storage_id, media_bytes).await.map_err(CloudError::Auth)
+    }
+
     pub async fn clear_auth_and_credentials(&self) -> Result<(), CloudError> {
         let auth = self.state.lock().auth.take();
         if let Some(auth) = auth {
@@ -130,6 +162,10 @@ impl CloudRuntime {
             cloud_storage_id,
             credentials,
         });
+    }
+
+    pub fn has_remote(&self, remote_id: &RemoteUuid) -> bool {
+        self.state.lock().remotes.contains_key(remote_id)
     }
 
     pub fn remove_remote(&self, remote_id: &RemoteUuid) {

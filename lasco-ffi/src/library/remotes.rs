@@ -32,6 +32,7 @@ struct FfiPushProgressObserver {
     sink: Box<dyn PushProgressSink>,
 }
 
+
 impl PushProgressObserver for FfiPushProgressObserver {
     fn media_upload_progress(&self, uploaded: usize, total: usize) {
         debug_assert!(total > 0);
@@ -752,13 +753,13 @@ impl FfiLibrary {
                     .map(|(id, storage)| (*id, StorageRead::new(storage.as_ref())))
                     .collect();
                 inner
-                    .push_with_media_plan_and_progress(
+                    .push_with_media_source_and_progress(
                         target_storage.as_ref(),
                         target,
-                        lasco_core::library::sync::PushMediaPlan {
+                        PushMediaSource::Plan(lasco_core::library::sync::PushMediaPlan {
                             assignments,
                             sources: source_reads,
-                        },
+                        }),
                         Some(&progress),
                     )
                     .await
