@@ -33,6 +33,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -96,6 +98,14 @@ fun NewLibraryWizardScreen(
 ) {
     val colors = LascoTheme.colors
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val view = LocalView.current
+
+    DisposableEffect(view, state.isImporting) {
+        view.keepScreenOn = state.isImporting
+        onDispose {
+            if (state.isImporting) view.keepScreenOn = false
+        }
+    }
 
     LaunchedEffect(sessionId) {
         if (resume == null) viewModel.startFresh(sessionId)
@@ -729,6 +739,11 @@ private fun ImportStep(
                             modifier = Modifier.fillMaxWidth(),
                         )
                         InitialImportPhaseProgress(phase = importing.phase)
+                        Text(
+                            text = "Keep Lasco open until the import finishes.",
+                            style = LascoTheme.type.body(14),
+                            color = colors.inkMuted,
+                        )
                     }
                 }
             }

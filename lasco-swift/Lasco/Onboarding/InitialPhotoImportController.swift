@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 #if canImport(UIKit)
+import UIKit
 import Photos
 #endif
 
@@ -61,6 +62,9 @@ final class InitialPhotoImportController {
         result = nil
         isImporting = true
         progress = ImportProgress(backedUp: 0, total: scan.assets.count, phase: .preparingLibrary)
+        let idleTimerWasDisabled = UIApplication.shared.isIdleTimerDisabled
+        UIApplication.shared.isIdleTimerDisabled = true
+        defer { UIApplication.shared.isIdleTimerDisabled = idleTimerWasDisabled }
         let task = Task { await self.performImport(scan: scan, remoteID: remoteID) }
         importTask = task
         await task.value

@@ -643,6 +643,10 @@ struct NewLibraryWizard: View {
                     if let phase = progress?.phase {
                         InitialImportPhaseView(phase: phase)
                     }
+                    Text("Keep Lasco open until the import finishes.")
+                        .font(LascoFont.body(14))
+                        .foregroundStyle(Color.Lasco.inkMuted)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .padding(.vertical, 8)
             } else {
