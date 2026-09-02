@@ -268,6 +268,74 @@ function WhyLascoSection() {
 }
 
 // =============================================
+// Lasco Cloud Section
+// =============================================
+
+const CLOUD_PRICES = {
+  usd: {monthly: '$2.99', annualMonthlyEquivalent: '$2.49'},
+  eur: {monthly: '€2.99', annualMonthlyEquivalent: '€2.49'},
+};
+
+function LascoCloudSection() {
+  const [currency, setCurrency] = React.useState<keyof typeof CLOUD_PRICES>('usd');
+  const price = CLOUD_PRICES[currency];
+
+  return (
+    <section className={styles.cloudSection} aria-labelledby="lasco-cloud-title">
+      <div className="container">
+        <div className={styles.cloudCard}>
+          <div className={styles.cloudCopy}>
+            <h2 id="lasco-cloud-title" className={styles.cloudTitle}>Lasco Cloud</h2>
+            <p className={styles.cloudDescription}>
+              The easiest way to get started with Lasco.
+            </p>
+          </div>
+          <div className={styles.cloudPlan}>
+            <div className={styles.currencyToggle} role="group" aria-label="Choose a display currency">
+              <button
+                type="button"
+                className={`${styles.currencyOption} ${currency === 'usd' ? styles.currencyOptionActive : ''}`}
+                aria-pressed={currency === 'usd'}
+                onClick={() => setCurrency('usd')}>
+                USD
+              </button>
+              <button
+                type="button"
+                className={`${styles.currencyOption} ${currency === 'eur' ? styles.currencyOptionActive : ''}`}
+                aria-pressed={currency === 'eur'}
+                onClick={() => setCurrency('eur')}>
+                EUR
+              </button>
+            </div>
+            <p className={styles.cloudPlanName}>50 GB</p>
+            <div className={styles.cloudPricingOptions}>
+              <div className={styles.cloudPricingOption}>
+                <p className={styles.cloudBillingPeriod}>Monthly</p>
+                <p className={styles.cloudPrice}>
+                  {price.monthly}<span>/ month</span>
+                </p>
+              </div>
+              <div className={styles.cloudPricingOption}>
+                <p className={styles.cloudBillingPeriod}>Annual</p>
+                <p className={styles.cloudPrice}>
+                  {price.annualMonthlyEquivalent}<span>/ month</span>
+                </p>
+                <p className={styles.cloudPriceNote}>Billed yearly</p>
+              </div>
+            </div>
+            <ul className={styles.cloudFeatures}>
+              <li>50 GB of encrypted photo storage</li>
+              <li>Two remote copies of your library (2 × 50 GB)</li>
+              <li>Works seamlessly with Lasco</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// =============================================
 // Waitlist Section
 // =============================================
 
@@ -399,6 +467,7 @@ export default function Home(): ReactNode {
         <div style={{width: '100%', aspectRatio: '1448/360', display: 'block'}} />
         <ScreenshotScrollSection />
         <WhyLascoSection />
+        <LascoCloudSection />
         <div style={{display: 'flex', justifyContent: 'center', padding: '120px 0 200px'}}>
           <RiveMascot
             src="/img/msacot_hole_anim.riv"

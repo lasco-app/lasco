@@ -388,6 +388,167 @@
 }
 
 /* =============================================
+   Lasco Cloud Section
+   ============================================= */
+
+.cloudSection {
+  padding: 3rem 0 0;
+  background: var(--lasco-bg);
+}
+
+.cloudCard {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 2.5rem;
+  border: 2px solid var(--lasco-ink);
+  background: #fff;
+}
+
+.cloudCopy {
+  margin-bottom: 2.5rem;
+}
+
+.cloudTitle {
+  margin: 0 0 1rem;
+  font-family: 'Jersey 10', monospace;
+  font-size: 54px;
+  font-weight: 400;
+  line-height: 0.9;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--lasco-ink);
+}
+
+.cloudDescription {
+  max-width: 490px;
+  margin: 0;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 18px;
+  line-height: 1.6;
+  color: var(--lasco-ink-sub);
+}
+
+.cloudPlan {
+  position: relative;
+  padding: 1.5rem;
+  background: #f6d4f5;
+}
+
+.currencyToggle {
+  display: inline-flex;
+  padding: 3px;
+  margin-bottom: 1.5rem;
+  border: 1px solid var(--lasco-ink);
+  background: #fff;
+}
+
+.currencyOption {
+  padding: 0.35rem 0.75rem;
+  border: 0;
+  background: transparent;
+  color: var(--lasco-ink);
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.currencyOptionActive {
+  background: var(--lasco-ink);
+  color: #fff;
+}
+
+.cloudPlanName,
+.cloudPrice,
+.cloudPriceNote {
+  font-family: 'Space Grotesk', sans-serif;
+  color: var(--lasco-ink);
+}
+
+.cloudPlanName {
+  margin: 0 0 0.25rem;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.cloudPricingOptions {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin: 1.25rem 0 1.5rem;
+}
+
+.cloudPricingOption {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  column-gap: 0.75rem;
+}
+
+.cloudBillingPeriod {
+  width: 68px;
+  margin: 0;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--lasco-ink);
+}
+
+.cloudPrice {
+  margin: 0;
+  font-size: 38px;
+  font-weight: 700;
+  letter-spacing: -0.06em;
+}
+
+.cloudPrice span {
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.cloudPriceNote {
+  margin: 0;
+  font-size: 12px;
+  color: var(--lasco-ink-sub);
+}
+
+.cloudFeatures {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--lasco-ink);
+}
+
+@media screen and (max-width: 768px) {
+  .cloudSection {
+    padding: 1.5rem 1.5rem 0;
+  }
+
+  .cloudCard {
+    padding: 1.5rem;
+  }
+
+  .cloudCopy {
+    margin-bottom: 2rem;
+  }
+
+  .cloudTitle {
+    font-size: 45px;
+  }
+
+  .cloudDescription {
+    font-size: 16px;
+  }
+}
+
+/* =============================================
    Waitlist Section
    ============================================= */
 
