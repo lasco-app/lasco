@@ -5,6 +5,9 @@ import android.util.Base64
 import com.lasco.lasco.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -35,6 +38,11 @@ internal class LascoCloud(private val context: Context) {
     }
 
     fun isLoggedIn(libraryId: String): Boolean = tokens.get(libraryId) != null
+
+    suspend fun clientReleasePolicy(): ClientReleaseDecision = withContext(Dispatchers.IO) {
+        val path = "/api/v1/client-release-policy?platform=android&build=${BuildConfig.VERSION_CODE}&display_version=${BuildConfig.VERSION_NAME}"
+        json.decodeFromString(request(path, "GET", null, null))
+    }
 
     fun session(libraryId: String): CloudSession = CloudSession(
         baseUrl = baseUrl,
@@ -108,6 +116,26 @@ internal class LascoCloud(private val context: Context) {
     }
 }
 
+/** App-scoped release state for the update header and pre-sync Cloud gate. */
+internal class ClientReleasePolicy(context: Context) {
+    private val cloud = LascoCloud(context.applicationContext)
+    private val _decision = MutableStateFlow<ClientReleaseDecision?>(null)
+    val decision: StateFlow<ClientReleaseDecision?> = _decision.asStateFlow()
+
+    suspend fun refresh() {
+        _decision.value = runCatching { cloud.clientReleasePolicy() }.getOrNull()
+    }
+
+    /** Returns a user-facing reason when a Cloud sync must not start. */
+    suspend fun syncBlockMessage(): String? = try {
+        val latest = cloud.clientReleasePolicy()
+        _decision.value = latest
+        if (latest.syncAllowed) null else latest.message
+    } catch (_: Exception) {
+        "Lasco Cloud can’t verify this app version right now. Try again shortly."
+    }
+}
+
 internal sealed class CloudException(message: String) : IllegalStateException(message)
 internal class CloudUnauthorizedException : CloudException("Authenticate with Lasco Cloud again")
 internal class CloudInvalidRemoteCountException : CloudException("Lasco Cloud must provide two storage remotes")
@@ -131,6 +159,12 @@ private class CloudRequestException(endpoint: String, statusCode: Int) : CloudEx
 @Serializable private data class LoginRequest(val email: String, val password: String, val platform: String, @SerialName("app_version") val appVersion: String)
 @Serializable private data class CloudRemoteLibraryIdRequest(@SerialName("library_id") val libraryId: String)
 @Serializable internal data class CloudLogin(val token: String)
+@Serializable internal data class ClientReleaseDecision(
+    @SerialName("update_available") val updateAvailable: Boolean,
+    @SerialName("sync_allowed") val syncAllowed: Boolean,
+    @SerialName("store_url") val storeUrl: String,
+    val message: String,
+)
 internal data class CloudSession(val baseUrl: String, val token: String)
 @Serializable data class CloudAccount(
     val email: String,

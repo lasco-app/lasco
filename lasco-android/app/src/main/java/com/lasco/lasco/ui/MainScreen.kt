@@ -1,17 +1,26 @@
 package com.lasco.lasco.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
+import android.content.Intent
+import android.net.Uri
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.lasco.lasco.LascoApp
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
@@ -52,6 +61,10 @@ fun MainScreen(
     val homeBackStack = rememberNavBackStack(HomeKey)
     val albumsBackStack = rememberNavBackStack(AlbumKey(null))
     val colors = LascoTheme.colors
+    val context = LocalContext.current
+    val releasePolicy by (context.applicationContext as LascoApp).releasePolicy.decision.collectAsStateWithLifecycle()
+    val showUpdateBanner =
+        (tab == AppTab.Home || tab == AppTab.Albums) && releasePolicy?.updateAvailable == true
     var isAlbumPickerVisible by remember { mutableStateOf(false) }
 
     fun openAlbum(albumId: String) {
@@ -65,48 +78,67 @@ fun MainScreen(
     val showTabBar = activeBackStack.lastOrNull() !is MediaDetailKey && !isAlbumPickerVisible
 
     Box(modifier = modifier.fillMaxSize().background(colors.bg)) {
-        when (tab) {
-            AppTab.Home -> NavDisplay(
-                backStack = homeBackStack,
-                onBack = { homeBackStack.removeLastOrNull() },
-                modifier = Modifier.fillMaxSize(),
-                entryDecorators = listOf(
-                    rememberSaveableStateHolderNavEntryDecorator(),
-                    rememberViewModelStoreNavEntryDecorator(),
-                ),
-                entryProvider = entryProvider {
-                    entry<HomeKey> {
-                        RecentMediaScreen(
-                            modifier = Modifier.fillMaxSize(),
-                            onOpenMedia = { position ->
-                                homeBackStack.add(MediaDetailKey(MediaDetailSource.HomeByDate, position))
-                            },
-                            onOpenAlbum = { openAlbum(it) },
-                        )
-                    }
-                    entry<MediaDetailKey> { key ->
-                        MediaDetailScreen(
-                            source = key.source,
-                            startPosition = key.startPosition,
-                            onBack = { homeBackStack.removeLastOrNull() },
-                            onOpenAlbum = { openAlbum(it) },
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
-                },
-            )
-            AppTab.Albums -> AlbumsScreen(
-                backStack = albumsBackStack,
-                modifier = Modifier.fillMaxSize(),
-                onOpenAlbum = { openAlbum(it) },
-                onPickerVisibleChange = { isAlbumPickerVisible = it },
-            )
-            AppTab.Status -> StatusScreen(modifier = Modifier.fillMaxSize())
-            AppTab.Manage -> ManageScreen(
-                modifier = Modifier.fillMaxSize(),
-                onSignedOut = onSignedOut,
-                onDeleteLibrary = onDeleteLibrary,
-            )
+        Column(modifier = Modifier.fillMaxSize()) {
+            if (showUpdateBanner) {
+                val decision = requireNotNull(releasePolicy)
+                Text(
+                    text = "${decision.message}  Update",
+                    color = colors.bg,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(colors.pink)
+                        .clickable {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(decision.storeUrl)))
+                        }
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                )
+            }
+
+            Box(modifier = Modifier.weight(1f)) {
+                when (tab) {
+                    AppTab.Home -> NavDisplay(
+                        backStack = homeBackStack,
+                        onBack = { homeBackStack.removeLastOrNull() },
+                        modifier = Modifier.fillMaxSize(),
+                        entryDecorators = listOf(
+                            rememberSaveableStateHolderNavEntryDecorator(),
+                            rememberViewModelStoreNavEntryDecorator(),
+                        ),
+                        entryProvider = entryProvider {
+                            entry<HomeKey> {
+                                RecentMediaScreen(
+                                    modifier = Modifier.fillMaxSize(),
+                                    onOpenMedia = { position ->
+                                        homeBackStack.add(MediaDetailKey(MediaDetailSource.HomeByDate, position))
+                                    },
+                                    onOpenAlbum = { openAlbum(it) },
+                                )
+                            }
+                            entry<MediaDetailKey> { key ->
+                                MediaDetailScreen(
+                                    source = key.source,
+                                    startPosition = key.startPosition,
+                                    onBack = { homeBackStack.removeLastOrNull() },
+                                    onOpenAlbum = { openAlbum(it) },
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
+                        },
+                    )
+                    AppTab.Albums -> AlbumsScreen(
+                        backStack = albumsBackStack,
+                        modifier = Modifier.fillMaxSize(),
+                        onOpenAlbum = { openAlbum(it) },
+                        onPickerVisibleChange = { isAlbumPickerVisible = it },
+                    )
+                    AppTab.Status -> StatusScreen(modifier = Modifier.fillMaxSize())
+                    AppTab.Manage -> ManageScreen(
+                        modifier = Modifier.fillMaxSize(),
+                        onSignedOut = onSignedOut,
+                        onDeleteLibrary = onDeleteLibrary,
+                    )
+                }
+            }
         }
 
         if (showTabBar) {

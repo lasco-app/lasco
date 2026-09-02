@@ -16,6 +16,7 @@ struct LascoApp: App {
     @State private var showDevelopmentEndpointPrompt = true
     #endif
     @Environment(\.scenePhase) private var scenePhase
+    @State private var releasePolicy = ClientReleasePolicy.shared
 
     init() {
         AppLogger.setup()
@@ -43,7 +44,8 @@ struct LascoApp: App {
                         repository: activeSession.repository,
                         session: activeSession.state,
                         syncCoordinator: activeSession.syncCoordinator,
-                        importCoordinator: activeSession.mediaImportCoordinator
+                        importCoordinator: activeSession.mediaImportCoordinator,
+                        releasePolicy: releasePolicy
                     )
                         .environment(toastManager)
                         .preferredColorScheme(.dark)
@@ -71,7 +73,7 @@ struct LascoApp: App {
             .environment(directory)
             .environment(\.lascoTheme, directory.isOpen ? .dark : .plaster)
             .tint(directory.isOpen ? LascoTheme.dark.pink : LascoTheme.plaster.pink)
-            .task { await directory.start() }
+            .task { await directory.start(); await releasePolicy.refresh() }
             #if DEBUG
             .sheet(isPresented: $showDevelopmentEndpointPrompt) {
                 DevelopmentCloudEndpointView(isPresented: $showDevelopmentEndpointPrompt)
@@ -83,11 +85,13 @@ struct LascoApp: App {
         .windowResizability(directory.isOpen ? .contentMinSize : .contentSize)
         #if canImport(UIKit)
         .onChange(of: scenePhase) { _, newPhase in
-            guard newPhase == .active,
-                  let activeSession = directory.activeSession else { return }
+            guard newPhase == .active else { return }
             Task {
-                await activeSession.syncCoordinator.fetchDefaultRemote()
-                await activeSession.autoPhotoImportCoordinator.importFromPhotoLibrary()
+                await releasePolicy.refresh()
+                if let activeSession = directory.activeSession {
+                    await activeSession.syncCoordinator.fetchDefaultRemote()
+                    await activeSession.autoPhotoImportCoordinator.importFromPhotoLibrary()
+                }
             }
         }
         #endif

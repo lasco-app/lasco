@@ -3,6 +3,7 @@ package com.lasco.lasco
 import android.app.Application
 import com.lasco.lasco.data.LascoRepository
 import com.lasco.lasco.data.LibraryRepository
+import com.lasco.lasco.data.ClientReleasePolicy
 
 /**
  * Application entry point. Builds the single LascoRepository with the app
@@ -22,8 +23,12 @@ class LascoApp : Application() {
 
     var librarySession: LibraryRepository? = null
 
+    internal lateinit var releasePolicy: ClientReleasePolicy
+        private set
+
     override fun onCreate() {
         super.onCreate()
         repository = LascoRepository(appDir = filesDir.path)
+        releasePolicy = ClientReleasePolicy(this)
     }
 }

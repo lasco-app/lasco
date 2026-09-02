@@ -90,6 +90,12 @@ fun LascoRoot(modifier: Modifier = Modifier, onLibraryOpenChanged: (Boolean) -> 
     val app = remember { context.applicationContext as LascoApp }
     val repository = remember { LascoRepository.from(context) }
     val prefs = remember { Prefs.from(context) }
+    val scope = rememberCoroutineScope()
+
+    LifecycleResumeEffect(Unit) {
+        scope.launch { app.releasePolicy.refresh() }
+        onPauseOrDispose { }
+    }
 
     val libraryListViewModel: LibraryListViewModel = viewModel(factory = LibraryListViewModel.Factory)
     val libraryListState by libraryListViewModel.uiState.collectAsStateWithLifecycle()

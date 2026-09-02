@@ -84,7 +84,13 @@ class LibraryRepository(
     private val _sessionState = MutableStateFlow(buildSessionState())
     val sessionState: StateFlow<SessionState> = _sessionState.asStateFlow()
 
-    val sync = SyncController(lib = lib, prefs = prefs, onLibraryChanged = { changes.emit(Change.All) }, scope = scope)
+    val sync = SyncController(
+        lib = lib,
+        prefs = prefs,
+        onLibraryChanged = { changes.emit(Change.All) },
+        scope = scope,
+        syncBlockMessage = { (appContext as LascoApp).releasePolicy.syncBlockMessage() },
+    )
 
     private val incrementalImporter = IncrementalDeviceMediaImporter(
         lib = lib,
