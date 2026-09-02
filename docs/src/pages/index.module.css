@@ -429,9 +429,49 @@
 }
 
 .cloudPlan {
-  position: relative;
+  display: grid;
+  grid-template-columns: minmax(210px, 0.7fr) minmax(0, 1.3fr);
+  gap: 2rem;
+  align-items: center;
   padding: 1.5rem;
   background: #f6d4f5;
+}
+
+.cloudCta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 92px;
+  padding: 1.25rem 1.75rem;
+  border: 3px solid #15168c;
+  border-top-color: #8b8cff;
+  border-left-color: #8b8cff;
+  border-right-color: #15168c;
+  border-bottom-color: #15168c;
+  background: #292aef;
+  box-shadow: inset 2px 2px 0 rgba(255, 255, 255, 0.28), inset -2px -2px 0 rgba(21, 22, 140, 0.4);
+  color: #fff;
+  font-family: 'Jersey 10', monospace;
+  font-size: 45px;
+  line-height: 0.9;
+  letter-spacing: 0.04em;
+  text-align: center;
+  text-transform: uppercase;
+  text-decoration: none;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.cloudCta:hover {
+  background: #1d1ed8;
+  color: #fff;
+}
+
+.cloudCta:active {
+  border-top-color: #15168c;
+  border-left-color: #15168c;
+  border-right-color: #8b8cff;
+  border-bottom-color: #8b8cff;
+  box-shadow: inset 2px 2px 0 rgba(21, 22, 140, 0.4), inset -2px -2px 0 rgba(255, 255, 255, 0.28);
 }
 
 .currencyToggle {
@@ -537,6 +577,15 @@
 
   .cloudCopy {
     margin-bottom: 2rem;
+  }
+
+  .cloudPlan {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+
+  .cloudCta {
+    min-height: 100px;
   }
 
   .cloudTitle {

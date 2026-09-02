@@ -42,13 +42,13 @@ const SCREENSHOT_PANELS = [
     id: 'intro',
     img: 'https://public.getlasco.app/screen_main.webp',
     title: '',
-    desc: 'Lasco is a client side app that syncs your photos to (soon) any kind of file storage.',
+    desc: 'Lasco is a client-side app that syncs your photos to S3, Lasco Cloud, and soon a NAS or hard drive.',
   },
   {
     id: 'timeline',
     img: 'https://public.getlasco.app/screen_remote.webp',
     title: 'Sync your photos to S3',
-    desc: 'Push your library to S3 (and soon Lasco Cloud, a NAS, or a local hard drive). Everything is stored as regular (encrypted) files!',
+    desc: 'Push your library to S3. Everything is stored as regular (encrypted) files!',
   },
   {
     id: 'albums',
@@ -220,7 +220,7 @@ const WHY_ITEMS = [
   {
     id: 'no-server',
     title: 'No server to self-host',
-    desc: 'Lasco syncs directly to file servers, NAS, or cloud storage. No backend to deploy or maintain.',
+    desc: 'Lasco syncs directly to file servers, NAS, or cloud storage. No backend to deploy and maintain.',
   },
   {
     id: 'sync-primitives',
@@ -240,7 +240,7 @@ const WHY_ITEMS = [
   {
     id: 'native',
     title: 'Native apps',
-    desc: 'Built natively for iOS, with Android coming soon.',
+    desc: 'Built natively for iOS and Android.',
   },
   {
     id: 'e2ee',
@@ -291,43 +291,48 @@ function LascoCloudSection() {
             </p>
           </div>
           <div className={styles.cloudPlan}>
-            <div className={styles.currencyToggle} role="group" aria-label="Choose a display currency">
-              <button
-                type="button"
-                className={`${styles.currencyOption} ${currency === 'usd' ? styles.currencyOptionActive : ''}`}
-                aria-pressed={currency === 'usd'}
-                onClick={() => setCurrency('usd')}>
-                USD
-              </button>
-              <button
-                type="button"
-                className={`${styles.currencyOption} ${currency === 'eur' ? styles.currencyOptionActive : ''}`}
-                aria-pressed={currency === 'eur'}
-                onClick={() => setCurrency('eur')}>
-                EUR
-              </button>
-            </div>
-            <p className={styles.cloudPlanName}>50 GB</p>
-            <div className={styles.cloudPricingOptions}>
-              <div className={styles.cloudPricingOption}>
-                <p className={styles.cloudBillingPeriod}>Monthly</p>
-                <p className={styles.cloudPrice}>
-                  {price.monthly}<span>/ month</span>
-                </p>
+            <a className={styles.cloudCta} href="https://cloud.getlasco.app/subscribe-new">
+              Get started
+            </a>
+            <div className={styles.cloudPlanDetails}>
+              <div className={styles.currencyToggle} role="group" aria-label="Choose a display currency">
+                <button
+                  type="button"
+                  className={`${styles.currencyOption} ${currency === 'usd' ? styles.currencyOptionActive : ''}`}
+                  aria-pressed={currency === 'usd'}
+                  onClick={() => setCurrency('usd')}>
+                  USD
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.currencyOption} ${currency === 'eur' ? styles.currencyOptionActive : ''}`}
+                  aria-pressed={currency === 'eur'}
+                  onClick={() => setCurrency('eur')}>
+                  EUR
+                </button>
               </div>
-              <div className={styles.cloudPricingOption}>
-                <p className={styles.cloudBillingPeriod}>Annual</p>
-                <p className={styles.cloudPrice}>
-                  {price.annualMonthlyEquivalent}<span>/ month</span>
-                </p>
-                <p className={styles.cloudPriceNote}>Billed yearly</p>
+              <p className={styles.cloudPlanName}>50 GB</p>
+              <div className={styles.cloudPricingOptions}>
+                <div className={styles.cloudPricingOption}>
+                  <p className={styles.cloudBillingPeriod}>Monthly</p>
+                  <p className={styles.cloudPrice}>
+                    {price.monthly}<span>/ month</span>
+                  </p>
+                </div>
+                <div className={styles.cloudPricingOption}>
+                  <p className={styles.cloudBillingPeriod}>Annual</p>
+                  <p className={styles.cloudPrice}>
+                    {price.annualMonthlyEquivalent}<span>/ month</span>
+                  </p>
+                  <p className={styles.cloudPriceNote}>Billed yearly</p>
+                </div>
               </div>
+              <ul className={styles.cloudFeatures}>
+                <li>50 GB of encrypted photo storage</li>
+                <li>Two remote copies of your library (2 × 50 GB)</li>
+                <li>Works seamlessly with Lasco</li>
+              </ul>
             </div>
-            <ul className={styles.cloudFeatures}>
-              <li>50 GB of encrypted photo storage</li>
-              <li>Two remote copies of your library (2 × 50 GB)</li>
-              <li>Works seamlessly with Lasco</li>
-            </ul>
           </div>
         </div>
       </div>
