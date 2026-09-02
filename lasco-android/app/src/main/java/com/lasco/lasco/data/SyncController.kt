@@ -53,6 +53,7 @@ class SyncController(
     private val prefs: Prefs,
     private val onLibraryChanged: suspend () -> Unit,
     private val scope: CoroutineScope,
+    private val syncBlockMessage: suspend () -> String?,
 ) {
     private val _syncState = MutableStateFlow(SyncState())
     val syncState: StateFlow<SyncState> = _syncState.asStateFlow()
@@ -133,6 +134,12 @@ class SyncController(
         isAutomatic: Boolean,
         onUploadProgress: ((Float) -> Unit)? = null,
     ): PushResult {
+        if (isLascoCloudRemote(remoteId)) {
+            syncBlockMessage()?.let {
+                prefs.recordPush(remoteId, success = false)
+                return PushResult.Failed(it)
+            }
+        }
         val operationId = UUID.randomUUID()
         val operation = beginOperation(operationId, remoteId, OperationKind.Push)
             ?: return PushResult.Failed("Library closed")
@@ -187,6 +194,12 @@ class SyncController(
     }
 
     private suspend fun fetch(remoteId: FfiRemoteUuid): String? {
+        if (isLascoCloudRemote(remoteId)) {
+            syncBlockMessage()?.let {
+                prefs.recordFetch(remoteId, success = false)
+                return it
+            }
+        }
         val operationId = UUID.randomUUID()
         val operation = beginOperation(operationId, remoteId, OperationKind.Fetch)
             ?: return "Library closed"
@@ -220,6 +233,9 @@ class SyncController(
             }
         }
     }
+
+    private fun isLascoCloudRemote(remoteId: FfiRemoteUuid): Boolean =
+        lib.listRemotes().firstOrNull { it.remoteId == remoteId }?.kind == "lasco_cloud_s3"
 
     private suspend fun cancelScheduledPush() {
         scheduleCancellationEpoch.incrementAndGet()

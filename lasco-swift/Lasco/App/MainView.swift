@@ -11,6 +11,7 @@ struct MainView: View {
     let session: LibrarySessionState
     let syncCoordinator: SyncCoordinator
     let importCoordinator: MediaImportCoordinator
+    let releasePolicy: ClientReleasePolicy
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -27,6 +28,20 @@ struct MainView: View {
             }
         }
         .background(theme.bg)
+        .safeAreaInset(edge: .top) {
+            if (selectedTab == .home || selectedTab == .albums),
+               let decision = releasePolicy.decision,
+               decision.updateAvailable,
+               let url = URL(string: decision.storeURL) {
+                Link(destination: url) {
+                    HStack { Text(decision.message); Spacer(); Text("Update") }
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(theme.ink)
+                        .padding(.horizontal, 16).padding(.vertical, 10)
+                        .background(theme.pink)
+                }
+            }
+        }
         .task {
             await syncCoordinator.fetchDefaultRemote()
         }

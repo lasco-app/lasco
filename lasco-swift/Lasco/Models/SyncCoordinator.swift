@@ -85,6 +85,10 @@ final class SyncCoordinator {
             cancelScheduledPush()
         }
 
+        if isLascoCloudRemote(remoteID), let message = await ClientReleasePolicy.shared.syncBlockMessage() {
+            record(key: "lasco.lastPush", remoteID: remoteID, success: false, in: &lastPushRecords)
+            return .failed(message)
+        }
         let operationID = UUID()
         beginPush(remoteID: remoteID, operationID: operationID)
         defer {
@@ -132,6 +136,10 @@ final class SyncCoordinator {
     }
 
     func fetch(remoteID: FfiRemoteUuid) async -> String? {
+        if isLascoCloudRemote(remoteID), let message = await ClientReleasePolicy.shared.syncBlockMessage() {
+            record(key: "lasco.lastFetch", remoteID: remoteID, success: false, in: &lastFetchRecords)
+            return message
+        }
         let operationID = UUID()
         beginFetch(remoteID: remoteID, operationID: operationID)
         defer {
@@ -198,6 +206,10 @@ final class SyncCoordinator {
     private func beginOperation(remoteID: FfiRemoteUuid, operationID: UUID) {
         activeOperations[remoteID, default: []].insert(operationID)
         busyRemotes.insert(remoteID)
+    }
+
+    private func isLascoCloudRemote(_ remoteID: FfiRemoteUuid) -> Bool {
+        session.remotes.first(where: { $0.remoteId == remoteID })?.kind == "lasco_cloud_s3"
     }
 
     private func endOperation(remoteID: FfiRemoteUuid, operationID: UUID) {

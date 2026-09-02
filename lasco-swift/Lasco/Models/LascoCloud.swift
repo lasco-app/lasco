@@ -14,6 +14,61 @@ enum LascoCloudEndpoint {
     static var appVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
     }
+
+    static var buildNumber: Int {
+        Int(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0") ?? 0
+    }
+}
+
+struct ClientReleaseDecision: Decodable, Sendable {
+    let updateAvailable: Bool
+    let syncAllowed: Bool
+    let storeURL: String
+    let message: String
+
+    enum CodingKeys: String, CodingKey {
+        case updateAvailable = "update_available"
+        case syncAllowed = "sync_allowed"
+        case storeURL = "store_url"
+        case message
+    }
+}
+
+@MainActor
+@Observable
+final class ClientReleasePolicy {
+    static let shared = ClientReleasePolicy()
+
+    private(set) var decision: ClientReleaseDecision?
+
+    func refresh() async {
+        decision = try? await requestDecision()
+    }
+
+    /// A sync requires a fresh successful decision. Update checks are
+    /// informational, but Cloud sync intentionally fails closed if policy
+    /// cannot be verified.
+    func syncBlockMessage() async -> String? {
+        do {
+            let decision = try await requestDecision()
+            self.decision = decision
+            return decision.syncAllowed ? nil : decision.message
+        } catch {
+            return "Lasco Cloud can’t verify this app version right now. Try again shortly."
+        }
+    }
+
+    private func requestDecision() async throws -> ClientReleaseDecision {
+        var components = URLComponents(string: LascoCloudEndpoint.url + "/api/v1/client-release-policy")!
+        components.queryItems = [
+            URLQueryItem(name: "platform", value: "ios"),
+            URLQueryItem(name: "build", value: String(LascoCloudEndpoint.buildNumber)),
+            URLQueryItem(name: "display_version", value: LascoCloudEndpoint.appVersion),
+        ]
+        let (data, response) = try await URLSession.shared.data(from: components.url!)
+        guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
+        return try JSONDecoder().decode(ClientReleaseDecision.self, from: data)
+    }
 }
 
 struct LascoCloudRemote: Sendable {
