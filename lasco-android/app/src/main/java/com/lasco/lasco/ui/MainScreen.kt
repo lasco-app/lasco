@@ -2,6 +2,10 @@ package com.lasco.lasco.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -105,6 +109,18 @@ fun MainScreen(
                             rememberSaveableStateHolderNavEntryDecorator(),
                             rememberViewModelStoreNavEntryDecorator(),
                         ),
+                        transitionSpec = {
+                            slideInHorizontally(tween(300)) { it } togetherWith
+                                slideOutHorizontally(tween(300)) { -it / 3 }
+                        },
+                        popTransitionSpec = {
+                            slideInHorizontally(tween(300)) { -it / 3 } togetherWith
+                                slideOutHorizontally(tween(300)) { it }
+                        },
+                        predictivePopTransitionSpec = {
+                            slideInHorizontally(tween(300)) { -it / 3 } togetherWith
+                                slideOutHorizontally(tween(300)) { it }
+                        },
                         entryProvider = entryProvider {
                             entry<HomeKey> {
                                 RecentMediaScreen(
