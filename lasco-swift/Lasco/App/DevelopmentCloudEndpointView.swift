@@ -2,9 +2,12 @@
 import SwiftUI
 
 struct DevelopmentCloudEndpointView: View {
+    private static let endpointInputPrefix = "https://"
+    private static let lascoCloudURL = "https://cloud.getlasco.app"
+
     @Environment(\.lascoTheme) private var theme
     @Binding var isPresented: Bool
-    @State private var endpoint = DevelopmentCloudEndpoint.defaultURL
+    @State private var endpoint = "https://"
 
     var body: some View {
         ZStack {
@@ -13,21 +16,21 @@ struct DevelopmentCloudEndpointView: View {
                 Text("Development server")
                     .font(LascoFont.title(26))
                     .foregroundStyle(theme.ink)
-                Text("Enter the Lasco Cloud address for this development build. On a physical iPhone, use your Mac's LAN address (for example, http://192.168.1.10:3000), not localhost.")
-                    .font(LascoFont.body())
-                    .foregroundStyle(theme.inkSub)
                 FieldLabel(text: "Address and port")
-                TextField(DevelopmentCloudEndpoint.defaultURL, text: $endpoint)
+                TextField(Self.endpointInputPrefix, text: $endpoint)
                     .textFieldStyle(.plain)
                     .lascoInput()
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .keyboardType(.URL)
                 Spacer()
+                Button("Use Lasco Cloud", action: useLascoCloud)
+                    .buttonStyle(LascoSecondaryButtonStyle())
+                    .frame(maxWidth: .infinity)
                 Button("Use address", action: save)
                     .buttonStyle(LascoPrimaryButtonStyle())
                     .frame(maxWidth: .infinity)
-                    .disabled(endpoint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(isEndpointIncomplete)
             }
             .padding(32)
         }
@@ -37,6 +40,15 @@ struct DevelopmentCloudEndpointView: View {
     private func save() {
         DevelopmentCloudEndpoint.setURL(endpoint)
         isPresented = false
+    }
+
+    private func useLascoCloud() {
+        endpoint = Self.lascoCloudURL
+    }
+
+    private var isEndpointIncomplete: Bool {
+        let trimmed = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty || trimmed == Self.endpointInputPrefix
     }
 }
 #endif

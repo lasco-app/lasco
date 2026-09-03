@@ -948,6 +948,8 @@ internal open class UniffiVTableCallbackInterfacePushProgressSink(
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1078,6 +1080,8 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_list_remotes(
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_login(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_revoke_session(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_storage_usage(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_subscription(
 ): Short
@@ -1326,6 +1330,8 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_list_remotes(`ptr`: Pointe
 fun uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_login(`ptr`: Pointer,`email`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,`platform`: RustBuffer.ByValue,`appVersion`: RustBuffer.ByValue,
 ): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_revoke_session(`ptr`: Pointer,
+): Long
+fun uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_storage_usage(`ptr`: Pointer,
 ): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_subscription(`ptr`: Pointer,
 ): Long
@@ -1731,6 +1737,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_revoke_session() != 42955.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_storage_usage() != 5814.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_subscription() != 11111.toShort()) {
@@ -2727,6 +2736,8 @@ public interface FfiLibraryInterface {
     suspend fun `lascoCloudLogin`(`email`: kotlin.String, `password`: kotlin.String, `platform`: kotlin.String, `appVersion`: kotlin.String)
     
     suspend fun `lascoCloudRevokeSession`()
+    
+    suspend fun `lascoCloudStorageUsage`(): kotlin.ULong
     
     suspend fun `lascoCloudSubscription`(): FfiLascoCloudAccount
     
@@ -4101,6 +4112,27 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
         // lift function
         { Unit },
         
+        // Error FFI converter
+        LascoException.ErrorHandler,
+    )
+    }
+
+    
+    @Throws(LascoException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `lascoCloudStorageUsage`() : kotlin.ULong {
+        return uniffiRustCallAsync(
+        callWithPointer { thisPtr ->
+            UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_storage_usage(
+                thisPtr,
+                
+            )
+        },
+        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_poll_u64(future, callback, continuation) },
+        { future, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_complete_u64(future, continuation) },
+        { future -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_free_u64(future) },
+        // lift function
+        { FfiConverterULong.lift(it) },
         // Error FFI converter
         LascoException.ErrorHandler,
     )
