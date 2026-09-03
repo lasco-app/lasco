@@ -257,7 +257,10 @@ class MediaDetailViewModel(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     @OptIn(ExperimentalCoroutinesApi::class)
     val containingAlbums: StateFlow<List<FfiAlbum>> = currentDisplayItem.flatMapLatest { item ->
-        if (item == null) flowOf(emptyList()) else repo.watch(Change.AlbumList, Change.Media(item.mediaId)) { repo.containingAlbums(item.mediaId, null) }
+        val sourceAlbumId = (source as? MediaDetailSource.AlbumByDate)?.albumId?.let(::FfiAlbumUuid)
+        if (item == null) flowOf(emptyList()) else repo.watch(Change.AlbumList, Change.Media(item.mediaId)) {
+            repo.containingAlbums(item.mediaId, sourceAlbumId)
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun rename(mediaId: FfiMediaUuid, name: String?) { viewModelScope.launch { repo.renameMedia(mediaId, name) } }

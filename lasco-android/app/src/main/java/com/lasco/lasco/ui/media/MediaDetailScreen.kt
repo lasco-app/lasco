@@ -96,6 +96,7 @@ import java.util.Locale
 import java.util.TimeZone
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.collectLatest
@@ -197,7 +198,14 @@ fun MediaDetailScreen(
 
     val panelState = remember { AnchoredDraggableState(initialValue = PanelAnchor.Collapsed) }
     var showRenameDialog by remember { mutableStateOf(false) }
+    var showImageCounter by remember { mutableStateOf(true) }
     val sourceAlbumId = (source as? MediaDetailSource.AlbumByDate)?.albumId
+
+    LaunchedEffect(neighbors.currentPosition, neighbors.totalCount) {
+        showImageCounter = true
+        delay(1_000)
+        showImageCounter = false
+    }
 
     if (showRenameDialog && currentDisplayItem != null) {
         val media = currentDisplayItem!!
@@ -280,16 +288,6 @@ fun MediaDetailScreen(
                 Text(text = "←", style = LascoTheme.type.body(18), color = Color.White)
             }
 
-            Text(
-                text = "${neighbors.currentPosition + 1} / ${neighbors.totalCount}",
-                style = LascoTheme.type.pixel(14),
-                color = Color.White,
-                modifier = Modifier
-                    .background(Color.Black)
-                    .border(2.dp, Color.White)
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-            )
-
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (currentDisplayItem?.appleLivePhotoMediaId != null) {
                     Text(
@@ -300,6 +298,17 @@ fun MediaDetailScreen(
                             .background(Color.Black)
                             .border(2.dp, Color.White)
                             .clickable { viewModel.toggleLivePhotoVideo() }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                    )
+                }
+                if (showImageCounter) {
+                    Text(
+                        text = "${neighbors.currentPosition + 1} / ${neighbors.totalCount}",
+                        style = LascoTheme.type.pixel(14),
+                        color = Color.White,
+                        modifier = Modifier
+                            .background(Color.Black)
+                            .border(2.dp, Color.White)
                             .padding(horizontal = 10.dp, vertical = 6.dp),
                     )
                 }
@@ -380,24 +389,38 @@ fun MediaDetailScreen(
                     },
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text(
-                        text = currentDisplayItem?.name ?: "",
-                        style = LascoTheme.type.title(18),
-                        color = colors.ink,
-                        maxLines = 1,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(
-                        text = "✎",
-                        style = LascoTheme.type.body(16),
-                        color = if (showingLivePhotoVideo) colors.inkMuted else colors.ink,
-                        modifier = Modifier.clickable(enabled = !showingLivePhotoVideo) { showRenameDialog = true },
-                    )
-                    Text(
-                        text = if (infoExpanded) "▾" else "▴",
-                        style = LascoTheme.type.body(16),
-                        color = colors.ink,
-                    )
+                    val title = currentDisplayItem?.name.orEmpty()
+                    if (title.isBlank()) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .width(32.dp)
+                                    .height(3.dp)
+                                    .background(colors.inkMuted),
+                            )
+                        }
+                    } else {
+                        Text(
+                            text = title,
+                            style = LascoTheme.type.title(18),
+                            color = colors.ink,
+                            maxLines = 1,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    if (infoExpanded) {
+                        Text(
+                            text = "✎",
+                            style = LascoTheme.type.body(16),
+                            color = if (showingLivePhotoVideo) colors.inkMuted else colors.ink,
+                            modifier = Modifier.clickable(enabled = !showingLivePhotoVideo) { showRenameDialog = true },
+                        )
+                    }
                 }
 
                 Column(
@@ -444,10 +467,11 @@ fun MediaDetailScreen(
                     }
 
                     if (!showingLivePhotoVideo && containingAlbums.isNotEmpty()) {
-                        val heading = if (sourceAlbumId == null) {
-                            if (containingAlbums.size == 1) "CONTAINED IN THIS ALBUM" else "CONTAINED IN THESE ALBUMS"
-                        } else {
-                            "ALSO IN THESE ALBUMS"
+                        val heading = when {
+                            sourceAlbumId == null && containingAlbums.size == 1 -> "CONTAINED IN THIS ALBUM"
+                            sourceAlbumId == null -> "CONTAINED IN THESE ALBUMS"
+                            containingAlbums.size == 1 -> "ALSO IN THIS ALBUM"
+                            else -> "ALSO IN THESE ALBUMS"
                         }
                         Text(
                             text = heading,
