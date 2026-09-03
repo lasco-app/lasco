@@ -102,6 +102,7 @@ fun AlbumListScreen(
     val scope = rememberCoroutineScope()
 
     val albums = viewModel.albums.collectAsLazyPagingItems()
+    val disconnectedAlbums = viewModel.disconnectedAlbums.collectAsLazyPagingItems()
     val media = viewModel.items.collectAsLazyPagingItems()
     val sortAscending by viewModel.sortAscending.collectAsStateWithLifecycle()
 
@@ -335,7 +336,7 @@ fun AlbumListScreen(
             )
         }
 
-        val entryCount = albums.itemCount + media.itemCount
+        val entryCount = albums.itemCount + disconnectedAlbums.itemCount + media.itemCount
         if (entryCount == 0 && (
                 albums.loadState.refresh is LoadState.Loading ||
                     albumId != null && media.loadState.refresh is LoadState.Loading
@@ -368,6 +369,7 @@ fun AlbumListScreen(
                     repo = repo,
                     columns = columns,
                     albums = albums,
+                    disconnectedAlbums = disconnectedAlbums,
                     media = media,
                     isGridLayout = isGridLayout,
                     selectedAlbumIds = selectedAlbumIds,
@@ -693,7 +695,8 @@ private fun AlbumSectionsGrid(
     modifier: Modifier = Modifier,
     repo: LibraryRepository,
     columns: Int,
-    albums: androidx.paging.compose.LazyPagingItems<AlbumEntry>,
+    albums: androidx.paging.compose.LazyPagingItems<FfiAlbum>,
+    disconnectedAlbums: androidx.paging.compose.LazyPagingItems<FfiAlbum>,
     media: androidx.paging.compose.LazyPagingItems<AlbumEntry.Item>,
     isGridLayout: Boolean,
     selectedAlbumIds: Set<FfiAlbumUuid>,
@@ -716,23 +719,16 @@ private fun AlbumSectionsGrid(
     ) {
         items(
             count = albums.itemCount,
-            key = albums.itemKey { it.key.saveableValue() },
-            span = { index -> if (albums.peek(index) is AlbumEntry.DisconnectedHeader) GridItemSpan(maxLineSpan) else GridItemSpan(1) },
+            key = albums.itemKey { "album:${it.albumId.value}" },
         ) { index ->
-            when (val entry = albums[index]) {
-                is AlbumEntry.ChildAlbum -> AlbumCell(
-                    album = entry.album,
+            albums[index]?.let { album ->
+                AlbumCell(
+                    album = album,
                     repo = repo,
-                    isSelected = entry.album.albumId in selectedAlbumIds,
-                    onClick = { onAlbumTap(entry.album) },
-                    onLongClick = { onAlbumLongPress(entry.album) },
+                    isSelected = album.albumId in selectedAlbumIds,
+                    onClick = { onAlbumTap(album) },
+                    onLongClick = { onAlbumLongPress(album) },
                 )
-                AlbumEntry.DisconnectedHeader -> Text(
-                    "DISCONNECTED", style = LascoTheme.type.categoryLarge(22), color = colors.ink,
-                    modifier = Modifier.padding(top = 12.dp),
-                )
-                is AlbumEntry.Item -> Unit
-                null -> Box(modifier = Modifier.fillMaxWidth().background(colors.surfaceAlt))
             }
         }
         when (albums.loadState.append) {
@@ -743,14 +739,39 @@ private fun AlbumSectionsGrid(
             else -> Unit
         }
 
-        if (media.itemCount > 0) {
-            item(key = "media-section", span = { GridItemSpan(maxLineSpan) }) {
-                Text("MEDIA", style = LascoTheme.type.categoryLarge(22), color = colors.ink, modifier = Modifier.padding(top = 12.dp))
+        if (disconnectedAlbums.itemCount > 0) {
+            item(key = "disconnected-section", span = { GridItemSpan(maxLineSpan) }) {
+                Text("DISCONNECTED", style = LascoTheme.type.categoryLarge(22), color = colors.ink, modifier = Modifier.padding(top = 12.dp))
             }
         }
         items(
+            count = disconnectedAlbums.itemCount,
+            key = disconnectedAlbums.itemKey { "disconnected:${it.albumId.value}" },
+        ) { index ->
+            disconnectedAlbums[index]?.let { album ->
+                AlbumCell(
+                    album = album,
+                    repo = repo,
+                    isSelected = album.albumId in selectedAlbumIds,
+                    onClick = { onAlbumTap(album) },
+                    onLongClick = { onAlbumLongPress(album) },
+                )
+            }
+        }
+        when (disconnectedAlbums.loadState.append) {
+            is LoadState.Loading -> item(span = { GridItemSpan(maxLineSpan) }) { CircularProgressIndicator(color = colors.ink) }
+            is LoadState.Error -> item(span = { GridItemSpan(maxLineSpan) }) {
+                Text("Could not load more albums. Tap to retry.", color = colors.inkMuted, modifier = Modifier.clickable { disconnectedAlbums.retry() })
+            }
+            else -> Unit
+        }
+
+        items(
             count = media.itemCount,
-            key = media.itemKey { it.key.saveableValue() },
+            key = media.itemKey { entry ->
+                entry.item.media?.mediaId?.let { "media:${it.value}" }
+                    ?: "group:${entry.item.group!!.groupId.value}"
+            },
             span = { if (!isGridLayout) GridItemSpan(maxLineSpan) else GridItemSpan(1) },
         ) { index ->
             media[index]?.let { entry ->
@@ -804,8 +825,8 @@ private fun MoveDestinationPicker(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            items(count = albums.itemCount, key = albums.itemKey { it.key.saveableValue() }) { index ->
-                (albums[index] as? AlbumEntry.ChildAlbum)?.album?.let { child ->
+            items(count = albums.itemCount, key = albums.itemKey { "album:${it.albumId.value}" }) { index ->
+                albums[index]?.let { child ->
                     if (child.albumId !in excludedIds) AlbumCell(child, LibraryRepository.from(LocalContext.current), onClick = { current = child })
                 }
             }

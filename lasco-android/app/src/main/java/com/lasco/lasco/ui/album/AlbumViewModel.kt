@@ -9,11 +9,10 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
-import androidx.paging.PagingSource
-import androidx.paging.PagingState
 import androidx.paging.cachedIn
 import com.lasco.lasco.data.Change
 import com.lasco.lasco.data.LibraryRepository
+import com.lasco.lasco.data.OffsetPagingSource
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,24 +24,10 @@ import kotlinx.coroutines.launch
 import uniffi.lasco_ffi.FfiAlbum
 import uniffi.lasco_ffi.FfiAlbumItem
 import uniffi.lasco_ffi.FfiAlbumUuid
-import uniffi.lasco_ffi.FfiMediaUuid
-import uniffi.lasco_ffi.FfiGroupUuid
 import com.lasco.lasco.ui.media.DetailTarget
 
 sealed interface AlbumEntry {
-    val key: AlbumEntryKey
-    data class ChildAlbum(val album: FfiAlbum) : AlbumEntry { override val key = AlbumEntryKey.Album(album.albumId) }
-    data class Item(val item: FfiAlbumItem, val position: Int) : AlbumEntry {
-        override val key = item.media?.mediaId?.let(AlbumEntryKey::Media) ?: AlbumEntryKey.Group(item.group!!.groupId)
-    }
-    data object DisconnectedHeader : AlbumEntry { override val key = AlbumEntryKey.DisconnectedHeader }
-}
-
-sealed interface AlbumEntryKey {
-    data class Album(val id: FfiAlbumUuid) : AlbumEntryKey
-    data class Media(val id: FfiMediaUuid) : AlbumEntryKey
-    data class Group(val id: FfiGroupUuid) : AlbumEntryKey
-    data object DisconnectedHeader : AlbumEntryKey
+    data class Item(val item: FfiAlbumItem, val position: Int) : AlbumEntry
 }
 
 fun FfiAlbumItem.toDetailTarget(): DetailTarget =
@@ -50,126 +35,65 @@ fun FfiAlbumItem.toDetailTarget(): DetailTarget =
         ?: group?.let { DetailTarget.Group(it.groupId.value) }
         ?: error("FFI album item contained neither media nor group")
 
-/** Safe for LazyLayout's Android saved-state Bundle and unique by entry type. */
-fun AlbumEntryKey.saveableValue(): String = when (this) {
-    is AlbumEntryKey.Album -> "album:${id.value}"
-    is AlbumEntryKey.Media -> "media:${id.value}"
-    is AlbumEntryKey.Group -> "group:${id.value}"
-    AlbumEntryKey.DisconnectedHeader -> "disconnected-header"
-}
-
-private class AlbumChildrenPagingSource(
-    private val repo: LibraryRepository,
-    private val albumId: FfiAlbumUuid?,
-) : PagingSource<Int, AlbumEntry>() {
-    override suspend fun load(params: LoadParams<Int>): LoadResult<Int, AlbumEntry> = try {
-        val children = repo.albumChildrenCount(albumId)
-        val disconnected = if (albumId == null) repo.disconnectedAlbumsCount() else 0
-        val total = children + disconnected + if (disconnected > 0) 1 else 0
-        val offset = (params.key ?: 0).coerceIn(0, total)
-        val end = minOf(total, offset + params.loadSize)
-        val result = mutableListOf<AlbumEntry>()
-        var position = offset
-        while (position < end) {
-            when {
-                position < children -> {
-                    val size = minOf(end - position, children - position)
-                    result += repo.albumChildren(albumId, position, size).map(AlbumEntry::ChildAlbum)
-                    position += size
-                }
-                disconnected > 0 && position == children -> {
-                    result += AlbumEntry.DisconnectedHeader
-                    position++
-                }
-                disconnected > 0 && position < children + 1 + disconnected -> {
-                    val localOffset = position - children - 1
-                    val size = minOf(end - position, disconnected - localOffset)
-                    result += repo.disconnectedAlbums(localOffset, size).map(AlbumEntry::ChildAlbum)
-                    position += size
-                }
-                else -> break
-            }
-        }
-        LoadResult.Page(
-            data = result,
-            prevKey = if (offset == 0) null else (offset - params.loadSize).coerceAtLeast(0),
-            nextKey = if (position >= total || result.isEmpty()) null else position,
-            itemsBefore = offset,
-            itemsAfter = (total - position).coerceAtLeast(0),
-        )
-    } catch (t: Throwable) {
-        LoadResult.Error(t)
-    }
-
-    override fun getRefreshKey(state: PagingState<Int, AlbumEntry>): Int? =
-        state.anchorPosition?.let { anchor ->
-            state.closestPageToPosition(anchor)?.let { page ->
-                page.prevKey?.plus(page.data.size) ?: page.nextKey?.minus(page.data.size)
-            } ?: anchor
-        }
-}
-
-private class AlbumItemsPagingSource(
-    private val repo: LibraryRepository,
-    private val albumId: FfiAlbumUuid,
-    private val ascending: Boolean,
-) : PagingSource<Int, AlbumEntry.Item>() {
-    override suspend fun load(params: LoadParams<Int>): LoadResult<Int, AlbumEntry.Item> = try {
-        val total = repo.albumItemsCount(albumId)
-        val offset = (params.key ?: 0).coerceIn(0, total)
-        val items = repo.albumItemsByDate(albumId, ascending, offset, minOf(params.loadSize, total - offset))
-            .mapIndexed { index, item -> AlbumEntry.Item(item, offset + index) }
-        val loaded = items.size
-        LoadResult.Page(
-            data = items,
-            prevKey = if (offset == 0) null else (offset - params.loadSize).coerceAtLeast(0),
-            nextKey = if (offset + loaded >= total || items.isEmpty()) null else offset + loaded,
-            itemsBefore = offset,
-            itemsAfter = (total - offset - loaded).coerceAtLeast(0),
-        )
-    } catch (t: Throwable) {
-        LoadResult.Error(t)
-    }
-
-    override fun getRefreshKey(state: PagingState<Int, AlbumEntry.Item>): Int? =
-        state.anchorPosition?.let { anchor ->
-            state.closestPageToPosition(anchor)?.let { page ->
-                page.prevKey?.plus(page.data.size) ?: page.nextKey?.minus(page.data.size)
-            } ?: anchor
-        }
-}
-
 class AlbumViewModel(
     private val albumId: FfiAlbumUuid?,
     private val repo: LibraryRepository,
 ) : ViewModel() {
     private val _sortAscending = MutableStateFlow(false)
     val sortAscending: StateFlow<Boolean> = _sortAscending.asStateFlow()
-    private var currentChildrenSource: AlbumChildrenPagingSource? = null
-    private var currentItemsSource: AlbumItemsPagingSource? = null
+    private val albumsRevision = MutableStateFlow(0)
+    private val mediaRevision = MutableStateFlow(0)
+    private val pagingConfig = PagingConfig(
+        pageSize = PAGE_SIZE,
+        prefetchDistance = PREFETCH_DISTANCE,
+        enablePlaceholders = true,
+    )
 
-    val albums: Flow<PagingData<AlbumEntry>> = Pager(
-        PagingConfig(pageSize = PAGE_SIZE, prefetchDistance = PREFETCH_DISTANCE, enablePlaceholders = true),
-    ) {
-        AlbumChildrenPagingSource(repo, albumId).also { currentChildrenSource = it }
-    }.flow.cachedIn(viewModelScope)
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val albums: Flow<PagingData<FfiAlbum>> = albumsRevision.flatMapLatest {
+        Pager(pagingConfig) {
+            OffsetPagingSource(
+                count = { repo.albumChildrenCount(albumId) },
+                range = { offset, limit -> repo.albumChildren(albumId, offset, limit) },
+            )
+        }.flow
+    }.cachedIn(viewModelScope)
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val disconnectedAlbums: Flow<PagingData<FfiAlbum>> = albumsRevision.flatMapLatest {
+        if (albumId == null) {
+            Pager(pagingConfig) {
+                OffsetPagingSource(repo::disconnectedAlbumsCount, repo::disconnectedAlbums)
+            }.flow
+        } else {
+            flowOf(PagingData.empty())
+        }
+    }.cachedIn(viewModelScope)
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val items: Flow<PagingData<AlbumEntry.Item>> = sortAscending.flatMapLatest { ascending ->
-        albumId?.let { id ->
+        mediaRevision.flatMapLatest {
+            albumId?.let { id ->
             Pager(PagingConfig(pageSize = PAGE_SIZE, prefetchDistance = PREFETCH_DISTANCE, enablePlaceholders = true)) {
-                AlbumItemsPagingSource(repo, id, ascending).also { currentItemsSource = it }
+                    OffsetPagingSource(
+                        count = { repo.albumItemsCount(id) },
+                        range = { offset, limit ->
+                            repo.albumItemsByDate(id, ascending, offset, limit)
+                                .mapIndexed { index, item -> AlbumEntry.Item(item, offset + index) }
+                        },
+                    )
             }.flow
-        } ?: flowOf(PagingData.empty())
+            } ?: flowOf(PagingData.empty())
+        }
     }.cachedIn(viewModelScope)
 
     init {
         viewModelScope.launch {
-            repo.watch(Change.AlbumList) { Unit }.collect { currentChildrenSource?.invalidate() }
+            repo.watch(Change.AlbumList) { Unit }.collect { albumsRevision.value++ }
         }
         viewModelScope.launch {
             repo.watch(Change.MediaList, *albumId?.let { arrayOf(Change.Album(it)) }.orEmpty()) { Unit }
-                .collect { currentItemsSource?.invalidate() }
+                .collect { mediaRevision.value++ }
         }
     }
 

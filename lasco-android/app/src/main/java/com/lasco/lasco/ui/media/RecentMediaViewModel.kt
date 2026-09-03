@@ -28,28 +28,26 @@ class RecentMediaViewModel(
     private val _showingOrphans = MutableStateFlow(false)
     val showingOrphans: StateFlow<Boolean> = _showingOrphans.asStateFlow()
 
-    private var allSource: OffsetPagingSource<FfiMediaItem>? = null
-    private var orphanSource: OffsetPagingSource<FfiMediaItem>? = null
+    private val mediaRevision = MutableStateFlow(0)
 
     private val config = PagingConfig(pageSize = PAGE_SIZE, prefetchDistance = PREFETCH_DISTANCE, enablePlaceholders = true)
-    private val allPager = Pager(config) {
-        OffsetPagingSource(repo::mediaByDateCount, repo::mediaByDate).also { allSource = it }
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val allMedia = mediaRevision.flatMapLatest {
+        Pager(config) { OffsetPagingSource(repo::mediaByDateCount, repo::mediaByDate) }.flow
     }
-    private val orphanPager = Pager(config) {
-        OffsetPagingSource(repo::orphanMediaByDateCount, repo::orphanMediaByDate).also { orphanSource = it }
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val orphanMedia = mediaRevision.flatMapLatest {
+        Pager(config) { OffsetPagingSource(repo::orphanMediaByDateCount, repo::orphanMediaByDate) }.flow
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val media: Flow<PagingData<FfiMediaItem>> = showingOrphans
-        .flatMapLatest { if (it) orphanPager.flow else allPager.flow }
+        .flatMapLatest { if (it) orphanMedia else allMedia }
         .cachedIn(viewModelScope)
 
     init {
         viewModelScope.launch {
-            repo.watch(Change.MediaList) { Unit }.collect {
-                allSource?.invalidate()
-                orphanSource?.invalidate()
-            }
+            repo.watch(Change.MediaList) { Unit }.collect { mediaRevision.value++ }
         }
     }
 
