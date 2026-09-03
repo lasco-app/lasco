@@ -26,6 +26,7 @@ import uniffi.lasco_ffi.FfiAlbumItem
 import uniffi.lasco_ffi.FfiAlbumUuid
 import uniffi.lasco_ffi.FfiMediaUuid
 import uniffi.lasco_ffi.FfiGroupUuid
+import com.lasco.lasco.ui.media.DetailTarget
 
 sealed interface AlbumEntry {
     val key: AlbumEntryKey
@@ -42,6 +43,11 @@ sealed interface AlbumEntryKey {
     data class Group(val id: FfiGroupUuid) : AlbumEntryKey
     data object DisconnectedHeader : AlbumEntryKey
 }
+
+fun FfiAlbumItem.toDetailTarget(): DetailTarget =
+    media?.let { DetailTarget.Media(it.mediaId.value) }
+        ?: group?.let { DetailTarget.Group(it.groupId.value) }
+        ?: error("FFI album item contained neither media nor group")
 
 /** Safe for LazyLayout's Android saved-state Bundle and unique by entry type. */
 fun AlbumEntryKey.saveableValue(): String = when (this) {

@@ -56,7 +56,7 @@ import uniffi.lasco_ffi.FfiMediaUuid
 @Composable
 fun RecentMediaScreen(
     modifier: Modifier = Modifier,
-    onOpenMedia: (position: Int) -> Unit = {},
+    onOpenMedia: (position: Int, mediaId: FfiMediaUuid, showingOrphans: Boolean) -> Unit = { _, _, _ -> },
     onOpenAlbum: (albumId: String) -> Unit = {},
     viewModel: RecentMediaViewModel = viewModel(factory = RecentMediaViewModel.Factory),
 ) {
@@ -223,7 +223,7 @@ fun RecentMediaScreen(
                                     if (isSelecting) {
                                         selection = if (selection.contains(item.mediaId)) selection - item.mediaId else selection + item.mediaId
                                         if (selection.isEmpty()) isSelecting = false
-                                    } else onOpenMedia(index)
+                                    } else onOpenMedia(index, item.mediaId, showingOrphans)
                                 },
                                 onLongPress = {
                                     if (!isSelecting) {

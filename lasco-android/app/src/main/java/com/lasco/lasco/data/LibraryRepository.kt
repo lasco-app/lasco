@@ -198,6 +198,11 @@ class LibraryRepository(
         page(offset, limit, lib::orphanMediaByDateRange)
     }
 
+    suspend fun orphanMediaByDateNeighbors(position: Int): FfiMediaNeighbors = withContext(io) {
+        require(position >= 0) { "position must be non-negative" }
+        lib.orphanMediaByDateNeighbors(position.toUInt())
+    }
+
     suspend fun albumChildrenCount(parentAlbumId: FfiAlbumUuid?): Int = withContext(io) {
         lib.albumAlbumsCount(parentAlbumId).toInt()
     }

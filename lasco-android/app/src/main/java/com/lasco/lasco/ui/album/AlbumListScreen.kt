@@ -51,6 +51,7 @@ import com.lasco.lasco.ui.components.LascoConfirmDialog
 import com.lasco.lasco.ui.components.LascoTextInputDialog
 import com.lasco.lasco.ui.components.MediaThumbnail
 import com.lasco.lasco.ui.components.ThumbnailPickerDialog
+import com.lasco.lasco.ui.media.DetailTarget
 import com.lasco.lasco.ui.theme.LascoTheme
 import kotlinx.coroutines.launch
 import uniffi.lasco_ffi.FfiAlbum
@@ -86,7 +87,7 @@ fun AlbumListScreen(
     backLabel: String? = null,
     onBack: (() -> Unit)? = null,
     onOpenChild: (FfiAlbum) -> Unit = {},
-    onOpenMedia: (position: Int, ascending: Boolean) -> Unit = { _, _ -> },
+    onOpenMedia: (position: Int, ascending: Boolean, target: DetailTarget) -> Unit = { _, _, _ -> },
     pickerState: AlbumPickerState? = null,
     onPickerVisibleChange: (Boolean) -> Unit = {},
     viewModel: AlbumViewModel = viewModel(
@@ -382,7 +383,7 @@ fun AlbumListScreen(
                             pickerState != null -> Unit
                             isSelecting && mediaId != null -> toggleMedia(mediaId)
                             isSelecting && groupId != null -> toggleGroup(groupId)
-                            else -> onOpenMedia(indexed.position, sortAscending)
+                            else -> onOpenMedia(indexed.position, sortAscending, indexed.item.toDetailTarget())
                         }
                     },
                     onItemLongPress = { item ->

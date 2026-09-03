@@ -14,17 +14,33 @@ sealed interface DetailItem {
     data class Group(val group: FfiGroup) : DetailItem
 }
 
-val DetailItem.id: String
+/**
+ * Stable identity for a detail cursor. Positions are deliberately retained for
+ * efficient neighbor navigation, but must be checked against this identity
+ * after a library refresh because the sorted list may have moved.
+ */
+@Serializable
+sealed interface DetailTarget {
+    @Serializable data class Media(val mediaId: String) : DetailTarget
+    @Serializable data class Group(val groupId: String) : DetailTarget
+}
+
+val DetailItem.target: DetailTarget
     get() = when (this) {
-        is DetailItem.Media -> item.mediaId.value
-        is DetailItem.Group -> group.groupId.value
+        is DetailItem.Media -> DetailTarget.Media(item.mediaId.value)
+        is DetailItem.Group -> DetailTarget.Group(group.groupId.value)
     }
 
 @Serializable
 sealed interface MediaDetailSource {
     @Serializable data object HomeByDate : MediaDetailSource
+    @Serializable data object OrphansByDate : MediaDetailSource
     @Serializable data class AlbumByDate(val albumId: String, val ascending: Boolean) : MediaDetailSource
 }
 
 @Serializable
-data class MediaDetailKey(val source: MediaDetailSource, val startPosition: Int) : NavKey
+data class MediaDetailKey(
+    val source: MediaDetailSource,
+    val startPosition: Int,
+    val expectedTarget: DetailTarget,
+) : NavKey

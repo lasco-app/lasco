@@ -71,9 +71,9 @@ fun AlbumsScreen(
                     backLabel = backLabel,
                     onBack = if (key.albumId != null) { { backStack.removeLastOrNull() } } else null,
                     onOpenChild = { child -> backStack.add(AlbumKey(child.albumId.value, child.name)) },
-                    onOpenMedia = { position, ascending ->
+                    onOpenMedia = { position, ascending, target ->
                         key.albumId?.let { albumId ->
-                            backStack.add(MediaDetailKey(MediaDetailSource.AlbumByDate(albumId, ascending), position))
+                            backStack.add(MediaDetailKey(MediaDetailSource.AlbumByDate(albumId, ascending), position, target))
                         }
                     },
                     onPickerVisibleChange = onPickerVisibleChange,
@@ -83,6 +83,7 @@ fun AlbumsScreen(
                 MediaDetailScreen(
                     source = key.source,
                     startPosition = key.startPosition,
+                    expectedTarget = key.expectedTarget,
                     onBack = { backStack.removeLastOrNull() },
                     onOpenAlbum = onOpenAlbum,
                 )

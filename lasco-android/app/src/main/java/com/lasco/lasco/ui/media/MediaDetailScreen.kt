@@ -131,12 +131,13 @@ private fun displayItemForPage(
 fun MediaDetailScreen(
     source: MediaDetailSource,
     startPosition: Int,
+    expectedTarget: DetailTarget,
     onBack: () -> Unit,
     onOpenAlbum: (String) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: MediaDetailViewModel = viewModel(
-        key = "$source:$startPosition",
-        factory = MediaDetailViewModel.factory(source, startPosition),
+        key = "$source:$startPosition:$expectedTarget",
+        factory = MediaDetailViewModel.factory(source, startPosition, expectedTarget),
     ),
 ) {
     val context = LocalContext.current
@@ -155,7 +156,11 @@ fun MediaDetailScreen(
             when (state) {
                 MediaDetailState.Loading -> Text("Loading…", color = Color.White)
                 MediaDetailState.Empty -> Text("This item is no longer available.", color = Color.White)
-                is MediaDetailState.Error -> Text("Could not load this item.", color = Color.White)
+                is MediaDetailState.Error -> Text(
+                    "Could not load this item. Tap to retry.",
+                    color = Color.White,
+                    modifier = Modifier.clickable { viewModel.retry() },
+                )
                 is MediaDetailState.Content -> Unit
             }
         }
@@ -261,6 +266,16 @@ fun MediaDetailScreen(
             ) {
                 Text(text = "←", style = LascoTheme.type.body(18), color = Color.White)
             }
+
+            Text(
+                text = "${neighbors.currentPosition + 1} / ${neighbors.totalCount}",
+                style = LascoTheme.type.pixel(14),
+                color = Color.White,
+                modifier = Modifier
+                    .background(Color.Black)
+                    .border(2.dp, Color.White)
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+            )
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (currentDisplayItem?.appleLivePhotoMediaId != null) {

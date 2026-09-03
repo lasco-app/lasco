@@ -35,6 +35,7 @@ import com.lasco.lasco.ui.manage.ManageScreen
 import com.lasco.lasco.ui.media.MediaDetailKey
 import com.lasco.lasco.ui.media.MediaDetailScreen
 import com.lasco.lasco.ui.media.MediaDetailSource
+import com.lasco.lasco.ui.media.DetailTarget
 import com.lasco.lasco.ui.media.RecentMediaScreen
 import com.lasco.lasco.ui.status.StatusScreen
 import com.lasco.lasco.ui.theme.LascoTheme
@@ -108,8 +109,14 @@ fun MainScreen(
                             entry<HomeKey> {
                                 RecentMediaScreen(
                                     modifier = Modifier.fillMaxSize(),
-                                    onOpenMedia = { position ->
-                                        homeBackStack.add(MediaDetailKey(MediaDetailSource.HomeByDate, position))
+                                    onOpenMedia = { position, mediaId, showingOrphans ->
+                                        homeBackStack.add(
+                                            MediaDetailKey(
+                                                if (showingOrphans) MediaDetailSource.OrphansByDate else MediaDetailSource.HomeByDate,
+                                                position,
+                                                DetailTarget.Media(mediaId.value),
+                                            ),
+                                        )
                                     },
                                     onOpenAlbum = { openAlbum(it) },
                                 )
@@ -118,6 +125,7 @@ fun MainScreen(
                                 MediaDetailScreen(
                                     source = key.source,
                                     startPosition = key.startPosition,
+                                    expectedTarget = key.expectedTarget,
                                     onBack = { homeBackStack.removeLastOrNull() },
                                     onOpenAlbum = { openAlbum(it) },
                                     modifier = Modifier.fillMaxSize(),
