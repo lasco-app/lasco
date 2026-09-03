@@ -27,6 +27,7 @@ import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import com.lasco.lasco.LascoApp
 import com.lasco.lasco.BuildConfig
@@ -35,6 +36,8 @@ import com.lasco.lasco.data.LibraryRepository
 import com.lasco.lasco.data.Prefs
 import com.lasco.lasco.ui.library.LibraryListScreen
 import com.lasco.lasco.ui.library.LibraryListViewModel
+import com.lasco.lasco.ui.library.LibraryOpenDestination
+import com.lasco.lasco.ui.library.LibraryOpenRequest
 import com.lasco.lasco.ui.library.LibraryOpenScreen
 import com.lasco.lasco.ui.components.LascoPrimaryButton
 import com.lasco.lasco.ui.components.DevelopmentCloudEndpointDialog
@@ -57,7 +60,7 @@ private sealed interface Screen {
     data object LibraryList : Screen
     data class NewLibrary(val sessionId: String) : Screen
     data object AddExisting : Screen
-    data class OpeningLibrary(val entryId: String) : Screen
+    data class OpeningLibrary(val request: LibraryOpenRequest) : Screen
     data object Opened : Screen
     data class DeletingLibrary(val libraryId: FfiLibraryId) : Screen
     data class DeletionFailed(val libraryId: FfiLibraryId, val detail: String) : Screen
@@ -137,6 +140,15 @@ fun LascoRoot(modifier: Modifier = Modifier, onLibraryOpenChanged: (Boolean) -> 
         screen = if (libraryListState.libraries.isEmpty()) Screen.Onboarding(resume = null) else Screen.LibraryList
     }
 
+    LaunchedEffect(libraryListViewModel) {
+        libraryListViewModel.openDestinations.collect { destination ->
+            screen = when (destination) {
+                LibraryOpenDestination.Opened -> Screen.Opened
+                is LibraryOpenDestination.CredentialsRequired -> Screen.OpeningLibrary(destination.request)
+            }
+        }
+    }
+
     val current = screen
     if (current == null) {
         Box(modifier = modifier.fillMaxSize().background(LascoTheme.colors.bg))
@@ -157,7 +169,7 @@ fun LascoRoot(modifier: Modifier = Modifier, onLibraryOpenChanged: (Boolean) -> 
         Screen.LibraryList -> LibraryListScreen(
             onNewLibrary = { screen = Screen.NewLibrary(UUID.randomUUID().toString()) },
             onAddExisting = { screen = Screen.AddExisting },
-            onOpenLibrary = { entryId -> screen = Screen.OpeningLibrary(entryId) },
+            onOpenLibrary = libraryListViewModel::open,
             modifier = modifier,
             viewModel = libraryListViewModel,
         )
@@ -174,7 +186,7 @@ fun LascoRoot(modifier: Modifier = Modifier, onLibraryOpenChanged: (Boolean) -> 
             modifier = modifier,
         )
         is Screen.OpeningLibrary -> LibraryOpenScreen(
-            entryId = current.entryId,
+            request = current.request,
             onBack = { screen = Screen.LibraryList },
             onOpened = { screen = Screen.Opened },
             modifier = modifier,
