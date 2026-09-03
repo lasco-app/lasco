@@ -386,6 +386,14 @@ class LibraryRepository(
             null
         }
 
+    /** Materializes full plaintext media in an app-private cache file for Android players/sharing. */
+    suspend fun materializeMedia(mediaId: FfiMediaUuid, destinationPath: String): String? =
+        try {
+            lib.materializeMediaToPathAsync(mediaId, appDir, destinationPath)
+        } catch (e: Exception) {
+            null
+        }
+
     suspend fun groupMedia(groupId: FfiGroupUuid): List<FfiMediaItem> = lib.groupListMedia(groupId)
 
     suspend fun listOperations(startPos: ULong, endPosExclusive: ULong): List<FfiCrdtOperation> =

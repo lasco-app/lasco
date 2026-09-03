@@ -8,6 +8,12 @@ use super::{FfiLibrary, FfiMediaItem, ffi_count};
 use crate::error::LascoError;
 use crate::ids::{FfiAlbumUuid, FfiLibraryId, FfiMediaUuid, FfiRemoteUuid};
 use lasco_core::identifiers::RemoteUuid;
+use std::path::PathBuf;
+
+/// `Vec<u8>` results cross the UniFFI boundary into a Kotlin `ByteArray`.
+/// Keep that allocation bounded; large media must be materialized to a file
+/// instead (currently used by Android video playback).
+const MAX_MEDIA_BYTES: u64 = 100 * 1024 * 1024;
 
 pub(super) fn inclusive_range(start: u32, end: u32) -> Result<(usize, usize), LascoError> {
     if start > end {
@@ -16,6 +22,26 @@ pub(super) fn inclusive_range(start: u32, end: u32) -> Result<(usize, usize), La
         });
     }
     Ok((start as usize, end as usize))
+}
+
+impl FfiLibrary {
+    fn ensure_media_byte_result_is_safe(
+        &self,
+        media_id: lasco_core::identifiers::MediaUuid,
+    ) -> Result<(), LascoError> {
+        let size_bytes = self
+            .inner
+            .media_show(media_id)
+            .map_err(LascoError::from)?
+            .size_bytes;
+        if size_bytes > MAX_MEDIA_BYTES {
+            return Err(LascoError::MediaTooLarge {
+                size_bytes,
+                limit_bytes: MAX_MEDIA_BYTES,
+            });
+        }
+        Ok(())
+    }
 }
 
 #[uniffi::export]
@@ -171,6 +197,7 @@ impl FfiLibrary {
         app_support_dir: Option<String>,
     ) -> Result<Vec<u8>, LascoError> {
         let media_uuid = media_id.try_into()?;
+        self.ensure_media_byte_result_is_safe(media_uuid)?;
         match self
             .rt
             .block_on(self.inner.media_get_bytes(media_uuid, None))
@@ -259,6 +286,7 @@ impl FfiLibrary {
         app_support_dir: Option<String>,
     ) -> Result<Vec<u8>, LascoError> {
         let media_uuid = media_id.try_into()?;
+        self.ensure_media_byte_result_is_safe(media_uuid)?;
         match self.inner.media_get_bytes(media_uuid, None).await {
             Ok(b) => Ok(b),
             Err(lasco_core::error::LibraryError::MediaNotFound(_)) => {
@@ -295,6 +323,70 @@ impl FfiLibrary {
                 Err(last_error.unwrap_or(LascoError::NotFound))
             }
             Err(e) => Err(LascoError::from(e)),
+        }
+    }
+
+    /// Materializes decrypted media to an app-private destination without
+    /// returning the full plaintext as a Kotlin byte array. Android uses this
+    /// for video playback and export, where videos can be far too large for a
+    /// safe FFI byte-array result.
+    ///
+    /// The caller owns the destination and is responsible for retaining or
+    /// evicting it. On a remote cache miss this method downloads and caches
+    /// the encrypted Lasco blob before writing the plaintext destination.
+    pub async fn materialize_media_to_path_async(
+        &self,
+        media_id: FfiMediaUuid,
+        app_support_dir: Option<String>,
+        destination_path: String,
+    ) -> Result<String, LascoError> {
+        let media_uuid = media_id.try_into()?;
+        let destination = PathBuf::from(&destination_path);
+        match self
+            .inner
+            .media_materialize_to_path(media_uuid, &destination, None)
+            .await
+        {
+            Ok(()) => Ok(destination_path),
+            Err(lasco_core::error::LibraryError::MediaNotFound(_)) => {
+                let mut last_error = None;
+                for remote_id in self.media_fetch_remote_ids()? {
+                    let storage = match self
+                        .build_storage_for_remote(&remote_id, app_support_dir.as_deref())
+                    {
+                        Ok(storage) => storage,
+                        Err(error) => {
+                            last_error = Some(error);
+                            continue;
+                        }
+                    };
+                    let inner = self.inner.clone();
+                    let destination = destination.clone();
+                    match self
+                        .rt
+                        .spawn(async move {
+                            inner
+                                .media_materialize_to_path(
+                                    media_uuid,
+                                    &destination,
+                                    Some(storage.as_ref()),
+                                )
+                                .await
+                        })
+                        .await
+                    {
+                        Ok(Ok(())) => return Ok(destination_path),
+                        Ok(Err(error)) => last_error = Some(LascoError::from(error)),
+                        Err(error) => {
+                            last_error = Some(LascoError::Other {
+                                msg: error.to_string(),
+                            });
+                        }
+                    }
+                }
+                Err(last_error.unwrap_or(LascoError::NotFound))
+            }
+            Err(error) => Err(LascoError::from(error)),
         }
     }
 

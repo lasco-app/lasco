@@ -70,6 +70,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.compose.material3.Icon
 import androidx.media3.common.MediaItem as ExoMediaItem
@@ -91,7 +92,9 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
 import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.collectLatest
 import uniffi.lasco_ffi.FfiMediaItem
 import uniffi.lasco_ffi.FfiGroupUuid
@@ -102,6 +105,11 @@ private enum class PanelAnchor { Collapsed, Expanded }
 
 private val PanelCollapsedHeight = 72.dp
 private const val PanelExpandRatio = 0.58f
+
+// The pager can need the previous, current, and next pages ready together.
+// Keep their sampled decodes off Main while allowing that three-page window
+// to make progress concurrently.
+private val ImageDecodeDispatcher = Dispatchers.Default.limitedParallelism(3)
 
 private fun isVideo(item: FfiMediaItem): Boolean =
     item.filenameOriginal.substringAfterLast('.', "").lowercase() in videoExtensions
@@ -499,37 +507,74 @@ private fun ImageCell(item: FfiMediaItem, repo: LibraryRepository) {
     var thumbnail by remember(item.mediaId) { mutableStateOf<ImageBitmap?>(null) }
     var fullImage by remember(item.mediaId) { mutableStateOf<ImageBitmap?>(null) }
 
-    LaunchedEffect(item.mediaId) {
-        repo.mediaThumbnail(item.mediaId)?.let { bytes ->
-            thumbnail = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
-        }
-        repo.mediaBytes(item.mediaId)?.let { bytes ->
-            fullImage = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
-        }
-    }
+    BoxWithConstraints(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        val density = LocalDensity.current
+        val targetWidthPx = with(density) { maxWidth.roundToPx().coerceAtLeast(1) }
+        val targetHeightPx = with(density) { maxHeight.roundToPx().coerceAtLeast(1) }
 
-    val full = fullImage
-    val thumb = thumbnail
-    when {
-        full != null -> Image(
-            bitmap = full,
-            contentDescription = null,
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxSize(),
-        )
-        thumb != null -> Image(
-            bitmap = thumb,
-            contentDescription = null,
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxSize().blur(8.dp),
-        )
-        else -> Icon(
-            painter = painterResource(R.drawable.ic_tab_image),
-            contentDescription = null,
-            tint = Color.White.copy(alpha = 0.3f),
-            modifier = Modifier.size(72.dp),
-        )
+        LaunchedEffect(item.mediaId, targetWidthPx, targetHeightPx) {
+            thumbnail = repo.mediaThumbnail(item.mediaId)?.let { bytes ->
+                withContext(ImageDecodeDispatcher) {
+                    decodeSampledBitmap(bytes, targetWidthPx, targetHeightPx)?.asImageBitmap()
+                }
+            }
+            fullImage = repo.mediaBytes(item.mediaId)?.let { bytes ->
+                withContext(ImageDecodeDispatcher) {
+                    decodeSampledBitmap(bytes, targetWidthPx, targetHeightPx)?.asImageBitmap()
+                }
+            }
+        }
+
+        val full = fullImage
+        val thumb = thumbnail
+        when {
+            full != null -> Image(
+                bitmap = full,
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize(),
+            )
+            thumb != null -> Image(
+                bitmap = thumb,
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize().blur(8.dp),
+            )
+            else -> Icon(
+                painter = painterResource(R.drawable.ic_tab_image),
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.3f),
+                modifier = Modifier.size(72.dp),
+            )
+        }
     }
+}
+
+/** Decodes no larger than needed for the viewer, preserving enough pixels for ContentScale.Fit. */
+private fun decodeSampledBitmap(bytes: ByteArray, targetWidthPx: Int, targetHeightPx: Int): Bitmap? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+
+    var sampleSize = 1
+    while (
+        bounds.outWidth / (sampleSize * 2) >= targetWidthPx &&
+        bounds.outHeight / (sampleSize * 2) >= targetHeightPx
+    ) {
+        sampleSize *= 2
+    }
+    return BitmapFactory.decodeByteArray(
+        bytes,
+        0,
+        bytes.size,
+        BitmapFactory.Options().apply {
+            inSampleSize = sampleSize
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        },
+    )
 }
 
 @Composable

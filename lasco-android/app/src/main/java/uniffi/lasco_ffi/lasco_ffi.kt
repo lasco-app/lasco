@@ -950,6 +950,8 @@ internal open class UniffiVTableCallbackInterfacePushProgressSink(
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1098,6 +1100,8 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_list_remotes(
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_load_local_state(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_local_state_stats(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_materialize_media_to_path_async(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_media_album_ids(
 ): Short
@@ -1349,6 +1353,8 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_load_local_state(`ptr`: Pointer,uniffi
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_local_state_stats(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_lasco_ffi_fn_method_ffilibrary_materialize_media_to_path_async(`ptr`: Pointer,`mediaId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,`destinationPath`: RustBuffer.ByValue,
+): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_media_album_ids(`ptr`: Pointer,`mediaId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_media_by_date(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -1764,6 +1770,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_local_state_stats() != 38463.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_materialize_media_to_path_async() != 3896.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_media_album_ids() != 37108.toShort()) {
@@ -2781,6 +2790,18 @@ public interface FfiLibraryInterface {
     fun `loadLocalState`()
     
     fun `localStateStats`(): FfiLocalStateStats
+    
+    /**
+     * Materializes decrypted media to an app-private destination without
+     * returning the full plaintext as a Kotlin byte array. Android uses this
+     * for video playback and export, where videos can be far too large for a
+     * safe FFI byte-array result.
+     *
+     * The caller owns the destination and is responsible for retaining or
+     * evicting it. On a remote cache miss this method downloads and caches
+     * the encrypted Lasco blob before writing the plaintext destination.
+     */
+    suspend fun `materializeMediaToPathAsync`(`mediaId`: FfiMediaUuid, `appSupportDir`: kotlin.String?, `destinationPath`: kotlin.String): kotlin.String
     
     /**
      * # Errors
@@ -4272,6 +4293,37 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     )
     }
     
+
+    
+    /**
+     * Materializes decrypted media to an app-private destination without
+     * returning the full plaintext as a Kotlin byte array. Android uses this
+     * for video playback and export, where videos can be far too large for a
+     * safe FFI byte-array result.
+     *
+     * The caller owns the destination and is responsible for retaining or
+     * evicting it. On a remote cache miss this method downloads and caches
+     * the encrypted Lasco blob before writing the plaintext destination.
+     */
+    @Throws(LascoException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `materializeMediaToPathAsync`(`mediaId`: FfiMediaUuid, `appSupportDir`: kotlin.String?, `destinationPath`: kotlin.String) : kotlin.String {
+        return uniffiRustCallAsync(
+        callWithPointer { thisPtr ->
+            UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_materialize_media_to_path_async(
+                thisPtr,
+                FfiConverterTypeFfiMediaUuid.lower(`mediaId`),FfiConverterOptionalString.lower(`appSupportDir`),FfiConverterString.lower(`destinationPath`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterString.lift(it) },
+        // Error FFI converter
+        LascoException.ErrorHandler,
+    )
+    }
 
     
     /**
@@ -6059,6 +6111,16 @@ sealed class LascoException: kotlin.Exception() {
             get() = "mediaIds=${ `mediaIds` }"
     }
     
+    class MediaTooLarge(
+        
+        val `sizeBytes`: kotlin.ULong, 
+        
+        val `limitBytes`: kotlin.ULong
+        ) : LascoException() {
+        override val message
+            get() = "sizeBytes=${ `sizeBytes` }, limitBytes=${ `limitBytes` }"
+    }
+    
     class CrdtRecoveryAvailable(
         ) : LascoException() {
         override val message
@@ -6109,11 +6171,15 @@ public object FfiConverterTypeLascoError : FfiConverterRustBuffer<LascoException
             6 -> LascoException.MissingMediaOnConfiguredSources(
                 FfiConverterSequenceTypeFfiMediaId.read(buf),
                 )
-            7 -> LascoException.CrdtRecoveryAvailable()
-            8 -> LascoException.Storage(
+            7 -> LascoException.MediaTooLarge(
+                FfiConverterULong.read(buf),
+                FfiConverterULong.read(buf),
+                )
+            8 -> LascoException.CrdtRecoveryAvailable()
+            9 -> LascoException.Storage(
                 FfiConverterString.read(buf),
                 )
-            9 -> LascoException.Other(
+            10 -> LascoException.Other(
                 FfiConverterString.read(buf),
                 )
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
@@ -6148,6 +6214,12 @@ public object FfiConverterTypeLascoError : FfiConverterRustBuffer<LascoException
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
                 + FfiConverterSequenceTypeFfiMediaId.allocationSize(value.`mediaIds`)
+            )
+            is LascoException.MediaTooLarge -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterULong.allocationSize(value.`sizeBytes`)
+                + FfiConverterULong.allocationSize(value.`limitBytes`)
             )
             is LascoException.CrdtRecoveryAvailable -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
@@ -6195,17 +6267,23 @@ public object FfiConverterTypeLascoError : FfiConverterRustBuffer<LascoException
                 FfiConverterSequenceTypeFfiMediaId.write(value.`mediaIds`, buf)
                 Unit
             }
-            is LascoException.CrdtRecoveryAvailable -> {
+            is LascoException.MediaTooLarge -> {
                 buf.putInt(7)
+                FfiConverterULong.write(value.`sizeBytes`, buf)
+                FfiConverterULong.write(value.`limitBytes`, buf)
+                Unit
+            }
+            is LascoException.CrdtRecoveryAvailable -> {
+                buf.putInt(8)
                 Unit
             }
             is LascoException.Storage -> {
-                buf.putInt(8)
+                buf.putInt(9)
                 FfiConverterString.write(value.`msg`, buf)
                 Unit
             }
             is LascoException.Other -> {
-                buf.putInt(9)
+                buf.putInt(10)
                 FfiConverterString.write(value.`msg`, buf)
                 Unit
             }
