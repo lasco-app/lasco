@@ -101,7 +101,8 @@ fun AlbumListScreen(
     val repo = LibraryRepository.from(LocalContext.current)
     val scope = rememberCoroutineScope()
 
-    val entries = viewModel.entries.collectAsLazyPagingItems()
+    val albums = viewModel.albums.collectAsLazyPagingItems()
+    val media = viewModel.items.collectAsLazyPagingItems()
     val sortAscending by viewModel.sortAscending.collectAsStateWithLifecycle()
 
     var isGridLayout by remember { mutableStateOf(true) }
@@ -334,15 +335,24 @@ fun AlbumListScreen(
             )
         }
 
-        if (entries.loadState.refresh is LoadState.Loading && entries.itemCount == 0) {
+        val entryCount = albums.itemCount + media.itemCount
+        if (entryCount == 0 && (
+                albums.loadState.refresh is LoadState.Loading ||
+                    albumId != null && media.loadState.refresh is LoadState.Loading
+            )
+        ) {
             Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = colors.ink)
             }
-        } else if (entries.loadState.refresh is LoadState.Error && entries.itemCount == 0) {
+        } else if (albums.loadState.refresh is LoadState.Error && entryCount == 0) {
             Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                Text("Could not load albums. Tap to retry.", color = colors.inkMuted, modifier = Modifier.clickable { entries.retry() })
+                Text("Could not load albums. Tap to retry.", color = colors.inkMuted, modifier = Modifier.clickable { albums.retry() })
             }
-        } else if (entries.itemCount == 0) {
+        } else if (media.loadState.refresh is LoadState.Error && entryCount == 0) {
+            Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                Text("Could not load media. Tap to retry.", color = colors.inkMuted, modifier = Modifier.clickable { media.retry() })
+            }
+        } else if (entryCount == 0) {
             Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                 Text(
                     text = if (albumId == null) "No albums yet" else "Empty album.",
@@ -353,11 +363,12 @@ fun AlbumListScreen(
         } else {
             BoxWithConstraints(modifier = Modifier.fillMaxWidth().weight(1f)) {
                 val columns = if (maxWidth > 500.dp) 3 else 2
-                AlbumEntriesGrid(
+                AlbumSectionsGrid(
                     modifier = Modifier.fillMaxSize(),
                     repo = repo,
                     columns = columns,
-                    entries = entries,
+                    albums = albums,
+                    media = media,
                     isGridLayout = isGridLayout,
                     selectedAlbumIds = selectedAlbumIds,
                     selectedMediaIds = pickerState?.selectedIds ?: selectedMediaIds,
@@ -678,11 +689,12 @@ private fun AlbumSelectionBar(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun AlbumEntriesGrid(
+private fun AlbumSectionsGrid(
     modifier: Modifier = Modifier,
     repo: LibraryRepository,
     columns: Int,
-    entries: androidx.paging.compose.LazyPagingItems<AlbumEntry>,
+    albums: androidx.paging.compose.LazyPagingItems<AlbumEntry>,
+    media: androidx.paging.compose.LazyPagingItems<AlbumEntry.Item>,
     isGridLayout: Boolean,
     selectedAlbumIds: Set<FfiAlbumUuid>,
     selectedMediaIds: Set<FfiMediaUuid>,
@@ -703,11 +715,11 @@ private fun AlbumEntriesGrid(
         verticalArrangement = Arrangement.spacedBy(if (isGridLayout) 3.dp else 12.dp),
     ) {
         items(
-            count = entries.itemCount,
-            key = entries.itemKey { it.key.saveableValue() },
-            span = { index -> if (entries.peek(index) is AlbumEntry.DisconnectedHeader || !isGridLayout && entries.peek(index) is AlbumEntry.Item) GridItemSpan(maxLineSpan) else GridItemSpan(1) },
+            count = albums.itemCount,
+            key = albums.itemKey { it.key.saveableValue() },
+            span = { index -> if (albums.peek(index) is AlbumEntry.DisconnectedHeader) GridItemSpan(maxLineSpan) else GridItemSpan(1) },
         ) { index ->
-            when (val entry = entries[index]) {
+            when (val entry = albums[index]) {
                 is AlbumEntry.ChildAlbum -> AlbumCell(
                     album = entry.album,
                     repo = repo,
@@ -715,28 +727,48 @@ private fun AlbumEntriesGrid(
                     onClick = { onAlbumTap(entry.album) },
                     onLongClick = { onAlbumLongPress(entry.album) },
                 )
-                is AlbumEntry.Item -> {
-                    val item = entry.item
-                    val dimmed = pickerState != null && (item.group != null || item.media?.mediaId in pickerState.disabledIds)
-                    if (isGridLayout) AlbumItemCell(
-                        item, repo, isSelected = item.media?.mediaId in selectedMediaIds || item.group?.groupId in selectedGroupIds,
-                        dimmed = dimmed, onTap = { thumbnail -> onItemTap(entry, thumbnail) }, onLongPress = { onItemLongPress(item) },
-                    ) else AlbumItemRow(
-                        item, repo, isSelected = item.media?.mediaId in selectedMediaIds || item.group?.groupId in selectedGroupIds,
-                        dimmed = dimmed, onTap = { thumbnail -> onItemTap(entry, thumbnail) }, onLongPress = { onItemLongPress(item) },
-                    )
-                }
                 AlbumEntry.DisconnectedHeader -> Text(
                     "DISCONNECTED", style = LascoTheme.type.categoryLarge(22), color = colors.ink,
                     modifier = Modifier.padding(top = 12.dp),
                 )
+                is AlbumEntry.Item -> Unit
                 null -> Box(modifier = Modifier.fillMaxWidth().background(colors.surfaceAlt))
             }
         }
-        when (entries.loadState.append) {
+        when (albums.loadState.append) {
             is LoadState.Loading -> item(span = { GridItemSpan(maxLineSpan) }) { CircularProgressIndicator(color = colors.ink) }
             is LoadState.Error -> item(span = { GridItemSpan(maxLineSpan) }) {
-                Text("Could not load more. Tap to retry.", color = colors.inkMuted, modifier = Modifier.clickable { entries.retry() })
+                Text("Could not load more albums. Tap to retry.", color = colors.inkMuted, modifier = Modifier.clickable { albums.retry() })
+            }
+            else -> Unit
+        }
+
+        if (media.itemCount > 0) {
+            item(key = "media-section", span = { GridItemSpan(maxLineSpan) }) {
+                Text("MEDIA", style = LascoTheme.type.categoryLarge(22), color = colors.ink, modifier = Modifier.padding(top = 12.dp))
+            }
+        }
+        items(
+            count = media.itemCount,
+            key = media.itemKey { it.key.saveableValue() },
+            span = { if (!isGridLayout) GridItemSpan(maxLineSpan) else GridItemSpan(1) },
+        ) { index ->
+            media[index]?.let { entry ->
+                val item = entry.item
+                val dimmed = pickerState != null && (item.group != null || item.media?.mediaId in pickerState.disabledIds)
+                if (isGridLayout) AlbumItemCell(
+                    item, repo, isSelected = item.media?.mediaId in selectedMediaIds || item.group?.groupId in selectedGroupIds,
+                    dimmed = dimmed, onTap = { thumbnail -> onItemTap(entry, thumbnail) }, onLongPress = { onItemLongPress(item) },
+                ) else AlbumItemRow(
+                    item, repo, isSelected = item.media?.mediaId in selectedMediaIds || item.group?.groupId in selectedGroupIds,
+                    dimmed = dimmed, onTap = { thumbnail -> onItemTap(entry, thumbnail) }, onLongPress = { onItemLongPress(item) },
+                )
+            }
+        }
+        when (media.loadState.append) {
+            is LoadState.Loading -> item(span = { GridItemSpan(maxLineSpan) }) { CircularProgressIndicator(color = colors.ink) }
+            is LoadState.Error -> item(span = { GridItemSpan(maxLineSpan) }) {
+                Text("Could not load more media. Tap to retry.", color = colors.inkMuted, modifier = Modifier.clickable { media.retry() })
             }
             else -> Unit
         }
@@ -756,7 +788,7 @@ private fun MoveDestinationPicker(
         key = "move:${current?.albumId ?: "root"}",
         factory = AlbumViewModel.factory(current?.albumId),
     )
-    val entries = viewModel.entries.collectAsLazyPagingItems()
+    val albums = viewModel.albums.collectAsLazyPagingItems()
     val colors = LascoTheme.colors
     Column(modifier = modifier.background(colors.bg).padding(20.dp)) {
         Text("Move to", style = LascoTheme.type.categoryLarge(), color = colors.ink)
@@ -772,8 +804,8 @@ private fun MoveDestinationPicker(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            items(count = entries.itemCount, key = entries.itemKey { it.key.saveableValue() }) { index ->
-                (entries[index] as? AlbumEntry.ChildAlbum)?.album?.let { child ->
+            items(count = albums.itemCount, key = albums.itemKey { it.key.saveableValue() }) { index ->
+                (albums[index] as? AlbumEntry.ChildAlbum)?.album?.let { child ->
                     if (child.albumId !in excludedIds) AlbumCell(child, LibraryRepository.from(LocalContext.current), onClick = { current = child })
                 }
             }
