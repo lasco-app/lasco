@@ -52,7 +52,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -583,7 +582,7 @@ private fun ImageCell(item: FfiMediaItem, repo: LibraryRepository, initialThumbn
                 bitmap = thumb,
                 contentDescription = null,
                 contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize().blur(8.dp),
+                modifier = Modifier.fillMaxSize(),
             )
             else -> Icon(
                 painter = painterResource(R.drawable.ic_tab_image),
