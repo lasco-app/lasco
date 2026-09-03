@@ -21,7 +21,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -43,6 +42,7 @@ import androidx.paging.compose.itemKey
 import com.lasco.lasco.data.LibraryRepository
 import com.lasco.lasco.media.MediaImporter
 import com.lasco.lasco.ui.components.AlbumPickerDialog
+import com.lasco.lasco.ui.components.LascoToggle
 import com.lasco.lasco.ui.components.MediaThumbnail
 import com.lasco.lasco.ui.theme.LascoTheme
 import kotlinx.coroutines.launch
@@ -143,7 +143,7 @@ fun RecentMediaScreen(
                     style = LascoTheme.type.body(14),
                     color = colors.inkSub,
                 )
-                Switch(
+                LascoToggle(
                     checked = showingOrphans,
                     onCheckedChange = {
                         clearSelection()

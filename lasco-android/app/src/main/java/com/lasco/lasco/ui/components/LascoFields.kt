@@ -117,7 +117,7 @@ fun LascoCheckbox(
 
 /**
  * Ported from the Swift LascoToggleStyle. A 36x22 ink bordered track with a
- * 14dp thumb that slides between leading and trailing.
+ * 14dp light-pink thumb that slides between leading and trailing when active.
  */
 @Composable
 fun LascoToggle(
@@ -138,7 +138,7 @@ fun LascoToggle(
             modifier = Modifier
                 .padding(3.dp)
                 .size(14.dp)
-                .background(if (checked) colors.bg else colors.inkMuted),
+                .background(if (checked) Color(0xFFFFB8D9) else colors.inkMuted),
         )
     }
 }
