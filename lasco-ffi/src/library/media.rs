@@ -1,5 +1,6 @@
 use lasco_core::library::media::upload::MediaAddResult;
 
+use super::native_media_bytes::FfiNativeMediaBytes;
 use super::remotes::media_entry_to_ffi;
 use super::types::{
     FfiLocalStateStats, FfiMediaAddResult, FfiMediaNeighbors, FfiRemoteMediaShortfall,
@@ -9,6 +10,7 @@ use crate::error::LascoError;
 use crate::ids::{FfiAlbumUuid, FfiLibraryId, FfiMediaUuid, FfiRemoteUuid};
 use lasco_core::identifiers::RemoteUuid;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 /// `Vec<u8>` results cross the UniFFI boundary into a Kotlin `ByteArray`.
 /// Keep that allocation bounded; large media must be materialized to a file
@@ -324,6 +326,29 @@ impl FfiLibrary {
             }
             Err(e) => Err(LascoError::from(e)),
         }
+    }
+
+    /// Returns Rust-owned plaintext media bytes without serializing them into
+    /// a UniFFI byte array. The returned object's lifetime owns the backing
+    /// allocation: platform code must retain it while reading `data_pointer`
+    /// and close/destroy it as soon as the synchronous consumer is finished.
+    ///
+    /// Android uses this for image decoding on API 28 and newer, where
+    /// `ImageDecoder` accepts a direct `ByteBuffer` view of the native bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the ID is invalid, no local or configured remote
+    /// blob is available, or a remote read, decryption, or cache write fails.
+    pub async fn get_media_bytes_native_async(
+        &self,
+        media_id: FfiMediaUuid,
+        app_support_dir: Option<String>,
+    ) -> Result<Arc<FfiNativeMediaBytes>, LascoError> {
+        let bytes = self
+            .get_media_bytes_async(media_id, app_support_dir)
+            .await?;
+        Ok(Arc::new(FfiNativeMediaBytes::new(bytes)))
     }
 
     /// Materializes decrypted media to an app-private destination without

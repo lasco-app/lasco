@@ -1,12 +1,16 @@
 package com.lasco.lasco.data
 
 import android.content.Context
+import com.sun.jna.Pointer
 import com.lasco.lasco.BuildConfig
 import com.lasco.lasco.LascoApp
+import java.nio.ByteBuffer
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
@@ -385,6 +389,36 @@ class LibraryRepository(
         } catch (e: Exception) {
             null
         }
+
+    /**
+     * Supplies a direct, non-owning view of Rust-owned plaintext media bytes.
+     *
+     * The view is valid only for [block]. Rust reclaims its allocation in a
+     * non-cancellable finally block, including when image decoding fails or
+     * this coroutine is cancelled. Consumers must not retain the buffer.
+     */
+    suspend fun <T> withNativeMediaBytes(
+        mediaId: FfiMediaUuid,
+        block: suspend (ByteBuffer) -> T,
+    ): T? {
+        val nativeBytes = try {
+            lib.getMediaBytesNativeAsync(mediaId, appDir)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            return null
+        }
+        try {
+            val length = nativeBytes.len()
+            if (length == 0UL || length > Int.MAX_VALUE.toULong()) return null
+            val buffer = Pointer(nativeBytes.dataPointer().toLong()).getByteBuffer(0, length.toLong())
+            return block(buffer.asReadOnlyBuffer())
+        } finally {
+            // Dropping a large Vec can be measurable; do it off Main and make
+            // release deterministic even when the caller is cancelled.
+            withContext(NonCancellable + io) { nativeBytes.close() }
+        }
+    }
 
     /** Materializes full plaintext media in an app-private cache file for Android players/sharing. */
     suspend fun materializeMedia(mediaId: FfiMediaUuid, destinationPath: String): String? =

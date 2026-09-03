@@ -2,7 +2,9 @@ package com.lasco.lasco.ui.media
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.ImageDecoder
 import android.net.Uri
+import android.os.Build
 import android.webkit.MimeTypeMap
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
@@ -70,6 +72,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.annotation.RequiresApi
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.compose.material3.Icon
@@ -526,9 +529,19 @@ private fun ImageCell(item: FfiMediaItem, repo: LibraryRepository, initialThumbn
                     }
                 }
             }
-            fullImage = repo.mediaBytes(item.mediaId)?.let { bytes ->
-                withContext(ImageDecodeDispatcher) {
-                    decodeSampledBitmap(bytes, targetWidthPx, targetHeightPx)?.asImageBitmap()
+            fullImage = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                repo.withNativeMediaBytes(item.mediaId) { buffer ->
+                    withContext(ImageDecodeDispatcher) {
+                        decodeSampledBitmap(buffer, targetWidthPx, targetHeightPx)?.asImageBitmap()
+                    }
+                }
+            } else {
+                // ImageDecoder cannot read ByteBuffer before API 28. Keep the
+                // existing UniFFI ByteArray path for Android 7.0–8.1.
+                repo.mediaBytes(item.mediaId)?.let { bytes ->
+                    withContext(ImageDecodeDispatcher) {
+                        decodeSampledBitmap(bytes, targetWidthPx, targetHeightPx)?.asImageBitmap()
+                    }
                 }
             }
         }
@@ -564,13 +577,7 @@ private fun decodeSampledBitmap(bytes: ByteArray, targetWidthPx: Int, targetHeig
     BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
     if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
 
-    var sampleSize = 1
-    while (
-        bounds.outWidth / (sampleSize * 2) >= targetWidthPx &&
-        bounds.outHeight / (sampleSize * 2) >= targetHeightPx
-    ) {
-        sampleSize *= 2
-    }
+    val sampleSize = sampleSizeFor(bounds.outWidth, bounds.outHeight, targetWidthPx, targetHeightPx)
     return BitmapFactory.decodeByteArray(
         bytes,
         0,
@@ -580,6 +587,37 @@ private fun decodeSampledBitmap(bytes: ByteArray, targetWidthPx: Int, targetHeig
             inPreferredConfig = Bitmap.Config.ARGB_8888
         },
     )
+}
+
+/** ImageDecoder accepts a direct ByteBuffer, avoiding a Rust-to-JVM byte-array copy. */
+@RequiresApi(Build.VERSION_CODES.P)
+private fun decodeSampledBitmap(buffer: java.nio.ByteBuffer, targetWidthPx: Int, targetHeightPx: Int): Bitmap? =
+    try {
+        ImageDecoder.decodeBitmap(ImageDecoder.createSource(buffer)) { decoder, info, _ ->
+            decoder.setTargetSampleSize(
+                sampleSizeFor(info.size.width, info.size.height, targetWidthPx, targetHeightPx),
+            )
+            // Keep the same bitmap configuration the ByteArray path requests.
+            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+        }
+    } catch (_: Exception) {
+        null
+    }
+
+private fun sampleSizeFor(
+    sourceWidthPx: Int,
+    sourceHeightPx: Int,
+    targetWidthPx: Int,
+    targetHeightPx: Int,
+): Int {
+    var sampleSize = 1
+    while (
+        sourceWidthPx / (sampleSize * 2) >= targetWidthPx &&
+        sourceHeightPx / (sampleSize * 2) >= targetHeightPx
+    ) {
+        sampleSize *= 2
+    }
+    return sampleSize
 }
 
 @Composable

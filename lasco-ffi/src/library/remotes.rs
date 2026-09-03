@@ -32,7 +32,6 @@ struct FfiPushProgressObserver {
     sink: Box<dyn PushProgressSink>,
 }
 
-
 impl PushProgressObserver for FfiPushProgressObserver {
     fn media_upload_progress(&self, uploaded: usize, total: usize) {
         debug_assert!(total > 0);
