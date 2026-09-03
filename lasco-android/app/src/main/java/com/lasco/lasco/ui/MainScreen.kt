@@ -37,6 +37,8 @@ import com.lasco.lasco.ui.components.AppTab
 import com.lasco.lasco.ui.components.FloatingTabBar
 import com.lasco.lasco.ui.manage.ManageScreen
 import com.lasco.lasco.ui.media.MediaDetailKey
+import com.lasco.lasco.ui.media.MediaDetailInitialThumbnail
+import com.lasco.lasco.ui.media.MediaDetailThumbnailHandoff
 import com.lasco.lasco.ui.media.MediaDetailScreen
 import com.lasco.lasco.ui.media.MediaDetailSource
 import com.lasco.lasco.ui.media.DetailTarget
@@ -63,6 +65,7 @@ fun MainScreen(
     onDeleteLibrary: () -> Unit = {},
 ) {
     var tab by remember { mutableStateOf(AppTab.Home) }
+    val detailThumbnailHandoff = remember { MediaDetailThumbnailHandoff() }
     val homeBackStack = rememberNavBackStack(HomeKey)
     val albumsBackStack = rememberNavBackStack(AlbumKey(null))
     val colors = LascoTheme.colors
@@ -125,7 +128,8 @@ fun MainScreen(
                             entry<HomeKey> {
                                 RecentMediaScreen(
                                     modifier = Modifier.fillMaxSize(),
-                                    onOpenMedia = { position, mediaId, showingOrphans ->
+                                    onOpenMedia = { position, mediaId, showingOrphans, thumbnail ->
+                                        detailThumbnailHandoff.offer(thumbnail?.let { MediaDetailInitialThumbnail(mediaId, it) })
                                         homeBackStack.add(
                                             MediaDetailKey(
                                                 if (showingOrphans) MediaDetailSource.OrphansByDate else MediaDetailSource.HomeByDate,
@@ -142,6 +146,7 @@ fun MainScreen(
                                     source = key.source,
                                     startPosition = key.startPosition,
                                     expectedTarget = key.expectedTarget,
+                                    initialThumbnail = detailThumbnailHandoff.take(),
                                     onBack = { homeBackStack.removeLastOrNull() },
                                     onOpenAlbum = { openAlbum(it) },
                                     modifier = Modifier.fillMaxSize(),
@@ -153,6 +158,7 @@ fun MainScreen(
                         backStack = albumsBackStack,
                         modifier = Modifier.fillMaxSize(),
                         onOpenAlbum = { openAlbum(it) },
+                        thumbnailHandoff = detailThumbnailHandoff,
                         onPickerVisibleChange = { isAlbumPickerVisible = it },
                     )
                     AppTab.Status -> StatusScreen(modifier = Modifier.fillMaxSize())

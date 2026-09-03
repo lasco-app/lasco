@@ -140,6 +140,7 @@ fun MediaDetailScreen(
     source: MediaDetailSource,
     startPosition: Int,
     expectedTarget: DetailTarget,
+    initialThumbnail: MediaDetailInitialThumbnail? = null,
     onBack: () -> Unit,
     onOpenAlbum: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -236,6 +237,7 @@ fun MediaDetailScreen(
                     repo = repo,
                     isActive = isActive,
                     liveVideoItem = liveVideoItem,
+                    initialThumbnail = initialThumbnail?.takeIf { it.mediaId == displayItem.mediaId }?.bitmap,
                     modifier = Modifier.fillMaxSize(),
                 )
             } else {
@@ -486,6 +488,7 @@ private fun MediaPageContent(
     repo: LibraryRepository,
     isActive: Boolean,
     liveVideoItem: FfiMediaItem?,
+    initialThumbnail: ImageBitmap?,
     modifier: Modifier = Modifier,
 ) {
     val videoItem = when {
@@ -497,14 +500,14 @@ private fun MediaPageContent(
         if (videoItem != null) {
             VideoCell(item = videoItem, repo = repo, isActive = isActive)
         } else {
-            ImageCell(item = item, repo = repo)
+            ImageCell(item = item, repo = repo, initialThumbnail = initialThumbnail)
         }
     }
 }
 
 @Composable
-private fun ImageCell(item: FfiMediaItem, repo: LibraryRepository) {
-    var thumbnail by remember(item.mediaId) { mutableStateOf<ImageBitmap?>(null) }
+private fun ImageCell(item: FfiMediaItem, repo: LibraryRepository, initialThumbnail: ImageBitmap?) {
+    var thumbnail by remember(item.mediaId) { mutableStateOf(initialThumbnail) }
     var fullImage by remember(item.mediaId) { mutableStateOf<ImageBitmap?>(null) }
 
     BoxWithConstraints(
@@ -516,9 +519,11 @@ private fun ImageCell(item: FfiMediaItem, repo: LibraryRepository) {
         val targetHeightPx = with(density) { maxHeight.roundToPx().coerceAtLeast(1) }
 
         LaunchedEffect(item.mediaId, targetWidthPx, targetHeightPx) {
-            thumbnail = repo.mediaThumbnail(item.mediaId)?.let { bytes ->
-                withContext(ImageDecodeDispatcher) {
-                    decodeSampledBitmap(bytes, targetWidthPx, targetHeightPx)?.asImageBitmap()
+            if (thumbnail == null) {
+                thumbnail = repo.mediaThumbnail(item.mediaId)?.let { bytes ->
+                    withContext(ImageDecodeDispatcher) {
+                        decodeSampledBitmap(bytes, targetWidthPx, targetHeightPx)?.asImageBitmap()
+                    }
                 }
             }
             fullImage = repo.mediaBytes(item.mediaId)?.let { bytes ->

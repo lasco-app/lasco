@@ -37,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -52,6 +53,7 @@ import com.lasco.lasco.ui.components.LascoTextInputDialog
 import com.lasco.lasco.ui.components.MediaThumbnail
 import com.lasco.lasco.ui.components.ThumbnailPickerDialog
 import com.lasco.lasco.ui.media.DetailTarget
+import com.lasco.lasco.ui.media.MediaDetailInitialThumbnail
 import com.lasco.lasco.ui.theme.LascoTheme
 import kotlinx.coroutines.launch
 import uniffi.lasco_ffi.FfiAlbum
@@ -87,7 +89,7 @@ fun AlbumListScreen(
     backLabel: String? = null,
     onBack: (() -> Unit)? = null,
     onOpenChild: (FfiAlbum) -> Unit = {},
-    onOpenMedia: (position: Int, ascending: Boolean, target: DetailTarget) -> Unit = { _, _, _ -> },
+    onOpenMedia: (position: Int, ascending: Boolean, target: DetailTarget, thumbnail: MediaDetailInitialThumbnail?) -> Unit = { _, _, _, _ -> },
     pickerState: AlbumPickerState? = null,
     onPickerVisibleChange: (Boolean) -> Unit = {},
     viewModel: AlbumViewModel = viewModel(
@@ -373,7 +375,7 @@ fun AlbumListScreen(
                         }
                     },
                     onAlbumLongPress = { child -> if (pickerState == null) { selectedAlbumNames += child.albumId to child.name; toggleAlbum(child.albumId) } },
-                    onItemTap = { indexed ->
+                    onItemTap = { indexed, thumbnail ->
                         val item = indexed.item
                         val mediaId = item.media?.mediaId
                         val groupId = item.group?.groupId
@@ -383,7 +385,7 @@ fun AlbumListScreen(
                             pickerState != null -> Unit
                             isSelecting && mediaId != null -> toggleMedia(mediaId)
                             isSelecting && groupId != null -> toggleGroup(groupId)
-                            else -> onOpenMedia(indexed.position, sortAscending, indexed.item.toDetailTarget())
+                            else -> onOpenMedia(indexed.position, sortAscending, indexed.item.toDetailTarget(), thumbnail)
                         }
                     },
                     onItemLongPress = { item ->
@@ -689,7 +691,7 @@ private fun AlbumEntriesGrid(
     pickerState: AlbumPickerState? = null,
     onAlbumTap: (FfiAlbum) -> Unit,
     onAlbumLongPress: (FfiAlbum) -> Unit,
-    onItemTap: (AlbumEntry.Item) -> Unit,
+    onItemTap: (AlbumEntry.Item, MediaDetailInitialThumbnail?) -> Unit,
     onItemLongPress: (uniffi.lasco_ffi.FfiAlbumItem) -> Unit,
 ) {
     val colors = LascoTheme.colors
@@ -718,10 +720,10 @@ private fun AlbumEntriesGrid(
                     val dimmed = pickerState != null && (item.group != null || item.media?.mediaId in pickerState.disabledIds)
                     if (isGridLayout) AlbumItemCell(
                         item, repo, isSelected = item.media?.mediaId in selectedMediaIds || item.group?.groupId in selectedGroupIds,
-                        dimmed = dimmed, onTap = { onItemTap(entry) }, onLongPress = { onItemLongPress(item) },
+                        dimmed = dimmed, onTap = { thumbnail -> onItemTap(entry, thumbnail) }, onLongPress = { onItemLongPress(item) },
                     ) else AlbumItemRow(
                         item, repo, isSelected = item.media?.mediaId in selectedMediaIds || item.group?.groupId in selectedGroupIds,
-                        dimmed = dimmed, onTap = { onItemTap(entry) }, onLongPress = { onItemLongPress(item) },
+                        dimmed = dimmed, onTap = { thumbnail -> onItemTap(entry, thumbnail) }, onLongPress = { onItemLongPress(item) },
                     )
                 }
                 AlbumEntry.DisconnectedHeader -> Text(
@@ -788,20 +790,27 @@ private fun AlbumItemCell(
     modifier: Modifier = Modifier,
     isSelected: Boolean,
     dimmed: Boolean = false,
-    onTap: () -> Unit,
+    onTap: (MediaDetailInitialThumbnail?) -> Unit,
     onLongPress: () -> Unit,
 ) {
     val colors = LascoTheme.colors
+    val thumbnailMediaId = item.media?.mediaId ?: item.group?.mediaIds?.firstOrNull()
+    var thumbnail by remember(thumbnailMediaId) { mutableStateOf<ImageBitmap?>(null) }
     Box(
         modifier = modifier
             .background(colors.surfaceAlt)
             .then(if (dimmed) Modifier.alpha(0.4f) else Modifier)
-            .combinedClickable(enabled = !dimmed, onClick = onTap, onLongClick = onLongPress),
+            .combinedClickable(
+                enabled = !dimmed,
+                onClick = { onTap(thumbnailMediaId?.let { id -> thumbnail?.let { MediaDetailInitialThumbnail(id, it) } }) },
+                onLongClick = onLongPress,
+            ),
     ) {
         MediaThumbnail(
-            mediaId = item.media?.mediaId ?: item.group?.mediaIds?.firstOrNull(),
+            mediaId = thumbnailMediaId,
             repo = repo,
             modifier = Modifier.fillMaxWidth(),
+            onBitmapLoaded = { thumbnail = it },
         )
         item.group?.let { g ->
             Text(
@@ -829,22 +838,29 @@ private fun AlbumItemRow(
     repo: LibraryRepository,
     isSelected: Boolean,
     dimmed: Boolean = false,
-    onTap: () -> Unit,
+    onTap: (MediaDetailInitialThumbnail?) -> Unit,
     onLongPress: () -> Unit,
 ) {
     val colors = LascoTheme.colors
+    val thumbnailMediaId = item.media?.mediaId ?: item.group?.mediaIds?.firstOrNull()
+    var thumbnail by remember(thumbnailMediaId) { mutableStateOf<ImageBitmap?>(null) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .then(if (dimmed) Modifier.alpha(0.4f) else Modifier)
-            .combinedClickable(enabled = !dimmed, onClick = onTap, onLongClick = onLongPress)
+            .combinedClickable(
+                enabled = !dimmed,
+                onClick = { onTap(thumbnailMediaId?.let { id -> thumbnail?.let { MediaDetailInitialThumbnail(id, it) } }) },
+                onLongClick = onLongPress,
+            )
             .padding(vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         MediaThumbnail(
-            mediaId = item.media?.mediaId ?: item.group?.mediaIds?.firstOrNull(),
+            mediaId = thumbnailMediaId,
             repo = repo,
             modifier = Modifier.size(40.dp),
+            onBitmapLoaded = { thumbnail = it },
         )
         Text(
             text = item.media?.name ?: item.media?.filenameOriginal ?: item.group?.let { "Group (${it.mediaIds.size})" } ?: "",

@@ -1,9 +1,28 @@
 package com.lasco.lasco.ui.media
 
 import androidx.navigation3.runtime.NavKey
+import androidx.compose.ui.graphics.ImageBitmap
 import kotlinx.serialization.Serializable
 import uniffi.lasco_ffi.FfiGroup
 import uniffi.lasco_ffi.FfiMediaItem
+import uniffi.lasco_ffi.FfiMediaUuid
+
+/** Non-persisted bitmap passed only from a tapped grid cell into Media Detail. */
+data class MediaDetailInitialThumbnail(
+    val mediaId: FfiMediaUuid,
+    val bitmap: ImageBitmap,
+)
+
+/** Holds one launch preview outside serialized navigation state, then releases it. */
+class MediaDetailThumbnailHandoff {
+    private var thumbnail: MediaDetailInitialThumbnail? = null
+
+    fun offer(value: MediaDetailInitialThumbnail?) {
+        thumbnail = value
+    }
+
+    fun take(): MediaDetailInitialThumbnail? = thumbnail.also { thumbnail = null }
+}
 
 /**
  * One page in the Media Detail pager, mirrors Swift's AlbumItem. Home only
