@@ -833,6 +833,22 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     func getMediaBytesAsync(mediaId: FfiMediaUuid, appSupportDir: String?) async throws  -> Data
     
     /**
+     * Returns Rust-owned plaintext media bytes without serializing them into
+     * a UniFFI byte array. The returned object's lifetime owns the backing
+     * allocation: platform code must retain it while reading `data_pointer`
+     * and close/destroy it as soon as the synchronous consumer is finished.
+     *
+     * Android uses this for image decoding on API 28 and newer, where
+     * `ImageDecoder` accepts a direct `ByteBuffer` view of the native bytes.
+     *
+     * # Errors
+     *
+     * Returns an error if the ID is invalid, no local or configured remote
+     * blob is available, or a remote read, decryption, or cache write fails.
+     */
+    func getMediaBytesNativeAsync(mediaId: FfiMediaUuid, appSupportDir: String?) async throws  -> FfiNativeMediaBytes
+    
+    /**
      * Returns the ordered subset of remotes used to retrieve uncached originals.
      *
      * # Errors
@@ -943,6 +959,18 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     func loadLocalState() throws 
     
     func localStateStats()  -> FfiLocalStateStats
+    
+    /**
+     * Materializes decrypted media to an app-private destination without
+     * returning the full plaintext as a Kotlin byte array. Android uses this
+     * for video playback and export, where videos can be far too large for a
+     * safe FFI byte-array result.
+     *
+     * The caller owns the destination and is responsible for retaining or
+     * evicting it. On a remote cache miss this method downloads and caches
+     * the encrypted Lasco blob before writing the plaintext destination.
+     */
+    func materializeMediaToPathAsync(mediaId: FfiMediaUuid, appSupportDir: String?, destinationPath: String) async throws  -> String
     
     /**
      * # Errors
@@ -1845,6 +1873,37 @@ nonisolated open func getMediaBytesAsync(mediaId: FfiMediaUuid, appSupportDir: S
 }
     
     /**
+     * Returns Rust-owned plaintext media bytes without serializing them into
+     * a UniFFI byte array. The returned object's lifetime owns the backing
+     * allocation: platform code must retain it while reading `data_pointer`
+     * and close/destroy it as soon as the synchronous consumer is finished.
+     *
+     * Android uses this for image decoding on API 28 and newer, where
+     * `ImageDecoder` accepts a direct `ByteBuffer` view of the native bytes.
+     *
+     * # Errors
+     *
+     * Returns an error if the ID is invalid, no local or configured remote
+     * blob is available, or a remote read, decryption, or cache write fails.
+     */
+nonisolated open func getMediaBytesNativeAsync(mediaId: FfiMediaUuid, appSupportDir: String?)async throws  -> FfiNativeMediaBytes  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_lasco_ffi_fn_method_ffilibrary_get_media_bytes_native_async(
+                    self.uniffiClonePointer(),
+                    FfiConverterTypeFfiMediaUuid_lower(mediaId),FfiConverterOptionString.lower(appSupportDir)
+                )
+            },
+            pollFunc: ffi_lasco_ffi_rust_future_poll_pointer,
+            completeFunc: ffi_lasco_ffi_rust_future_complete_pointer,
+            freeFunc: ffi_lasco_ffi_rust_future_free_pointer,
+            liftFunc: FfiConverterTypeFfiNativeMediaBytes_lift,
+            errorHandler: FfiConverterTypeLascoError_lift
+        )
+}
+    
+    /**
      * Returns the ordered subset of remotes used to retrieve uncached originals.
      *
      * # Errors
@@ -2162,6 +2221,33 @@ nonisolated open func localStateStats() -> FfiLocalStateStats  {
     uniffi_lasco_ffi_fn_method_ffilibrary_local_state_stats(self.uniffiClonePointer(),$0
     )
 })
+}
+    
+    /**
+     * Materializes decrypted media to an app-private destination without
+     * returning the full plaintext as a Kotlin byte array. Android uses this
+     * for video playback and export, where videos can be far too large for a
+     * safe FFI byte-array result.
+     *
+     * The caller owns the destination and is responsible for retaining or
+     * evicting it. On a remote cache miss this method downloads and caches
+     * the encrypted Lasco blob before writing the plaintext destination.
+     */
+nonisolated open func materializeMediaToPathAsync(mediaId: FfiMediaUuid, appSupportDir: String?, destinationPath: String)async throws  -> String  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_lasco_ffi_fn_method_ffilibrary_materialize_media_to_path_async(
+                    self.uniffiClonePointer(),
+                    FfiConverterTypeFfiMediaUuid_lower(mediaId),FfiConverterOptionString.lower(appSupportDir),FfiConverterString.lower(destinationPath)
+                )
+            },
+            pollFunc: ffi_lasco_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_lasco_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_lasco_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterString.lift,
+            errorHandler: FfiConverterTypeLascoError_lift
+        )
 }
     
     /**
@@ -2749,6 +2835,169 @@ nonisolated public func FfiConverterTypeFfiLibrary_lift(_ pointer: UnsafeMutable
 #endif
 nonisolated public func FfiConverterTypeFfiLibrary_lower(_ value: FfiLibrary) -> UnsafeMutableRawPointer {
     return FfiConverterTypeFfiLibrary.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Rust-owned plaintext bytes exposed as a borrowed native-memory view.
+ *
+ * Clients may create their platform-native byte view from `data_pointer` and
+ * `len`, but that view is valid only while this opaque object is retained.
+ * Destroying the UniFFI object drops the backing `Vec` in Rust. This avoids
+ * making a second full-size allocation to serialize the bytes into a UniFFI
+ * `RustBuffer` and then a platform byte array.
+ */
+nonisolated public protocol FfiNativeMediaBytesProtocol: AnyObject, Sendable {
+    
+    /**
+     * Address of the first byte. It is an opaque native address, not an
+     * ownership handle; clients must not free it directly.
+     */
+    func dataPointer()  -> UInt64
+    
+    /**
+     * Number of bytes addressable from `data_pointer`.
+     */
+    func len()  -> UInt64
+    
+}
+/**
+ * Rust-owned plaintext bytes exposed as a borrowed native-memory view.
+ *
+ * Clients may create their platform-native byte view from `data_pointer` and
+ * `len`, but that view is valid only while this opaque object is retained.
+ * Destroying the UniFFI object drops the backing `Vec` in Rust. This avoids
+ * making a second full-size allocation to serialize the bytes into a UniFFI
+ * `RustBuffer` and then a platform byte array.
+ */
+nonisolated open class FfiNativeMediaBytes: FfiNativeMediaBytesProtocol, @unchecked Sendable {
+    fileprivate let pointer: UnsafeMutableRawPointer!
+
+    /// Used to instantiate a [FFIObject] without an actual pointer, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoPointer {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
+        self.pointer = pointer
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noPointer: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing [Pointer] the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noPointer: NoPointer) {
+        self.pointer = nil
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiClonePointer() -> UnsafeMutableRawPointer {
+        return try! rustCall { uniffi_lasco_ffi_fn_clone_ffinativemediabytes(self.pointer, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        guard let pointer = pointer else {
+            return
+        }
+
+        try! rustCall { uniffi_lasco_ffi_fn_free_ffinativemediabytes(pointer, $0) }
+    }
+
+    
+
+    
+    /**
+     * Address of the first byte. It is an opaque native address, not an
+     * ownership handle; clients must not free it directly.
+     */
+nonisolated open func dataPointer() -> UInt64  {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
+    uniffi_lasco_ffi_fn_method_ffinativemediabytes_data_pointer(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Number of bytes addressable from `data_pointer`.
+     */
+nonisolated open func len() -> UInt64  {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
+    uniffi_lasco_ffi_fn_method_ffinativemediabytes_len(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public struct FfiConverterTypeFfiNativeMediaBytes: FfiConverter {
+
+    typealias FfiType = UnsafeMutableRawPointer
+    typealias SwiftType = FfiNativeMediaBytes
+
+    public static func lift(_ pointer: UnsafeMutableRawPointer) throws -> FfiNativeMediaBytes {
+        return FfiNativeMediaBytes(unsafeFromRawPointer: pointer)
+    }
+
+    public static func lower(_ value: FfiNativeMediaBytes) -> UnsafeMutableRawPointer {
+        return value.uniffiClonePointer()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiNativeMediaBytes {
+        let v: UInt64 = try readInt(&buf)
+        // The Rust code won't compile if a pointer won't fit in a UInt64.
+        // We have to go via `UInt` because that's the thing that's the size of a pointer.
+        let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: v))
+        if (ptr == nil) {
+            throw UniffiInternalError.unexpectedNullPointer
+        }
+        return try lift(ptr!)
+    }
+
+    public static func write(_ value: FfiNativeMediaBytes, into buf: inout [UInt8]) {
+        // This fiddling is because `Int` is the thing that's the same size as a pointer.
+        // The Rust code won't compile if a pointer won't fit in a `UInt64`.
+        writeInt(&buf, UInt64(bitPattern: Int64(Int(bitPattern: lower(value)))))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public func FfiConverterTypeFfiNativeMediaBytes_lift(_ pointer: UnsafeMutableRawPointer) throws -> FfiNativeMediaBytes {
+    return try FfiConverterTypeFfiNativeMediaBytes.lift(pointer)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public func FfiConverterTypeFfiNativeMediaBytes_lower(_ value: FfiNativeMediaBytes) -> UnsafeMutableRawPointer {
+    return FfiConverterTypeFfiNativeMediaBytes.lower(value)
 }
 
 
@@ -4876,6 +5125,8 @@ nonisolated public enum LascoError: Swift.Error {
     )
     case MissingMediaOnConfiguredSources(mediaIds: [FfiMediaId]
     )
+    case MediaTooLarge(sizeBytes: UInt64, limitBytes: UInt64
+    )
     case CrdtRecoveryAvailable
     case Storage(msg: String
     )
@@ -4909,11 +5160,15 @@ nonisolated public struct FfiConverterTypeLascoError: FfiConverterRustBuffer {
         case 6: return .MissingMediaOnConfiguredSources(
             mediaIds: try FfiConverterSequenceTypeFfiMediaId.read(from: &buf)
             )
-        case 7: return .CrdtRecoveryAvailable
-        case 8: return .Storage(
+        case 7: return .MediaTooLarge(
+            sizeBytes: try FfiConverterUInt64.read(from: &buf), 
+            limitBytes: try FfiConverterUInt64.read(from: &buf)
+            )
+        case 8: return .CrdtRecoveryAvailable
+        case 9: return .Storage(
             msg: try FfiConverterString.read(from: &buf)
             )
-        case 9: return .Other(
+        case 10: return .Other(
             msg: try FfiConverterString.read(from: &buf)
             )
 
@@ -4955,17 +5210,23 @@ nonisolated public struct FfiConverterTypeLascoError: FfiConverterRustBuffer {
             FfiConverterSequenceTypeFfiMediaId.write(mediaIds, into: &buf)
             
         
-        case .CrdtRecoveryAvailable:
+        case let .MediaTooLarge(sizeBytes,limitBytes):
             writeInt(&buf, Int32(7))
+            FfiConverterUInt64.write(sizeBytes, into: &buf)
+            FfiConverterUInt64.write(limitBytes, into: &buf)
+            
+        
+        case .CrdtRecoveryAvailable:
+            writeInt(&buf, Int32(8))
         
         
         case let .Storage(msg):
-            writeInt(&buf, Int32(8))
+            writeInt(&buf, Int32(9))
             FfiConverterString.write(msg, into: &buf)
             
         
         case let .Other(msg):
-            writeInt(&buf, Int32(9))
+            writeInt(&buf, Int32(10))
             FfiConverterString.write(msg, into: &buf)
             
         }
@@ -6041,6 +6302,9 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_bytes_async() != 39230) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_bytes_native_async() != 62650) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_source_order() != 6486) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -6108,6 +6372,9 @@ nonisolated private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_local_state_stats() != 38463) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_materialize_media_to_path_async() != 3896) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_media_album_ids() != 37108) {
@@ -6216,6 +6483,12 @@ nonisolated private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_user_list() != 50139) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffinativemediabytes_data_pointer() != 7268) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffinativemediabytes_len() != 2741) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_constructor_ffilibrary_open() != 55421) {

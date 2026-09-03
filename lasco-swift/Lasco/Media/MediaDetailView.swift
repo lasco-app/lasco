@@ -788,7 +788,7 @@ struct MediaDetailView: View {
             thumbnails[mediaId] = img
         }
         if fullImages[mediaId] == nil,
-           let data = try? await repository.mediaBytesAsync(mediaID: mediaId),
+           let data = try? await repository.nativeMediaBytesAsync(mediaID: mediaId),
            let img = Image(data: data) {
             fullImages[mediaId] = img
         }

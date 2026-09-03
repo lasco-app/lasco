@@ -59,6 +59,7 @@ protocol LibraryRepositoryProtocol: Sendable {
     func mediaBytes(mediaID: FfiMediaUuid) async throws -> Data
     func thumbnailAsync(mediaID: FfiMediaUuid) async throws -> Data
     func mediaBytesAsync(mediaID: FfiMediaUuid) async throws -> Data
+    func nativeMediaBytesAsync(mediaID: FfiMediaUuid) async throws -> Data
 
     func renameMedia(id: FfiMediaUuid, name: String?) async throws
     func deleteMedia(id: FfiMediaUuid) async throws
@@ -113,6 +114,7 @@ protocol LibraryRepositoryProtocol: Sendable {
 
 enum LibraryRepositoryError: LocalizedError {
     case closed
+    case invalidNativeMediaBuffer
     case cloudRemoteAlreadyAssociated
     case cloudSignOutRequiresRemoteRemoval
     case cloudAlreadyConnected
@@ -121,6 +123,8 @@ enum LibraryRepositoryError: LocalizedError {
         switch self {
         case .closed:
             "The library session is closed."
+        case .invalidNativeMediaBuffer:
+            "The native media buffer is invalid."
         case .cloudRemoteAlreadyAssociated:
             "Lasco Cloud storage is already associated with another library"
         case .cloudSignOutRequiresRemoteRemoval:
@@ -439,6 +443,28 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
     func mediaBytesAsync(mediaID: FfiMediaUuid) async throws -> Data {
         try ensureOpen()
         return try await library.getMediaBytesAsync(mediaId: mediaID, appSupportDir: appSupportDirectory)
+    }
+
+    /// Returns a no-copy Foundation view of Rust-owned media bytes. Foundation
+    /// retains the UniFFI object through its custom deallocator, so Rust frees
+    /// the backing Vec only after UIImage/NSImage has stopped using the data.
+    func nativeMediaBytesAsync(mediaID: FfiMediaUuid) async throws -> Data {
+        try ensureOpen()
+        let nativeBytes = try await library.getMediaBytesNativeAsync(
+            mediaId: mediaID,
+            appSupportDir: appSupportDirectory
+        )
+        let length = nativeBytes.len()
+        guard length > 0, length <= UInt64(Int.max),
+              let pointer = UnsafeMutableRawPointer(bitPattern: UInt(nativeBytes.dataPointer())) else {
+            throw LibraryRepositoryError.invalidNativeMediaBuffer
+        }
+        return Data(bytesNoCopy: pointer, count: Int(length), deallocator: .custom { _, _ in
+            // UniFFI releases the Rust Arc in the opaque object's `deinit`.
+            // The custom deallocator owns this capture until Foundation is
+            // finished with the no-copy buffer.
+            withExtendedLifetime(nativeBytes) {}
+        })
     }
 
     func renameMedia(id: FfiMediaUuid, name: String?) async throws {
@@ -895,6 +921,7 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     func mediaBytes(mediaID: FfiMediaUuid) async throws -> Data { try await storage.mediaBytes(mediaID: mediaID) }
     func thumbnailAsync(mediaID: FfiMediaUuid) async throws -> Data { try await storage.thumbnailAsync(mediaID: mediaID) }
     func mediaBytesAsync(mediaID: FfiMediaUuid) async throws -> Data { try await storage.mediaBytesAsync(mediaID: mediaID) }
+    func nativeMediaBytesAsync(mediaID: FfiMediaUuid) async throws -> Data { try await storage.nativeMediaBytesAsync(mediaID: mediaID) }
     func renameMedia(id: FfiMediaUuid, name: String?) async throws { try await storage.renameMedia(id: id, name: name) }
     func deleteMedia(id: FfiMediaUuid) async throws { try await storage.deleteMedia(id: id) }
     func addMediaToAlbum(albumID: FfiAlbumUuid, mediaID: FfiMediaUuid) async throws { try await storage.addMediaToAlbum(albumID: albumID, mediaID: mediaID) }
