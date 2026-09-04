@@ -19,7 +19,7 @@ const ACCESS_TOKEN_SAFETY_MARGIN: Duration = Duration::minutes(2);
 pub struct LascoCloudAuthManager {
     base_url: String,
     client: reqwest::Client,
-    store: LascoCloudSessionStore,
+    store: Option<LascoCloudSessionStore>,
     state: RwLock<LascoCloudAuthState>,
     refresh_gate: Mutex<()>,
 }
@@ -95,14 +95,29 @@ impl LascoCloudAuthManager {
         Arc::new(Self {
             base_url: base_url.trim().trim_end_matches('/').to_string(),
             client: reqwest::Client::new(),
-            store: LascoCloudSessionStore::new(library_id),
+            store: Some(LascoCloudSessionStore::new(library_id)),
+            state: RwLock::new(LascoCloudAuthState::default()),
+            refresh_gate: Mutex::new(()),
+        })
+    }
+
+    /// Creates an in-memory session for discovering an existing Cloud library.
+    /// It must not be persisted because that library's id is not known yet.
+    pub fn new_ephemeral(base_url: String) -> Arc<Self> {
+        Arc::new(Self {
+            base_url: base_url.trim().trim_end_matches('/').to_string(),
+            client: reqwest::Client::new(),
+            store: None,
             state: RwLock::new(LascoCloudAuthState::default()),
             refresh_gate: Mutex::new(()),
         })
     }
 
     pub async fn restore(&self) -> Result<(), LascoCloudAuthError> {
-        let session = self.store.load().await?;
+        let session = match &self.store {
+            Some(store) => store.load().await?,
+            None => None,
+        };
         let mut state = self.state.write();
         state.session = session;
         state.generation = state.generation.wrapping_add(1);
@@ -230,7 +245,9 @@ impl LascoCloudAuthManager {
             state.session = None;
             state.generation = state.generation.wrapping_add(1);
         }
-        self.store.clear().await?;
+        if let Some(store) = &self.store {
+            store.clear().await?;
+        }
         Ok(())
     }
 
@@ -332,7 +349,9 @@ impl LascoCloudAuthManager {
         &self,
         session: StoredLascoCloudSession,
     ) -> Result<(), LascoCloudAuthError> {
-        self.store.replace(&session).await?;
+        if let Some(store) = &self.store {
+            store.replace(&session).await?;
+        }
         let mut state = self.state.write();
         state.session = Some(session);
         state.generation = state.generation.wrapping_add(1);

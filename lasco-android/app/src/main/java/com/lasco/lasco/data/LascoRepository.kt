@@ -1,6 +1,7 @@
 package com.lasco.lasco.data
 
 import android.content.Context
+import com.lasco.lasco.BuildConfig
 import com.lasco.lasco.LascoApp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -13,7 +14,9 @@ import uniffi.lasco_ffi.FfiCreateLibraryResult
 import uniffi.lasco_ffi.FfiLibrary
 import uniffi.lasco_ffi.FfiLibraryEntry
 import uniffi.lasco_ffi.FfiLibraryId
+import uniffi.lasco_ffi.FfiLascoCloudImportConfig
 import uniffi.lasco_ffi.ffiAddExistingLibraryS3
+import uniffi.lasco_ffi.ffiAddExistingLibraryLascoCloud
 import uniffi.lasco_ffi.ffiCreateLibrary
 import uniffi.lasco_ffi.ffiDeleteLibrary
 import uniffi.lasco_ffi.ffiOpenCached
@@ -106,6 +109,37 @@ class LascoRepository(
                 pathPrefix = pathPrefix,
                 accessKey = accessKey,
                 secretKey = secretKey,
+                appDir = appDir,
+            )
+        }
+        changes.emit(Unit)
+        return library
+    }
+
+    suspend fun addExistingLibraryLascoCloud(
+        nickname: String,
+        username: String,
+        password: String,
+        newUsername: String? = null,
+        newPassword: String? = null,
+        cloudBaseUrl: String,
+        cloudEmail: String,
+        cloudPassword: String,
+    ): FfiLibrary {
+        val library = withContext(Dispatchers.IO) {
+            ffiAddExistingLibraryLascoCloud(
+                config = FfiLascoCloudImportConfig(
+                    nickname = nickname,
+                    username = username,
+                    password = password,
+                    newUsername = newUsername,
+                    newPassword = newPassword,
+                    cloudBaseUrl = cloudBaseUrl,
+                    cloudEmail = cloudEmail,
+                    cloudPassword = cloudPassword,
+                    platform = "android",
+                    appVersion = BuildConfig.VERSION_NAME,
+                ),
                 appDir = appDir,
             )
         }
