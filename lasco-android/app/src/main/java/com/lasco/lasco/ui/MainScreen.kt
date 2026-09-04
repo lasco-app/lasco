@@ -1,5 +1,6 @@
 package com.lasco.lasco.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.animation.core.tween
@@ -35,6 +36,7 @@ import com.lasco.lasco.ui.album.AlbumKey
 import com.lasco.lasco.ui.album.AlbumsScreen
 import com.lasco.lasco.ui.components.AppTab
 import com.lasco.lasco.ui.components.FloatingTabBar
+import com.lasco.lasco.ui.components.LascoInfoDialog
 import com.lasco.lasco.ui.manage.ManageScreen
 import com.lasco.lasco.ui.media.MediaDetailKey
 import com.lasco.lasco.ui.media.MediaDetailInitialThumbnail
@@ -70,10 +72,13 @@ fun MainScreen(
     val albumsBackStack = rememberNavBackStack(AlbumKey(null))
     val colors = LascoTheme.colors
     val context = LocalContext.current
-    val releasePolicy by (context.applicationContext as LascoApp).releasePolicy.decision.collectAsStateWithLifecycle()
+    val app = context.applicationContext as LascoApp
+    val releasePolicy by app.releasePolicy.decision.collectAsStateWithLifecycle()
+    val syncState = app.librarySession?.sync?.syncState?.collectAsStateWithLifecycle()?.value
     val showUpdateBanner =
         (tab == AppTab.Home || tab == AppTab.Albums) && releasePolicy?.updateAvailable == true
     var isAlbumPickerVisible by remember { mutableStateOf(false) }
+    var showScheduledPushExitDialog by remember { mutableStateOf(false) }
 
     fun openAlbum(albumId: String) {
         albumsBackStack.clear()
@@ -84,6 +89,12 @@ fun MainScreen(
 
     val activeBackStack = if (tab == AppTab.Home) homeBackStack else albumsBackStack
     val showTabBar = activeBackStack.lastOrNull() !is MediaDetailKey && !isAlbumPickerVisible
+    val isAtAppExit = when (tab) {
+        AppTab.Home -> homeBackStack.size == 1
+        AppTab.Albums -> albumsBackStack.size == 1
+        AppTab.Status, AppTab.Manage -> true
+    }
+    val pushScheduled = syncState?.pushDeadlineElapsedMs != null
 
     Box(modifier = modifier.fillMaxSize().background(colors.bg)) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -180,5 +191,20 @@ fun MainScreen(
                     .padding(horizontal = 44.dp, vertical = 24.dp),
             )
         }
+    }
+
+    // Only intercept the final Back gesture. Navigating out of a media detail or album still
+    // behaves normally. Status gives the user immediate visibility of the planned sync.
+    BackHandler(enabled = pushScheduled && isAtAppExit) {
+        tab = AppTab.Status
+        showScheduledPushExitDialog = true
+    }
+
+    if (showScheduledPushExitDialog) {
+        LascoInfoDialog(
+            title = "Sync planned",
+            message = "A sync is planned shortly. Keep Lasco open until it starts.",
+            onDismiss = { showScheduledPushExitDialog = false },
+        )
     }
 }
