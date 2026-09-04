@@ -54,7 +54,7 @@ android {
             optimization {
                 enable = false
             }
-            buildConfigField("String", "LASCO_CLOUD_URL", "\"https://api.lasco.cloud\"")
+            buildConfigField("String", "LASCO_CLOUD_URL", "\"https://cloud.getlasco.app\"")
         }
     }
     compileOptions {
