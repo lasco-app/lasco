@@ -54,9 +54,11 @@ pub(super) fn tier_needs_compaction(file_count: usize) -> bool {
 /// inspecting the file remotely can tell who holds it and since when.
 /// There is no automatic takeover of a held lock. If a lock is left behind by a
 /// crashed or killed client, it must be deleted manually before compaction can proceed.
-#[derive(Serialize, Deserialize)]
-struct CompactionLock {
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct CompactionLockRecord {
     client_id: String,
+    #[serde(default)]
+    lease_id: Option<uuid::Uuid>,
     created_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -70,15 +72,22 @@ pub struct CompactionLockInfo {
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
-async fn read_lock(storage: &StorageRead<'_>) -> Result<Option<CompactionLockInfo>> {
+async fn read_lock_record(storage: &StorageRead<'_>) -> Result<Option<CompactionLockRecord>> {
     let bytes = match storage.get(LOCK_KEY).await {
         Ok(bytes) => bytes,
         Err(crate::storage::StorageError::NotFound) => return Ok(None),
         Err(error) => return Err(SyncError::RemoteUnreachable(error)),
     };
-    let lock: CompactionLock = serde_json::from_slice(&bytes).map_err(|error| {
+    let lock: CompactionLockRecord = serde_json::from_slice(&bytes).map_err(|error| {
         SyncError::RemoteOperationInvalid(format!("invalid compaction lock: {error}"))
     })?;
+    Ok(Some(lock))
+}
+
+async fn read_lock(storage: &StorageRead<'_>) -> Result<Option<CompactionLockInfo>> {
+    let Some(lock) = read_lock_record(storage).await? else {
+        return Ok(None);
+    };
     Ok(Some(CompactionLockInfo {
         owner_device_id: lock.client_id,
         created_at: lock.created_at,
@@ -112,7 +121,14 @@ pub async fn remove_lock_owned_by(
 /// [`release_lock`]. [`compact_tier`] requires a reference to one, so the type system rules out
 /// calling it without the lock held.
 pub(super) struct CompactionLockToken {
-    _private: (),
+    lock: CompactionLockRecord,
+}
+
+async fn lock_is_held(storage: &StorageRead<'_>, token: &CompactionLockToken) -> Result<bool> {
+    Ok(read_lock_record(storage)
+        .await?
+        .as_ref()
+        .is_some_and(|lock| lock == &token.lock))
 }
 
 /// Tries to acquire the compaction lock.
@@ -124,25 +140,42 @@ pub(super) struct CompactionLockToken {
 /// There is no automatic takeover of a lock left behind by a crashed or killed client.
 /// A stuck lock must be deleted manually from remote storage before compaction can proceed.
 ///
-/// Returns `Some` token if the lock was acquired.
-/// Returns `None` if the lock is already held by another client.
+/// This is a best-effort lock for stores without an atomic conditional write. The write is
+/// confirmed with a unique lease ID, which rejects a contender that was overwritten before it
+/// observed ownership; it cannot prevent a contender that writes after that confirmation.
+///
+/// Returns `Some` token if the lock was acquired and confirmed.
+/// Returns `None` if the lock is already held or ownership could not be confirmed.
 pub(super) async fn try_acquire_lock(
     storage: &StorageReadWrite<'_>,
     device_id: crate::crdt::DeviceId,
 ) -> Result<Option<CompactionLockToken>> {
-    let key = LOCK_KEY;
-    let payload = serde_json::to_vec(&CompactionLock {
-        client_id: device_id.to_string(),
-        created_at: chrono::Utc::now(),
-    })
-    .expect("CompactionLock is always serializable");
+    if storage
+        .exists(LOCK_KEY)
+        .await
+        .map_err(SyncError::RemoteUnreachable)?
+    {
+        return Ok(None);
+    }
 
-    let acquired = storage
-        .put_atomic(key, &payload, AtomicWriteMode::CreateIfAbsent)
+    let lock = CompactionLockRecord {
+        client_id: device_id.to_string(),
+        lease_id: Some(uuid::Uuid::new_v4()),
+        created_at: chrono::Utc::now(),
+    };
+    let payload = serde_json::to_vec(&lock).expect("CompactionLockRecord is always serializable");
+
+    storage
+        .put_atomic(LOCK_KEY, &payload, AtomicWriteMode::Replace)
         .await
         .map_err(SyncError::RemoteUnreachable)?;
 
-    Ok(acquired.then_some(CompactionLockToken { _private: () }))
+    Ok(lock_is_held(
+        &storage.as_read(),
+        &CompactionLockToken { lock: lock.clone() },
+    )
+    .await?
+    .then_some(CompactionLockToken { lock }))
 }
 
 /// Releases the compaction lock.
@@ -152,8 +185,11 @@ pub(super) async fn try_acquire_lock(
 /// afterwards.
 pub(super) async fn release_lock(
     storage: &StorageReadWrite<'_>,
-    _token: CompactionLockToken,
+    token: CompactionLockToken,
 ) -> Result<()> {
+    if !lock_is_held(&storage.as_read(), &token).await? {
+        return Ok(());
+    }
     storage
         .delete(LOCK_KEY)
         .await
@@ -187,7 +223,7 @@ pub(super) async fn compact_tier(
     master_key: &MasterKey,
     tier: u8,
     last_known_state: &LastKnownState,
-    _lock: &CompactionLockToken,
+    lock: &CompactionLockToken,
 ) -> Result<CompactionResult> {
     // Collect all tier-N source files.
     let sources: Vec<RemoteOpFile> = last_known_state
@@ -229,6 +265,11 @@ pub(super) async fn compact_tier(
     let blob = crate::operations::encrypt_compaction_file(master_key, &new_uuid, &new_file)
         .map_err(map_op_err)?;
     let bytes = blob.to_bytes();
+    if !lock_is_held(&storage.as_read(), lock).await? {
+        return Err(SyncError::RemoteOperationInvalid(
+            "compaction lock ownership was lost".to_string(),
+        ));
+    }
     op_io::write_compaction_bytes(storage, &new_key, &bytes)
         .await
         .map_err(map_op_err)?;
@@ -246,6 +287,11 @@ pub(super) async fn compact_tier(
             op_count,
         } = source;
         let key = format!("operations/{uuid}.op{file_tier}_{op_count}");
+        if !lock_is_held(&storage.as_read(), lock).await? {
+            return Err(SyncError::RemoteOperationInvalid(
+                "compaction lock ownership was lost".to_string(),
+            ));
+        }
         storage
             .delete(&key)
             .await
@@ -268,7 +314,10 @@ pub(super) async fn compact_tier(
 
 #[cfg(test)]
 mod tests {
-    use super::appropriate_tier;
+    use super::{appropriate_tier, release_lock, try_acquire_lock};
+    use crate::crdt::DeviceId;
+    use crate::library::sync::remote_access::StorageReadWrite;
+    use crate::storage::StorageMockMemory;
 
     #[test]
     fn appropriate_tier_picks_lowest_tier_that_fits() {
@@ -280,5 +329,28 @@ mod tests {
         assert_eq!(appropriate_tier(201), 3);
         assert_eq!(appropriate_tier(2000), 3);
         assert_eq!(appropriate_tier(2001), 4);
+    }
+
+    #[tokio::test]
+    async fn lock_check_write_and_confirmation_allow_one_holder() {
+        let storage = StorageMockMemory::new();
+        let access = StorageReadWrite::new(&storage);
+
+        let first = try_acquire_lock(&access, DeviceId(1)).await.unwrap();
+        assert!(first.is_some());
+        assert!(
+            try_acquire_lock(&access, DeviceId(2))
+                .await
+                .unwrap()
+                .is_none()
+        );
+
+        release_lock(&access, first.unwrap()).await.unwrap();
+        assert!(
+            try_acquire_lock(&access, DeviceId(2))
+                .await
+                .unwrap()
+                .is_some()
+        );
     }
 }

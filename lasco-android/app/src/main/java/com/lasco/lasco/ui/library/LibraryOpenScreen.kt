@@ -28,55 +28,35 @@ import com.lasco.lasco.ui.components.LascoConfirmDialog
 import com.lasco.lasco.ui.theme.LascoTheme
 
 /**
- * Password prompt for opening an existing library, ported from the Swift
- * LibraryOpenSheet. Tries the cached session first (openCached), only shows
- * the form when that comes back empty, exactly like LibraryListView does.
- * Takes the entry id rather than an FfiLibraryEntry, since Nav3 keys must
- * not carry FFI structs, and shows a loading state until the view model
- * resolves it back to the full entry.
+ * Password prompt for opening an existing library. The library-list flow has
+ * already tried its cached session, so this screen is composed only for a
+ * genuine cache miss.
  */
 @Composable
 fun LibraryOpenScreen(
-    entryId: String,
+    request: LibraryOpenRequest,
     onBack: () -> Unit,
     onOpened: () -> Unit,
     modifier: Modifier = Modifier,
-    viewModel: LibraryOpenViewModel = viewModel(key = entryId, factory = LibraryOpenViewModel.factory(entryId)),
+    viewModel: LibraryOpenViewModel = viewModel(key = request.attemptId, factory = LibraryOpenViewModel.Factory),
 ) {
     val colors = LascoTheme.colors
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val resolvedEntry by viewModel.entry.collectAsStateWithLifecycle()
 
     LaunchedEffect(state.opened) {
         if (state.opened) onOpened()
     }
 
-    if (resolvedEntry == null) {
-        Box(modifier = modifier.fillMaxSize().background(colors.bg), contentAlignment = Alignment.Center) {
-            if (state.error != null) {
-                ErrorBanner(state.error!!)
-            } else {
-                CircularProgressIndicator(color = colors.ink)
-            }
-        }
-        return
-    }
-    val entry = resolvedEntry!!
-
-    var username by remember(entry.libraryId) { mutableStateOf(entry.username ?: "") }
-    var password by remember { mutableStateOf("") }
-    var showRecoveryConfirm by remember { mutableStateOf(false) }
-
-    LaunchedEffect(entry.libraryId) {
-        viewModel.tryOpenCached(entry.nickname, entry.username)
-    }
-
-    if (state.checkingCache) {
+    if (state.opened) {
         Box(modifier = modifier.fillMaxSize().background(colors.bg), contentAlignment = Alignment.Center) {
             CircularProgressIndicator(color = colors.ink)
         }
         return
     }
+
+    var username by remember(request.attemptId) { mutableStateOf(request.username ?: "") }
+    var password by remember { mutableStateOf("") }
+    var showRecoveryConfirm by remember { mutableStateOf(false) }
 
     val canSubmit = username.isNotEmpty() && password.isNotEmpty() && !state.loading
 
@@ -101,14 +81,14 @@ fun LibraryOpenScreen(
                 .padding(horizontal = 32.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            Text(text = entry.nickname, style = LascoTheme.type.title(26), color = colors.ink)
+            Text(text = request.nickname, style = LascoTheme.type.title(26), color = colors.ink)
             Text(
                 text = "Enter credentials to open",
                 style = LascoTheme.type.body(16),
                 color = colors.inkSub,
             )
 
-            LascoField("Username", username, { username = it }, enabled = entry.username == null)
+            LascoField("Username", username, { username = it }, enabled = request.username == null)
             LascoField("Password", password, { password = it }, secure = true)
 
             state.error?.let { ErrorBanner(it) }
@@ -129,7 +109,7 @@ fun LibraryOpenScreen(
         ) {
             LascoPrimaryButton(
                 text = if (state.loading) "Opening…" else "Open Library",
-                onClick = { viewModel.open(entry.nickname, username, password) },
+                onClick = { viewModel.open(request.nickname, username, password) },
                 enabled = canSubmit,
             )
         }
@@ -142,7 +122,7 @@ fun LibraryOpenScreen(
             confirmLabel = "Recover",
             onConfirm = {
                 showRecoveryConfirm = false
-                viewModel.recover(entry.nickname, username, password)
+                viewModel.recover(request.nickname, username, password)
             },
             onCancel = { showRecoveryConfirm = false },
         )

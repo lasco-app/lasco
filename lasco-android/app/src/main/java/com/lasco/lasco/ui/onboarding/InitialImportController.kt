@@ -26,9 +26,22 @@ import uniffi.lasco_ffi.FfiLibrary
 sealed interface ImportState {
     data object Idle : ImportState
     data object Scanning : ImportState
-    data class Importing(val done: Int, val total: Int) : ImportState
+    data class Importing(
+        val backedUp: Int,
+        val total: Int,
+        val phase: ImportPhase,
+    ) : ImportState
     data class Done(val photos: Int, val videos: Int, val failed: Int) : ImportState
     data class Error(val message: String) : ImportState
+}
+
+data class ImportItemRange(val first: Int, val last: Int)
+
+sealed interface ImportPhase {
+    data object PreparingLibrary : ImportPhase
+    data class Adding(val range: ImportItemRange, val completed: Int) : ImportPhase
+    data class Uploading(val range: ImportItemRange, val progress: Float) : ImportPhase
+    data class Finalizing(val range: ImportItemRange) : ImportPhase
 }
 
 /**
@@ -116,6 +129,16 @@ class InitialImportController(
                 return
             }
 
+            // Lasco Cloud's two newly assigned remotes are empty during initial
+            // onboarding. Ask its control plane before creating any library data.
+            // Non-Cloud libraries are a no-op in the shared FFI method.
+            try {
+                lib.lascoCloudCheckInitialImport(scan.totalBytes.toULong())
+            } catch (e: Throwable) {
+                _importState.value = ImportState.Error(e.message ?: "This import does not fit in Lasco Cloud storage")
+                return
+            }
+
             // Every row would fail the original read without this, so it is worth
             // one error up front instead of a run that imports nothing. No
             // watermark is stamped, granting the permission and coming back has
@@ -142,25 +165,30 @@ class InitialImportController(
         val startedAt = System.currentTimeMillis() / 1000
 
         sync.stopScheduledPush()
-        _importState.value = ImportState.Importing(0, total)
-
+        _importState.value = ImportState.Importing(0, total, ImportPhase.PreparingLibrary)
         withContext(io) { importer.clearCache() }
 
         var photosImported = 0
         var videosImported = 0
         var failed = 0
-        var done = 0
+        var backedUp = 0
 
         // Names the temp file of each row. A counter is used rather than
         // anything coming from MediaStore, so uniqueness is ours to guarantee.
         var tempIndex = 0
 
         try {
-            for (chunk in scan.rows.chunked(CHUNK_SIZE)) {
+            val chunks = scan.rows.chunked(CHUNK_SIZE)
+            for ((chunkIndex, chunk) in chunks.withIndex()) {
+                val range = ImportItemRange(
+                    first = chunkIndex * CHUNK_SIZE + 1,
+                    last = minOf((chunkIndex + 1) * CHUNK_SIZE, total),
+                )
                 val chunkIds = mutableListOf<uniffi.lasco_ffi.FfiMediaUuid>()
+                var importedInChunk = 0
 
                 withContext(io) {
-                    for (row in chunk) {
+                    for ((itemIndex, row) in chunk.withIndex()) {
                         // Nothing else in this loop suspends, so without this
                         // check cancellation is only noticed when the chunk
                         // ends and cancel() waits out 32 more files.
@@ -175,6 +203,7 @@ class InitialImportController(
                             try {
                                 chunkIds += importer.import(row, albumId = null, tempIndex = rowIndex)
                                 if (row.isVideo) videosImported++ else photosImported++
+                                importedInChunk++
                             } catch (e: CancellationException) {
                                 throw e
                             } catch (e: SecurityException) {
@@ -189,13 +218,22 @@ class InitialImportController(
                         } else {
                             failed++
                         }
-                        done++
-                        _importState.value = ImportState.Importing(done, total)
+                        _importState.value = ImportState.Importing(
+                            backedUp,
+                            total,
+                            ImportPhase.Adding(range, itemIndex + 1),
+                        )
                     }
                 }
 
                 // pushRemote is UniFFI async on its own executor, kept outside io.
-                pushChunk(remoteId)
+                pushChunk(remoteId, backedUp, total, range)
+                backedUp += importedInChunk
+                _importState.value = ImportState.Importing(
+                    backedUp,
+                    total,
+                    ImportPhase.Finalizing(range),
+                )
                 withContext(io) { lib.evictLocalData(chunkIds) }
             }
         } catch (e: CancellationException) {
@@ -221,11 +259,33 @@ class InitialImportController(
     // through failed pushes would write the whole camera roll to internal
     // storage and never take any of it back. Failing the run is what stops
     // that, the alternative is a silently filled disk.
-    private suspend fun pushChunk(remoteId: uniffi.lasco_ffi.FfiRemoteUuid) {
+    private suspend fun pushChunk(
+        remoteId: uniffi.lasco_ffi.FfiRemoteUuid,
+        backedUp: Int,
+        total: Int,
+        range: ImportItemRange,
+    ) {
         var lastError: String? = null
         repeat(PUSH_ATTEMPTS) { attempt ->
             if (attempt > 0) delay(PUSH_RETRY_DELAY_MS * attempt)
-            val error = when (val result = sync.pushRemote(remoteId)) {
+            _importState.value = ImportState.Importing(
+                backedUp,
+                total,
+                ImportPhase.Uploading(range, progress = 0f),
+            )
+            val error = when (val result = sync.pushRemote(remoteId) { fraction ->
+                _importState.value = ImportState.Importing(
+                    backedUp,
+                    total,
+                    if (fraction < 1f) {
+                        ImportPhase.Uploading(range, fraction.coerceIn(0f, 1f))
+                    } else {
+                        // The upload callback covers originals only. Thumbnails, operations,
+                        // and compaction still need to finish before the push returns.
+                        ImportPhase.Finalizing(range)
+                    },
+                )
+            }) {
                 is com.lasco.lasco.data.PushResult.Success -> return
                 is com.lasco.lasco.data.PushResult.Failed -> result.message
                 is com.lasco.lasco.data.PushResult.MissingLocalMedia -> "Media missing from local cache"

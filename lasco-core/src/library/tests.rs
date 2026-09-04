@@ -186,7 +186,8 @@ fn forget_remote_deletes_everything_cached_about_it() {
     let dir = seed_remote_dir(&lib, &remote_id.to_string());
     let other_dir = seed_remote_dir(&lib, &other_id.to_string());
 
-    lib.forget_remote::<LibraryError, _>(remote_id, || Ok(())).unwrap();
+    lib.forget_remote::<LibraryError, _>(remote_id, || Ok(()))
+        .unwrap();
 
     assert!(!dir.exists());
     assert!(other_dir.exists(), "another remote must be left alone");
@@ -232,7 +233,8 @@ fn forget_remote_refuses_while_a_sync_holds_the_remote() {
     assert!(dir.exists(), "the directory must survive a refused removal");
 
     drop(guard);
-    lib.forget_remote::<LibraryError, _>(remote_id, || Ok(())).unwrap();
+    lib.forget_remote::<LibraryError, _>(remote_id, || Ok(()))
+        .unwrap();
     assert!(!dir.exists());
 }
 
@@ -246,7 +248,10 @@ fn forget_remote_drops_the_configuration_before_deleting() {
     let dir = seed_remote_dir(&lib, &remote_id.to_string());
 
     lib.forget_remote::<LibraryError, _>(remote_id, || {
-        assert!(dir.exists(), "the directory outlives the configuration write");
+        assert!(
+            dir.exists(),
+            "the directory outlives the configuration write"
+        );
         Ok(())
     })
     .unwrap();
@@ -264,7 +269,9 @@ fn forget_remote_keeps_the_directory_when_the_configuration_write_fails() {
 
     let error = lib
         .forget_remote::<LibraryError, _>(remote_id, || {
-            Err(LibraryError::Io(std::io::Error::other("config write failed")))
+            Err(LibraryError::Io(std::io::Error::other(
+                "config write failed",
+            )))
         })
         .unwrap_err();
 

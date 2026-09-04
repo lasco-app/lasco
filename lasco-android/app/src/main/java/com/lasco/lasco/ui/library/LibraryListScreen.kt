@@ -46,7 +46,7 @@ import uniffi.lasco_ffi.FfiLibraryEntry
 fun LibraryListScreen(
     onNewLibrary: () -> Unit,
     onAddExisting: () -> Unit,
-    onOpenLibrary: (String) -> Unit,
+    onOpenLibrary: (FfiLibraryEntry) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: LibraryListViewModel = viewModel(factory = LibraryListViewModel.Factory),
 ) {
@@ -116,7 +116,10 @@ fun LibraryListScreen(
                     key = { it.libraryId.value },
                     contentType = { "library" },
                 ) { entry ->
-                    LibraryRow(entry, onClick = { if (entry.loadError == null) onOpenLibrary(entry.libraryId.value) })
+                    LibraryRow(
+                        entry = entry,
+                        onClick = { if (entry.loadError == null) onOpenLibrary(entry) },
+                    )
                 }
             }
         }

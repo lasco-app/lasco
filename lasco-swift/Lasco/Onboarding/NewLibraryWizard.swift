@@ -16,6 +16,7 @@ struct NewLibraryWizard: View {
     @State private var username = ""
     @State private var password = ""
     @State private var confirmPassword = ""
+    @State private var showCloudLoginSheet = false
     @State private var showAddS3Sheet = false
     @State private var showAddLocalFSSheet = false
     @State private var masterKeyCopied = false
@@ -42,7 +43,7 @@ struct NewLibraryWizard: View {
     }
 
     #if os(iOS)
-    private var totalSteps: Int { 7 }
+    private var totalSteps: Int { 8 }
     #else
     private var totalSteps: Int { 3 }
     #endif
@@ -70,7 +71,8 @@ struct NewLibraryWizard: View {
                         case 3: askImportStep
                         case 4: permissionStep
                         case 5: importOrSuccessStep
-                        default: autoImportStep
+                        case 6: autoImportStep
+                        default: autoImportInfoStep
                         #else
                         default: remoteStep
                         #endif
@@ -135,6 +137,9 @@ struct NewLibraryWizard: View {
             .frame(maxWidth: .infinity)
         } else if step == 2 {
             VStack(spacing: 12) {
+                Button("Authenticate with Lasco Cloud") { showCloudLoginSheet = true }
+                    .buttonStyle(LascoPrimaryButtonStyle())
+                    .frame(maxWidth: .infinity)
                 Button("Add S3-compatible remote") { showAddS3Sheet = true }
                     .buttonStyle(LascoPrimaryButtonStyle())
                     .frame(maxWidth: .infinity)
@@ -146,6 +151,21 @@ struct NewLibraryWizard: View {
                 Button("Skip for now") { advanceFromRemote() }
                     .buttonStyle(LascoSecondaryButtonStyle())
                     .frame(maxWidth: .infinity)
+            }
+            .sheet(isPresented: $showCloudLoginSheet) {
+                if let activeSession = directory.activeSession {
+                    LascoCloudLoginView(
+                        repository: activeSession.repository,
+                        libraryID: activeSession.state.libraryID,
+                        onRemoteReady: {
+                            try await activeSession.refresh()
+                            guard !activeSession.state.remotes.isEmpty else {
+                                throw LibraryDirectoryModelError.remoteUnavailableAfterRefresh
+                            }
+                            advanceFromRemote()
+                        }
+                    )
+                }
             }
             .sheet(isPresented: $showAddS3Sheet) {
                 if let activeSession = directory.activeSession {
@@ -179,8 +199,10 @@ struct NewLibraryWizard: View {
                 permissionButtons
             } else if step == 5 {
                 importOrSuccessButtons
-            } else {
+            } else if step == 6 {
                 autoImportButtons
+            } else {
+                autoImportInfoButtons
             }
             #endif
         }
@@ -607,17 +629,24 @@ struct NewLibraryWizard: View {
         VStack(spacing: 12) {
             if initialImportController?.isImporting == true {
                 let progress = initialImportController?.progress
-                let done = progress?.done ?? 0
+                let backedUp = progress?.backedUp ?? 0
                 let total = max(progress?.total ?? 1, 1)
 
                 VStack(spacing: 8) {
-                    ProgressView(value: Double(done), total: Double(total))
-                        .tint(Color.Lasco.ink)
-                        .frame(maxWidth: .infinity)
-                    Text("\(done) of \(total)")
+                    Text("Backed up \(backedUp) of \(total) items")
                         .font(LascoFont.mono(13))
                         .foregroundStyle(Color.Lasco.inkMuted)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    ProgressView(value: Double(backedUp), total: Double(total))
+                        .tint(Color.Lasco.ink)
+                        .frame(maxWidth: .infinity)
+                    if let phase = progress?.phase {
+                        InitialImportPhaseView(phase: phase)
+                    }
+                    Text("Keep Lasco open until the import finishes.")
+                        .font(LascoFont.body(14))
+                        .foregroundStyle(Color.Lasco.inkMuted)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .padding(.vertical, 8)
             } else {
@@ -677,7 +706,8 @@ struct NewLibraryWizard: View {
                     if let activeSession = directory.activeSession {
                         try? await activeSession.repository.setAutoImportDeviceMedia(enabled: true)
                     }
-                    finish()
+                    slideForward = true
+                    withAnimation(.easeInOut(duration: 0.3)) { step = 7 }
                 }
             }
             .buttonStyle(LascoPrimaryButtonStyle())
@@ -694,6 +724,32 @@ struct NewLibraryWizard: View {
             .buttonStyle(LascoSecondaryButtonStyle())
             .frame(maxWidth: .infinity)
         }
+    }
+
+    private var autoImportInfoStep: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text("Auto-import is on")
+                .font(LascoFont.title(26))
+                .foregroundStyle(Color.Lasco.ink)
+
+            Text("For now, auto-import runs only when you open Lasco.")
+                .font(LascoFont.body(16))
+                .foregroundStyle(Color.Lasco.inkSub)
+                .fixedSize(horizontal: false, vertical: true)
+                .lineSpacing(4)
+
+            Spacer()
+        }
+        .padding(.horizontal, 32)
+        .padding(.top, 40)
+        .padding(.bottom, 120)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var autoImportInfoButtons: some View {
+        Button("Get started", action: finish)
+            .buttonStyle(LascoPrimaryButtonStyle())
+            .frame(maxWidth: .infinity)
     }
 
     private func importSuccessStep(photos: Int, videos: Int) -> some View {
@@ -737,8 +793,11 @@ struct NewLibraryWizard: View {
         guard initialImportController == nil else { return }
         let controller = InitialPhotoImportController(
             repository: activeSession.repository,
-            pushChunk: { remoteID in
-                switch await activeSession.syncCoordinator.push(remoteID: remoteID) {
+            pushChunk: { remoteID, onUploadProgress in
+                switch await activeSession.syncCoordinator.push(
+                    remoteID: remoteID,
+                    onUploadProgress: onUploadProgress
+                ) {
                 case .success: nil
                 case .failed(let message): message
                 case .missingLocalMedia: "Media missing from local cache"
@@ -751,3 +810,54 @@ struct NewLibraryWizard: View {
     }
     #endif
 }
+
+#if os(iOS)
+private struct InitialImportPhaseView: View {
+    let phase: InitialPhotoImportController.ImportPhase
+
+    var body: some View {
+        switch phase {
+        case .preparingLibrary:
+            InitialImportActivityLabel("Preparing your library…")
+        case .adding(let range, let completed):
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Adding items \(range.lowerBound)–\(range.upperBound)")
+                    .font(LascoFont.body(14))
+                    .foregroundStyle(Color.Lasco.inkMuted)
+                ProgressView(value: Double(completed), total: Double(range.count))
+                    .tint(Color.Lasco.inkMuted)
+            }
+        case .uploading(let range, let progress):
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Uploading items \(range.lowerBound)–\(range.upperBound)")
+                    .font(LascoFont.body(14))
+                    .foregroundStyle(Color.Lasco.inkMuted)
+                ProgressView(value: progress)
+                    .tint(Color.Lasco.inkMuted)
+            }
+        case .finalizing(let range):
+            InitialImportActivityLabel("Finalising backup for items \(range.lowerBound)–\(range.upperBound)…")
+        case .savingAlbums:
+            InitialImportActivityLabel("Saving albums…")
+        }
+    }
+}
+
+private struct InitialImportActivityLabel: View {
+    let title: String
+
+    init(_ title: String) {
+        self.title = title
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ProgressView().tint(Color.Lasco.inkMuted)
+            Text(title)
+                .font(LascoFont.body(14))
+                .foregroundStyle(Color.Lasco.inkMuted)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+#endif

@@ -9,6 +9,7 @@ struct ManageView: View {
     @State private var showOperations = false
     @State private var showDeleteConfirm = false
     @State private var showLicense = false
+    @State private var cloudConnected = false
     @AppStorage("expertMode") private var expertMode = false
     let repository: LibraryRepository
     let session: LibrarySessionState
@@ -107,7 +108,7 @@ struct ManageView: View {
                                 Task { await directory.signOut() }
                             } label: {
                                 HStack {
-                                    Text("Sign out")
+                                    Text("Sign out current library")
                                         .font(LascoFont.body())
                                         .foregroundStyle(theme.inkSub)
                                     Spacer()
@@ -122,6 +123,30 @@ struct ManageView: View {
                             .buttonStyle(.plain)
                         }
                         .lascoPanel()
+
+                        if cloudConnected {
+                            NavigationLink {
+                                LascoCloudView(repository: repository, libraryID: session.libraryID) {
+                                    cloudConnected = false
+                                }
+                                .navigationBarBackButtonHidden(true)
+                            } label: {
+                                HStack {
+                                    Text("Lasco Cloud")
+                                        .font(LascoFont.body())
+                                        .foregroundStyle(theme.accent)
+                                    Spacer()
+                                    Text("→")
+                                        .font(LascoFont.mono())
+                                        .foregroundStyle(theme.accent)
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 14)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .background(theme.pink)
+                        }
 
                         VStack(alignment: .leading, spacing: 0) {
                             #if canImport(UIKit)
@@ -204,6 +229,25 @@ struct ManageView: View {
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
+
+                            Divider()
+                                .background(theme.inkMuted.opacity(0.2))
+
+                            Link(destination: URL(string: "https://getlasco.app/terms-of-service")!) {
+                                HStack {
+                                    Text("Terms of Service")
+                                        .font(LascoFont.body())
+                                        .foregroundStyle(theme.inkSub)
+                                    Spacer()
+                                    Text("→")
+                                        .font(LascoFont.mono())
+                                        .foregroundStyle(theme.inkMuted)
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 14)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
                         }
                         .lascoPanel()
 
@@ -236,6 +280,9 @@ struct ManageView: View {
                 .scrollContentBackground(.hidden)
                 .navigationTitle("")
                 .hideSystemNavigationBar()
+            }
+            .task(id: session.remotes.count) {
+                cloudConnected = await repository.isLascoCloudConnected(libraryID: session.libraryID)
             }
         }
         .background(theme.bg)

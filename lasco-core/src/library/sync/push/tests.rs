@@ -1,3 +1,4 @@
+use std::sync::Mutex;
 use tempfile::TempDir;
 use uuid::Uuid;
 
@@ -9,10 +10,21 @@ use super::super::remote_access::{StorageRead, StorageReadWrite};
 use super::super::test_utils::{
     REMOTE_ID, make_library, stamp_remote, stamp_remote_id, write_file,
 };
-use super::super::{MediaBlob, PlannedMediaSource, PushMediaPlan, PushMediaSource, SyncError};
+use super::super::{
+    MediaBlob, PlannedMediaSource, PushMediaPlan, PushMediaSource, PushProgressObserver, SyncError,
+};
 
 const SOURCE_REMOTE_ID: RemoteUuid =
     RemoteUuid(Uuid::from_u128(0x2222_2222_2222_2222_2222_2222_2222_2222));
+
+#[derive(Default)]
+struct TestPushProgressObserver(Mutex<Vec<(usize, usize)>>);
+
+impl PushProgressObserver for TestPushProgressObserver {
+    fn media_upload_progress(&self, uploaded: usize, total: usize) {
+        self.0.lock().unwrap().push((uploaded, total));
+    }
+}
 
 async fn stamp_source_remote(storage: &dyn Storage) {
     stamp_remote(storage, SOURCE_REMOTE_ID).await;
@@ -167,6 +179,29 @@ async fn push_no_pending_returns_zeros() {
     let report = lib.push(&storage, REMOTE_ID).await.unwrap();
     assert_eq!(report.ops_uploaded, 0);
     assert_eq!(report.media_uploaded, 0);
+}
+
+#[tokio::test]
+async fn push_progress_counts_only_completed_full_media_uploads() {
+    let storage = StorageMockMemory::new();
+    stamp_remote_id(&storage).await;
+    let tmp = TempDir::new().unwrap();
+    let lib = make_library(&tmp).await;
+    add_media(&lib, &tmp, 2).await;
+    let progress = TestPushProgressObserver::default();
+
+    let report = lib
+        .push_with_media_source_and_progress(
+            &storage,
+            REMOTE_ID,
+            PushMediaSource::LocalOnly,
+            Some(&progress),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(report.media_uploaded, 2);
+    assert_eq!(*progress.0.lock().unwrap(), vec![(0, 2), (1, 2), (2, 2)]);
 }
 
 #[tokio::test]
@@ -736,7 +771,7 @@ async fn push_confirms_media_already_on_target_before_uploading() {
     );
     let blob = source.get(&data_key).await.unwrap();
     target
-        .put_atomic(&data_key, &blob, AtomicWriteMode::CreateIfAbsent)
+        .put_atomic(&data_key, &blob, AtomicWriteMode::Replace)
         .await
         .unwrap();
     remove_local_media(&lib, media_id);
@@ -800,7 +835,7 @@ async fn push_uploads_thumbnail_when_only_the_data_blob_is_on_target() {
     ))
     .unwrap();
     target
-        .put_atomic(&data_key, &data_blob, AtomicWriteMode::CreateIfAbsent)
+        .put_atomic(&data_key, &data_blob, AtomicWriteMode::Replace)
         .await
         .unwrap();
 
@@ -1126,7 +1161,7 @@ async fn push_with_plan_relays_a_thumbnail_from_its_assigned_source() {
     );
     let data_blob = source.get(&data_key).await.unwrap();
     target
-        .put_atomic(&data_key, &data_blob, AtomicWriteMode::CreateIfAbsent)
+        .put_atomic(&data_key, &data_blob, AtomicWriteMode::Replace)
         .await
         .unwrap();
     remove_local_media(&lib, media_id);

@@ -114,6 +114,10 @@ const config: Config = {
               label: 'Privacy Policy',
               to: '/privacy-policy',
             },
+            {
+              label: 'Terms of Service',
+              to: '/terms-of-service',
+            },
             // {
             //   label: 'Design System',
             //   to: '/docs/design-system',

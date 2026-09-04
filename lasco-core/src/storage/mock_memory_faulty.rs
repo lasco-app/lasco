@@ -251,7 +251,7 @@ mod tests {
 
         assert!(
             storage
-                .put_atomic("media/a.data", b"payload", AtomicWriteMode::CreateIfAbsent)
+                .put_atomic("media/a.data", b"payload", AtomicWriteMode::Replace)
                 .await
                 .is_err()
         );

@@ -15,6 +15,10 @@ sealed interface IncrementalImportState {
  */
 data class SyncState(
     val busyRemoteIds: Set<FfiRemoteUuid> = emptySet(),
+    val pushingRemoteIds: Set<FfiRemoteUuid> = emptySet(),
+    // Null means Push is still preparing or has no full-media upload plan. A present fraction
+    // counts completed full media uploads only; thumbnails, operations and compaction are absent.
+    val pushUploadProgress: Map<FfiRemoteUuid, Float> = emptyMap(),
     val fetchInProgress: Boolean = false,
     val bulkImportProgress: Pair<Int, Int>? = null,
     val incrementalImportState: IncrementalImportState = IncrementalImportState.Idle,

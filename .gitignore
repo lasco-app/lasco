@@ -16,3 +16,6 @@ lasco-swift/Lasco.xcodeproj/project.xcworkspace/xcuserdata/
 
 *.png
 *.svg
+
+!lasco-android/app/src/main/res/drawable-xxxhdpi/
+!lasco-android/app/src/main/res/drawable-xxxhdpi/ic_launcher_foreground.png

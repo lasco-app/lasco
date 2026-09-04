@@ -25,6 +25,27 @@ impl StorageS3 {
         access_key: &str,
         secret_key: &str,
     ) -> Result<Self> {
+        Self::new_with_session_token(
+            endpoint,
+            bucket_name,
+            region,
+            path_prefix,
+            access_key,
+            secret_key,
+            None,
+        )
+    }
+
+    /// Creates storage with an optional temporary STS/session token.
+    pub fn new_with_session_token(
+        endpoint: &str,
+        bucket_name: &str,
+        region: &str,
+        path_prefix: Option<&str>,
+        access_key: &str,
+        secret_key: &str,
+        session_token: Option<&str>,
+    ) -> Result<Self> {
         let path_prefix = normalize_path_prefix(path_prefix.unwrap_or(""));
         // For S3-compatible providers the connection host
         // comes from the region endpoint, not from a host header. Use a custom
@@ -45,8 +66,14 @@ impl StorageS3 {
         let access_key = access_key.trim();
         let secret_key = secret_key.trim();
 
-        let credentials = S3Credentials::new(Some(access_key), Some(secret_key), None, None, None)
-            .map_err(|e| StorageError::Other(Box::new(e)))?;
+        let credentials = S3Credentials::new(
+            Some(access_key),
+            Some(secret_key),
+            None,
+            session_token.filter(|token| !token.trim().is_empty()),
+            None,
+        )
+        .map_err(|e| StorageError::Other(Box::new(e)))?;
 
         // Path style is needed for MinIO and other S3-compatible services.
         let bucket = Bucket::new(bucket_name, region, credentials)
@@ -89,18 +116,6 @@ impl Storage for StorageS3 {
                 self.put_object(key, data).await?;
                 Ok(true)
             }
-            AtomicWriteMode::CreateIfAbsent => match self
-                .bucket
-                .put_object_builder(self.prefixed_key(key), data)
-                .with_header("if-none-match", "*")
-                .map_err(|e| StorageError::Other(Box::new(e)))?
-                .execute()
-                .await
-            {
-                Ok(_) => Ok(true),
-                Err(S3Error::HttpFailWithBody(412, _)) => Ok(false),
-                Err(e) => Err(StorageError::Other(Box::new(e))),
-            },
         }
     }
 
@@ -363,26 +378,5 @@ mod tests {
             .unwrap();
         assert!(storage.exists("test/ex").await.unwrap());
         storage.delete("test/ex").await.unwrap();
-    }
-
-    #[tokio::test]
-    #[ignore = "Requires S3 test environment"]
-    async fn create_if_absent_behavior() {
-        let storage = make_storage().expect("S3 test config not set");
-        storage.delete("test/absent").await.unwrap();
-        assert!(
-            storage
-                .put_atomic("test/absent", b"orig", AtomicWriteMode::CreateIfAbsent)
-                .await
-                .unwrap()
-        );
-        assert!(
-            !storage
-                .put_atomic("test/absent", b"new", AtomicWriteMode::CreateIfAbsent)
-                .await
-                .unwrap()
-        );
-        assert_eq!(storage.get("test/absent").await.unwrap(), b"orig");
-        storage.delete("test/absent").await.unwrap();
     }
 }

@@ -1,12 +1,12 @@
 use lasco_core::crdt::{CrdtOperation, OperationContent};
 use lasco_core::identifiers::RemoteUuid;
 use lasco_core::library::sync::{
-    PushMediaSource, compaction,
+    PushMediaSource, PushProgressObserver, compaction,
     remote_access::{StorageRead, StorageReadWrite},
 };
 use lasco_core::library_json::{
-    DebugLocalAndroidConfig, DebugLocalAppleConfig, FixedPathConfig, LibraryJson, RemoteConfig,
-    RemoteKind, UsbAndroidConfig, UsbAppleConfig,
+    CloudS3Config, DebugLocalAndroidConfig, DebugLocalAppleConfig, FixedPathConfig, LibraryJson,
+    RemoteConfig, RemoteKind, UsbAndroidConfig, UsbAppleConfig,
 };
 use lasco_core::operations::{LibraryPassword, LibraryUsername};
 use std::collections::HashMap;
@@ -19,6 +19,26 @@ use super::{
 use crate::error::LascoError;
 use crate::ids::FfiRemoteUuid;
 
+/// Receives completed full-media upload progress for one Push invocation.
+///
+/// Calls arrive on Lasco's Rust runtime thread. Implementations must return quickly and must
+/// marshal any UI work onto their platform's UI dispatcher.
+#[uniffi::export(callback_interface)]
+pub trait PushProgressSink: Send + Sync {
+    fn upload_progress(&self, fraction: f64);
+}
+
+struct FfiPushProgressObserver {
+    sink: Box<dyn PushProgressSink>,
+}
+
+impl PushProgressObserver for FfiPushProgressObserver {
+    fn media_upload_progress(&self, uploaded: usize, total: usize) {
+        debug_assert!(total > 0);
+        self.sink.upload_progress(uploaded as f64 / total as f64);
+    }
+}
+
 fn next_media_fetch_priority(remote_count: usize) -> Result<u32, LascoError> {
     u32::try_from(remote_count).map_err(|_| LascoError::Other {
         msg: "remote count exceeds the persisted media-fetch priority range".to_string(),
@@ -27,6 +47,29 @@ fn next_media_fetch_priority(remote_count: usize) -> Result<u32, LascoError> {
 
 #[uniffi::export]
 impl FfiLibrary {
+    /// Adds one Lasco Cloud storage destination. The core resolves and caches
+    /// its short-lived S3 credentials when the remote is first used.
+    pub fn add_remote_cloud_s3(
+        &self,
+        name: String,
+        cloud_storage_id: String,
+    ) -> Result<FfiRemoteUuid, LascoError> {
+        if cloud_storage_id.trim().is_empty() {
+            return Err(LascoError::Other {
+                msg: "cloud storage id must not be empty".to_string(),
+            });
+        }
+        if self.load_library_json()?.remotes.iter().any(|remote| {
+            matches!(&remote.kind, RemoteKind::CloudS3(config) if config.cloud_storage_id == cloud_storage_id)
+        }) {
+            return Err(LascoError::Other { msg: "Lasco Cloud storage is already configured".to_string() });
+        }
+        self.add_remote_config(
+            name,
+            RemoteKind::CloudS3(CloudS3Config { cloud_storage_id }),
+        )
+    }
+
     /// # Errors
     ///
     /// Returns the newest-first half-open range `[start_pos, end_pos_exclusive)`.
@@ -421,6 +464,11 @@ impl FfiLibrary {
                     msg: format!("remote '{}' not found", remote_id.value),
                 })?;
 
+            let cloud_storage_id = match &lib_config.remotes[index].kind {
+                RemoteKind::CloudS3(config) => Some(config.cloud_storage_id.clone()),
+                _ => None,
+            };
+
             lib_config.remotes.remove(index);
             lib_config
                 .media_source_order
@@ -430,7 +478,13 @@ impl FfiLibrary {
             }
             library_json
                 .write(&lib_config)
-                .map_err(|e| LascoError::Other { msg: e.to_string() })
+                .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+            if let Some(cloud_storage_id) = cloud_storage_id {
+                self.inner
+                    .cloud_runtime()
+                    .forget_storage_id(&cloud_storage_id);
+            }
+            Ok::<(), LascoError>(())
         })?;
 
         self.remotes
@@ -658,6 +712,7 @@ impl FfiLibrary {
         &self,
         target_remote_id: FfiRemoteUuid,
         app_support_dir: Option<String>,
+        progress: Box<dyn PushProgressSink>,
     ) -> Result<u64, LascoError> {
         let target: RemoteUuid = target_remote_id.try_into()?;
         let config = self.load_library_json()?;
@@ -685,6 +740,7 @@ impl FfiLibrary {
         let target_storage = self.build_storage_for_remote(&target, app_support_dir.as_deref())?;
         let inner = self.inner.clone();
         let assignments = resolution.assignments;
+        let progress = FfiPushProgressObserver { sink: progress };
         // The push runs on the runtime owned by this library, not on the foreign
         // executor driving this exported async function. Storage backends build
         // network clients that need a Tokio context.
@@ -696,13 +752,14 @@ impl FfiLibrary {
                     .map(|(id, storage)| (*id, StorageRead::new(storage.as_ref())))
                     .collect();
                 inner
-                    .push_with_media_plan(
+                    .push_with_media_source_and_progress(
                         target_storage.as_ref(),
                         target,
-                        lasco_core::library::sync::PushMediaPlan {
+                        PushMediaSource::Plan(lasco_core::library::sync::PushMediaPlan {
                             assignments,
                             sources: source_reads,
-                        },
+                        }),
+                        Some(&progress),
                     )
                     .await
             })
@@ -931,6 +988,16 @@ impl FfiLibrary {
                 msg: format!("remote '{remote_id}' not found"),
             })?;
 
+        if let RemoteKind::CloudS3(cloud) = &remote.kind {
+            self.inner
+                .cloud_runtime()
+                .register_remote(*remote_id, cloud.cloud_storage_id.clone());
+            return Ok(Box::new(lasco_core::storage::StorageLascoCloudS3::new(
+                *remote_id,
+                self.inner.cloud_runtime(),
+            )));
+        }
+
         lasco_core::client::build_storage(
             &self.app_dir,
             remote,
@@ -949,6 +1016,13 @@ pub(super) fn remote_config_to_ffi(r: &RemoteConfig) -> FfiRemote {
             Some(s3.bucket.clone()),
             Some(s3.region.clone()),
             s3.path_prefix.clone(),
+        ),
+        RemoteKind::CloudS3(cloud) => (
+            "lasco_cloud_s3".to_string(),
+            None,
+            None,
+            None,
+            Some(cloud.cloud_storage_id.clone()),
         ),
         RemoteKind::FixedPath(fs) => (
             "fixed_path".to_string(),

@@ -2,13 +2,17 @@
 
 #![allow(unsafe_code)]
 
-use jni::JNIEnv;
-use jni::objects::{JClass, JObject};
+use std::{ffi::c_void, sync::OnceLock};
 
-/// Called by `UsbRustRuntime.nativeInitialize(applicationContext)` once after
-/// the app process starts. Storage operations themselves never call Kotlin.
+use jni::JNIEnv;
+use jni::objects::{GlobalRef, JClass, JObject};
+
+static ANDROID_CONTEXT: OnceLock<GlobalRef> = OnceLock::new();
+
+/// Called once at application startup. It supplies Android's application
+/// context to both the native USB backend and the Android Keyring provider.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lasco_lasco_UsbRustRuntime_nativeInitialize(
+pub extern "system" fn Java_com_lasco_lasco_RustRuntime_nativeInitialize(
     env: JNIEnv<'_>,
     _class: JClass<'_>,
     context: JObject<'_>,
@@ -17,5 +21,12 @@ pub extern "system" fn Java_com_lasco_lasco_UsbRustRuntime_nativeInitialize(
     let Ok(context) = env.new_global_ref(context) else {
         return;
     };
-    let _ = lasco_core::storage::initialize_android_runtime(vm, context);
+    let context = ANDROID_CONTEXT.get_or_init(|| context);
+    unsafe {
+        ndk_context::initialize_android_context(
+            vm.get_java_vm_pointer() as *mut c_void,
+            context.as_obj().as_raw() as *mut c_void,
+        );
+    }
+    let _ = lasco_core::storage::initialize_android_runtime(vm, context.clone());
 }

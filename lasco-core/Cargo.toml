@@ -46,17 +46,22 @@ rand = "0.8"
 thiserror = "2"
 async-trait = "0.1"
 parking_lot = "0.12"
-tokio = { version = "1", features = ["rt", "macros"] }
+tokio = { version = "1", features = ["rt", "macros", "sync"] }
+reqwest = { version = "0.12", default-features = false, features = ["default-tls", "json"] }
 zeroize = { version = "1", features = ["derive"] }
 tracing = "0.1"
 rustc-hash = "2"
-keyring = "3"
+# Use Keyring's provider API directly: the convenience `keyring::Entry` API
+# intentionally has no default iOS backend.
+keyring = "4"
+keyring-core = "1"
 rust-s3 = "0.37.2"
 base64 = "0.22"
 walkdir = "2"
 blake3 = "1"
 directories = "6"
 tempfile = "3"
+futures-util = "0.3"
 
 # On Android rust-s3 uses native-tls which links OpenSSL, and there is no system
 # OpenSSL for the android targets. Build OpenSSL from source there via the vendored
@@ -65,11 +70,16 @@ tempfile = "3"
 [target.'cfg(target_os = "android")'.dependencies]
 openssl = { version = "0.10", features = ["vendored"] }
 jni = "0.21"
+android-native-keyring-store = "1.0.0"
 
 [target.'cfg(target_vendor = "apple")'.dependencies]
 libc = "0.2"
 objc2 = "0.6"
 objc2-foundation = "0.3"
+# Keyring's iOS backend uses the protected-data store; enable its required
+# feature explicitly because keyring's default feature set only enables the
+# macOS-compatible keychain backend.
+apple-native-keyring-store = { version = "1", features = ["protected"] }
 
 [dev-dependencies]
 proptest = "1"

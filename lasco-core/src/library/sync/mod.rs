@@ -30,6 +30,18 @@ pub struct SyncReportPush {
     pub compactions_run: usize,
 }
 
+/// Receives the user-facing portion of Push progress.
+///
+/// Push determines the total only after it has confirmed the target's media
+/// inventory. Both values count full media blobs, never thumbnails, operations,
+/// or compaction work.
+pub trait PushProgressObserver: Send + Sync {
+    fn media_upload_progress(&self, uploaded: usize, total: usize);
+}
+
+/// Optional control-plane gate for a push. It is deliberately separate from
+/// `Storage`: S3 only stores objects; Cloud quota is a Lasco API concern.
+
 /// Controls how [`Library::push`] obtains media that is absent from the local cache.
 ///
 /// The default intentionally does not download from another remote. This keeps Push from
@@ -173,7 +185,7 @@ impl Library {
         let remote = StorageReadWrite::new(storage);
         let marker_key = format!("remote_id_{remote_uuid}");
         remote
-            .put_atomic(&marker_key, b"", AtomicWriteMode::CreateIfAbsent)
+            .put_atomic(&marker_key, b"", AtomicWriteMode::Replace)
             .await
             .map_err(|e| LibraryError::Io(std::io::Error::other(e.to_string())))?;
 
@@ -266,6 +278,8 @@ impl Library {
                 },
                 remote_id,
                 PushMediaSource::LocalOnly,
+                None,
+                None,
             )
             .await?;
         Ok(SyncReport {

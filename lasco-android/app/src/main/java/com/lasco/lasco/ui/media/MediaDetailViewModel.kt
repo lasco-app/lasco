@@ -1,5 +1,6 @@
 package com.lasco.lasco.ui.media
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
@@ -19,6 +20,9 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import uniffi.lasco_ffi.FfiAlbum
 import uniffi.lasco_ffi.FfiAlbumUuid
@@ -37,6 +41,7 @@ data class DetailNeighbors(
     val current: DetailItem,
     val next: DetailItem?,
     val currentPosition: Int,
+    val totalCount: Int,
 )
 
 sealed interface MediaDetailState {
@@ -48,7 +53,8 @@ sealed interface MediaDetailState {
 
 class MediaDetailViewModel(
     private val source: MediaDetailSource,
-    startPosition: Int,
+    private val startPosition: Int,
+    startTarget: DetailTarget,
     private val repo: LibraryRepository,
 ) : ViewModel() {
     private val _state = MutableStateFlow<MediaDetailState>(MediaDetailState.Loading)
@@ -62,18 +68,19 @@ class MediaDetailViewModel(
     val showingLivePhotoVideo: StateFlow<Boolean> = _showingLivePhotoVideo.asStateFlow()
     private val _livePhotoVideoItems = MutableStateFlow<Map<FfiMediaUuid, FfiMediaItem>>(emptyMap())
     private var neighborsJob: Job? = null
+    private var loadGeneration = 0L
+    private var expectedTarget = startTarget
 
     init {
-        loadNeighbors(startPosition)
         viewModelScope.launch {
             when (source) {
-                MediaDetailSource.HomeByDate -> repo.watch(Change.MediaList) { Unit }
+                MediaDetailSource.HomeByDate, MediaDetailSource.OrphansByDate -> repo.watch(Change.MediaList) { Unit }
                 is MediaDetailSource.AlbumByDate -> repo.watch(
                     Change.Album(FfiAlbumUuid(source.albumId)), Change.AlbumList, Change.MediaList,
                 ) { Unit }
             }.collect {
                 val position = (_state.value as? MediaDetailState.Content)?.neighbors?.currentPosition ?: startPosition
-                loadNeighbors(position)
+                loadNeighbors(position, expectedTarget)
             }
         }
     }
@@ -83,34 +90,128 @@ class MediaDetailViewModel(
         val currentPage = if (content.neighbors.previous == null) 0 else 1
         val delta = page - currentPage
         if (delta !in -1..1 || delta == 0) return
-        loadNeighbors(content.neighbors.currentPosition + delta)
+        val nextTarget = when (delta) {
+            -1 -> content.neighbors.previous
+            1 -> content.neighbors.next
+            else -> null
+        }?.target ?: return
+        expectedTarget = nextTarget
+        loadNeighbors(content.neighbors.currentPosition + delta, nextTarget)
     }
 
-    private fun loadNeighbors(position: Int) {
+    fun retry() {
+        val position = (_state.value as? MediaDetailState.Content)?.neighbors?.currentPosition ?: startPosition
+        loadNeighbors(position, expectedTarget)
+    }
+
+    private fun loadNeighbors(position: Int, target: DetailTarget) {
         if (position < 0) return
         neighborsJob?.cancel()
+        val generation = ++loadGeneration
         neighborsJob = viewModelScope.launch {
             _state.value = (_state.value as? MediaDetailState.Content)?.copy(navigationInFlight = true)
                 ?: MediaDetailState.Loading
             try {
-                val neighbors = when (source) {
-                    MediaDetailSource.HomeByDate -> repo.mediaByDateNeighbors(position).let {
-                        DetailNeighbors(it.previous?.let(DetailItem::Media), DetailItem.Media(it.current), it.next?.let(DetailItem::Media), position)
-                    }
-                    is MediaDetailSource.AlbumByDate -> repo.albumItemsByDateNeighbors(FfiAlbumUuid(source.albumId), source.ascending, position).let {
-                        DetailNeighbors(it.previous?.toDetailItem(), it.current.toDetailItem(), it.next?.toDetailItem(), position)
+                var neighbors = loadWindow(position)
+                if (neighbors.current.target != target) {
+                    val resolvedPosition = findTargetPosition(target, position)
+                        ?: throw LascoException.NotFound()
+                    currentCoroutineContext().ensureActive()
+                    neighbors = loadWindow(resolvedPosition)
+                    if (neighbors.current.target != target) {
+                        // Another mutation landed between the paged search and
+                        // this neighbor read. Start a fresh latest-only load;
+                        // never surface this normal race as a user error.
+                        if (generation == loadGeneration) loadNeighbors(resolvedPosition, target)
+                        return@launch
                     }
                 }
+                if (generation != loadGeneration) return@launch
                 pruneCaches(neighbors)
                 _groupMediaIndex.value = 0
                 _showingLivePhotoVideo.value = false
+                expectedTarget = target
                 _state.value = MediaDetailState.Content(neighbors)
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: LascoException.NotFound) {
-                _state.value = MediaDetailState.Empty
+                if (generation == loadGeneration) _state.value = MediaDetailState.Empty
             } catch (error: Throwable) {
-                _state.value = MediaDetailState.Error(error)
+                Log.e(TAG, "Detail load failed: source=$source position=$position target=$target", error)
+                if (generation == loadGeneration) _state.value = MediaDetailState.Error(error)
             }
         }
+    }
+
+    private suspend fun loadWindow(position: Int): DetailNeighbors {
+        val total = sourceCount()
+        return when (source) {
+            MediaDetailSource.HomeByDate -> repo.mediaByDateNeighbors(position).let {
+                DetailNeighbors(
+                    it.previous?.let(DetailItem::Media),
+                    DetailItem.Media(it.current),
+                    it.next?.let(DetailItem::Media),
+                    position,
+                    total,
+                )
+            }
+            MediaDetailSource.OrphansByDate -> repo.orphanMediaByDateNeighbors(position).let {
+                DetailNeighbors(
+                    it.previous?.let(DetailItem::Media),
+                    DetailItem.Media(it.current),
+                    it.next?.let(DetailItem::Media),
+                    position,
+                    total,
+                )
+            }
+            is MediaDetailSource.AlbumByDate -> repo.albumItemsByDateNeighbors(
+                FfiAlbumUuid(source.albumId), source.ascending, position,
+            ).let {
+                DetailNeighbors(
+                    it.previous?.toDetailItem(),
+                    it.current.toDetailItem(),
+                    it.next?.toDetailItem(),
+                    position,
+                    total,
+                )
+            }
+        }
+    }
+
+    private suspend fun sourceCount(): Int = when (source) {
+        MediaDetailSource.HomeByDate -> repo.mediaByDateCount()
+        MediaDetailSource.OrphansByDate -> repo.orphanMediaByDateCount()
+        is MediaDetailSource.AlbumByDate -> repo.albumItemsCount(FfiAlbumUuid(source.albumId))
+    }
+
+    /**
+     * Slow path only after a refresh has moved the item away from its known
+     * position. It keeps the existing FFI paging API and holds one page at a
+     * time, starting near where the item was last seen.
+     */
+    private suspend fun findTargetPosition(target: DetailTarget, nearPosition: Int): Int? {
+        val total = sourceCount()
+        if (total == 0) return null
+        val pageCount = (total + RECONCILE_PAGE_SIZE - 1) / RECONCILE_PAGE_SIZE
+        val centerPage = (nearPosition / RECONCILE_PAGE_SIZE).coerceIn(0, pageCount - 1)
+        for (distance in 0 until pageCount) {
+            val pages = listOf(centerPage - distance, centerPage + distance).distinct()
+            for (page in pages) {
+                if (page !in 0 until pageCount) continue
+                currentCoroutineContext().ensureActive()
+                val offset = page * RECONCILE_PAGE_SIZE
+                val entries = when (source) {
+                    MediaDetailSource.HomeByDate -> repo.mediaByDate(offset, RECONCILE_PAGE_SIZE).map(DetailItem::Media)
+                    MediaDetailSource.OrphansByDate -> repo.orphanMediaByDate(offset, RECONCILE_PAGE_SIZE).map(DetailItem::Media)
+                    is MediaDetailSource.AlbumByDate -> repo.albumItemsByDate(
+                        FfiAlbumUuid(source.albumId), source.ascending, offset, RECONCILE_PAGE_SIZE,
+                    ).map { it.toDetailItem() }
+                }
+                val index = entries.indexOfFirst { it.target == target }
+                if (index >= 0) return offset + index
+            }
+        }
+        return null
     }
 
     private fun pruneCaches(neighbors: DetailNeighbors) {
@@ -156,14 +257,20 @@ class MediaDetailViewModel(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
     @OptIn(ExperimentalCoroutinesApi::class)
     val containingAlbums: StateFlow<List<FfiAlbum>> = currentDisplayItem.flatMapLatest { item ->
-        if (item == null) flowOf(emptyList()) else repo.watch(Change.AlbumList, Change.Media(item.mediaId)) { repo.containingAlbums(item.mediaId, null) }
+        val sourceAlbumId = (source as? MediaDetailSource.AlbumByDate)?.albumId?.let(::FfiAlbumUuid)
+        if (item == null) flowOf(emptyList()) else repo.watch(Change.AlbumList, Change.Media(item.mediaId)) {
+            repo.containingAlbums(item.mediaId, sourceAlbumId)
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun rename(mediaId: FfiMediaUuid, name: String?) { viewModelScope.launch { repo.renameMedia(mediaId, name) } }
 
     companion object {
-        fun factory(source: MediaDetailSource, startPosition: Int): ViewModelProvider.Factory = viewModelFactory {
-            initializer { MediaDetailViewModel(source, startPosition, LibraryRepository.from(this[APPLICATION_KEY]!!)) }
+        private const val RECONCILE_PAGE_SIZE = 100
+        private const val TAG = "MediaDetailViewModel"
+
+        fun factory(source: MediaDetailSource, startPosition: Int, expectedTarget: DetailTarget): ViewModelProvider.Factory = viewModelFactory {
+            initializer { MediaDetailViewModel(source, startPosition, expectedTarget, LibraryRepository.from(this[APPLICATION_KEY]!!)) }
         }
     }
 }

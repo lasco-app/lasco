@@ -33,6 +33,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -56,6 +58,7 @@ import com.lasco.lasco.ui.components.LascoPrimaryButton
 import com.lasco.lasco.ui.components.LascoSecondaryButton
 import com.lasco.lasco.ui.manage.AddLocalFSRemoteDialog
 import com.lasco.lasco.ui.manage.AddS3RemoteDialog
+import com.lasco.lasco.ui.manage.LascoCloudLoginDialog
 import com.lasco.lasco.ui.manage.ManageViewModel
 import com.lasco.lasco.ui.theme.LascoTheme
 import com.lasco.lasco.ui.theme.lascoPanel
@@ -95,6 +98,14 @@ fun NewLibraryWizardScreen(
 ) {
     val colors = LascoTheme.colors
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val view = LocalView.current
+
+    DisposableEffect(view, state.isImporting) {
+        view.keepScreenOn = state.isImporting
+        onDispose {
+            if (state.isImporting) view.keepScreenOn = false
+        }
+    }
 
     LaunchedEffect(sessionId) {
         if (resume == null) viewModel.startFresh(sessionId)
@@ -127,7 +138,7 @@ fun NewLibraryWizardScreen(
             }
             Spacer(modifier = Modifier.weight(1f))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                for (i in 0 until 8) {
+                for (i in 0 until 9) {
                     Box(
                         modifier = Modifier
                             .width(if (i == state.step.progressIndex()) 20.dp else 8.dp)
@@ -165,8 +176,13 @@ fun NewLibraryWizardScreen(
                     WizardStep.SaveRecoveryKey -> MasterKeyStep(masterKeyHex = state.masterKeyHex)
                     WizardStep.AddRemote -> RemoteStep(onAdvance = viewModel::remoteCompleted)
                     WizardStep.ChooseDeviceImport -> AskImportStep(
+                        hasRemote = state.hasRemote,
                         onImport = viewModel::chooseDeviceImport,
                         onSkip = viewModel::skipDeviceImport,
+                        onGetStarted = {
+                            viewModel.complete()
+                            onComplete()
+                        },
                     )
                     WizardStep.GrantMediaAccess -> PermissionStep(
                         autoSkip = state.slideForward,
@@ -186,6 +202,9 @@ fun NewLibraryWizardScreen(
                         onNo = {
                             viewModel.setAutoImport(false, onComplete)
                         },
+                    )
+                    WizardStep.AutoImportInfo -> AutoImportInfoStep(
+                        onDone = { viewModel.finishAutoImportSetup(onComplete) },
                     )
                 }
             }
@@ -323,6 +342,7 @@ private fun RemoteStep(onAdvance: () -> Unit) {
 
     var showAddS3 by remember { mutableStateOf(false) }
     var showAddLocalFS by remember { mutableStateOf(false) }
+    var showCloudLogin by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -353,6 +373,7 @@ private fun RemoteStep(onAdvance: () -> Unit) {
                 .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            LascoPrimaryButton(text = "Authenticate with Lasco Cloud", onClick = { showCloudLogin = true })
             LascoPrimaryButton(text = "Add S3-compatible remote", onClick = { showAddS3 = true })
             if (expertMode) {
                 LascoSecondaryButton(text = "Add local filesystem remote", onClick = { showAddLocalFS = true })
@@ -367,6 +388,12 @@ private fun RemoteStep(onAdvance: () -> Unit) {
             onResult = { _, _ -> onAdvance() },
         )
     }
+    if (showCloudLogin) {
+        LascoCloudLoginDialog(
+            onDismiss = { showCloudLogin = false },
+            onResult = { error -> if (error == null) onAdvance() },
+        )
+    }
     if (showAddLocalFS) {
         AddLocalFSRemoteDialog(
             onDismiss = { showAddLocalFS = false },
@@ -376,7 +403,12 @@ private fun RemoteStep(onAdvance: () -> Unit) {
 }
 
 @Composable
-private fun AskImportStep(onImport: () -> Unit, onSkip: () -> Unit) {
+private fun AskImportStep(
+    hasRemote: Boolean,
+    onImport: () -> Unit,
+    onSkip: () -> Unit,
+    onGetStarted: () -> Unit,
+) {
     val colors = LascoTheme.colors
     Column(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -387,13 +419,25 @@ private fun AskImportStep(onImport: () -> Unit, onSkip: () -> Unit) {
                 .padding(top = 40.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            Text(text = "Import your device photos?", style = LascoTheme.type.title(26), color = colors.ink)
             Text(
-                text = "Lasco can import the photos and videos in your camera folder and back them up to your remote. Albums are not replicated, and photos stored outside the camera folder are not imported.",
-                style = LascoTheme.type.body(16),
-                color = colors.inkSub,
+                text = if (hasRemote) "Import your device photos?" else "Can't import your current photo library yet.",
+                style = LascoTheme.type.title(26),
+                color = colors.ink,
             )
-            Text(text = "Nothing is deleted from your device.", style = LascoTheme.type.body(16), color = colors.inkSub)
+            if (hasRemote) {
+                Text(
+                    text = "Lasco can import the photos and videos in your camera folder and back them up to your remote. Albums are not replicated, and photos stored outside the camera folder are not imported.",
+                    style = LascoTheme.type.body(16),
+                    color = colors.inkSub,
+                )
+                Text(text = "Nothing is deleted from your device.", style = LascoTheme.type.body(16), color = colors.inkSub)
+            } else {
+                Text(
+                    text = "Because there is no remote yet, it would mean that everything should be saved twice locally on your device.",
+                    style = LascoTheme.type.body(16),
+                    color = colors.inkSub,
+                )
+            }
         }
 
         Column(
@@ -403,8 +447,12 @@ private fun AskImportStep(onImport: () -> Unit, onSkip: () -> Unit) {
                 .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            LascoPrimaryButton(text = "Yes, import my photos", onClick = onImport)
-            LascoSecondaryButton(text = "No, not now", onClick = onSkip)
+            if (hasRemote) {
+                LascoPrimaryButton(text = "Yes, import my photos", onClick = onImport)
+                LascoSecondaryButton(text = "No, not now", onClick = onSkip)
+            } else {
+                LascoPrimaryButton(text = "Get started", onClick = onGetStarted)
+            }
         }
     }
 }
@@ -680,14 +728,20 @@ private fun ImportStep(
                 if (importState is ImportState.Importing) {
                     val importing = importState as ImportState.Importing
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "Backed up ${importing.backedUp} of ${importing.total} items",
+                            style = LascoTheme.type.mono(13),
+                            color = colors.inkMuted,
+                        )
                         LinearProgressIndicator(
-                            progress = { if (importing.total > 0) importing.done.toFloat() / importing.total else 0f },
+                            progress = { if (importing.total > 0) importing.backedUp.toFloat() / importing.total else 0f },
                             color = colors.ink,
                             modifier = Modifier.fillMaxWidth(),
                         )
+                        InitialImportPhaseProgress(phase = importing.phase)
                         Text(
-                            text = "${importing.done} of ${importing.total}",
-                            style = LascoTheme.type.mono(13),
+                            text = "Keep Lasco open until the import finishes.",
+                            style = LascoTheme.type.body(14),
                             color = colors.inkMuted,
                         )
                     }
@@ -714,6 +768,55 @@ private fun ImportStep(
                     LascoSecondaryButton(text = "Skip for now", onClick = onDone)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun InitialImportPhaseProgress(phase: ImportPhase) {
+    val colors = LascoTheme.colors
+    when (phase) {
+        ImportPhase.PreparingLibrary -> Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CircularProgressIndicator(color = colors.inkMuted, modifier = Modifier.height(14.dp).width(14.dp))
+            Text(text = "Preparing your library…", style = LascoTheme.type.body(14), color = colors.inkMuted)
+        }
+        is ImportPhase.Adding -> {
+            Text(
+                text = "Adding items ${phase.range.first}–${phase.range.last}",
+                style = LascoTheme.type.body(14),
+                color = colors.inkMuted,
+            )
+            LinearProgressIndicator(
+                progress = { phase.completed.toFloat() / (phase.range.last - phase.range.first + 1) },
+                color = colors.inkMuted,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        is ImportPhase.Uploading -> {
+            Text(
+                text = "Uploading items ${phase.range.first}–${phase.range.last}",
+                style = LascoTheme.type.body(14),
+                color = colors.inkMuted,
+            )
+            LinearProgressIndicator(
+                progress = { phase.progress },
+                color = colors.inkMuted,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        is ImportPhase.Finalizing -> Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CircularProgressIndicator(color = colors.inkMuted, modifier = Modifier.height(14.dp).width(14.dp))
+            Text(
+                text = "Finalising backup for items ${phase.range.first}–${phase.range.last}…",
+                style = LascoTheme.type.body(14),
+                color = colors.inkMuted,
+            )
         }
     }
 }
@@ -759,6 +862,37 @@ private fun AutoImportStep(onYes: () -> Unit, onNo: () -> Unit) {
         ) {
             LascoPrimaryButton(text = "Yes, auto-import new photos", onClick = onYes)
             LascoSecondaryButton(text = "No, not now", onClick = onNo)
+        }
+    }
+}
+
+@Composable
+private fun AutoImportInfoStep(onDone: () -> Unit) {
+    val colors = LascoTheme.colors
+    Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(horizontal = 32.dp)
+                .padding(top = 40.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            Text(text = "Auto-import is on", style = LascoTheme.type.title(26), color = colors.ink)
+            Text(
+                text = "For now, auto-import runs only when you open Lasco.",
+                style = LascoTheme.type.body(16),
+                color = colors.inkSub,
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 32.dp)
+                .padding(bottom = 24.dp),
+        ) {
+            LascoPrimaryButton(text = "Get started", onClick = onDone)
         }
     }
 }

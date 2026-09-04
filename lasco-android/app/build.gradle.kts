@@ -27,7 +27,7 @@ android {
         minSdk = 24
         targetSdk = 36
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "0.3.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -38,12 +38,23 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Android Emulator reaches the development machine through this
+            // alias. Physical-device development can override it with
+            // -PlascoCloudUrl=http://<LAN-IP>:<port>.
+            buildConfigField(
+                "String",
+                "LASCO_CLOUD_URL",
+                "\"${project.findProperty("lascoCloudUrl") ?: "http://10.0.2.2:8787"}\"",
+            )
+        }
         release {
             // R8 is off until the JNA and uniffi generated bindings have keep rules,
             // since both rely on reflection that minification would otherwise strip.
             optimization {
                 enable = false
             }
+            buildConfigField("String", "LASCO_CLOUD_URL", "\"https://cloud.getlasco.app\"")
         }
     }
     compileOptions {
@@ -52,6 +63,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

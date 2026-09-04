@@ -661,6 +661,61 @@ internal open class UniffiForeignFutureStructVoid(
 internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
     fun callback(`callbackData`: Long,`result`: UniffiForeignFutureStructVoid.UniffiByValue,)
 }
+internal interface UniffiCallbackInterfacePushProgressSinkMethod0 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`fraction`: Double,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+}
+@Structure.FieldOrder("uploadProgress", "uniffiFree")
+internal open class UniffiVTableCallbackInterfacePushProgressSink(
+    @JvmField internal var `uploadProgress`: UniffiCallbackInterfacePushProgressSinkMethod0? = null,
+    @JvmField internal var `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+) : Structure() {
+    class UniffiByValue(
+        `uploadProgress`: UniffiCallbackInterfacePushProgressSinkMethod0? = null,
+        `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+    ): UniffiVTableCallbackInterfacePushProgressSink(`uploadProgress`,`uniffiFree`,), Structure.ByValue
+
+   internal fun uniffiSetValue(other: UniffiVTableCallbackInterfacePushProgressSink) {
+        `uploadProgress` = other.`uploadProgress`
+        `uniffiFree` = other.`uniffiFree`
+    }
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -922,7 +977,9 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 // when the library is loaded.
 internal interface IntegrityCheckingUniffiLib : Library {
     // Integrity check functions only
-    fun uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_s3(
+    fun uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_lasco_cloud(
+): Short
+fun uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_s3(
 ): Short
 fun uniffi_lasco_ffi_checksum_func_ffi_create_library(
 ): Short
@@ -941,6 +998,8 @@ fun uniffi_lasco_ffi_checksum_func_session_clear(
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_add_media_to_album(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_add_media_to_group(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_cloud_s3(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_debug_local_android(
 ): Short
@@ -969,6 +1028,10 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_album_list_groups(
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_album_list_items_sorted(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_all_media_ids(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_clear_lasco_cloud_auth_and_credentials(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_configure_lasco_cloud_auth(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_confirm_remote_media_async(
 ): Short
@@ -1004,6 +1067,8 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_bytes(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_bytes_async(
 ): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_bytes_native_async(
+): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_source_order(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_thumbnail(
@@ -1020,6 +1085,22 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_initialize_remote(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_inspect_compaction_lock(
 ): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_assign_remotes_to_this_library(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_check_initial_import(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_is_authenticated(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_list_remotes(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_login(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_revoke_session(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_storage_usage(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_subscription(
+): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_library_id(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_list_albums(
@@ -1033,6 +1114,8 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_list_remotes(
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_load_local_state(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_local_state_stats(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_materialize_media_to_path_async(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_media_album_ids(
 ): Short
@@ -1106,7 +1189,13 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_user_add(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_user_list(
 ): Short
+fun uniffi_lasco_ffi_checksum_method_ffinativemediabytes_data_pointer(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffinativemediabytes_len(
+): Short
 fun uniffi_lasco_ffi_checksum_constructor_ffilibrary_open(
+): Short
+fun uniffi_lasco_ffi_checksum_method_pushprogresssink_upload_progress(
 ): Short
 fun ffi_lasco_ffi_uniffi_contract_version(
 ): Int
@@ -1146,6 +1235,7 @@ internal interface UniffiLib : Library {
             val lib = loadIndirect<UniffiLib>(componentName)
             // No need to check the contract version and checksums, since 
             // we already did that with `IntegrityCheckingUniffiLib` above.
+            uniffiCallbackInterfacePushProgressSink.register(lib)
             // Loading of library with integrity check done.
             lib
         }
@@ -1167,6 +1257,8 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_add_media_to_album(`ptr`: Pointer,`alb
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_add_media_to_group(`ptr`: Pointer,`groupId`: RustBuffer.ByValue,`mediaId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_cloud_s3(`ptr`: Pointer,`name`: RustBuffer.ByValue,`cloudStorageId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_debug_local_android(`ptr`: Pointer,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_debug_local_apple(`ptr`: Pointer,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1195,6 +1287,10 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_album_list_items_sorted(`ptr`: Pointer
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_all_media_ids(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_lasco_ffi_fn_method_ffilibrary_clear_lasco_cloud_auth_and_credentials(`ptr`: Pointer,
+): Long
+fun uniffi_lasco_ffi_fn_method_ffilibrary_configure_lasco_cloud_auth(`ptr`: Pointer,`baseUrl`: RustBuffer.ByValue,
+): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_confirm_remote_media_async(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,
 ): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_connect_remote(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1229,6 +1325,8 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_get_media_bytes(`ptr`: Pointer,`mediaI
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_get_media_bytes_async(`ptr`: Pointer,`mediaId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,
 ): Long
+fun uniffi_lasco_ffi_fn_method_ffilibrary_get_media_bytes_native_async(`ptr`: Pointer,`mediaId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,
+): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_get_media_source_order(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_get_media_thumbnail(`ptr`: Pointer,`mediaId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1245,6 +1343,22 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_initialize_remote(`ptr`: Pointer,`remo
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_inspect_compaction_lock(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_assign_remotes_to_this_library(`ptr`: Pointer,`remoteIds`: RustBuffer.ByValue,
+): Long
+fun uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_check_initial_import(`ptr`: Pointer,`mediaBytes`: Long,
+): Long
+fun uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_is_authenticated(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
+fun uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_list_remotes(`ptr`: Pointer,
+): Long
+fun uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_login(`ptr`: Pointer,`email`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,`platform`: RustBuffer.ByValue,`appVersion`: RustBuffer.ByValue,
+): Long
+fun uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_revoke_session(`ptr`: Pointer,
+): Long
+fun uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_storage_usage(`ptr`: Pointer,
+): Long
+fun uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_subscription(`ptr`: Pointer,
+): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_library_id(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_list_albums(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -1259,6 +1373,8 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_load_local_state(`ptr`: Pointer,uniffi
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_local_state_stats(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_lasco_ffi_fn_method_ffilibrary_materialize_media_to_path_async(`ptr`: Pointer,`mediaId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,`destinationPath`: RustBuffer.ByValue,
+): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_media_album_ids(`ptr`: Pointer,`mediaId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_media_by_date(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
@@ -1295,7 +1411,7 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_from_remote(`ptr`: Pointer
 ): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_from_remote_async(`ptr`: Pointer,`targetRemoteId`: RustBuffer.ByValue,`sourceRemoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,
 ): Long
-fun uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_using_configured_media_sources_async(`ptr`: Pointer,`targetRemoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,
+fun uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_using_configured_media_sources_async(`ptr`: Pointer,`targetRemoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,`progress`: Long,
 ): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_remote_media_shortfall(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -1331,6 +1447,18 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_user_add(`ptr`: Pointer,`username`: Ru
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_user_list(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_lasco_ffi_fn_clone_ffinativemediabytes(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Pointer
+fun uniffi_lasco_ffi_fn_free_ffinativemediabytes(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_lasco_ffi_fn_method_ffinativemediabytes_data_pointer(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+fun uniffi_lasco_ffi_fn_method_ffinativemediabytes_len(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+fun uniffi_lasco_ffi_fn_init_callback_vtable_pushprogresssink(`vtable`: UniffiVTableCallbackInterfacePushProgressSink,
+): Unit
+fun uniffi_lasco_ffi_fn_func_ffi_add_existing_library_lasco_cloud(`config`: RustBuffer.ByValue,`appDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Pointer
 fun uniffi_lasco_ffi_fn_func_ffi_add_existing_library_s3(`nickname`: RustBuffer.ByValue,`username`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,`newUsername`: RustBuffer.ByValue,`newPassword`: RustBuffer.ByValue,`remoteName`: RustBuffer.ByValue,`endpoint`: RustBuffer.ByValue,`bucket`: RustBuffer.ByValue,`region`: RustBuffer.ByValue,`pathPrefix`: RustBuffer.ByValue,`accessKey`: RustBuffer.ByValue,`secretKey`: RustBuffer.ByValue,`appDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Pointer
 fun uniffi_lasco_ffi_fn_func_ffi_create_library(`nickname`: RustBuffer.ByValue,`username`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,`appDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1473,6 +1601,9 @@ private fun uniffiCheckContractApiVersion(lib: IntegrityCheckingUniffiLib) {
 }
 @Suppress("UNUSED_PARAMETER")
 private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
+    if (lib.uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_lasco_cloud() != 61860.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_s3() != 45002.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1501,6 +1632,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_add_media_to_group() != 3438.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_cloud_s3() != 65035.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_debug_local_android() != 10217.toShort()) {
@@ -1543,6 +1677,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_all_media_ids() != 28671.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_clear_lasco_cloud_auth_and_credentials() != 41699.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_configure_lasco_cloud_auth() != 39402.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_confirm_remote_media_async() != 59085.toShort()) {
@@ -1596,6 +1736,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_bytes_async() != 39230.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_bytes_native_async() != 62650.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_source_order() != 6486.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1620,6 +1763,30 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_inspect_compaction_lock() != 42815.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_assign_remotes_to_this_library() != 56961.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_check_initial_import() != 34656.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_is_authenticated() != 28183.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_list_remotes() != 63306.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_login() != 39324.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_revoke_session() != 42955.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_storage_usage() != 5814.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_lasco_cloud_subscription() != 11111.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_library_id() != 29748.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1639,6 +1806,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_local_state_stats() != 38463.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_materialize_media_to_path_async() != 3896.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_media_album_ids() != 37108.toShort()) {
@@ -1695,7 +1865,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_from_remote_async() != 41311.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_using_configured_media_sources_async() != 9550.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_using_configured_media_sources_async() != 3322.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_remote_media_shortfall() != 52429.toShort()) {
@@ -1749,7 +1919,16 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_user_list() != 50139.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffinativemediabytes_data_pointer() != 7268.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffinativemediabytes_len() != 2741.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_lasco_ffi_checksum_constructor_ffilibrary_open() != 55421.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_pushprogresssink_upload_progress() != 5246.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
 }
@@ -1869,7 +2048,38 @@ inline fun <T : Disposable?, R> T.use(block: (T) -> R) =
  *
  * @suppress
  * */
-object NoPointer
+object NoPointer// Magic number for the Rust proxy to call using the same mechanism as every other method,
+// to free the callback once it's dropped by Rust.
+internal const val IDX_CALLBACK_FREE = 0
+// Callback return codes
+internal const val UNIFFI_CALLBACK_SUCCESS = 0
+internal const val UNIFFI_CALLBACK_ERROR = 1
+internal const val UNIFFI_CALLBACK_UNEXPECTED_ERROR = 2
+
+/**
+ * @suppress
+ */
+public abstract class FfiConverterCallbackInterface<CallbackInterface: Any>: FfiConverter<CallbackInterface, Long> {
+    internal val handleMap = UniffiHandleMap<CallbackInterface>()
+
+    internal fun drop(handle: Long) {
+        handleMap.remove(handle)
+    }
+
+    override fun lift(value: Long): CallbackInterface {
+        return handleMap.get(value)
+    }
+
+    override fun read(buf: ByteBuffer) = lift(buf.getLong())
+
+    override fun lower(value: CallbackInterface) = handleMap.insert(value)
+
+    override fun allocationSize(value: CallbackInterface) = 8UL
+
+    override fun write(value: CallbackInterface, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
 /**
  * The cleaner interface for Object finalization code to run.
  * This is the entry point to any implementation that we're using.
@@ -2024,6 +2234,29 @@ public object FfiConverterULong: FfiConverter<ULong, Long> {
 
     override fun write(value: ULong, buf: ByteBuffer) {
         buf.putLong(value.toLong())
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterDouble: FfiConverter<Double, Double> {
+    override fun lift(value: Double): Double {
+        return value
+    }
+
+    override fun read(buf: ByteBuffer): Double {
+        return buf.getDouble()
+    }
+
+    override fun lower(value: Double): Double {
+        return value
+    }
+
+    override fun allocationSize(value: Double) = 8UL
+
+    override fun write(value: Double, buf: ByteBuffer) {
+        buf.putDouble(value)
     }
 }
 
@@ -2242,6 +2475,12 @@ public interface FfiLibraryInterface {
     fun `addMediaToGroup`(`groupId`: FfiGroupUuid, `mediaId`: FfiMediaUuid)
     
     /**
+     * Adds one Lasco Cloud storage destination. The core resolves and caches
+     * its short-lived S3 credentials when the remote is first used.
+     */
+    fun `addRemoteCloudS3`(`name`: kotlin.String, `cloudStorageId`: kotlin.String): FfiRemoteUuid
+    
+    /**
      * # Errors
      *
      * Returns an error for a duplicate name or failed library-configuration persistence.
@@ -2367,6 +2606,10 @@ public interface FfiLibraryInterface {
     
     fun `allMediaIds`(): List<FfiMediaUuid>
     
+    suspend fun `clearLascoCloudAuthAndCredentials`()
+    
+    suspend fun `configureLascoCloudAuth`(`baseUrl`: kotlin.String)
+    
     /**
      * Confirms which media blobs a remote holds and records them in its media inventory,
      * without fetching. Returns how many blobs it newly confirmed.
@@ -2479,6 +2722,22 @@ public interface FfiLibraryInterface {
     suspend fun `getMediaBytesAsync`(`mediaId`: FfiMediaUuid, `appSupportDir`: kotlin.String?): kotlin.ByteArray
     
     /**
+     * Returns Rust-owned plaintext media bytes without serializing them into
+     * a UniFFI byte array. The returned object's lifetime owns the backing
+     * allocation: platform code must retain it while reading `data_pointer`
+     * and close/destroy it as soon as the synchronous consumer is finished.
+     *
+     * Android uses this for image decoding on API 28 and newer, where
+     * `ImageDecoder` accepts a direct `ByteBuffer` view of the native bytes.
+     *
+     * # Errors
+     *
+     * Returns an error if the ID is invalid, no local or configured remote
+     * blob is available, or a remote read, decryption, or cache write fails.
+     */
+    suspend fun `getMediaBytesNativeAsync`(`mediaId`: FfiMediaUuid, `appSupportDir`: kotlin.String?): FfiNativeMediaBytes
+    
+    /**
      * Returns the ordered subset of remotes used to retrieve uncached originals.
      *
      * # Errors
@@ -2529,6 +2788,26 @@ public interface FfiLibraryInterface {
      */
     fun `inspectCompactionLock`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): FfiCompactionLockInfo?
     
+    suspend fun `lascoCloudAssignRemotesToThisLibrary`(`remoteIds`: List<kotlin.String>)
+    
+    /**
+     * Rejects an initial import that cannot fit on the configured Cloud remotes.
+     * Only media data bytes are supplied; state and generated thumbnails are excluded.
+     */
+    suspend fun `lascoCloudCheckInitialImport`(`mediaBytes`: kotlin.ULong)
+    
+    fun `lascoCloudIsAuthenticated`(): kotlin.Boolean
+    
+    suspend fun `lascoCloudListRemotes`(): List<FfiLascoCloudRemote>
+    
+    suspend fun `lascoCloudLogin`(`email`: kotlin.String, `password`: kotlin.String, `platform`: kotlin.String, `appVersion`: kotlin.String)
+    
+    suspend fun `lascoCloudRevokeSession`()
+    
+    suspend fun `lascoCloudStorageUsage`(): kotlin.ULong
+    
+    suspend fun `lascoCloudSubscription`(): FfiLascoCloudAccount
+    
     fun `libraryId`(): FfiLibraryId
     
     /**
@@ -2569,6 +2848,18 @@ public interface FfiLibraryInterface {
     fun `loadLocalState`()
     
     fun `localStateStats`(): FfiLocalStateStats
+    
+    /**
+     * Materializes decrypted media to an app-private destination without
+     * returning the full plaintext as a Kotlin byte array. Android uses this
+     * for video playback and export, where videos can be far too large for a
+     * safe FFI byte-array result.
+     *
+     * The caller owns the destination and is responsible for retaining or
+     * evicting it. On a remote cache miss this method downloads and caches
+     * the encrypted Lasco blob before writing the plaintext destination.
+     */
+    suspend fun `materializeMediaToPathAsync`(`mediaId`: FfiMediaUuid, `appSupportDir`: kotlin.String?, `destinationPath`: kotlin.String): kotlin.String
     
     /**
      * # Errors
@@ -2717,7 +3008,7 @@ public interface FfiLibraryInterface {
      * Returns an error if the ID or configuration is invalid, storage cannot be built, some
      * data blob has no known place to be read from, or the push itself fails.
      */
-    suspend fun `pushRemoteUsingConfiguredMediaSourcesAsync`(`targetRemoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): kotlin.ULong
+    suspend fun `pushRemoteUsingConfiguredMediaSourcesAsync`(`targetRemoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?, `progress`: PushProgressSink): kotlin.ULong
     
     /**
      * What `remote_id` is not yet confirmed to hold.
@@ -2980,6 +3271,23 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
 }
     }
     
+    
+
+    
+    /**
+     * Adds one Lasco Cloud storage destination. The core resolves and caches
+     * its short-lived S3 credentials when the remote is first used.
+     */
+    @Throws(LascoException::class)override fun `addRemoteCloudS3`(`name`: kotlin.String, `cloudStorageId`: kotlin.String): FfiRemoteUuid {
+            return FfiConverterTypeFfiRemoteUuid.lift(
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_cloud_s3(
+        it, FfiConverterString.lower(`name`),FfiConverterString.lower(`cloudStorageId`),_status)
+}
+    }
+    )
+    }
     
 
     
@@ -3260,6 +3568,50 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     )
     }
     
+
+    
+    @Throws(LascoException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `clearLascoCloudAuthAndCredentials`() {
+        return uniffiRustCallAsync(
+        callWithPointer { thisPtr ->
+            UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_clear_lasco_cloud_auth_and_credentials(
+                thisPtr,
+                
+            )
+        },
+        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_poll_void(future, callback, continuation) },
+        { future, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_complete_void(future, continuation) },
+        { future -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_free_void(future) },
+        // lift function
+        { Unit },
+        
+        // Error FFI converter
+        LascoException.ErrorHandler,
+    )
+    }
+
+    
+    @Throws(LascoException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `configureLascoCloudAuth`(`baseUrl`: kotlin.String) {
+        return uniffiRustCallAsync(
+        callWithPointer { thisPtr ->
+            UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_configure_lasco_cloud_auth(
+                thisPtr,
+                FfiConverterString.lower(`baseUrl`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_poll_void(future, callback, continuation) },
+        { future, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_complete_void(future, continuation) },
+        { future -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_free_void(future) },
+        // lift function
+        { Unit },
+        
+        // Error FFI converter
+        LascoException.ErrorHandler,
+    )
+    }
 
     
     /**
@@ -3576,6 +3928,41 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
 
     
     /**
+     * Returns Rust-owned plaintext media bytes without serializing them into
+     * a UniFFI byte array. The returned object's lifetime owns the backing
+     * allocation: platform code must retain it while reading `data_pointer`
+     * and close/destroy it as soon as the synchronous consumer is finished.
+     *
+     * Android uses this for image decoding on API 28 and newer, where
+     * `ImageDecoder` accepts a direct `ByteBuffer` view of the native bytes.
+     *
+     * # Errors
+     *
+     * Returns an error if the ID is invalid, no local or configured remote
+     * blob is available, or a remote read, decryption, or cache write fails.
+     */
+    @Throws(LascoException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `getMediaBytesNativeAsync`(`mediaId`: FfiMediaUuid, `appSupportDir`: kotlin.String?) : FfiNativeMediaBytes {
+        return uniffiRustCallAsync(
+        callWithPointer { thisPtr ->
+            UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_get_media_bytes_native_async(
+                thisPtr,
+                FfiConverterTypeFfiMediaUuid.lower(`mediaId`),FfiConverterOptionalString.lower(`appSupportDir`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_poll_pointer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_complete_pointer(future, continuation) },
+        { future -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_free_pointer(future) },
+        // lift function
+        { FfiConverterTypeFfiNativeMediaBytes.lift(it) },
+        // Error FFI converter
+        LascoException.ErrorHandler,
+    )
+    }
+
+    
+    /**
      * Returns the ordered subset of remotes used to retrieve uncached originals.
      *
      * # Errors
@@ -3719,6 +4106,173 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     }
     
 
+    
+    @Throws(LascoException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `lascoCloudAssignRemotesToThisLibrary`(`remoteIds`: List<kotlin.String>) {
+        return uniffiRustCallAsync(
+        callWithPointer { thisPtr ->
+            UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_assign_remotes_to_this_library(
+                thisPtr,
+                FfiConverterSequenceString.lower(`remoteIds`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_poll_void(future, callback, continuation) },
+        { future, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_complete_void(future, continuation) },
+        { future -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_free_void(future) },
+        // lift function
+        { Unit },
+        
+        // Error FFI converter
+        LascoException.ErrorHandler,
+    )
+    }
+
+    
+    /**
+     * Rejects an initial import that cannot fit on the configured Cloud remotes.
+     * Only media data bytes are supplied; state and generated thumbnails are excluded.
+     */
+    @Throws(LascoException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `lascoCloudCheckInitialImport`(`mediaBytes`: kotlin.ULong) {
+        return uniffiRustCallAsync(
+        callWithPointer { thisPtr ->
+            UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_check_initial_import(
+                thisPtr,
+                FfiConverterULong.lower(`mediaBytes`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_poll_void(future, callback, continuation) },
+        { future, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_complete_void(future, continuation) },
+        { future -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_free_void(future) },
+        // lift function
+        { Unit },
+        
+        // Error FFI converter
+        LascoException.ErrorHandler,
+    )
+    }
+
+    override fun `lascoCloudIsAuthenticated`(): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_is_authenticated(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(LascoException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `lascoCloudListRemotes`() : List<FfiLascoCloudRemote> {
+        return uniffiRustCallAsync(
+        callWithPointer { thisPtr ->
+            UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_list_remotes(
+                thisPtr,
+                
+            )
+        },
+        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterSequenceTypeFfiLascoCloudRemote.lift(it) },
+        // Error FFI converter
+        LascoException.ErrorHandler,
+    )
+    }
+
+    
+    @Throws(LascoException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `lascoCloudLogin`(`email`: kotlin.String, `password`: kotlin.String, `platform`: kotlin.String, `appVersion`: kotlin.String) {
+        return uniffiRustCallAsync(
+        callWithPointer { thisPtr ->
+            UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_login(
+                thisPtr,
+                FfiConverterString.lower(`email`),FfiConverterString.lower(`password`),FfiConverterString.lower(`platform`),FfiConverterString.lower(`appVersion`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_poll_void(future, callback, continuation) },
+        { future, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_complete_void(future, continuation) },
+        { future -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_free_void(future) },
+        // lift function
+        { Unit },
+        
+        // Error FFI converter
+        LascoException.ErrorHandler,
+    )
+    }
+
+    
+    @Throws(LascoException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `lascoCloudRevokeSession`() {
+        return uniffiRustCallAsync(
+        callWithPointer { thisPtr ->
+            UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_revoke_session(
+                thisPtr,
+                
+            )
+        },
+        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_poll_void(future, callback, continuation) },
+        { future, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_complete_void(future, continuation) },
+        { future -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_free_void(future) },
+        // lift function
+        { Unit },
+        
+        // Error FFI converter
+        LascoException.ErrorHandler,
+    )
+    }
+
+    
+    @Throws(LascoException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `lascoCloudStorageUsage`() : kotlin.ULong {
+        return uniffiRustCallAsync(
+        callWithPointer { thisPtr ->
+            UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_storage_usage(
+                thisPtr,
+                
+            )
+        },
+        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_poll_u64(future, callback, continuation) },
+        { future, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_complete_u64(future, continuation) },
+        { future -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_free_u64(future) },
+        // lift function
+        { FfiConverterULong.lift(it) },
+        // Error FFI converter
+        LascoException.ErrorHandler,
+    )
+    }
+
+    
+    @Throws(LascoException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `lascoCloudSubscription`() : FfiLascoCloudAccount {
+        return uniffiRustCallAsync(
+        callWithPointer { thisPtr ->
+            UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_subscription(
+                thisPtr,
+                
+            )
+        },
+        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterTypeFfiLascoCloudAccount.lift(it) },
+        // Error FFI converter
+        LascoException.ErrorHandler,
+    )
+    }
+
     override fun `libraryId`(): FfiLibraryId {
             return FfiConverterTypeFfiLibraryId.lift(
     callWithPointer {
@@ -3832,6 +4386,37 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     )
     }
     
+
+    
+    /**
+     * Materializes decrypted media to an app-private destination without
+     * returning the full plaintext as a Kotlin byte array. Android uses this
+     * for video playback and export, where videos can be far too large for a
+     * safe FFI byte-array result.
+     *
+     * The caller owns the destination and is responsible for retaining or
+     * evicting it. On a remote cache miss this method downloads and caches
+     * the encrypted Lasco blob before writing the plaintext destination.
+     */
+    @Throws(LascoException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `materializeMediaToPathAsync`(`mediaId`: FfiMediaUuid, `appSupportDir`: kotlin.String?, `destinationPath`: kotlin.String) : kotlin.String {
+        return uniffiRustCallAsync(
+        callWithPointer { thisPtr ->
+            UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_materialize_media_to_path_async(
+                thisPtr,
+                FfiConverterTypeFfiMediaUuid.lower(`mediaId`),FfiConverterOptionalString.lower(`appSupportDir`),FfiConverterString.lower(`destinationPath`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterString.lift(it) },
+        // Error FFI converter
+        LascoException.ErrorHandler,
+    )
+    }
 
     
     /**
@@ -4194,12 +4779,12 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
      */
     @Throws(LascoException::class)
     @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
-    override suspend fun `pushRemoteUsingConfiguredMediaSourcesAsync`(`targetRemoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?) : kotlin.ULong {
+    override suspend fun `pushRemoteUsingConfiguredMediaSourcesAsync`(`targetRemoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?, `progress`: PushProgressSink) : kotlin.ULong {
         return uniffiRustCallAsync(
         callWithPointer { thisPtr ->
             UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_using_configured_media_sources_async(
                 thisPtr,
-                FfiConverterTypeFfiRemoteUuid.lower(`targetRemoteId`),FfiConverterOptionalString.lower(`appSupportDir`),
+                FfiConverterTypeFfiRemoteUuid.lower(`targetRemoteId`),FfiConverterOptionalString.lower(`appSupportDir`),FfiConverterTypePushProgressSink.lower(`progress`),
             )
         },
         { future, callback, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_poll_u64(future, callback, continuation) },
@@ -4587,6 +5172,288 @@ public object FfiConverterTypeFfiLibrary: FfiConverter<FfiLibrary, Pointer> {
 }
 
 
+// This template implements a class for working with a Rust struct via a Pointer/Arc<T>
+// to the live Rust struct on the other side of the FFI.
+//
+// Each instance implements core operations for working with the Rust `Arc<T>` and the
+// Kotlin Pointer to work with the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque pointer to the underlying Rust struct.
+//     Method calls need to read this pointer from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its pointer should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the pointer, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the pointer, but is interrupted
+//      before it can pass the pointer over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read pointer value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+/**
+ * Rust-owned plaintext bytes exposed as a borrowed native-memory view.
+ *
+ * Clients may create their platform-native byte view from `data_pointer` and
+ * `len`, but that view is valid only while this opaque object is retained.
+ * Destroying the UniFFI object drops the backing `Vec` in Rust. This avoids
+ * making a second full-size allocation to serialize the bytes into a UniFFI
+ * `RustBuffer` and then a platform byte array.
+ */
+public interface FfiNativeMediaBytesInterface {
+    
+    /**
+     * Address of the first byte. It is an opaque native address, not an
+     * ownership handle; clients must not free it directly.
+     */
+    fun `dataPointer`(): kotlin.ULong
+    
+    /**
+     * Number of bytes addressable from `data_pointer`.
+     */
+    fun `len`(): kotlin.ULong
+    
+    companion object
+}
+
+/**
+ * Rust-owned plaintext bytes exposed as a borrowed native-memory view.
+ *
+ * Clients may create their platform-native byte view from `data_pointer` and
+ * `len`, but that view is valid only while this opaque object is retained.
+ * Destroying the UniFFI object drops the backing `Vec` in Rust. This avoids
+ * making a second full-size allocation to serialize the bytes into a UniFFI
+ * `RustBuffer` and then a platform byte array.
+ */
+open class FfiNativeMediaBytes: Disposable, AutoCloseable, FfiNativeMediaBytesInterface
+{
+
+    constructor(pointer: Pointer) {
+        this.pointer = pointer
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(pointer))
+    }
+
+    /**
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noPointer: NoPointer) {
+        this.pointer = null
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(pointer))
+    }
+
+    protected val pointer: Pointer?
+    protected val cleanable: UniffiCleaner.Cleanable
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithPointer(block: (ptr: Pointer) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the pointer being freed concurrently.
+        try {
+            return block(this.uniffiClonePointer())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val pointer: Pointer?) : Runnable {
+        override fun run() {
+            pointer?.let { ptr ->
+                uniffiRustCall { status ->
+                    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_free_ffinativemediabytes(ptr, status)
+                }
+            }
+        }
+    }
+
+    fun uniffiClonePointer(): Pointer {
+        return uniffiRustCall() { status ->
+            UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_clone_ffinativemediabytes(pointer!!, status)
+        }
+    }
+
+    
+    /**
+     * Address of the first byte. It is an opaque native address, not an
+     * ownership handle; clients must not free it directly.
+     */override fun `dataPointer`(): kotlin.ULong {
+            return FfiConverterULong.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffinativemediabytes_data_pointer(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Number of bytes addressable from `data_pointer`.
+     */override fun `len`(): kotlin.ULong {
+            return FfiConverterULong.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffinativemediabytes_len(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+
+    
+    
+    companion object
+    
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFfiNativeMediaBytes: FfiConverter<FfiNativeMediaBytes, Pointer> {
+
+    override fun lower(value: FfiNativeMediaBytes): Pointer {
+        return value.uniffiClonePointer()
+    }
+
+    override fun lift(value: Pointer): FfiNativeMediaBytes {
+        return FfiNativeMediaBytes(value)
+    }
+
+    override fun read(buf: ByteBuffer): FfiNativeMediaBytes {
+        // The Rust code always writes pointers as 8 bytes, and will
+        // fail to compile if they don't fit.
+        return lift(Pointer(buf.getLong()))
+    }
+
+    override fun allocationSize(value: FfiNativeMediaBytes) = 8UL
+
+    override fun write(value: FfiNativeMediaBytes, buf: ByteBuffer) {
+        // The Rust code always expects pointers written as 8 bytes,
+        // and will fail to compile if they don't fit.
+        buf.putLong(Pointer.nativeValue(lower(value)))
+    }
+}
+
+
 
 data class FfiAlbum (
     var `albumId`: FfiAlbumUuid, 
@@ -4938,6 +5805,204 @@ public object FfiConverterTypeFfiKv: FfiConverterRustBuffer<FfiKv> {
     override fun write(value: FfiKv, buf: ByteBuffer) {
             FfiConverterString.write(value.`key`, buf)
             FfiConverterString.write(value.`value`, buf)
+    }
+}
+
+
+
+data class FfiLascoCloudAccount (
+    var `email`: kotlin.String, 
+    var `subscription`: FfiLascoCloudSubscription?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFfiLascoCloudAccount: FfiConverterRustBuffer<FfiLascoCloudAccount> {
+    override fun read(buf: ByteBuffer): FfiLascoCloudAccount {
+        return FfiLascoCloudAccount(
+            FfiConverterString.read(buf),
+            FfiConverterOptionalTypeFfiLascoCloudSubscription.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FfiLascoCloudAccount) = (
+            FfiConverterString.allocationSize(value.`email`) +
+            FfiConverterOptionalTypeFfiLascoCloudSubscription.allocationSize(value.`subscription`)
+    )
+
+    override fun write(value: FfiLascoCloudAccount, buf: ByteBuffer) {
+            FfiConverterString.write(value.`email`, buf)
+            FfiConverterOptionalTypeFfiLascoCloudSubscription.write(value.`subscription`, buf)
+    }
+}
+
+
+
+/**
+ * Credentials and client information needed to attach an existing Lasco Cloud library.
+ *
+ * This intentionally crosses the FFI boundary as one record. Android's native ABI cannot
+ * reliably marshal the previous wide list of `RustBuffer` arguments.
+ */
+data class FfiLascoCloudImportConfig (
+    var `nickname`: kotlin.String, 
+    var `username`: kotlin.String, 
+    var `password`: kotlin.String, 
+    var `newUsername`: kotlin.String?, 
+    var `newPassword`: kotlin.String?, 
+    var `cloudBaseUrl`: kotlin.String, 
+    var `cloudEmail`: kotlin.String, 
+    var `cloudPassword`: kotlin.String, 
+    var `platform`: kotlin.String, 
+    var `appVersion`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFfiLascoCloudImportConfig: FfiConverterRustBuffer<FfiLascoCloudImportConfig> {
+    override fun read(buf: ByteBuffer): FfiLascoCloudImportConfig {
+        return FfiLascoCloudImportConfig(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FfiLascoCloudImportConfig) = (
+            FfiConverterString.allocationSize(value.`nickname`) +
+            FfiConverterString.allocationSize(value.`username`) +
+            FfiConverterString.allocationSize(value.`password`) +
+            FfiConverterOptionalString.allocationSize(value.`newUsername`) +
+            FfiConverterOptionalString.allocationSize(value.`newPassword`) +
+            FfiConverterString.allocationSize(value.`cloudBaseUrl`) +
+            FfiConverterString.allocationSize(value.`cloudEmail`) +
+            FfiConverterString.allocationSize(value.`cloudPassword`) +
+            FfiConverterString.allocationSize(value.`platform`) +
+            FfiConverterString.allocationSize(value.`appVersion`)
+    )
+
+    override fun write(value: FfiLascoCloudImportConfig, buf: ByteBuffer) {
+            FfiConverterString.write(value.`nickname`, buf)
+            FfiConverterString.write(value.`username`, buf)
+            FfiConverterString.write(value.`password`, buf)
+            FfiConverterOptionalString.write(value.`newUsername`, buf)
+            FfiConverterOptionalString.write(value.`newPassword`, buf)
+            FfiConverterString.write(value.`cloudBaseUrl`, buf)
+            FfiConverterString.write(value.`cloudEmail`, buf)
+            FfiConverterString.write(value.`cloudPassword`, buf)
+            FfiConverterString.write(value.`platform`, buf)
+            FfiConverterString.write(value.`appVersion`, buf)
+    }
+}
+
+
+
+data class FfiLascoCloudRemote (
+    var `id`: kotlin.String, 
+    var `libraryId`: kotlin.String?, 
+    var `name`: kotlin.String, 
+    var `endpoint`: kotlin.String, 
+    var `bucket`: kotlin.String, 
+    var `region`: kotlin.String, 
+    var `pathPrefix`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFfiLascoCloudRemote: FfiConverterRustBuffer<FfiLascoCloudRemote> {
+    override fun read(buf: ByteBuffer): FfiLascoCloudRemote {
+        return FfiLascoCloudRemote(
+            FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FfiLascoCloudRemote) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterOptionalString.allocationSize(value.`libraryId`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterString.allocationSize(value.`endpoint`) +
+            FfiConverterString.allocationSize(value.`bucket`) +
+            FfiConverterString.allocationSize(value.`region`) +
+            FfiConverterString.allocationSize(value.`pathPrefix`)
+    )
+
+    override fun write(value: FfiLascoCloudRemote, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterOptionalString.write(value.`libraryId`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`endpoint`, buf)
+            FfiConverterString.write(value.`bucket`, buf)
+            FfiConverterString.write(value.`region`, buf)
+            FfiConverterString.write(value.`pathPrefix`, buf)
+    }
+}
+
+
+
+data class FfiLascoCloudSubscription (
+    var `planId`: kotlin.String, 
+    var `planName`: kotlin.String, 
+    var `status`: kotlin.String, 
+    var `storageQuotaBytes`: kotlin.ULong, 
+    var `renewsAt`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFfiLascoCloudSubscription: FfiConverterRustBuffer<FfiLascoCloudSubscription> {
+    override fun read(buf: ByteBuffer): FfiLascoCloudSubscription {
+        return FfiLascoCloudSubscription(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FfiLascoCloudSubscription) = (
+            FfiConverterString.allocationSize(value.`planId`) +
+            FfiConverterString.allocationSize(value.`planName`) +
+            FfiConverterString.allocationSize(value.`status`) +
+            FfiConverterULong.allocationSize(value.`storageQuotaBytes`) +
+            FfiConverterString.allocationSize(value.`renewsAt`)
+    )
+
+    override fun write(value: FfiLascoCloudSubscription, buf: ByteBuffer) {
+            FfiConverterString.write(value.`planId`, buf)
+            FfiConverterString.write(value.`planName`, buf)
+            FfiConverterString.write(value.`status`, buf)
+            FfiConverterULong.write(value.`storageQuotaBytes`, buf)
+            FfiConverterString.write(value.`renewsAt`, buf)
     }
 }
 
@@ -5467,6 +6532,14 @@ sealed class LascoException: kotlin.Exception() {
             get() = ""
     }
     
+    class CloudQuotaExceeded(
+        
+        val `msg`: kotlin.String
+        ) : LascoException() {
+        override val message
+            get() = "msg=${ `msg` }"
+    }
+    
     class MissingLocalMedia(
         
         val `mediaIds`: List<FfiMediaId>
@@ -5481,6 +6554,16 @@ sealed class LascoException: kotlin.Exception() {
         ) : LascoException() {
         override val message
             get() = "mediaIds=${ `mediaIds` }"
+    }
+    
+    class MediaTooLarge(
+        
+        val `sizeBytes`: kotlin.ULong, 
+        
+        val `limitBytes`: kotlin.ULong
+        ) : LascoException() {
+        override val message
+            get() = "sizeBytes=${ `sizeBytes` }, limitBytes=${ `limitBytes` }"
     }
     
     class CrdtRecoveryAvailable(
@@ -5524,17 +6607,24 @@ public object FfiConverterTypeLascoError : FfiConverterRustBuffer<LascoException
             1 -> LascoException.InvalidCredentials()
             2 -> LascoException.NotFound()
             3 -> LascoException.SyncBusy()
-            4 -> LascoException.MissingLocalMedia(
-                FfiConverterSequenceTypeFfiMediaId.read(buf),
-                )
-            5 -> LascoException.MissingMediaOnConfiguredSources(
-                FfiConverterSequenceTypeFfiMediaId.read(buf),
-                )
-            6 -> LascoException.CrdtRecoveryAvailable()
-            7 -> LascoException.Storage(
+            4 -> LascoException.CloudQuotaExceeded(
                 FfiConverterString.read(buf),
                 )
-            8 -> LascoException.Other(
+            5 -> LascoException.MissingLocalMedia(
+                FfiConverterSequenceTypeFfiMediaId.read(buf),
+                )
+            6 -> LascoException.MissingMediaOnConfiguredSources(
+                FfiConverterSequenceTypeFfiMediaId.read(buf),
+                )
+            7 -> LascoException.MediaTooLarge(
+                FfiConverterULong.read(buf),
+                FfiConverterULong.read(buf),
+                )
+            8 -> LascoException.CrdtRecoveryAvailable()
+            9 -> LascoException.Storage(
+                FfiConverterString.read(buf),
+                )
+            10 -> LascoException.Other(
                 FfiConverterString.read(buf),
                 )
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
@@ -5555,6 +6645,11 @@ public object FfiConverterTypeLascoError : FfiConverterRustBuffer<LascoException
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
             )
+            is LascoException.CloudQuotaExceeded -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`msg`)
+            )
             is LascoException.MissingLocalMedia -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
@@ -5564,6 +6659,12 @@ public object FfiConverterTypeLascoError : FfiConverterRustBuffer<LascoException
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
                 + FfiConverterSequenceTypeFfiMediaId.allocationSize(value.`mediaIds`)
+            )
+            is LascoException.MediaTooLarge -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterULong.allocationSize(value.`sizeBytes`)
+                + FfiConverterULong.allocationSize(value.`limitBytes`)
             )
             is LascoException.CrdtRecoveryAvailable -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
@@ -5596,27 +6697,38 @@ public object FfiConverterTypeLascoError : FfiConverterRustBuffer<LascoException
                 buf.putInt(3)
                 Unit
             }
-            is LascoException.MissingLocalMedia -> {
+            is LascoException.CloudQuotaExceeded -> {
                 buf.putInt(4)
-                FfiConverterSequenceTypeFfiMediaId.write(value.`mediaIds`, buf)
+                FfiConverterString.write(value.`msg`, buf)
                 Unit
             }
-            is LascoException.MissingMediaOnConfiguredSources -> {
+            is LascoException.MissingLocalMedia -> {
                 buf.putInt(5)
                 FfiConverterSequenceTypeFfiMediaId.write(value.`mediaIds`, buf)
                 Unit
             }
-            is LascoException.CrdtRecoveryAvailable -> {
+            is LascoException.MissingMediaOnConfiguredSources -> {
                 buf.putInt(6)
+                FfiConverterSequenceTypeFfiMediaId.write(value.`mediaIds`, buf)
+                Unit
+            }
+            is LascoException.MediaTooLarge -> {
+                buf.putInt(7)
+                FfiConverterULong.write(value.`sizeBytes`, buf)
+                FfiConverterULong.write(value.`limitBytes`, buf)
+                Unit
+            }
+            is LascoException.CrdtRecoveryAvailable -> {
+                buf.putInt(8)
                 Unit
             }
             is LascoException.Storage -> {
-                buf.putInt(7)
+                buf.putInt(9)
                 FfiConverterString.write(value.`msg`, buf)
                 Unit
             }
             is LascoException.Other -> {
-                buf.putInt(8)
+                buf.putInt(10)
                 FfiConverterString.write(value.`msg`, buf)
                 Unit
             }
@@ -5624,6 +6736,65 @@ public object FfiConverterTypeLascoError : FfiConverterRustBuffer<LascoException
     }
 
 }
+
+
+
+
+
+/**
+ * Receives completed full-media upload progress for one Push invocation.
+ *
+ * Calls arrive on Lasco's Rust runtime thread. Implementations must return quickly and must
+ * marshal any UI work onto their platform's UI dispatcher.
+ */
+public interface PushProgressSink {
+    
+    fun `uploadProgress`(`fraction`: kotlin.Double)
+    
+    companion object
+}
+
+
+
+// Put the implementation in an object so we don't pollute the top-level namespace
+internal object uniffiCallbackInterfacePushProgressSink {
+    internal object `uploadProgress`: UniffiCallbackInterfacePushProgressSinkMethod0 {
+        override fun callback(`uniffiHandle`: Long,`fraction`: Double,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypePushProgressSink.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`uploadProgress`(
+                    FfiConverterDouble.lift(`fraction`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+
+    internal object uniffiFree: UniffiCallbackInterfaceFree {
+        override fun callback(handle: Long) {
+            FfiConverterTypePushProgressSink.handleMap.remove(handle)
+        }
+    }
+
+    internal var vtable = UniffiVTableCallbackInterfacePushProgressSink.UniffiByValue(
+        `uploadProgress`,
+        uniffiFree,
+    )
+
+    // Registers the foreign callback with the Rust side.
+    // This method is generated for each callback interface.
+    internal fun register(lib: UniffiLib) {
+        lib.uniffi_lasco_ffi_fn_init_callback_vtable_pushprogresssink(vtable)
+    }
+}
+
+/**
+ * The ffiConverter which transforms the Callbacks in to handles to pass to Rust.
+ *
+ * @suppress
+ */
+public object FfiConverterTypePushProgressSink: FfiConverterCallbackInterface<PushProgressSink>()
 
 
 
@@ -5813,6 +6984,38 @@ public object FfiConverterOptionalTypeFfiGroup: FfiConverterRustBuffer<FfiGroup?
         } else {
             buf.put(1)
             FfiConverterTypeFfiGroup.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeFfiLascoCloudSubscription: FfiConverterRustBuffer<FfiLascoCloudSubscription?> {
+    override fun read(buf: ByteBuffer): FfiLascoCloudSubscription? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeFfiLascoCloudSubscription.read(buf)
+    }
+
+    override fun allocationSize(value: FfiLascoCloudSubscription?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeFfiLascoCloudSubscription.allocationSize(value)
+        }
+    }
+
+    override fun write(value: FfiLascoCloudSubscription?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeFfiLascoCloudSubscription.write(value, buf)
         }
     }
 }
@@ -6115,6 +7318,34 @@ public object FfiConverterSequenceTypeFfiKv: FfiConverterRustBuffer<List<FfiKv>>
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeFfiLascoCloudRemote: FfiConverterRustBuffer<List<FfiLascoCloudRemote>> {
+    override fun read(buf: ByteBuffer): List<FfiLascoCloudRemote> {
+        val len = buf.getInt()
+        return List<FfiLascoCloudRemote>(len) {
+            FfiConverterTypeFfiLascoCloudRemote.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<FfiLascoCloudRemote>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeFfiLascoCloudRemote.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<FfiLascoCloudRemote>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeFfiLascoCloudRemote.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeFfiLibraryEntry: FfiConverterRustBuffer<List<FfiLibraryEntry>> {
     override fun read(buf: ByteBuffer): List<FfiLibraryEntry> {
         val len = buf.getInt()
@@ -6283,6 +7514,22 @@ public object FfiConverterSequenceTypeFfiRemoteUuid: FfiConverterRustBuffer<List
 
 
 
+
+        /**
+         * Add a library already stored in Lasco Cloud.
+         *
+         * Cloud account credentials authorize storage discovery. Library credentials
+         * decrypt the remote library; they are deliberately separate identities.
+         */
+    @Throws(LascoException::class) fun `ffiAddExistingLibraryLascoCloud`(`config`: FfiLascoCloudImportConfig, `appDir`: kotlin.String? = null): FfiLibrary {
+            return FfiConverterTypeFfiLibrary.lift(
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_func_ffi_add_existing_library_lasco_cloud(
+        FfiConverterTypeFfiLascoCloudImportConfig.lower(`config`),FfiConverterOptionalString.lower(`appDir`),_status)
+}
+    )
+    }
+    
 
         /**
          * Add a library that already exists on an S3 remote, downloading its crypto

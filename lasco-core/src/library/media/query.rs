@@ -203,11 +203,12 @@ impl Library {
     ///
     /// If the blob is not locally cached, `storage` is used to download it. Pass `None`
     /// to skip remote download (returns `MediaNotFound` when not cached locally).
-    #[allow(
-        dead_code,
-        reason = "Retained for filesystem-destination media exports and unit tests."
-    )]
-    async fn media_get(
+    ///
+    /// The current blob format authenticates the complete ciphertext before
+    /// yielding plaintext, so this still holds the plaintext in memory while
+    /// decrypting. It nevertheless keeps that buffer within Rust rather than
+    /// crossing an FFI boundary as a platform byte array.
+    pub async fn media_materialize_to_path(
         &self,
         media_id: MediaUuid,
         path_dest: &Path,
@@ -846,7 +847,10 @@ mod tests {
 
         assert_eq!(
             lib.remote_media_shortfall("remote-a"),
-            RemoteMediaShortfall { missing_full: 1, missing_thumb: 1 }
+            RemoteMediaShortfall {
+                missing_full: 1,
+                missing_thumb: 1
+            }
         );
 
         let path = lib
@@ -859,7 +863,10 @@ mod tests {
         list.save(&path).unwrap();
         assert_eq!(
             lib.remote_media_shortfall("remote-a"),
-            RemoteMediaShortfall { missing_full: 0, missing_thumb: 1 }
+            RemoteMediaShortfall {
+                missing_full: 0,
+                missing_thumb: 1
+            }
         );
 
         let mut list = MediaList::load_or_default(&path).unwrap();
@@ -898,7 +905,10 @@ mod tests {
         // Two media, but only the primary one is ever expected to have a thumbnail.
         assert_eq!(
             lib.remote_media_shortfall("remote-a"),
-            RemoteMediaShortfall { missing_full: 2, missing_thumb: 1 }
+            RemoteMediaShortfall {
+                missing_full: 2,
+                missing_thumb: 1
+            }
         );
 
         let path = lib
@@ -924,7 +934,10 @@ mod tests {
 
         assert_eq!(
             lib.remote_media_shortfall("never-synced"),
-            RemoteMediaShortfall { missing_full: 1, missing_thumb: 1 }
+            RemoteMediaShortfall {
+                missing_full: 1,
+                missing_thumb: 1
+            }
         );
     }
 

@@ -14,11 +14,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import uniffi.lasco_ffi.FfiLibraryEntry
 import uniffi.lasco_ffi.LascoException
 
 data class LibraryOpenUiState(
-    val checkingCache: Boolean = true,
     val loading: Boolean = false,
     val error: String? = null,
     val opened: Boolean = false,
@@ -26,55 +24,17 @@ data class LibraryOpenUiState(
 )
 
 /**
- * Opens one library entry from the library list. Mirrors LibraryModel.openCached
- * followed by LibraryOpenSheet, tries the cached session first and only asks
- * for a password when that comes back empty. Takes the entry id rather than
- * an FfiLibraryEntry, since Nav3 keys must not carry FFI structs, and resolves
- * it back to the full entry here.
+ * Opens a library after the list flow has already established that no cached
+ * session is available. Cache resolution belongs to LibraryListViewModel so
+ * this screen is only ever composed for a credential prompt.
  */
 class LibraryOpenViewModel(
     private val app: LascoApp,
     private val repository: LascoRepository,
     private val prefs: Prefs,
-    entryId: String,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(LibraryOpenUiState())
     val uiState: StateFlow<LibraryOpenUiState> = _uiState.asStateFlow()
-
-    private val _entry = MutableStateFlow<FfiLibraryEntry?>(null)
-    val entry: StateFlow<FfiLibraryEntry?> = _entry.asStateFlow()
-
-    init {
-        viewModelScope.launch {
-            val found = repository.listLibraries().firstOrNull { it.libraryId.value == entryId }
-            if (found == null) {
-                _uiState.value = LibraryOpenUiState(checkingCache = false, error = "Library not found")
-            } else {
-                _entry.value = found
-            }
-        }
-    }
-
-    fun tryOpenCached(nickname: String, username: String?) {
-        if (username == null) {
-            _uiState.value = LibraryOpenUiState(checkingCache = false)
-            return
-        }
-        viewModelScope.launch {
-            try {
-                val lib = repository.openCached(nickname = nickname, username = username)
-                if (lib != null) {
-                    app.librarySession =
-                        LibraryRepository(lib, nickname = nickname, username = username, appDir = repository.appDir, context = app, prefs = prefs)
-                    _uiState.value = LibraryOpenUiState(checkingCache = false, opened = true)
-                } else {
-                    _uiState.value = LibraryOpenUiState(checkingCache = false)
-                }
-            } catch (e: Throwable) {
-                _uiState.value = LibraryOpenUiState(checkingCache = false)
-            }
-        }
-    }
 
     fun open(nickname: String, username: String, password: String) {
         _uiState.value = _uiState.value.copy(loading = true, error = null)
@@ -107,10 +67,10 @@ class LibraryOpenViewModel(
     }
 
     companion object {
-        fun factory(entryId: String): ViewModelProvider.Factory = viewModelFactory {
+        val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val app = this[APPLICATION_KEY] as LascoApp
-                LibraryOpenViewModel(app, LascoRepository.from(app), Prefs.from(app), entryId)
+                LibraryOpenViewModel(app, LascoRepository.from(app), Prefs.from(app))
             }
         }
     }

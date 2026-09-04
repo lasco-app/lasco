@@ -10,6 +10,7 @@ import com.lasco.lasco.LascoApp
 import com.lasco.lasco.data.LascoRepository
 import com.lasco.lasco.data.LibraryRepository
 import com.lasco.lasco.data.Prefs
+import com.lasco.lasco.data.DevelopmentCloudEndpoint
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -67,6 +68,40 @@ class AddExistingLibraryViewModel(
                 val sessionUsername = newUsername ?: username
                 app.librarySession =
                     LibraryRepository(lib, nickname = nickname, username = sessionUsername, appDir = repository.appDir, context = app, prefs = prefs)
+                _uiState.value = AddExistingLibraryUiState(opened = true)
+            } catch (e: Throwable) {
+                _uiState.value = AddExistingLibraryUiState(error = e.message ?: "Could not add library")
+            }
+        }
+    }
+
+    fun addLascoCloud(
+        nickname: String,
+        username: String,
+        password: String,
+        newUsername: String?,
+        newPassword: String?,
+        cloudEmail: String,
+        cloudPassword: String,
+    ) {
+        _uiState.value = AddExistingLibraryUiState(loading = true)
+        viewModelScope.launch {
+            try {
+                val lib = repository.addExistingLibraryLascoCloud(
+                    nickname = nickname,
+                    username = username,
+                    password = password,
+                    newUsername = newUsername,
+                    newPassword = newPassword,
+                    cloudBaseUrl = DevelopmentCloudEndpoint.activeUrl(app),
+                    cloudEmail = cloudEmail,
+                    cloudPassword = cloudPassword,
+                )
+                val sessionUsername = newUsername ?: username
+                app.librarySession = LibraryRepository(
+                    lib, nickname = nickname, username = sessionUsername,
+                    appDir = repository.appDir, context = app, prefs = prefs,
+                )
                 _uiState.value = AddExistingLibraryUiState(opened = true)
             } catch (e: Throwable) {
                 _uiState.value = AddExistingLibraryUiState(error = e.message ?: "Could not add library")

@@ -1,6 +1,10 @@
 pub mod albums;
+pub mod cloud;
+mod cloud_runtime_cache;
 pub mod error;
 pub mod groups;
+pub mod lasco_cloud_auth;
+pub mod lasco_cloud_auth_store;
 pub mod local_dirs;
 mod local_ops_read_write;
 pub mod media;
@@ -78,6 +82,8 @@ pub(crate) struct LibraryInner {
     pub(crate) local_ops_read_write_lock: LocalOpsReadWriteLock,
     /// Per-remote locks for synchronous `media_list.json` read-modify-write access.
     pub(crate) remote_media_list_lock: RemoteMediaListLock,
+    /// Lasco Cloud API session and locally encrypted resolved S3 credential cache.
+    pub(crate) cloud_runtime: cloud::SharedCloudRuntime,
 }
 
 #[derive(Clone)]
@@ -99,6 +105,26 @@ const _: () = {
 };
 
 impl Library {
+    /// Restores this library's persisted Lasco Cloud session into its runtime.
+    pub async fn configure_lasco_cloud_auth(
+        &self,
+        base_url: String,
+    ) -> std::result::Result<(), cloud::CloudError> {
+        self.inner.cloud_runtime.configure_auth(base_url).await
+    }
+
+    /// Erases this library's Lasco Cloud session and cached B2 credentials.
+    pub async fn clear_lasco_cloud_auth_and_credentials(
+        &self,
+    ) -> std::result::Result<(), cloud::CloudError> {
+        self.inner.cloud_runtime.clear_auth_and_credentials().await
+    }
+
+    #[must_use]
+    pub fn cloud_runtime(&self) -> cloud::SharedCloudRuntime {
+        Arc::clone(&self.inner.cloud_runtime)
+    }
+
     /// Opens exclusive synchronous access to this library's `library.json`.
     /// The returned object must not be held across an `.await`.
     pub fn library_json_read_write<'a>(&'a self, app_dir: &'a Path) -> LibraryJsonReadWrite<'a> {
@@ -229,6 +255,11 @@ impl Library {
             &master_key,
             &initial_crdt,
         )?;
+        let cloud_runtime = Arc::new(cloud::CloudRuntime::open(
+            local_dirs.cloud_runtime_path(),
+            library_id,
+            &master_key,
+        ));
 
         let library = Library {
             inner: Arc::new(LibraryInner {
@@ -241,6 +272,7 @@ impl Library {
                 library_json_read_write_lock: LibraryJsonReadWriteLock::new(),
                 local_ops_read_write_lock,
                 remote_media_list_lock: RemoteMediaListLock::new(),
+                cloud_runtime,
             }),
         };
         Ok((library, password_uuid))
@@ -272,6 +304,11 @@ impl Library {
             &local_dirs,
             &master_key,
         )?;
+        let cloud_runtime = Arc::new(cloud::CloudRuntime::open(
+            local_dirs.cloud_runtime_path(),
+            local_dirs.library_id(),
+            &master_key,
+        ));
         Ok(Library {
             inner: Arc::new(LibraryInner {
                 library_id: local_dirs.library_id(),
@@ -283,6 +320,7 @@ impl Library {
                 library_json_read_write_lock: LibraryJsonReadWriteLock::new(),
                 local_ops_read_write_lock,
                 remote_media_list_lock: RemoteMediaListLock::new(),
+                cloud_runtime,
             }),
         })
     }
@@ -310,6 +348,11 @@ impl Library {
             &local_dirs,
             &master_key,
         )?;
+        let cloud_runtime = Arc::new(cloud::CloudRuntime::open(
+            local_dirs.cloud_runtime_path(),
+            library_id,
+            &master_key,
+        ));
         Ok(Library {
             inner: Arc::new(LibraryInner {
                 master_key,
@@ -321,6 +364,7 @@ impl Library {
                 library_json_read_write_lock: LibraryJsonReadWriteLock::new(),
                 local_ops_read_write_lock,
                 remote_media_list_lock: RemoteMediaListLock::new(),
+                cloud_runtime,
             }),
         })
     }

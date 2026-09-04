@@ -34,7 +34,7 @@ import uniffi.lasco_ffi.FfiMediaItem
  * rounded corners that don't match the app's "no radius, ever" panel look.
  */
 @Composable
-private fun LascoDialogShell(onDismiss: () -> Unit, content: @Composable () -> Unit) {
+fun LascoDialogShell(onDismiss: () -> Unit, content: @Composable () -> Unit) {
     val colors = LascoTheme.colors
     Dialog(onDismissRequest = onDismiss) {
         Column(
@@ -93,7 +93,12 @@ fun LascoTextInputDialog(
     LascoDialogShell(onDismiss = onCancel) {
         Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
             Text(text = title, style = LascoTheme.type.categoryLarge(), color = colors.ink)
-            LascoField(label = fieldLabel, value = value, onValueChange = { value = it })
+            LascoField(
+                label = fieldLabel,
+                value = value,
+                onValueChange = { value = it },
+                autoFocus = true,
+            )
             Row(modifier = Modifier.fillMaxWidth()) {
                 Text(
                     text = "Cancel",
@@ -164,7 +169,7 @@ fun AlbumPickerDialog(
             Text(text = title, style = LascoTheme.type.categoryLarge(), color = colors.ink)
             Box(modifier = Modifier.fillMaxWidth().lascoPanel()) {
                 LazyColumn {
-                    items(albums, key = { it.albumId }) { album ->
+                    items(albums, key = { it.albumId.value }) { album ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -207,7 +212,7 @@ fun ThumbnailPickerDialog(
             Text(text = "Set thumbnail", style = LascoTheme.type.categoryLarge(), color = colors.ink)
             Box(modifier = Modifier.fillMaxWidth().lascoPanel()) {
                 LazyColumn {
-                    items(media, key = { it.mediaId }) { item ->
+                    items(media, key = { it.mediaId.value }) { item ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()

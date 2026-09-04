@@ -27,6 +27,7 @@ import com.lasco.lasco.ui.theme.LascoTheme
 import com.lasco.lasco.ui.theme.lascoPanel
 
 private const val PRIVACY_POLICY_URL = "https://getlasco.app/privacy-policy"
+private const val TERMS_OF_SERVICE_URL = "https://getlasco.app/terms-of-service"
 
 /**
  * Ported from Swift's SettingsView, minus macOS storage-location and
@@ -63,6 +64,12 @@ fun SettingsDialog(onDismiss: () -> Unit) {
                 label = "Privacy Policy",
                 onClick = {
                     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(PRIVACY_POLICY_URL)))
+                },
+            )
+            SettingsRow(
+                label = "Terms of Service",
+                onClick = {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(TERMS_OF_SERVICE_URL)))
                 },
             )
             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {

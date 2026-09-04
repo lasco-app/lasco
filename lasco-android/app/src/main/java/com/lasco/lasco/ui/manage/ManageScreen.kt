@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,6 +44,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
 private const val PRIVACY_POLICY_URL = "https://getlasco.app/privacy-policy"
+private const val TERMS_OF_SERVICE_URL = "https://getlasco.app/terms-of-service"
 
 @Serializable
 private data object ManageRootKey : NavKey
@@ -55,6 +57,9 @@ private data object UsersKey : NavKey
 
 @Serializable
 private data object OperationsKey : NavKey
+
+@Serializable
+private data object LascoCloudKey : NavKey
 
 /**
  * Ported from Swift's ManageView. Skips log-file sharing (no Android logging
@@ -72,6 +77,12 @@ fun ManageScreen(
         key = "manage",
         factory = ManageViewModel.Factory,
     )
+    val session by manageViewModel.sessionState.collectAsStateWithLifecycle()
+    var cloudConnected by remember { mutableStateOf(manageViewModel.isLascoCloudConnected()) }
+
+    LaunchedEffect(session.remotes.size) {
+        cloudConnected = manageViewModel.isLascoCloudConnected()
+    }
 
     NavDisplay(
         backStack = backStack,
@@ -100,6 +111,8 @@ fun ManageScreen(
                     onOpenRemotes = { backStack.add(RemotesKey) },
                     onOpenUsers = { backStack.add(UsersKey) },
                     onOpenOperations = { backStack.add(OperationsKey) },
+                    onOpenLascoCloud = { backStack.add(LascoCloudKey) },
+                    cloudConnected = cloudConnected,
                     onSignedOut = onSignedOut,
                     onDeleteLibrary = onDeleteLibrary,
                     manageViewModel = manageViewModel,
@@ -125,6 +138,17 @@ fun ManageScreen(
                     onBack = { backStack.removeLastOrNull() },
                 )
             }
+            entry<LascoCloudKey> {
+                LascoCloudScreen(
+                    modifier = Modifier.fillMaxSize(),
+                    onBack = { backStack.removeLastOrNull() },
+                    manageViewModel = manageViewModel,
+                    onSignedOut = {
+                        cloudConnected = false
+                        backStack.removeLastOrNull()
+                    },
+                )
+            }
         },
     )
 }
@@ -135,6 +159,8 @@ private fun ManageRootScreen(
     onOpenRemotes: () -> Unit,
     onOpenUsers: () -> Unit,
     onOpenOperations: () -> Unit,
+    onOpenLascoCloud: () -> Unit,
+    cloudConnected: Boolean,
     onSignedOut: () -> Unit,
     onDeleteLibrary: () -> Unit,
     manageViewModel: ManageViewModel,
@@ -169,13 +195,26 @@ private fun ManageRootScreen(
             ManageRow(label = "Global settings", onClick = { showSettings = true })
             HorizontalDivider(color = colors.ink, thickness = 1.dp)
             ManageRow(
-                label = "Sign out",
+                label = "Sign out current library",
                 onClick = { confirmSignOut = true },
                 labelColor = colors.error,
             )
         }
 
         Spacer(modifier = Modifier.height(16.dp))
+
+        if (cloudConnected) {
+            Column(modifier = Modifier.fillMaxWidth().background(colors.pink)) {
+                ManageRow(
+                    label = "Lasco Cloud",
+                    onClick = onOpenLascoCloud,
+                    labelColor = colors.accent,
+                    arrowColor = colors.accent,
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+        }
 
         Column(modifier = Modifier.fillMaxWidth().lascoPanel()) {
             ManageToggleRow(
@@ -200,6 +239,11 @@ private fun ManageRootScreen(
             ManageRow(
                 label = "Privacy Policy",
                 onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(PRIVACY_POLICY_URL))) },
+            )
+            HorizontalDivider(color = colors.ink, thickness = 1.dp)
+            ManageRow(
+                label = "Terms of Service",
+                onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(TERMS_OF_SERVICE_URL))) },
             )
         }
 
@@ -252,7 +296,12 @@ private fun ManageRootScreen(
 }
 
 @Composable
-private fun ManageRow(label: String, onClick: () -> Unit, labelColor: Color? = null) {
+private fun ManageRow(
+    label: String,
+    onClick: () -> Unit,
+    labelColor: Color? = null,
+    arrowColor: Color? = null,
+) {
     val colors = LascoTheme.colors
     Row(
         modifier = Modifier
@@ -262,7 +311,7 @@ private fun ManageRow(label: String, onClick: () -> Unit, labelColor: Color? = n
     ) {
         Text(text = label, style = LascoTheme.type.body(), color = labelColor ?: colors.inkSub)
         Spacer(modifier = Modifier.weight(1f))
-        Text(text = "→", style = LascoTheme.type.mono(), color = colors.inkMuted)
+        Text(text = "→", style = LascoTheme.type.mono(), color = arrowColor ?: colors.inkMuted)
     }
 }
 

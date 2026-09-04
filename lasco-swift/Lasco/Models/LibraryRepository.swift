@@ -59,6 +59,7 @@ protocol LibraryRepositoryProtocol: Sendable {
     func mediaBytes(mediaID: FfiMediaUuid) async throws -> Data
     func thumbnailAsync(mediaID: FfiMediaUuid) async throws -> Data
     func mediaBytesAsync(mediaID: FfiMediaUuid) async throws -> Data
+    func nativeMediaBytesAsync(mediaID: FfiMediaUuid) async throws -> Data
 
     func renameMedia(id: FfiMediaUuid, name: String?) async throws
     func deleteMedia(id: FfiMediaUuid) async throws
@@ -105,7 +106,7 @@ protocol LibraryRepositoryProtocol: Sendable {
     func inspectCompactionLock(remoteID: FfiRemoteUuid) async throws -> FfiCompactionLockInfo?
     func removeOwnCompactionLock(remoteID: FfiRemoteUuid) async throws -> Bool
 
-    func push(remoteID: FfiRemoteUuid) async throws -> UInt64
+    func push(remoteID: FfiRemoteUuid, progress: any PushProgressSink) async throws -> UInt64
     func fetch(remoteID: FfiRemoteUuid) async throws -> UInt64
     func confirmRemoteMedia(remoteID: FfiRemoteUuid) async throws -> UInt64
     func close() async
@@ -113,9 +114,24 @@ protocol LibraryRepositoryProtocol: Sendable {
 
 enum LibraryRepositoryError: LocalizedError {
     case closed
+    case invalidNativeMediaBuffer
+    case cloudRemoteAlreadyAssociated
+    case cloudSignOutRequiresRemoteRemoval
+    case cloudAlreadyConnected
 
     var errorDescription: String? {
-        "The library session is closed."
+        switch self {
+        case .closed:
+            "The library session is closed."
+        case .invalidNativeMediaBuffer:
+            "The native media buffer is invalid."
+        case .cloudRemoteAlreadyAssociated:
+            "Lasco Cloud storage is already associated with another library"
+        case .cloudSignOutRequiresRemoteRemoval:
+            "Remove the Lasco Cloud remotes before signing out"
+        case .cloudAlreadyConnected:
+            "Lasco Cloud is already connected for this library"
+        }
     }
 }
 
@@ -131,6 +147,78 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         self.library = library
         self.libraryID = library.libraryId()
         self.appSupportDirectory = appSupportDirectory ?? Self.defaultAppSupportDirectory
+    }
+
+    func configureLascoCloud(_ remotes: [LascoCloudRemote]) async throws {
+        try ensureOpen()
+        let existing = try validateLascoCloud(remotes)
+        for remote in remotes {
+            let remoteID: FfiRemoteUuid
+            if let configuredID = existing[remote.id] {
+                remoteID = configuredID
+            } else {
+                remoteID = try library.addRemoteCloudS3(name: remote.name, cloudStorageId: remote.id)
+            }
+            try library.initializeRemote(remoteId: remoteID, appSupportDir: appSupportDirectory)
+            try library.connectRemote(remoteId: remoteID, appSupportDir: appSupportDirectory)
+        }
+        await notify(.session)
+    }
+
+    func configureLascoCloudAuth() async throws {
+        try ensureOpen()
+        try await library.configureLascoCloudAuth(baseUrl: LascoCloudEndpoint.url)
+    }
+
+    func lascoCloudLogin(email: String, password: String) async throws {
+        try ensureOpen()
+        try await library.lascoCloudLogin(
+            email: email,
+            password: password,
+            platform: "ios",
+            appVersion: LascoCloudEndpoint.appVersion
+        )
+    }
+
+    func lascoCloudRemotes() async throws -> [LascoCloudRemote] {
+        try ensureOpen()
+        return try await library.lascoCloudListRemotes().map { LascoCloudRemote(ffi: $0) }
+    }
+
+    func assignLascoCloudRemotesToThisLibrary(remoteIDs: [String]) async throws {
+        try ensureOpen()
+        try await library.lascoCloudAssignRemotesToThisLibrary(remoteIds: remoteIDs)
+    }
+
+    func lascoCloudAccount() async throws -> LascoCloudAccount {
+        try ensureOpen()
+        return LascoCloudAccount(ffi: try await library.lascoCloudSubscription())
+    }
+
+    func isLascoCloudAuthenticated() -> Bool {
+        !closed && library.lascoCloudIsAuthenticated()
+    }
+
+    func revokeLascoCloudSession() async throws {
+        try ensureOpen()
+        try await library.lascoCloudRevokeSession()
+    }
+
+    func clearLascoCloudAuthAndCredentials() async throws {
+        try ensureOpen()
+        try await library.clearLascoCloudAuthAndCredentials()
+    }
+
+    func validateLascoCloud(_ remotes: [LascoCloudRemote]) throws -> [String: FfiRemoteUuid] {
+        try ensureOpen()
+        guard remotes.count == 2 else { throw LascoCloudError.invalidRemoteCount }
+        let existing = Dictionary(uniqueKeysWithValues: library.listRemotes().filter { $0.kind == "lasco_cloud_s3" }.compactMap { remote in remote.path.map { ($0, remote.remoteId) } })
+        guard remotes.allSatisfy({ remote in
+            remote.libraryID == nil || (remote.libraryID == libraryID.value && existing[remote.id] != nil)
+        }) else {
+            throw LibraryRepositoryError.cloudRemoteAlreadyAssociated
+        }
+        return existing
     }
 
     nonisolated static var defaultAppSupportDirectory: String? {
@@ -355,6 +443,28 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
     func mediaBytesAsync(mediaID: FfiMediaUuid) async throws -> Data {
         try ensureOpen()
         return try await library.getMediaBytesAsync(mediaId: mediaID, appSupportDir: appSupportDirectory)
+    }
+
+    /// Returns a no-copy Foundation view of Rust-owned media bytes. Foundation
+    /// retains the UniFFI object through its custom deallocator, so Rust frees
+    /// the backing Vec only after UIImage/NSImage has stopped using the data.
+    func nativeMediaBytesAsync(mediaID: FfiMediaUuid) async throws -> Data {
+        try ensureOpen()
+        let nativeBytes = try await library.getMediaBytesNativeAsync(
+            mediaId: mediaID,
+            appSupportDir: appSupportDirectory
+        )
+        let length = nativeBytes.len()
+        guard length > 0, length <= UInt64(Int.max),
+              let pointer = UnsafeMutableRawPointer(bitPattern: UInt(nativeBytes.dataPointer())) else {
+            throw LibraryRepositoryError.invalidNativeMediaBuffer
+        }
+        return Data(bytesNoCopy: pointer, count: Int(length), deallocator: .custom { _, _ in
+            // UniFFI releases the Rust Arc in the opaque object's `deinit`.
+            // The custom deallocator owns this capture until Foundation is
+            // finished with the no-copy buffer.
+            withExtendedLifetime(nativeBytes) {}
+        })
     }
 
     func renameMedia(id: FfiMediaUuid, name: String?) async throws {
@@ -598,6 +708,11 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         await notify(.session)
     }
 
+    func hasLascoCloudRemotes() throws -> Bool {
+        try ensureOpen()
+        return library.listRemotes().contains { $0.kind == "lasco_cloud_s3" }
+    }
+
     func initializeRemote(id: FfiRemoteUuid) async throws {
         try ensureOpen()
         try library.initializeRemote(remoteId: id, appSupportDir: appSupportDirectory)
@@ -623,11 +738,12 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         return try library.removeOwnCompactionLock(remoteId: remoteID, appSupportDir: appSupportDirectory)
     }
 
-    func push(remoteID: FfiRemoteUuid) async throws -> UInt64 {
+    func push(remoteID: FfiRemoteUuid, progress: any PushProgressSink) async throws -> UInt64 {
         try ensureOpen()
         let result = try await library.pushRemoteUsingConfiguredMediaSourcesAsync(
             targetRemoteId: remoteID,
-            appSupportDir: appSupportDirectory
+            appSupportDir: appSupportDirectory,
+            progress: progress
         )
         // A successful push changes the per-remote local/remote state. Publish it
         // so status consumers don't have to be recreated before showing it.
@@ -722,6 +838,59 @@ final class LibraryRepository: LibraryRepositoryProtocol {
         storage = LibraryRepositoryStorage(library: library, appSupportDirectory: appSupportDirectory)
     }
 
+    enum LascoCloudConnectionStep: Sendable {
+        case authenticated
+        case remotesValidated
+        case remotesConfigured
+    }
+
+    func authenticateLascoCloud(
+        email: String,
+        password: String,
+        libraryID: FfiLibraryId,
+        onProgress: @MainActor @escaping (LascoCloudConnectionStep) -> Void = { _ in }
+    ) async throws {
+        try await storage.configureLascoCloudAuth()
+        if await storage.isLascoCloudAuthenticated() {
+            throw LibraryRepositoryError.cloudAlreadyConnected
+        }
+        try await storage.lascoCloudLogin(email: email, password: password)
+        do {
+            onProgress(.authenticated)
+            let remotes = try await storage.lascoCloudRemotes()
+            _ = try await storage.validateLascoCloud(remotes)
+            onProgress(.remotesValidated)
+            try await storage.configureLascoCloud(remotes)
+            try await storage.assignLascoCloudRemotesToThisLibrary(remoteIDs: remotes.map(\.id))
+            onProgress(.remotesConfigured)
+        } catch {
+            try? await storage.revokeLascoCloudSession()
+            try? await storage.clearLascoCloudAuthAndCredentials()
+            throw error
+        }
+    }
+
+    func isLascoCloudConnected(libraryID: FfiLibraryId) async -> Bool {
+        await storage.isLascoCloudAuthenticated()
+    }
+
+    /// Configures the Rust-owned Lasco Cloud auth manager after opening a library.
+    /// It loads the session from secure storage; storage credentials stay lazy.
+    func restoreLascoCloudSession(libraryID: FfiLibraryId) async {
+        try? await storage.configureLascoCloudAuth()
+    }
+
+    func signOutLascoCloud(libraryID: FfiLibraryId) async throws {
+        if try await storage.hasLascoCloudRemotes() {
+            throw LibraryRepositoryError.cloudSignOutRequiresRemoteRemoval
+        }
+        try await storage.revokeLascoCloudSession()
+    }
+
+    func lascoCloudSubscription(libraryID: FfiLibraryId) async throws -> LascoCloudAccount {
+        try await storage.lascoCloudAccount()
+    }
+
     func changes() async -> AsyncStream<LibraryChange> { await storage.changes() }
     func notifyChanged(_ change: LibraryChange) async { await storage.notifyChanged(change) }
     func notifyPhotoImportChanged(initialImport: Bool) async { await storage.notifyPhotoImportChanged(initialImport: initialImport) }
@@ -752,6 +921,7 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     func mediaBytes(mediaID: FfiMediaUuid) async throws -> Data { try await storage.mediaBytes(mediaID: mediaID) }
     func thumbnailAsync(mediaID: FfiMediaUuid) async throws -> Data { try await storage.thumbnailAsync(mediaID: mediaID) }
     func mediaBytesAsync(mediaID: FfiMediaUuid) async throws -> Data { try await storage.mediaBytesAsync(mediaID: mediaID) }
+    func nativeMediaBytesAsync(mediaID: FfiMediaUuid) async throws -> Data { try await storage.nativeMediaBytesAsync(mediaID: mediaID) }
     func renameMedia(id: FfiMediaUuid, name: String?) async throws { try await storage.renameMedia(id: id, name: name) }
     func deleteMedia(id: FfiMediaUuid) async throws { try await storage.deleteMedia(id: id) }
     func addMediaToAlbum(albumID: FfiAlbumUuid, mediaID: FfiMediaUuid) async throws { try await storage.addMediaToAlbum(albumID: albumID, mediaID: mediaID) }
@@ -794,7 +964,9 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     func hasUnpushedChanges(remoteID: FfiRemoteUuid) async -> Bool { await storage.hasUnpushedChanges(remoteID: remoteID) }
     func inspectCompactionLock(remoteID: FfiRemoteUuid) async throws -> FfiCompactionLockInfo? { try await storage.inspectCompactionLock(remoteID: remoteID) }
     func removeOwnCompactionLock(remoteID: FfiRemoteUuid) async throws -> Bool { try await storage.removeOwnCompactionLock(remoteID: remoteID) }
-    func push(remoteID: FfiRemoteUuid) async throws -> UInt64 { try await storage.push(remoteID: remoteID) }
+    func push(remoteID: FfiRemoteUuid, progress: any PushProgressSink) async throws -> UInt64 {
+        try await storage.push(remoteID: remoteID, progress: progress)
+    }
     func fetch(remoteID: FfiRemoteUuid) async throws -> UInt64 { try await storage.fetch(remoteID: remoteID) }
     func confirmRemoteMedia(remoteID: FfiRemoteUuid) async throws -> UInt64 { try await storage.confirmRemoteMedia(remoteID: remoteID) }
     func close() async { await storage.close() }
