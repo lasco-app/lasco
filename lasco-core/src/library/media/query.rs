@@ -203,11 +203,12 @@ impl Library {
     ///
     /// If the blob is not locally cached, `storage` is used to download it. Pass `None`
     /// to skip remote download (returns `MediaNotFound` when not cached locally).
-    #[allow(
-        dead_code,
-        reason = "Retained for filesystem-destination media exports and unit tests."
-    )]
-    async fn media_get(
+    ///
+    /// The current blob format authenticates the complete ciphertext before
+    /// yielding plaintext, so this still holds the plaintext in memory while
+    /// decrypting. It nevertheless keeps that buffer within Rust rather than
+    /// crossing an FFI boundary as a platform byte array.
+    pub async fn media_materialize_to_path(
         &self,
         media_id: MediaUuid,
         path_dest: &Path,

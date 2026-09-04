@@ -2,7 +2,9 @@ package com.lasco.lasco.ui.media
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.ImageDecoder
 import android.net.Uri
+import android.os.Build
 import android.webkit.MimeTypeMap
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
@@ -50,7 +52,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -70,6 +71,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.annotation.RequiresApi
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.compose.material3.Icon
 import androidx.media3.common.MediaItem as ExoMediaItem
@@ -91,7 +94,10 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
 import kotlin.math.roundToInt
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.collectLatest
 import uniffi.lasco_ffi.FfiMediaItem
 import uniffi.lasco_ffi.FfiGroupUuid
@@ -102,6 +108,11 @@ private enum class PanelAnchor { Collapsed, Expanded }
 
 private val PanelCollapsedHeight = 72.dp
 private const val PanelExpandRatio = 0.58f
+
+// The pager can need the previous, current, and next pages ready together.
+// Keep their sampled decodes off Main while allowing that three-page window
+// to make progress concurrently.
+private val ImageDecodeDispatcher = Dispatchers.Default.limitedParallelism(3)
 
 private fun isVideo(item: FfiMediaItem): Boolean =
     item.filenameOriginal.substringAfterLast('.', "").lowercase() in videoExtensions
@@ -131,12 +142,14 @@ private fun displayItemForPage(
 fun MediaDetailScreen(
     source: MediaDetailSource,
     startPosition: Int,
+    expectedTarget: DetailTarget,
+    initialThumbnail: MediaDetailInitialThumbnail? = null,
     onBack: () -> Unit,
     onOpenAlbum: (String) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: MediaDetailViewModel = viewModel(
-        key = "$source:$startPosition",
-        factory = MediaDetailViewModel.factory(source, startPosition),
+        key = "$source:$startPosition:$expectedTarget",
+        factory = MediaDetailViewModel.factory(source, startPosition, expectedTarget),
     ),
 ) {
     val context = LocalContext.current
@@ -155,7 +168,11 @@ fun MediaDetailScreen(
             when (state) {
                 MediaDetailState.Loading -> Text("Loading…", color = Color.White)
                 MediaDetailState.Empty -> Text("This item is no longer available.", color = Color.White)
-                is MediaDetailState.Error -> Text("Could not load this item.", color = Color.White)
+                is MediaDetailState.Error -> Text(
+                    "Could not load this item. Tap to retry.",
+                    color = Color.White,
+                    modifier = Modifier.clickable { viewModel.retry() },
+                )
                 is MediaDetailState.Content -> Unit
             }
         }
@@ -180,7 +197,14 @@ fun MediaDetailScreen(
 
     val panelState = remember { AnchoredDraggableState(initialValue = PanelAnchor.Collapsed) }
     var showRenameDialog by remember { mutableStateOf(false) }
+    var showImageCounter by remember { mutableStateOf(true) }
     val sourceAlbumId = (source as? MediaDetailSource.AlbumByDate)?.albumId
+
+    LaunchedEffect(neighbors.currentPosition, neighbors.totalCount) {
+        showImageCounter = true
+        delay(1_000)
+        showImageCounter = false
+    }
 
     if (showRenameDialog && currentDisplayItem != null) {
         val media = currentDisplayItem!!
@@ -223,6 +247,7 @@ fun MediaDetailScreen(
                     repo = repo,
                     isActive = isActive,
                     liveVideoItem = liveVideoItem,
+                    initialThumbnail = initialThumbnail?.takeIf { it.mediaId == displayItem.mediaId }?.bitmap,
                     modifier = Modifier.fillMaxSize(),
                 )
             } else {
@@ -272,6 +297,17 @@ fun MediaDetailScreen(
                             .background(Color.Black)
                             .border(2.dp, Color.White)
                             .clickable { viewModel.toggleLivePhotoVideo() }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                    )
+                }
+                if (showImageCounter) {
+                    Text(
+                        text = "${neighbors.currentPosition + 1} / ${neighbors.totalCount}",
+                        style = LascoTheme.type.pixel(14),
+                        color = Color.White,
+                        modifier = Modifier
+                            .background(Color.Black)
+                            .border(2.dp, Color.White)
                             .padding(horizontal = 10.dp, vertical = 6.dp),
                     )
                 }
@@ -352,24 +388,38 @@ fun MediaDetailScreen(
                     },
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text(
-                        text = currentDisplayItem?.name ?: "",
-                        style = LascoTheme.type.title(18),
-                        color = colors.ink,
-                        maxLines = 1,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(
-                        text = "✎",
-                        style = LascoTheme.type.body(16),
-                        color = if (showingLivePhotoVideo) colors.inkMuted else colors.ink,
-                        modifier = Modifier.clickable(enabled = !showingLivePhotoVideo) { showRenameDialog = true },
-                    )
-                    Text(
-                        text = if (infoExpanded) "▾" else "▴",
-                        style = LascoTheme.type.body(16),
-                        color = colors.ink,
-                    )
+                    val title = currentDisplayItem?.name.orEmpty()
+                    if (title.isBlank()) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .width(32.dp)
+                                    .height(3.dp)
+                                    .background(colors.inkMuted),
+                            )
+                        }
+                    } else {
+                        Text(
+                            text = title,
+                            style = LascoTheme.type.title(18),
+                            color = colors.ink,
+                            maxLines = 1,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    if (infoExpanded) {
+                        Text(
+                            text = "✎",
+                            style = LascoTheme.type.body(16),
+                            color = if (showingLivePhotoVideo) colors.inkMuted else colors.ink,
+                            modifier = Modifier.clickable(enabled = !showingLivePhotoVideo) { showRenameDialog = true },
+                        )
+                    }
                 }
 
                 Column(
@@ -416,10 +466,11 @@ fun MediaDetailScreen(
                     }
 
                     if (!showingLivePhotoVideo && containingAlbums.isNotEmpty()) {
-                        val heading = if (sourceAlbumId == null) {
-                            if (containingAlbums.size == 1) "CONTAINED IN THIS ALBUM" else "CONTAINED IN THESE ALBUMS"
-                        } else {
-                            "ALSO IN THESE ALBUMS"
+                        val heading = when {
+                            sourceAlbumId == null && containingAlbums.size == 1 -> "CONTAINED IN THIS ALBUM"
+                            sourceAlbumId == null -> "CONTAINED IN THESE ALBUMS"
+                            containingAlbums.size == 1 -> "ALSO IN THIS ALBUM"
+                            else -> "ALSO IN THESE ALBUMS"
                         }
                         Text(
                             text = heading,
@@ -463,6 +514,7 @@ private fun MediaPageContent(
     repo: LibraryRepository,
     isActive: Boolean,
     liveVideoItem: FfiMediaItem?,
+    initialThumbnail: ImageBitmap?,
     modifier: Modifier = Modifier,
 ) {
     val videoItem = when {
@@ -474,47 +526,121 @@ private fun MediaPageContent(
         if (videoItem != null) {
             VideoCell(item = videoItem, repo = repo, isActive = isActive)
         } else {
-            ImageCell(item = item, repo = repo)
+            ImageCell(item = item, repo = repo, initialThumbnail = initialThumbnail)
         }
     }
 }
 
 @Composable
-private fun ImageCell(item: FfiMediaItem, repo: LibraryRepository) {
-    var thumbnail by remember(item.mediaId) { mutableStateOf<ImageBitmap?>(null) }
+private fun ImageCell(item: FfiMediaItem, repo: LibraryRepository, initialThumbnail: ImageBitmap?) {
+    var thumbnail by remember(item.mediaId) { mutableStateOf(initialThumbnail) }
     var fullImage by remember(item.mediaId) { mutableStateOf<ImageBitmap?>(null) }
 
-    LaunchedEffect(item.mediaId) {
-        repo.mediaThumbnail(item.mediaId)?.let { bytes ->
-            thumbnail = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+    BoxWithConstraints(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        val density = LocalDensity.current
+        val targetWidthPx = with(density) { maxWidth.roundToPx().coerceAtLeast(1) }
+        val targetHeightPx = with(density) { maxHeight.roundToPx().coerceAtLeast(1) }
+
+        LaunchedEffect(item.mediaId, targetWidthPx, targetHeightPx) {
+            if (thumbnail == null) {
+                thumbnail = repo.mediaThumbnail(item.mediaId)?.let { bytes ->
+                    withContext(ImageDecodeDispatcher) {
+                        decodeSampledBitmap(bytes, targetWidthPx, targetHeightPx)?.asImageBitmap()
+                    }
+                }
+            }
+            fullImage = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                repo.withNativeMediaBytes(item.mediaId) { buffer ->
+                    withContext(ImageDecodeDispatcher) {
+                        decodeSampledBitmap(buffer, targetWidthPx, targetHeightPx)?.asImageBitmap()
+                    }
+                }
+            } else {
+                // ImageDecoder cannot read ByteBuffer before API 28. Keep the
+                // existing UniFFI ByteArray path for Android 7.0–8.1.
+                repo.mediaBytes(item.mediaId)?.let { bytes ->
+                    withContext(ImageDecodeDispatcher) {
+                        decodeSampledBitmap(bytes, targetWidthPx, targetHeightPx)?.asImageBitmap()
+                    }
+                }
+            }
         }
-        repo.mediaBytes(item.mediaId)?.let { bytes ->
-            fullImage = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+
+        val full = fullImage
+        val thumb = thumbnail
+        when {
+            full != null -> Image(
+                bitmap = full,
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize(),
+            )
+            thumb != null -> Image(
+                bitmap = thumb,
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize(),
+            )
+            else -> Icon(
+                painter = painterResource(R.drawable.ic_tab_image),
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.3f),
+                modifier = Modifier.size(72.dp),
+            )
         }
+    }
+}
+
+/** Decodes no larger than needed for the viewer, preserving enough pixels for ContentScale.Fit. */
+private fun decodeSampledBitmap(bytes: ByteArray, targetWidthPx: Int, targetHeightPx: Int): Bitmap? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+
+    val sampleSize = sampleSizeFor(bounds.outWidth, bounds.outHeight, targetWidthPx, targetHeightPx)
+    return BitmapFactory.decodeByteArray(
+        bytes,
+        0,
+        bytes.size,
+        BitmapFactory.Options().apply {
+            inSampleSize = sampleSize
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        },
+    )
+}
+
+/** ImageDecoder accepts a direct ByteBuffer, avoiding a Rust-to-JVM byte-array copy. */
+@RequiresApi(Build.VERSION_CODES.P)
+private fun decodeSampledBitmap(buffer: java.nio.ByteBuffer, targetWidthPx: Int, targetHeightPx: Int): Bitmap? =
+    try {
+        ImageDecoder.decodeBitmap(ImageDecoder.createSource(buffer)) { decoder, info, _ ->
+            decoder.setTargetSampleSize(
+                sampleSizeFor(info.size.width, info.size.height, targetWidthPx, targetHeightPx),
+            )
+            // Keep the same bitmap configuration the ByteArray path requests.
+            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+        }
+    } catch (_: Exception) {
+        null
     }
 
-    val full = fullImage
-    val thumb = thumbnail
-    when {
-        full != null -> Image(
-            bitmap = full,
-            contentDescription = null,
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxSize(),
-        )
-        thumb != null -> Image(
-            bitmap = thumb,
-            contentDescription = null,
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxSize().blur(8.dp),
-        )
-        else -> Icon(
-            painter = painterResource(R.drawable.ic_tab_image),
-            contentDescription = null,
-            tint = Color.White.copy(alpha = 0.3f),
-            modifier = Modifier.size(72.dp),
-        )
+private fun sampleSizeFor(
+    sourceWidthPx: Int,
+    sourceHeightPx: Int,
+    targetWidthPx: Int,
+    targetHeightPx: Int,
+): Int {
+    var sampleSize = 1
+    while (
+        sourceWidthPx / (sampleSize * 2) >= targetWidthPx &&
+        sourceHeightPx / (sampleSize * 2) >= targetHeightPx
+    ) {
+        sampleSize *= 2
     }
+    return sampleSize
 }
 
 @Composable

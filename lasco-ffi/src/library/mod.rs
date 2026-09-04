@@ -2,6 +2,7 @@ mod albums;
 mod cloud;
 mod groups;
 mod media;
+mod native_media_bytes;
 mod remotes;
 mod types;
 

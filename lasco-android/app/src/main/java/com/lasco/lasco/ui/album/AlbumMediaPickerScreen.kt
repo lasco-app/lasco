@@ -16,7 +16,6 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -44,6 +43,7 @@ import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
 import com.lasco.lasco.data.LibraryRepository
+import com.lasco.lasco.ui.components.LascoToggle
 import com.lasco.lasco.ui.components.MediaThumbnail
 import com.lasco.lasco.ui.media.RecentMediaViewModel
 import com.lasco.lasco.ui.theme.LascoTheme
@@ -182,7 +182,11 @@ private fun AddMediaAllMediaPicker(
         Row(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("LIBRARY", style = LascoTheme.type.categoryLarge(), color = colors.ink, modifier = Modifier.weight(1f))
             Text(if (showingOrphans) "Orphan" else "All", style = LascoTheme.type.body(14), color = colors.inkSub)
-            Switch(checked = showingOrphans, onCheckedChange = viewModel::setShowingOrphans, modifier = Modifier.padding(start = 4.dp))
+            LascoToggle(
+                checked = showingOrphans,
+                onCheckedChange = viewModel::setShowingOrphans,
+                modifier = Modifier.padding(start = 4.dp),
+            )
         }
         when {
             media.loadState.refresh is LoadState.Loading && media.itemCount == 0 -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = colors.ink) }

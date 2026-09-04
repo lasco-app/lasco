@@ -7,7 +7,7 @@ enum LascoCloudEndpoint {
         #if DEBUG
         DevelopmentCloudEndpoint.url
         #else
-        Bundle.main.object(forInfoDictionaryKey: "LASCO_CLOUD_URL") as? String ?? "https://api.lasco.cloud"
+        Bundle.main.object(forInfoDictionaryKey: "LASCO_CLOUD_URL") as? String ?? "https://cloud.getlasco.app"
         #endif
     }
 

@@ -14,8 +14,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -49,8 +53,15 @@ fun LascoField(
     placeholder: String = "",
     secure: Boolean = false,
     enabled: Boolean = true,
+    autoFocus: Boolean = false,
 ) {
     val colors = LascoTheme.colors
+    val focusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(autoFocus, enabled) {
+        if (autoFocus && enabled) focusRequester.requestFocus()
+    }
+
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         FieldLabel(text = label, size = 13)
         BasicTextField(
@@ -61,7 +72,9 @@ fun LascoField(
             textStyle = LascoTheme.type.body().copy(color = colors.ink),
             cursorBrush = SolidColor(colors.pink),
             visualTransformation = if (secure) PasswordVisualTransformation() else VisualTransformation.None,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(if (autoFocus) Modifier.focusRequester(focusRequester) else Modifier),
             decorationBox = { inner ->
                 Box(
                     modifier = Modifier
@@ -117,7 +130,7 @@ fun LascoCheckbox(
 
 /**
  * Ported from the Swift LascoToggleStyle. A 36x22 ink bordered track with a
- * 14dp thumb that slides between leading and trailing.
+ * 14dp light-pink thumb that slides between leading and trailing when active.
  */
 @Composable
 fun LascoToggle(
@@ -138,7 +151,7 @@ fun LascoToggle(
             modifier = Modifier
                 .padding(3.dp)
                 .size(14.dp)
-                .background(if (checked) colors.bg else colors.inkMuted),
+                .background(if (checked) Color(0xFFFFB8D9) else colors.inkMuted),
         )
     }
 }

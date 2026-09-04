@@ -15,6 +15,10 @@ pub enum LascoError {
     MissingLocalMedia { media_ids: Vec<FfiMediaId> },
     #[error("no known place to get some media from")]
     MissingMediaOnConfiguredSources { media_ids: Vec<FfiMediaId> },
+    #[error(
+        "media is too large to return as bytes: {size_bytes} bytes exceeds the {limit_bytes}-byte limit"
+    )]
+    MediaTooLarge { size_bytes: u64, limit_bytes: u64 },
     #[error("the local CRDT snapshot cannot be read; recovery from the operation log is available")]
     CrdtRecoveryAvailable,
     #[error("storage error: {msg}")]
@@ -29,7 +33,9 @@ impl From<LibraryError> for LascoError {
             LibraryError::MediaNotFound(_) | LibraryError::AlbumNotFound(_) => LascoError::NotFound,
             LibraryError::Storage(_) => LascoError::Storage { msg: e.to_string() },
             LibraryError::Sync(SyncError::AlreadyRunning) => LascoError::SyncBusy,
-            LibraryError::Sync(SyncError::CloudQuotaExceeded(msg)) => LascoError::CloudQuotaExceeded { msg },
+            LibraryError::Sync(SyncError::CloudQuotaExceeded(msg)) => {
+                LascoError::CloudQuotaExceeded { msg }
+            }
             LibraryError::Sync(SyncError::MissingLocalMedia(ids)) => {
                 LascoError::MissingLocalMedia {
                     media_ids: ids.into_iter().map(FfiMediaId::from).collect(),

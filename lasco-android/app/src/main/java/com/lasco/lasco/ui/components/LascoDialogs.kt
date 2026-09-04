@@ -93,7 +93,12 @@ fun LascoTextInputDialog(
     LascoDialogShell(onDismiss = onCancel) {
         Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
             Text(text = title, style = LascoTheme.type.categoryLarge(), color = colors.ink)
-            LascoField(label = fieldLabel, value = value, onValueChange = { value = it })
+            LascoField(
+                label = fieldLabel,
+                value = value,
+                onValueChange = { value = it },
+                autoFocus = true,
+            )
             Row(modifier = Modifier.fillMaxWidth()) {
                 Text(
                     text = "Cancel",

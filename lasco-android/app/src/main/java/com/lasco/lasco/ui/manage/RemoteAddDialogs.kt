@@ -310,7 +310,13 @@ fun AddLocalFSRemoteDialog(
                 style = LascoTheme.type.body(13),
                 color = colors.inkMuted,
             )
-            LascoField(label = "Remote name", value = name, onValueChange = { name = it }, placeholder = "local-test")
+            LascoField(
+                label = "Remote name",
+                value = name,
+                onValueChange = { name = it },
+                placeholder = "local-test",
+                autoFocus = true,
+            )
             addError?.let { message ->
                 Text(text = message, style = LascoTheme.type.body(13), color = colors.error)
             }

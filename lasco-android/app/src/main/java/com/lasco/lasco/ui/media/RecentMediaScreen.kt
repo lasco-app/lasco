@@ -21,7 +21,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -33,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -43,6 +43,7 @@ import androidx.paging.compose.itemKey
 import com.lasco.lasco.data.LibraryRepository
 import com.lasco.lasco.media.MediaImporter
 import com.lasco.lasco.ui.components.AlbumPickerDialog
+import com.lasco.lasco.ui.components.LascoToggle
 import com.lasco.lasco.ui.components.MediaThumbnail
 import com.lasco.lasco.ui.theme.LascoTheme
 import kotlinx.coroutines.launch
@@ -56,7 +57,7 @@ import uniffi.lasco_ffi.FfiMediaUuid
 @Composable
 fun RecentMediaScreen(
     modifier: Modifier = Modifier,
-    onOpenMedia: (position: Int) -> Unit = {},
+    onOpenMedia: (position: Int, mediaId: FfiMediaUuid, showingOrphans: Boolean, thumbnail: ImageBitmap?) -> Unit = { _, _, _, _ -> },
     onOpenAlbum: (albumId: String) -> Unit = {},
     viewModel: RecentMediaViewModel = viewModel(factory = RecentMediaViewModel.Factory),
 ) {
@@ -143,7 +144,7 @@ fun RecentMediaScreen(
                     style = LascoTheme.type.body(14),
                     color = colors.inkSub,
                 )
-                Switch(
+                LascoToggle(
                     checked = showingOrphans,
                     onCheckedChange = {
                         clearSelection()
@@ -219,11 +220,11 @@ fun RecentMediaScreen(
                                 item = item,
                                 repo = repo,
                                 isSelected = selection.contains(item.mediaId),
-                                onTap = {
+                                onTap = { thumbnail ->
                                     if (isSelecting) {
                                         selection = if (selection.contains(item.mediaId)) selection - item.mediaId else selection + item.mediaId
                                         if (selection.isEmpty()) isSelecting = false
-                                    } else onOpenMedia(index)
+                                    } else onOpenMedia(index, item.mediaId, showingOrphans, thumbnail)
                                 },
                                 onLongPress = {
                                     if (!isSelecting) {
@@ -316,17 +317,23 @@ private fun MediaGridCell(
     item: FfiMediaItem,
     repo: LibraryRepository,
     isSelected: Boolean,
-    onTap: () -> Unit,
+    onTap: (ImageBitmap?) -> Unit,
     onLongPress: () -> Unit,
 ) {
     val colors = LascoTheme.colors
+    var thumbnail by remember(item.mediaId) { mutableStateOf<ImageBitmap?>(null) }
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .background(colors.surfaceAlt)
-            .combinedClickable(onClick = onTap, onLongClick = onLongPress),
+            .combinedClickable(onClick = { onTap(thumbnail) }, onLongClick = onLongPress),
     ) {
-        MediaThumbnail(mediaId = item.mediaId, repo = repo, modifier = Modifier.fillMaxWidth())
+        MediaThumbnail(
+            mediaId = item.mediaId,
+            repo = repo,
+            modifier = Modifier.fillMaxWidth(),
+            onBitmapLoaded = { thumbnail = it },
+        )
         if (isSelected) {
             Text(
                 text = "✓",

@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
-import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,6 +31,7 @@ import com.lasco.lasco.ui.components.LascoConfirmDialog
 import com.lasco.lasco.ui.components.LascoInfoDialog
 import com.lasco.lasco.ui.components.LascoPrimaryButton
 import com.lasco.lasco.ui.components.LascoSecondaryButton
+import com.lasco.lasco.ui.components.LascoToggle
 import com.lasco.lasco.ui.status.MediaAtRiskDialog
 import com.lasco.lasco.ui.status.MediaAtRiskRemote
 import com.lasco.lasco.ui.theme.LascoTheme
@@ -407,7 +407,7 @@ private fun RemoteCard(
         Row {
             Text(text = "Auto push", style = LascoTheme.type.body(13), color = colors.ink)
             Spacer(modifier = Modifier.width(8.dp))
-            Switch(checked = remote.autoPush, onCheckedChange = onSetAutoPush)
+            LascoToggle(checked = remote.autoPush, onCheckedChange = onSetAutoPush)
         }
         Spacer(modifier = Modifier.height(10.dp))
         Row {

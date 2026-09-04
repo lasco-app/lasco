@@ -13,6 +13,7 @@ import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
 import com.lasco.lasco.ui.media.MediaDetailKey
+import com.lasco.lasco.ui.media.MediaDetailThumbnailHandoff
 import com.lasco.lasco.ui.media.MediaDetailSource
 import com.lasco.lasco.ui.media.MediaDetailScreen
 import kotlinx.serialization.Serializable
@@ -36,6 +37,7 @@ fun AlbumsScreen(
     backStack: NavBackStack<NavKey>,
     modifier: Modifier = Modifier,
     onOpenAlbum: (String) -> Unit = {},
+    thumbnailHandoff: MediaDetailThumbnailHandoff,
     onPickerVisibleChange: (Boolean) -> Unit = {},
 ) {
     NavDisplay(
@@ -71,9 +73,10 @@ fun AlbumsScreen(
                     backLabel = backLabel,
                     onBack = if (key.albumId != null) { { backStack.removeLastOrNull() } } else null,
                     onOpenChild = { child -> backStack.add(AlbumKey(child.albumId.value, child.name)) },
-                    onOpenMedia = { position, ascending ->
+                    onOpenMedia = { position, ascending, target, thumbnail ->
                         key.albumId?.let { albumId ->
-                            backStack.add(MediaDetailKey(MediaDetailSource.AlbumByDate(albumId, ascending), position))
+                            thumbnailHandoff.offer(thumbnail)
+                            backStack.add(MediaDetailKey(MediaDetailSource.AlbumByDate(albumId, ascending), position, target))
                         }
                     },
                     onPickerVisibleChange = onPickerVisibleChange,
@@ -83,6 +86,8 @@ fun AlbumsScreen(
                 MediaDetailScreen(
                     source = key.source,
                     startPosition = key.startPosition,
+                    expectedTarget = key.expectedTarget,
+                    initialThumbnail = thumbnailHandoff.take(),
                     onBack = { backStack.removeLastOrNull() },
                     onOpenAlbum = onOpenAlbum,
                 )

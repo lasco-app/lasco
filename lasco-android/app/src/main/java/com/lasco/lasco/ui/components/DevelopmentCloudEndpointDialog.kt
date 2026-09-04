@@ -28,6 +28,7 @@ fun DevelopmentCloudEndpointDialog(onConfirm: (String) -> Unit) {
                 value = endpoint,
                 onValueChange = { endpoint = it },
                 placeholder = ENDPOINT_INPUT_PREFIX,
+                autoFocus = true,
             )
             LascoSecondaryButton(
                 text = "Use Lasco Cloud",

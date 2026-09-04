@@ -22,7 +22,13 @@ import androidx.compose.ui.unit.dp
 import com.lasco.lasco.R
 import com.lasco.lasco.data.LibraryRepository
 import com.lasco.lasco.ui.theme.LascoTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import uniffi.lasco_ffi.FfiMediaUuid
+
+// Grid cells can decode concurrently while scrolling, but decoding image bytes
+// must not run on the UI thread.
+private val ThumbnailDecodeDispatcher = Dispatchers.Default.limitedParallelism(2)
 
 /**
  * Thumbnail slot backed by the Rust FFI. Fetches lazily, only once this
@@ -37,13 +43,18 @@ fun MediaThumbnail(
     mediaId: FfiMediaUuid?,
     repo: LibraryRepository,
     modifier: Modifier = Modifier,
+    onBitmapLoaded: (ImageBitmap) -> Unit = {},
 ) {
     var bitmap by remember(mediaId) { mutableStateOf<ImageBitmap?>(null) }
 
     LaunchedEffect(mediaId) {
         val id = mediaId ?: return@LaunchedEffect
         val bytes = repo.mediaThumbnail(id) ?: return@LaunchedEffect
-        bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+        val decoded = withContext(ThumbnailDecodeDispatcher) {
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+        } ?: return@LaunchedEffect
+        bitmap = decoded
+        onBitmapLoaded(decoded)
     }
 
     val loaded = bitmap
