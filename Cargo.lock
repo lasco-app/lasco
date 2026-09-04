@@ -47,6 +47,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "android-native-keyring-store"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "48c6349ddff23194f8fdce2ea8849380f5a4868c1648965b70e801e104cba9b3"
+dependencies = [
+ "base64",
+ "jni",
+ "keyring-core",
+ "log",
+ "ndk-context",
+ "regex",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tracing",
+]
+
+[[package]]
 name = "android_system_properties"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1524,6 +1542,7 @@ name = "lasco-core"
 version = "0.1.0"
 dependencies = [
  "aes-gcm",
+ "android-native-keyring-store",
  "anyhow",
  "apple-native-keyring-store",
  "argon2",
@@ -1569,6 +1588,7 @@ dependencies = [
  "chrono",
  "jni",
  "lasco-core",
+ "ndk-context",
  "proptest",
  "rand 0.8.6",
  "serde_json",
@@ -1701,6 +1721,12 @@ dependencies = [
  "security-framework-sys",
  "tempfile",
 ]
+
+[[package]]
+name = "ndk-context"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "27b02d87554356db9e9a873add8782d4ea6e3e58ea071a9adb9a2e8ddb884a8b"
 
 [[package]]
 name = "nom"

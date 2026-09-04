@@ -28,6 +28,7 @@ class LascoApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        RustRuntime.nativeInitialize(applicationContext)
         repository = LascoRepository(appDir = filesDir.path)
         releasePolicy = ClientReleasePolicy(this)
     }

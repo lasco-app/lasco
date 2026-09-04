@@ -8,7 +8,7 @@ use chrono::{DateTime, Utc};
 use keyring_core::Entry;
 use serde::{Deserialize, Serialize};
 
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "android"))]
 use std::{collections::HashMap, sync::OnceLock};
 
 use crate::identifiers::LibraryId;
@@ -129,7 +129,24 @@ fn initialize_platform_credential_store() -> Result<(), LascoCloudSessionStoreEr
         .map_err(|error| LascoCloudSessionStoreError::Keyring(error.clone()))
 }
 
-#[cfg(not(target_os = "ios"))]
+#[cfg(target_os = "android")]
+fn initialize_platform_credential_store() -> Result<(), LascoCloudSessionStoreError> {
+    static INITIALIZATION: OnceLock<Result<(), String>> = OnceLock::new();
+    INITIALIZATION
+        .get_or_init(|| {
+            android_native_keyring_store::Store::new_with_configuration(&HashMap::new())
+                .map(|store| {
+                    let store: std::sync::Arc<keyring_core::CredentialStore> = store;
+                    keyring_core::set_default_store(store);
+                })
+                .map_err(|error| error.to_string())
+        })
+        .as_ref()
+        .map(|_| ())
+        .map_err(|error| LascoCloudSessionStoreError::Keyring(error.clone()))
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
 fn initialize_platform_credential_store() -> Result<(), LascoCloudSessionStoreError> {
     Ok(())
 }
