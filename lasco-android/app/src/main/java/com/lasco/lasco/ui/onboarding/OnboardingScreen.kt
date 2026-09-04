@@ -57,7 +57,7 @@ private sealed interface OnboardingStep {
     data class Intro(val page: IntroPage) : OnboardingStep
     data object NewLibrary : OnboardingStep
     data object ExistingLibraryChoice : OnboardingStep
-    data object AddExistingLibrary : OnboardingStep
+    data class AddExistingLibrary(val useLascoCloud: Boolean) : OnboardingStep
 }
 
 private enum class IntroPage {
@@ -140,7 +140,7 @@ fun OnboardingScreen(
                 OnboardingStep.Intro(IntroPage.LibraryChoice),
                 slideForward = false,
             )
-            OnboardingStep.AddExistingLibrary -> transitionTo(
+            is OnboardingStep.AddExistingLibrary -> transitionTo(
                 OnboardingStep.ExistingLibraryChoice,
                 slideForward = false,
             )
@@ -156,7 +156,10 @@ fun OnboardingScreen(
 
     fun chooseExisting() = transitionTo(OnboardingStep.ExistingLibraryChoice, slideForward = true)
 
-    fun openExistingLibrary() = transitionTo(OnboardingStep.AddExistingLibrary, slideForward = true)
+    fun openExistingLibrary(useLascoCloud: Boolean) = transitionTo(
+        OnboardingStep.AddExistingLibrary(useLascoCloud),
+        slideForward = true,
+    )
 
     BackHandler(enabled = state.currentStep !is OnboardingStep.NewLibrary) {
         if (state.currentStep !is OnboardingStep.Intro) goBack()
@@ -182,11 +185,13 @@ fun OnboardingScreen(
             )
             OnboardingStep.ExistingLibraryChoice -> ExistingChoiceBody(
                 onBack = ::goBack,
-                onOpenExistingLibrary = ::openExistingLibrary,
+                onOpenLascoCloud = { openExistingLibrary(true) },
+                onOpenS3 = { openExistingLibrary(false) },
             )
-            OnboardingStep.AddExistingLibrary -> AddExistingLibraryScreen(
+            is OnboardingStep.AddExistingLibrary -> AddExistingLibraryScreen(
                 onBack = ::goBack,
                 onLibraryOpened = onLibraryOpened,
+                initialUseLascoCloud = step.useLascoCloud,
             )
         }
     }
@@ -445,8 +450,13 @@ private fun ExistingLibraryPage(onStartFresh: () -> Unit, onExisting: () -> Unit
 }
 
 @Composable
-private fun ExistingChoiceBody(onBack: () -> Unit, onOpenExistingLibrary: () -> Unit) {
+fun ExistingChoiceBody(
+    onBack: () -> Unit,
+    onOpenLascoCloud: () -> Unit,
+    onOpenS3: () -> Unit,
+) {
     val colors = LascoTheme.colors
+    BackHandler(onBack = onBack)
     Column(modifier = Modifier.fillMaxSize()) {
         onboardingTopBar(dots = 1, current = 0, onBack = onBack)
         onboardingLogo()
@@ -464,7 +474,9 @@ private fun ExistingChoiceBody(onBack: () -> Unit, onOpenExistingLibrary: () -> 
             )
         }
         onboardingBottomBar {
-            LascoPrimaryButton(text = "S3-compatible storage", onClick = onOpenExistingLibrary)
+            LascoPrimaryButton(text = "Lasco Cloud", onClick = onOpenLascoCloud)
+            Spacer(modifier = Modifier.height(12.dp))
+            LascoSecondaryButton(text = "S3-compatible storage", onClick = onOpenS3)
         }
     }
 }

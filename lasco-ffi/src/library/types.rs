@@ -6,6 +6,24 @@ pub struct FfiCreateLibraryResult {
     pub master_key_hex: String,
 }
 
+/// Credentials and client information needed to attach an existing Lasco Cloud library.
+///
+/// This intentionally crosses the FFI boundary as one record. Android's native ABI cannot
+/// reliably marshal the previous wide list of `RustBuffer` arguments.
+#[derive(uniffi::Record, Debug)]
+pub struct FfiLascoCloudImportConfig {
+    pub nickname: String,
+    pub username: String,
+    pub password: String,
+    pub new_username: Option<String>,
+    pub new_password: Option<String>,
+    pub cloud_base_url: String,
+    pub cloud_email: String,
+    pub cloud_password: String,
+    pub platform: String,
+    pub app_version: String,
+}
+
 #[derive(uniffi::Record, Debug)]
 pub struct FfiLascoCloudRemote {
     pub id: String,

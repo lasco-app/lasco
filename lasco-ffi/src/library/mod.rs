@@ -340,6 +340,82 @@ pub fn ffi_add_existing_library_s3(
     }))
 }
 
+/// Add a library already stored in Lasco Cloud.
+///
+/// Cloud account credentials authorize storage discovery. Library credentials
+/// decrypt the remote library; they are deliberately separate identities.
+#[uniffi::export(default(app_dir = None))]
+#[allow(clippy::too_many_arguments, clippy::needless_pass_by_value)]
+pub fn ffi_add_existing_library_lasco_cloud(
+    config: FfiLascoCloudImportConfig,
+    app_dir: Option<String>,
+) -> Result<Arc<FfiLibrary>, LascoError> {
+    let FfiLascoCloudImportConfig {
+        nickname,
+        username,
+        password,
+        new_username,
+        new_password,
+        cloud_base_url,
+        cloud_email,
+        cloud_password,
+        platform,
+        app_version,
+    } = config;
+    let rt =
+        tokio::runtime::Runtime::new().map_err(|e| LascoError::Other { msg: e.to_string() })?;
+    let app_dir = crate::resolve_app_dir(app_dir)?;
+    let sessions = sessions_dir(&app_dir);
+    let new_user = match (new_username, new_password) {
+        (Some(username), Some(password)) if !username.is_empty() => {
+            Some((LibraryUsername(username), LibraryPassword(password)))
+        }
+        _ => None,
+    };
+    let (library_id, library) = rt
+        .block_on(lasco_core::client::add_existing_library_lasco_cloud(
+            &app_dir,
+            nickname,
+            LibraryUsername(username),
+            LibraryPassword(password),
+            new_user,
+            cloud_base_url.clone(),
+            cloud_email.clone(),
+            cloud_password.clone(),
+            platform.clone(),
+            app_version.clone(),
+            Some(&sessions),
+        ))
+        .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+    // The bootstrap session was intentionally in-memory. Install the same
+    // account under the newly discovered library id for later Cloud syncs.
+    rt.block_on(async {
+        library.configure_lasco_cloud_auth(cloud_base_url).await?;
+        let auth = library
+            .cloud_runtime()
+            .lasco_cloud_auth()
+            .ok_or_else(|| anyhow::anyhow!("Lasco Cloud is not configured"))?;
+        auth.login(cloud_email, cloud_password, platform, app_version)
+            .await?;
+        Ok::<(), anyhow::Error>(())
+    })
+    .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+    let library_config = LibraryJson::load(&app_dir, &library_id)?.ok_or(LascoError::NotFound)?;
+    let remotes = library_config
+        .remotes
+        .iter()
+        .map(remote_config_to_ffi)
+        .collect();
+    Ok(Arc::new(FfiLibrary {
+        inner: library,
+        rt,
+        app_dir,
+        remotes: Mutex::new(remotes),
+        #[cfg(test)]
+        test_remotes: Mutex::new(HashMap::new()),
+    }))
+}
+
 #[derive(uniffi::Object, Debug)]
 pub struct FfiLibrary {
     inner: lasco_core::library::Library,

@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use anyhow::{Result, bail};
@@ -10,7 +11,8 @@ use crate::identifiers::LibraryId;
 use crate::library::Library;
 use crate::library::local_dirs::LocalDirs;
 use crate::library_json::{
-    LibraryJson, RemoteConfig, RemoteKind, S3Config, find_library_id_by_nickname, save_library,
+    CloudS3Config, LibraryJson, RemoteConfig, RemoteKind, S3Config, find_library_id_by_nickname,
+    save_library,
 };
 use crate::operations::{LibraryPassword, LibraryUsername};
 use crate::s3_secret::{encrypt_s3_secret_key, resolve_s3_credentials};
@@ -420,6 +422,222 @@ pub async fn add_existing_library_s3(
         .await
         .map_err(|e| anyhow::anyhow!("failed to fetch from remote: {e}"))?;
 
+    Ok((library_id, library))
+}
+
+/// Adds an existing library from the authenticated user's Lasco Cloud remotes.
+///
+/// The Cloud session used for discovery is deliberately ephemeral: only after
+/// reading remote metadata do we know the library id that scopes persisted
+/// Cloud authentication on this device.
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+pub async fn add_existing_library_lasco_cloud(
+    app_dir: &Path,
+    nickname: String,
+    username: LibraryUsername,
+    password: LibraryPassword,
+    new_user: Option<(LibraryUsername, LibraryPassword)>,
+    cloud_base_url: String,
+    cloud_email: String,
+    cloud_password: String,
+    platform: String,
+    app_version: String,
+    session_dir: Option<&Path>,
+) -> Result<(LibraryId, Library)> {
+    let auth =
+        crate::library::lasco_cloud_auth::LascoCloudAuthManager::new_ephemeral(cloud_base_url);
+    auth.login(cloud_email, cloud_password, platform, app_version)
+        .await?;
+    let remote_infos = auth.list_remotes().await?;
+    let associated_library_ids: HashSet<_> = remote_infos
+        .iter()
+        .filter_map(|remote| remote.library_id.clone())
+        .collect();
+    if associated_library_ids.is_empty() {
+        bail!("no existing Lasco Cloud library was found for this account");
+    }
+    if associated_library_ids.len() != 1 {
+        bail!("Lasco Cloud remotes are associated with different libraries");
+    }
+    let expected_library_uuid = associated_library_ids
+        .into_iter()
+        .next()
+        .expect("non-empty set")
+        .parse::<uuid::Uuid>()
+        .context("Lasco Cloud returned an invalid library id")?;
+    let expected_library_id = expected_library_uuid.to_string();
+    let selected_remotes: Vec<_> = remote_infos
+        .into_iter()
+        .filter(|remote| remote.library_id.as_deref() == Some(expected_library_id.as_str()))
+        .collect();
+    if selected_remotes.is_empty() {
+        bail!("no Lasco Cloud storage remotes are assigned to the existing library");
+    }
+
+    let credentials_by_id: HashMap<_, _> = auth
+        .storage_credentials()
+        .await?
+        .into_iter()
+        .map(|credential| (credential.id.clone(), credential))
+        .collect();
+    let mut cloud_remotes = Vec::with_capacity(selected_remotes.len());
+    for remote in selected_remotes {
+        let credentials = credentials_by_id.get(&remote.id).ok_or_else(|| {
+            anyhow::anyhow!(
+                "Lasco Cloud did not return credentials for remote '{}'",
+                remote.id
+            )
+        })?;
+        let storage = StorageS3::new_with_session_token(
+            &remote.endpoint,
+            &remote.bucket,
+            &remote.region,
+            (!remote.path_prefix.is_empty()).then_some(remote.path_prefix.as_str()),
+            &credentials.access_key_id,
+            &credentials.secret_access_key,
+            credentials.session_token.as_deref(),
+        )?;
+        cloud_remotes.push((remote, storage));
+    }
+    let primary_storage = &cloud_remotes[0].1;
+    let remote_library_dir = primary_storage
+        .list("library/")
+        .await
+        .map_err(|e| anyhow::anyhow!("Lasco Cloud remote unreachable: {e}"))?;
+    if remote_library_dir.is_empty() {
+        bail!("no library found at this Lasco Cloud remote");
+    }
+    let remote_library_uuid = remote_library_dir
+        .iter()
+        .find_map(|key| {
+            let name = key.rsplit('/').next().unwrap_or(key);
+            name.strip_prefix("library_id_")
+                .and_then(|value| value.parse::<uuid::Uuid>().ok())
+        })
+        .ok_or_else(|| anyhow::anyhow!("remote is missing library_id_{{uuid}} file"))?;
+    if remote_library_uuid != expected_library_uuid {
+        bail!("Lasco Cloud remote metadata does not match its assigned library");
+    }
+    crate::library::sync::verify_remote_library_format_with_keys(&remote_library_dir)?;
+    let library_id = LibraryId(remote_library_uuid);
+    let device_id = crate::crdt::DeviceId::random();
+    let local_dirs = LocalDirs::new(app_dir, &library_id);
+    local_dirs
+        .ensure_state_dirs()
+        .context("failed to create local state directories")?;
+    local_dirs
+        .ensure_sync_dirs()
+        .context("failed to create local sync directories")?;
+    let lib_dir = local_dirs.local_state_library_dir();
+    for key in &remote_library_dir {
+        let basename = key.rsplit('/').next().unwrap_or(key);
+        if basename.is_empty() {
+            continue;
+        }
+        let data = primary_storage
+            .get(key)
+            .await
+            .map_err(|e| anyhow::anyhow!("failed to download {key}: {e}"))?;
+        std::fs::write(lib_dir.path().join(basename), &data)
+            .with_context(|| format!("failed to write crypto file {basename}"))?;
+    }
+    let (master_key, active_password_uuid) =
+        find_master_key(lib_dir.path(), &username.0, &password.0)
+            .map_err(|_| anyhow::anyhow!("failed to open library — wrong username or password"))?;
+    let library = Library::open_with_master_key(
+        local_dirs.clone(),
+        master_key.clone(),
+        library_id,
+        device_id,
+        username.clone(),
+    )
+    .map_err(|e| anyhow::anyhow!("failed to open library: {e}"))?;
+    let (effective_username, active_password_uuid, library) =
+        match new_user {
+            Some((new_username, new_password)) => {
+                let new_uuid = library
+                    .user_add(new_username.clone(), new_password)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("failed to add user: {e}"))?;
+                let mk_name = format!("mk_{}_{}.enc", new_username.0, new_uuid);
+                let mk_bytes = std::fs::read(lib_dir.path().join(&mk_name))
+                    .with_context(|| format!("failed to read {mk_name}"))?;
+                let remote_key = format!("library/{mk_name}");
+                for (_, storage) in &cloud_remotes {
+                    if storage
+                        .exists(&remote_key)
+                        .await
+                        .map_err(|e| anyhow::anyhow!("failed to check new user key: {e}"))?
+                    {
+                        if storage.get(&remote_key).await.map_err(|e| {
+                            anyhow::anyhow!("failed to read existing new user key: {e}")
+                        })? != mk_bytes
+                        {
+                            bail!("existing remote master-key file differs: {remote_key}");
+                        }
+                    } else {
+                        storage
+                            .put_atomic(
+                                &remote_key,
+                                &mk_bytes,
+                                crate::storage::AtomicWriteMode::Replace,
+                            )
+                            .await
+                            .map_err(|e| anyhow::anyhow!("failed to upload new user key: {e}"))?;
+                    }
+                }
+                let library = Library::open_with_master_key(
+                    local_dirs,
+                    master_key.clone(),
+                    library_id,
+                    device_id,
+                    new_username.clone(),
+                )
+                .map_err(|e| anyhow::anyhow!("failed to reopen library as new user: {e}"))?;
+                (new_username, new_uuid, library)
+            }
+            None => (username, active_password_uuid, library),
+        };
+    let mut remotes = Vec::with_capacity(cloud_remotes.len());
+    for (priority, (remote_info, storage)) in cloud_remotes.iter().enumerate() {
+        let remote = crate::library::sync::remote_access::StorageRead::new(storage);
+        let remote_uuid = crate::library::sync::discover_remote_uuid(&remote)
+            .await
+            .map_err(|e| anyhow::anyhow!("failed to read remote id: {e}"))?;
+        remotes.push(RemoteConfig {
+            remote_uuid,
+            name: remote_info.name.clone(),
+            auto_push: true,
+            media_fetch_priority: u32::try_from(priority)
+                .context("too many Lasco Cloud remotes")?,
+            exclude_from_media_fetch: false,
+            kind: RemoteKind::CloudS3(CloudS3Config {
+                cloud_storage_id: remote_info.id.clone(),
+            }),
+        });
+    }
+    let primary_remote_uuid = remotes[0].remote_uuid;
+    let media_source_order = remotes.iter().map(|remote| remote.remote_uuid).collect();
+    save_library(
+        app_dir,
+        &library_id,
+        &LibraryJson {
+            library_nickname: LibraryNickname(nickname),
+            device_id,
+            default_username: Some(effective_username.clone()),
+            active_password_uuid: Some(active_password_uuid),
+            default_fetch_remote: Some(primary_remote_uuid),
+            auto_import_device_media: false,
+            remotes,
+            media_source_order,
+        },
+    )?;
+    session_store_master_key(library_id, &effective_username, &master_key, session_dir)
+        .context("failed to store session key")?;
+    library
+        .fetch(primary_storage, primary_remote_uuid)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to fetch from Lasco Cloud: {e}"))?;
     Ok((library_id, library))
 }
 

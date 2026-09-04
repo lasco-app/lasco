@@ -1,5 +1,6 @@
 package com.lasco.lasco.ui.onboarding
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -41,6 +42,7 @@ import uniffi.lasco_ffi.ffiTestS3Remote
 fun AddExistingLibraryScreen(
     onBack: () -> Unit,
     onLibraryOpened: () -> Unit,
+    initialUseLascoCloud: Boolean = true,
     modifier: Modifier = Modifier,
     viewModel: AddExistingLibraryViewModel = viewModel(factory = AddExistingLibraryViewModel.Factory),
 ) {
@@ -51,6 +53,9 @@ fun AddExistingLibraryScreen(
     var nickname by remember { mutableStateOf("") }
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    val useLascoCloud = initialUseLascoCloud
+    var cloudEmail by remember { mutableStateOf("") }
+    var cloudPassword by remember { mutableStateOf("") }
     var createNewUser by remember { mutableStateOf(false) }
     var newUsername by remember { mutableStateOf("") }
     var newPassword by remember { mutableStateOf("") }
@@ -73,11 +78,16 @@ fun AddExistingLibraryScreen(
     val canTest = endpoint.isNotEmpty() && bucket.isNotEmpty() && accessKey.isNotEmpty() &&
         secretKey.isNotEmpty() && !testing
 
-    val isValid = nickname.isNotEmpty() && username.isNotEmpty() && password.isNotEmpty() &&
+    val commonValid = nickname.isNotEmpty() && username.isNotEmpty() && password.isNotEmpty() &&
+        (!createNewUser || (newUsername.isNotEmpty() && newPassword.isNotEmpty())) && !state.loading
+    val isValid = commonValid && if (useLascoCloud) {
+        cloudEmail.isNotEmpty() && cloudPassword.isNotEmpty()
+    } else {
         remoteName.isNotEmpty() && endpoint.isNotEmpty() && bucket.isNotEmpty() &&
-        accessKey.isNotEmpty() && secretKey.isNotEmpty() &&
-        (!createNewUser || (newUsername.isNotEmpty() && newPassword.isNotEmpty())) &&
-        uploadAcknowledged && !state.loading
+            accessKey.isNotEmpty() && secretKey.isNotEmpty() && uploadAcknowledged
+    }
+
+    BackHandler(onBack = onBack)
 
     Column(
         modifier = modifier
@@ -113,7 +123,11 @@ fun AddExistingLibraryScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text(
-                text = "Point Lasco at an S3 remote that already holds a library. It downloads the library and syncs it to this device.",
+                text = if (useLascoCloud) {
+                    "Sign in to Lasco Cloud to add the library associated with your account."
+                } else {
+                    "Point Lasco at an S3 remote that already holds a library."
+                },
                 style = LascoTheme.type.body(16),
                 color = colors.inkSub,
             )
@@ -137,45 +151,34 @@ fun AddExistingLibraryScreen(
                 )
             }
 
-            LascoField("Remote name", remoteName, { remoteName = it }, placeholder = "my s3 remote")
-            LascoField("Endpoint URL", endpoint, { endpoint = it }, placeholder = "https://region1.example-s3-server.com")
-            LascoField("Bucket", bucket, { bucket = it }, placeholder = "my-photos-bucket")
-            LascoField("Region", region, { region = it }, placeholder = "region1")
-            LascoField("Path prefix (optional)", pathPrefix, { pathPrefix = it }, placeholder = "photos/")
-            LascoField("Access key", accessKey, { accessKey = it })
-            LascoField("Secret key", secretKey, { secretKey = it }, secure = true)
-
-            LascoCheckbox(
-                checked = uploadAcknowledged,
-                onCheckedChange = { uploadAcknowledged = it },
-                label = "I understand this app will upload my photos to the S3 bucket configured above.",
-            )
-
-            Row {
-                if (testing) {
-                    CircularProgressIndicator(color = colors.inkMuted, modifier = Modifier.padding(end = 8.dp))
-                }
+            if (useLascoCloud) {
                 Text(
-                    text = if (testing) "Testing…" else "Test connection",
-                    style = LascoTheme.type.body(),
-                    color = if (canTest) colors.ink else colors.inkMuted,
-                    modifier = Modifier.clickable(enabled = canTest) {
-                        testing = true
-                        testResult = null
+                    text = "Sign in to Lasco Cloud to find the library associated with your account.",
+                    style = LascoTheme.type.body(14), color = colors.inkSub,
+                )
+                LascoField("Lasco Cloud email", cloudEmail, { cloudEmail = it }, placeholder = "you@example.com")
+                LascoField("Lasco Cloud password", cloudPassword, { cloudPassword = it }, secure = true)
+            } else {
+                LascoField("Remote name", remoteName, { remoteName = it }, placeholder = "my s3 remote")
+                LascoField("Endpoint URL", endpoint, { endpoint = it }, placeholder = "https://region1.example-s3-server.com")
+                LascoField("Bucket", bucket, { bucket = it }, placeholder = "my-photos-bucket")
+                LascoField("Region", region, { region = it }, placeholder = "region1")
+                LascoField("Path prefix (optional)", pathPrefix, { pathPrefix = it }, placeholder = "photos/")
+                LascoField("Access key", accessKey, { accessKey = it })
+                LascoField("Secret key", secretKey, { secretKey = it }, secure = true)
+                LascoCheckbox(checked = uploadAcknowledged, onCheckedChange = { uploadAcknowledged = it }, label = "I understand this app will upload my photos to the S3 bucket configured above.")
+                Row {
+                    if (testing) CircularProgressIndicator(color = colors.inkMuted, modifier = Modifier.padding(end = 8.dp))
+                    Text(text = if (testing) "Testing…" else "Test connection", style = LascoTheme.type.body(), color = if (canTest) colors.ink else colors.inkMuted, modifier = Modifier.clickable(enabled = canTest) {
+                        testing = true; testResult = null
                         scope.launch {
-                            testResult = try {
-                                ffiTestS3Remote(endpoint, bucket, region, pathPrefix, accessKey, secretKey)
-                                true to "Connection succeeded."
-                            } catch (e: LascoException) {
-                                false to (e.message?.ifBlank { "Connection failed." } ?: "Connection failed.")
-                            }
+                            testResult = try { ffiTestS3Remote(endpoint, bucket, region, pathPrefix, accessKey, secretKey); true to "Connection succeeded." }
+                            catch (e: LascoException) { false to (e.message?.ifBlank { "Connection failed." } ?: "Connection failed.") }
                             testing = false
                         }
-                    },
-                )
-            }
-            testResult?.let { (ok, msg) ->
-                Text(text = msg, style = LascoTheme.type.body(13), color = if (ok) colors.ok else colors.error)
+                    })
+                }
+                testResult?.let { (ok, msg) -> Text(text = msg, style = LascoTheme.type.body(13), color = if (ok) colors.ok else colors.error) }
             }
 
             state.error?.let { ErrorBanner(it) }
@@ -189,7 +192,12 @@ fun AddExistingLibraryScreen(
             LascoPrimaryButton(
                 text = if (state.loading) "Adding…" else "Add library",
                 onClick = {
-                    viewModel.add(
+                    if (useLascoCloud) viewModel.addLascoCloud(
+                        nickname, username, password,
+                        if (createNewUser) newUsername else null,
+                        if (createNewUser) newPassword else null,
+                        cloudEmail, cloudPassword,
+                    ) else viewModel.add(
                         nickname = nickname,
                         username = username,
                         password = password,

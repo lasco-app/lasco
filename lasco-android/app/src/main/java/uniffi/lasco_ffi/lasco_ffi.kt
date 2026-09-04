@@ -960,6 +960,8 @@ internal open class UniffiVTableCallbackInterfacePushProgressSink(
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -975,7 +977,9 @@ internal open class UniffiVTableCallbackInterfacePushProgressSink(
 // when the library is loaded.
 internal interface IntegrityCheckingUniffiLib : Library {
     // Integrity check functions only
-    fun uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_s3(
+    fun uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_lasco_cloud(
+): Short
+fun uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_s3(
 ): Short
 fun uniffi_lasco_ffi_checksum_func_ffi_create_library(
 ): Short
@@ -1453,6 +1457,8 @@ fun uniffi_lasco_ffi_fn_method_ffinativemediabytes_len(`ptr`: Pointer,uniffi_out
 ): Long
 fun uniffi_lasco_ffi_fn_init_callback_vtable_pushprogresssink(`vtable`: UniffiVTableCallbackInterfacePushProgressSink,
 ): Unit
+fun uniffi_lasco_ffi_fn_func_ffi_add_existing_library_lasco_cloud(`config`: RustBuffer.ByValue,`appDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Pointer
 fun uniffi_lasco_ffi_fn_func_ffi_add_existing_library_s3(`nickname`: RustBuffer.ByValue,`username`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,`newUsername`: RustBuffer.ByValue,`newPassword`: RustBuffer.ByValue,`remoteName`: RustBuffer.ByValue,`endpoint`: RustBuffer.ByValue,`bucket`: RustBuffer.ByValue,`region`: RustBuffer.ByValue,`pathPrefix`: RustBuffer.ByValue,`accessKey`: RustBuffer.ByValue,`secretKey`: RustBuffer.ByValue,`appDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Pointer
 fun uniffi_lasco_ffi_fn_func_ffi_create_library(`nickname`: RustBuffer.ByValue,`username`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,`appDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1595,6 +1601,9 @@ private fun uniffiCheckContractApiVersion(lib: IntegrityCheckingUniffiLib) {
 }
 @Suppress("UNUSED_PARAMETER")
 private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
+    if (lib.uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_lasco_cloud() != 61860.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_s3() != 45002.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -5833,6 +5842,76 @@ public object FfiConverterTypeFfiLascoCloudAccount: FfiConverterRustBuffer<FfiLa
 
 
 
+/**
+ * Credentials and client information needed to attach an existing Lasco Cloud library.
+ *
+ * This intentionally crosses the FFI boundary as one record. Android's native ABI cannot
+ * reliably marshal the previous wide list of `RustBuffer` arguments.
+ */
+data class FfiLascoCloudImportConfig (
+    var `nickname`: kotlin.String, 
+    var `username`: kotlin.String, 
+    var `password`: kotlin.String, 
+    var `newUsername`: kotlin.String?, 
+    var `newPassword`: kotlin.String?, 
+    var `cloudBaseUrl`: kotlin.String, 
+    var `cloudEmail`: kotlin.String, 
+    var `cloudPassword`: kotlin.String, 
+    var `platform`: kotlin.String, 
+    var `appVersion`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFfiLascoCloudImportConfig: FfiConverterRustBuffer<FfiLascoCloudImportConfig> {
+    override fun read(buf: ByteBuffer): FfiLascoCloudImportConfig {
+        return FfiLascoCloudImportConfig(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FfiLascoCloudImportConfig) = (
+            FfiConverterString.allocationSize(value.`nickname`) +
+            FfiConverterString.allocationSize(value.`username`) +
+            FfiConverterString.allocationSize(value.`password`) +
+            FfiConverterOptionalString.allocationSize(value.`newUsername`) +
+            FfiConverterOptionalString.allocationSize(value.`newPassword`) +
+            FfiConverterString.allocationSize(value.`cloudBaseUrl`) +
+            FfiConverterString.allocationSize(value.`cloudEmail`) +
+            FfiConverterString.allocationSize(value.`cloudPassword`) +
+            FfiConverterString.allocationSize(value.`platform`) +
+            FfiConverterString.allocationSize(value.`appVersion`)
+    )
+
+    override fun write(value: FfiLascoCloudImportConfig, buf: ByteBuffer) {
+            FfiConverterString.write(value.`nickname`, buf)
+            FfiConverterString.write(value.`username`, buf)
+            FfiConverterString.write(value.`password`, buf)
+            FfiConverterOptionalString.write(value.`newUsername`, buf)
+            FfiConverterOptionalString.write(value.`newPassword`, buf)
+            FfiConverterString.write(value.`cloudBaseUrl`, buf)
+            FfiConverterString.write(value.`cloudEmail`, buf)
+            FfiConverterString.write(value.`cloudPassword`, buf)
+            FfiConverterString.write(value.`platform`, buf)
+            FfiConverterString.write(value.`appVersion`, buf)
+    }
+}
+
+
+
 data class FfiLascoCloudRemote (
     var `id`: kotlin.String, 
     var `libraryId`: kotlin.String?, 
@@ -7435,6 +7514,22 @@ public object FfiConverterSequenceTypeFfiRemoteUuid: FfiConverterRustBuffer<List
 
 
 
+
+        /**
+         * Add a library already stored in Lasco Cloud.
+         *
+         * Cloud account credentials authorize storage discovery. Library credentials
+         * decrypt the remote library; they are deliberately separate identities.
+         */
+    @Throws(LascoException::class) fun `ffiAddExistingLibraryLascoCloud`(`config`: FfiLascoCloudImportConfig, `appDir`: kotlin.String? = null): FfiLibrary {
+            return FfiConverterTypeFfiLibrary.lift(
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_func_ffi_add_existing_library_lasco_cloud(
+        FfiConverterTypeFfiLascoCloudImportConfig.lower(`config`),FfiConverterOptionalString.lower(`appDir`),_status)
+}
+    )
+    }
+    
 
         /**
          * Add a library that already exists on an S3 remote, downloading its crypto

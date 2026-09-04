@@ -43,6 +43,7 @@ import com.lasco.lasco.ui.components.LascoPrimaryButton
 import com.lasco.lasco.ui.components.DevelopmentCloudEndpointDialog
 import com.lasco.lasco.data.DevelopmentCloudEndpoint
 import com.lasco.lasco.ui.onboarding.AddExistingLibraryScreen
+import com.lasco.lasco.ui.onboarding.ExistingChoiceBody
 import com.lasco.lasco.ui.onboarding.NewLibraryWizardScreen
 import com.lasco.lasco.ui.onboarding.OnboardingResume
 import com.lasco.lasco.ui.onboarding.OnboardingScreen
@@ -59,7 +60,8 @@ import uniffi.lasco_ffi.FfiLibraryId
 private sealed interface Screen {
     data object LibraryList : Screen
     data class NewLibrary(val sessionId: String) : Screen
-    data object AddExisting : Screen
+    data object ExistingLibraryChoice : Screen
+    data class AddExisting(val useLascoCloud: Boolean) : Screen
     data class OpeningLibrary(val request: LibraryOpenRequest) : Screen
     data object Opened : Screen
     data class DeletingLibrary(val libraryId: FfiLibraryId) : Screen
@@ -168,7 +170,7 @@ fun LascoRoot(modifier: Modifier = Modifier, onLibraryOpenChanged: (Boolean) -> 
     when (current) {
         Screen.LibraryList -> LibraryListScreen(
             onNewLibrary = { screen = Screen.NewLibrary(UUID.randomUUID().toString()) },
-            onAddExisting = { screen = Screen.AddExisting },
+            onAddExisting = { screen = Screen.ExistingLibraryChoice },
             onOpenLibrary = libraryListViewModel::open,
             modifier = modifier,
             viewModel = libraryListViewModel,
@@ -180,9 +182,15 @@ fun LascoRoot(modifier: Modifier = Modifier, onLibraryOpenChanged: (Boolean) -> 
             onComplete = { screen = Screen.Opened },
             modifier = modifier,
         )
-        Screen.AddExisting -> AddExistingLibraryScreen(
+        Screen.ExistingLibraryChoice -> ExistingChoiceBody(
+            onBack = { screen = Screen.LibraryList },
+            onOpenLascoCloud = { screen = Screen.AddExisting(useLascoCloud = true) },
+            onOpenS3 = { screen = Screen.AddExisting(useLascoCloud = false) },
+        )
+        is Screen.AddExisting -> AddExistingLibraryScreen(
             onBack = { screen = Screen.LibraryList },
             onLibraryOpened = { screen = Screen.Opened },
+            initialUseLascoCloud = current.useLascoCloud,
             modifier = modifier,
         )
         is Screen.OpeningLibrary -> LibraryOpenScreen(
