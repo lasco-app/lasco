@@ -70,6 +70,7 @@ struct MediaDetailView: View {
     // AAE adjustment data debug viewer
     @State private var aaePayload: AAEViewerPayload? = nil
     @State private var exportData: Data?
+    @State private var exportURL: URL?
 
     var currentAlbumId: FfiAlbumUuid? { detailModel.source.currentAlbumID }
     var onAlbumTap: ((FfiAlbum) -> Void)? = nil
@@ -393,7 +394,9 @@ struct MediaDetailView: View {
         }
         .background(Color.black)
         .sheet(isPresented: $showingExportSheet) {
-            if let data = exportData {
+            if let url = exportURL {
+                ActivityView(activityItems: [url])
+            } else if let data = exportData {
                 ActivityView(activityItems: [data])
             }
         }
@@ -452,10 +455,20 @@ struct MediaDetailView: View {
 
     private func exportButton(p: LascoTheme) -> some View {
         Button {
-            guard let mediaID = currentItem?.mediaId else { return }
+            guard let item = currentItem else { return }
             Task {
-                exportData = try? await repository.mediaBytesAsync(mediaID: mediaID)
-                showingExportSheet = exportData != nil
+                exportData = nil
+                exportURL = nil
+                if isVideo(item) {
+                    exportURL = try? await repository.materializedMediaURL(
+                        mediaID: item.mediaId,
+                        originalFilename: item.filenameOriginal
+                    )
+                    showingExportSheet = exportURL != nil
+                } else {
+                    exportData = try? await repository.mediaBytesAsync(mediaID: item.mediaId)
+                    showingExportSheet = exportData != nil
+                }
             }
         } label: {
             HStack(spacing: 8) {
@@ -769,13 +782,11 @@ struct MediaDetailView: View {
 
     private func loadVideoPlayerIfNeeded(for item: FfiMediaItem) {
         guard videoPlayers[item.mediaId] == nil else { return }
-        let ext = (item.filenameOriginal as NSString).pathExtension
         Task {
-            guard let data = try? await repository.mediaBytesAsync(mediaID: item.mediaId) else { return }
-            let url = FileManager.default.temporaryDirectory
-                .appendingPathComponent(item.mediaId.value)
-                .appendingPathExtension(ext)
-            guard (try? data.write(to: url)) != nil else { return }
+            guard let url = try? await repository.materializedMediaURL(
+                mediaID: item.mediaId,
+                originalFilename: item.filenameOriginal
+            ) else { return }
             videoPlayers[item.mediaId] = AVPlayer(url: url)
         }
     }
