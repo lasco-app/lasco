@@ -8,6 +8,7 @@
 .externalNativeBuild
 .cxx
 local.properties
+*.aab
 
 # Compiled by build-android.sh, not source
 app/src/main/jniLibs/
