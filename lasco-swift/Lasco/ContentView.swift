@@ -44,45 +44,43 @@ struct ContentView: View {
     @State private var isSelecting = false
     @State private var albumsForMedia: AlbumList? = nil
     @State private var showingAddToAlbumPicker = false
+    @State private var allMediaScrollPosition: FfiMediaUuid?
+    @State private var orphanMediaScrollPosition: FfiMediaUuid?
 
     var body: some View {
         NavigationStack(path: $path) {
             GeometryReader { geo in
                 let columns = geo.size.width > 500 ? 3 : 2
                 let gridColumns = Array(repeating: GridItem(.flexible(), spacing: 3), count: columns)
-                let media = model.media
 
                 ZStack(alignment: .top) {
-                    ScrollView {
-                        #if canImport(UIKit)
-                        LazyVStack(alignment: .leading, spacing: 24, pinnedViews: [.sectionHeaders]) {
-                            Section {
-                                VStack(alignment: .leading, spacing: 24) {
-                                    // mascotBanner
-                                    mediaContent(media: media, gridColumns: gridColumns)
-                                }
-                                .padding(.horizontal, 20)
-                            } header: {
-                                header
-                                    .padding(.horizontal, 20)
-                                    .background(theme.bg)
-                                    .opacity(isSelecting ? 0 : 1)
+                    if model.showingOrphans {
+                        RecentMediaScrollView(
+                            mode: .orphans,
+                            scrollPosition: $orphanMediaScrollPosition,
+                            header: { header.opacity(isSelecting ? 0 : 1) },
+                            content: {
+                                mediaContent(
+                                    media: model.media(for: .orphans),
+                                    mode: .orphans,
+                                    gridColumns: gridColumns
+                                )
                             }
-                        }
-                        #else
-                        VStack(alignment: .leading, spacing: 24) {
-                            header
-                                .padding(.horizontal, 20)
-                                .opacity(isSelecting ? 0 : 1)
-                            // mascotBanner
-                            //     .padding(.horizontal, 20)
-                            mediaContent(media: media, gridColumns: gridColumns)
-                                .padding(.horizontal, 20)
-                        }
-                        #endif
+                        )
+                    } else {
+                        RecentMediaScrollView(
+                            mode: .all,
+                            scrollPosition: $allMediaScrollPosition,
+                            header: { header.opacity(isSelecting ? 0 : 1) },
+                            content: {
+                                mediaContent(
+                                    media: model.media(for: .all),
+                                    mode: .all,
+                                    gridColumns: gridColumns
+                                )
+                            }
+                        )
                     }
-                    .background(theme.bg)
-                    .scrollContentBackground(.hidden)
 
                     #if canImport(UIKit)
                     theme.bg
@@ -173,7 +171,8 @@ struct ContentView: View {
         .onChange(of: model.showingOrphans) {
             selection = []
             isSelecting = false
-            Task { await model.load() }
+            let mode = model.mode
+            Task { await model.load(mode: mode) }
         }
         .environment(repository)
     }
@@ -272,9 +271,13 @@ struct ContentView: View {
     // MARK: Media content
 
     @ViewBuilder
-    private func mediaContent(media: [FfiMediaItem], gridColumns: [GridItem]) -> some View {
+    private func mediaContent(
+        media: [FfiMediaItem],
+        mode: RecentMediaMode,
+        gridColumns: [GridItem]
+    ) -> some View {
         if media.isEmpty {
-            Text(model.showingOrphans ? "No orphan media." : "No media yet.")
+            Text(mode == .orphans ? "No orphan media." : "No media yet.")
                 .font(LascoFont.title())
                 .foregroundStyle(theme.inkSub)
                 .padding(20)
@@ -294,10 +297,10 @@ struct ContentView: View {
                                 }
                             } else {
                                 path.append(.mediaDetail(MediaDetailState(seed: MediaGallerySeed(
-                                    source: model.showingOrphans ? .orphansByDate : .homeByDate,
+                                    source: mode == .orphans ? .orphansByDate : .homeByDate,
                                     position: position,
                                     item: .media(item),
-                                    totalCount: model.totalCount
+                                    totalCount: model.totalCount(for: mode)
                                 ))))
                             }
                         }
@@ -320,10 +323,11 @@ struct ContentView: View {
                         #endif
                         .onAppear {
                             guard item.mediaId == media.last?.mediaId else { return }
-                            Task { await model.loadMore() }
+                            Task { await model.loadMore(mode: mode) }
                         }
                 }
             }
+            .scrollTargetLayout()
         }
 
         Spacer(minLength: 40)

@@ -12,63 +12,114 @@ enum MediaDetailSource: Hashable, Sendable {
     }
 }
 
+enum RecentMediaMode: Hashable, Sendable {
+    case all
+    case orphans
+}
+
 @MainActor
 @Observable
 final class RecentMediaModel {
-    private(set) var media: [FfiMediaItem] = []
-    private(set) var hasMore = false
     var showingOrphans = false
     private let repository: any LibraryRepositoryProtocol
-    private(set) var totalCount = 0
-    private var isLoading = false
+    private var pages: [RecentMediaMode: Page] = [
+        .all: Page(),
+        .orphans: Page(),
+    ]
 
     private static let pageSize = 100
+
+    private struct Page {
+        var media: [FfiMediaItem] = []
+        var totalCount = 0
+        var hasMore = false
+        var isLoading = false
+    }
 
     init(repository: any LibraryRepositoryProtocol) {
         self.repository = repository
     }
 
+    var mode: RecentMediaMode {
+        showingOrphans ? .orphans : .all
+    }
+
+    var media: [FfiMediaItem] {
+        media(for: mode)
+    }
+
+    var totalCount: Int {
+        totalCount(for: mode)
+    }
+
+    func media(for mode: RecentMediaMode) -> [FfiMediaItem] {
+        pages[mode]?.media ?? []
+    }
+
+    func totalCount(for mode: RecentMediaMode) -> Int {
+        pages[mode]?.totalCount ?? 0
+    }
+
     func start() async {
         let stream = await repository.changes()
-        await load()
+        await load(mode: mode)
         for await change in stream {
             guard change == .all || change == .mediaList else { continue }
-            await load()
+            await load(mode: mode)
         }
     }
 
-    func load() async {
-        guard !isLoading else { return }
-        isLoading = true
-        defer { isLoading = false }
+    func load(mode: RecentMediaMode? = nil) async {
+        let mode = mode ?? self.mode
+        guard var page = pages[mode], !page.isLoading else { return }
+        page.isLoading = true
+        pages[mode] = page
+        defer { pages[mode]?.isLoading = false }
         do {
-            if showingOrphans {
-                totalCount = try await repository.orphanMediaByDateCount()
-                media = try await repository.orphanMediaByDate(offset: 0, limit: Self.pageSize)
-            } else {
-                totalCount = try await repository.mediaByDateCount()
-                media = try await repository.mediaByDate(offset: 0, limit: Self.pageSize)
+            let loadedItemLimit = max(Self.pageSize, page.media.count)
+            let loadedCount: Int
+            let loadedMedia: [FfiMediaItem]
+            switch mode {
+            case .all:
+                async let count = repository.mediaByDateCount()
+                async let media = repository.mediaByDate(offset: 0, limit: loadedItemLimit)
+                (loadedCount, loadedMedia) = try await (count, media)
+            case .orphans:
+                async let count = repository.orphanMediaByDateCount()
+                async let media = repository.orphanMediaByDate(offset: 0, limit: loadedItemLimit)
+                (loadedCount, loadedMedia) = try await (count, media)
             }
-            hasMore = media.count < totalCount
+            guard !Task.isCancelled else { return }
+            page.media = loadedMedia
+            page.totalCount = loadedCount
+            page.hasMore = loadedMedia.count < loadedCount
+            pages[mode] = page
         } catch is CancellationError {
         } catch {
             AppLogger.log(.error, "recent media query failed: \(error)")
         }
     }
 
-    func loadMore() async {
-        guard hasMore, !isLoading else { return }
-        isLoading = true
-        defer { isLoading = false }
+    func loadMore(mode: RecentMediaMode? = nil) async {
+        let mode = mode ?? self.mode
+        guard var page = pages[mode],
+              page.hasMore,
+              !page.isLoading else { return }
+        page.isLoading = true
+        pages[mode] = page
+        defer { pages[mode]?.isLoading = false }
         do {
             let next: [FfiMediaItem]
-            if showingOrphans {
-                next = try await repository.orphanMediaByDate(offset: media.count, limit: Self.pageSize)
-            } else {
-                next = try await repository.mediaByDate(offset: media.count, limit: Self.pageSize)
+            switch mode {
+            case .all:
+                next = try await repository.mediaByDate(offset: page.media.count, limit: Self.pageSize)
+            case .orphans:
+                next = try await repository.orphanMediaByDate(offset: page.media.count, limit: Self.pageSize)
             }
-            media.append(contentsOf: next)
-            hasMore = media.count < totalCount && !next.isEmpty
+            guard !Task.isCancelled else { return }
+            page.media.append(contentsOf: next)
+            page.hasMore = page.media.count < page.totalCount && !next.isEmpty
+            pages[mode] = page
         } catch is CancellationError {
         } catch {
             AppLogger.log(.error, "recent media page query failed: \(error)")
