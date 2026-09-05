@@ -325,9 +325,14 @@ struct AlbumContentView: View {
                 detailModel = nil
                 return
             }
-            let model = AlbumDetailModel(albumID: albumID, repository: repository)
-            model.ascending = sortAscending
-            detailModel = model
+            let model: AlbumDetailModel
+            if let detailModel, detailModel.albumID == albumID {
+                model = detailModel
+            } else {
+                model = AlbumDetailModel(albumID: albumID, repository: repository)
+                model.ascending = sortAscending
+                detailModel = model
+            }
             await model.start()
         }
         .sheet(isPresented: $showingNewAlbum) {

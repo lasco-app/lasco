@@ -271,8 +271,17 @@ final class AlbumDetailModel {
         isLoading = true
         defer { isLoading = false }
         do {
+            // Keep the loaded range stable across navigation. SwiftUI restarts the
+            // view task when returning from media detail, and collapsing back to
+            // one page leaves a restored deep scroll position without grid cells.
+            let loadedItemLimit = max(Self.pageSize, items.count)
             async let loadedCount = repository.albumItemsCount(albumID: albumID)
-            async let loadedItems = repository.albumItems(albumID: albumID, ascending: ascending, offset: 0, limit: Self.pageSize)
+            async let loadedItems = repository.albumItems(
+                albumID: albumID,
+                ascending: ascending,
+                offset: 0,
+                limit: loadedItemLimit
+            )
             async let loadedGroups = repository.albumGroups(albumID: albumID)
             totalCount = try await loadedCount
             items = try await loadedItems
