@@ -29,19 +29,14 @@ struct AAEViewerPayload: Identifiable {
 }
 
 struct MediaDetailState: Hashable {
-    let source: MediaDetailSource
-    let startPosition: Int
+    let seed: MediaGallerySeed
 }
 
 struct MediaDetailView: View {
     let repository: LibraryRepository
-    @State private var detailModel: MediaDetailModel
-    @State private var pagerIndex = 0
+    @State private var gallery: MediaGallerySession
+    @State private var assetCache: MediaGalleryAssetCache
     @State private var groupMediaIndex: Int = 0
-    @State private var fullImages: [FfiMediaUuid: Image] = [:]
-    @State private var thumbnails: [FfiMediaUuid: Image] = [:]
-    @State private var videoPlayers: [FfiMediaUuid: AVPlayer] = [:]
-    @State private var livePhotoVideoItems: [FfiMediaUuid: FfiMediaItem] = [:] // keyed by the still's mediaId
     @State private var showingLivePhotoVideo = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.lascoTheme) var theme
@@ -72,36 +67,36 @@ struct MediaDetailView: View {
     @State private var exportData: Data?
     @State private var exportURL: URL?
 
-    var currentAlbumId: FfiAlbumUuid? { detailModel.source.currentAlbumID }
+    var currentAlbumId: FfiAlbumUuid? { gallery.source.currentAlbumID }
     var onAlbumTap: ((FfiAlbum) -> Void)? = nil
 
     init(
-        source: MediaDetailSource,
-        startPosition: Int,
+        seed: MediaGallerySeed,
         repository: LibraryRepository,
         onAlbumTap: ((FfiAlbum) -> Void)? = nil
     ) {
         self.repository = repository
-        self._detailModel = State(initialValue: MediaDetailModel(
-            source: source, startPosition: startPosition, repository: repository
+        self._gallery = State(initialValue: MediaGallerySession(seed: seed, repository: repository))
+        self._assetCache = State(initialValue: MediaGalleryAssetCache(
+            repository: repository,
+            initialPosition: seed.position
         ))
         self.onAlbumTap = onAlbumTap
     }
 
-    private var items: [AlbumItem] { detailModel.neighbors?.items ?? [] }
-    private var currentIndex: Int { detailModel.neighbors?.currentIndex ?? 0 }
-    private var currentPosition: Int? { detailModel.neighbors?.currentPosition }
+    private var currentPosition: Int { gallery.selectedPosition }
+    private var currentGalleryItem: AlbumItem? { gallery.selectedItem }
 
     private var currentGroupMedia: [FfiMediaItem] {
-        guard case .group(let g) = items[safe: currentIndex] else { return [] }
-        return detailModel.groupMedia[g.groupId] ?? []
+        guard case .group(let group) = currentGalleryItem else { return [] }
+        return gallery.groupMedia[group.groupId] ?? []
     }
 
     private var currentDisplayItem: FfiMediaItem? {
-        guard items.indices.contains(currentIndex) else { return nil }
-        switch items[currentIndex] {
+        guard let currentGalleryItem else { return nil }
+        switch currentGalleryItem {
         case .media(let m):
-            return detailModel.currentMedia?.mediaId == m.mediaId ? detailModel.currentMedia : m
+            return gallery.currentMedia?.mediaId == m.mediaId ? gallery.currentMedia : m
         case .group:
             let media = currentGroupMedia
             return media.indices.contains(groupMediaIndex) ? media[groupMediaIndex] : nil
@@ -112,13 +107,13 @@ struct MediaDetailView: View {
 
     private var otherContainingAlbums: [FfiAlbum] {
         guard let mediaID = currentItem?.mediaId,
-              detailModel.currentMedia?.mediaId == mediaID else { return [] }
-        return detailModel.containingAlbums.filter { $0.albumId != currentAlbumId }
+              gallery.currentMedia?.mediaId == mediaID else { return [] }
+        return gallery.containingAlbums.filter { $0.albumId != currentAlbumId }
     }
 
     private var currentLivePhotoVideoItem: FfiMediaItem? {
         guard let item = currentItem else { return nil }
-        return livePhotoVideoItems[item.mediaId]
+        return assetCache.livePhotoVideoItems[item.mediaId]
     }
 
     // Metadata display only. Rename, export, and album membership stay on currentItem,
@@ -127,31 +122,12 @@ struct MediaDetailView: View {
         showingLivePhotoVideo ? (currentLivePhotoVideoItem ?? currentItem) : currentItem
     }
 
-    private func loadLivePhotoVideoIfNeeded(for item: FfiMediaItem) {
-        guard let videoId = item.appleLivePhotoMediaId, livePhotoVideoItems[item.mediaId] == nil else { return }
-        Task {
-            if let video = try? await repository.showMedia(id: videoId) {
-                livePhotoVideoItems[item.mediaId] = video
-            }
-        }
-    }
-
     private var isTitleTruncated: Bool { titleIntrinsicWidth > titleAvailableWidth }
     private var useCompactTitle: Bool { panelOpen && isTitleTruncated }
 
-    private func itemForMediaId(_ mediaId: FfiMediaUuid) -> FfiMediaItem? {
-        for item in items {
-            if case .media(let m) = item, m.mediaId == mediaId { return m }
-        }
-        for media in detailModel.groupMedia.values {
-            if let m = media.first(where: { $0.mediaId == mediaId }) { return m }
-        }
-        return nil
-    }
-
     private func loadGroupMediaIfNeeded(for groupId: FfiGroupUuid) {
         Task {
-            await detailModel.loadGroupMediaIfNeeded(groupID: groupId)
+            await gallery.loadGroupMediaIfNeeded(groupID: groupId)
         }
     }
 
@@ -176,11 +152,15 @@ struct MediaDetailView: View {
             AAEAdjustmentDebugView(jsonText: payload.text)
         }
         .task {
-            await detailModel.start()
+            await gallery.start()
         }
         .task(id: currentItem?.mediaId) {
             guard let mediaID = currentItem?.mediaId else { return }
-            await detailModel.refreshMedia(id: mediaID)
+            await gallery.refreshMedia(id: mediaID)
+        }
+        .onDisappear {
+            gallery.stop()
+            assetCache.stopAllPlayers()
         }
     }
 
@@ -212,30 +192,27 @@ struct MediaDetailView: View {
                 Color.black.ignoresSafeArea()
 
                 // Full-screen pager — upper area is free for L/R swipe
-                TabView(selection: $pagerIndex) {
-                    ForEach(Array(items.enumerated()), id: \.element.id) { idx, item in
-                        resolvedMediaCell(for: item, atIndex: idx, size: geo.size)
-                            .tag(idx)
+                StablePageViewController(
+                    selection: gallery.selectedPosition,
+                    pageCount: gallery.totalCount,
+                    onSelectionChanged: gallery.select
+                ) { position in
+                    MediaGalleryPageHost(gallery: gallery, position: position) { item in
+                        resolvedMediaCell(for: item, at: position, size: geo.size)
                             .task(id: item.id) {
-                                if case .group(let g) = item {
-                                    loadGroupMediaIfNeeded(for: g.groupId)
+                                if case .group(let group) = item {
+                                    await gallery.loadGroupMediaIfNeeded(groupID: group.groupId)
                                 }
                             }
                     }
                 }
-                .tabViewStyle(.page(indexDisplayMode: .never))
                 .frame(width: geo.size.width, height: geo.size.height)
-                .onChange(of: pagerIndex) {
-                    let delta = pagerIndex - currentIndex
-                    guard delta != 0 else { return }
-                    detailModel.move(by: delta)
-                }
                 .onChange(of: groupMediaIndex) {
                     showingLivePhotoVideo = false
                 }
 
                 // Group thumbnail strip (shown when current item is a group)
-                if case .group = items[safe: currentIndex], !currentGroupMedia.isEmpty {
+                if case .group = currentGalleryItem, !currentGroupMedia.isEmpty {
                     GroupThumbnailStrip(media: currentGroupMedia, selected: $groupMediaIndex)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                         .padding(.bottom, 80)
@@ -257,15 +234,18 @@ struct MediaDetailView: View {
         .hideSystemNavigationBar()
         .toolbarBackButton(action: { dismiss() })
         .preference(key: HideTabBarKey.self, value: true)
-        .onChange(of: currentPosition) {
-            pagerIndex = currentIndex
+        .onChange(of: gallery.selectedPosition) {
+            assetCache.select(gallery.selectedPosition)
             AppLogger.log(.info, "media navigated — '\(currentItem.map { $0.name ?? $0.filenameOriginal } ?? "")' (\(currentItem?.mediaId.value ?? "group"))")
-            if case .group(let g) = items[safe: currentIndex] { loadGroupMediaIfNeeded(for: g.groupId) }
+            if case .group(let group) = currentGalleryItem { loadGroupMediaIfNeeded(for: group.groupId) }
             preloadAdjacent()
             groupMediaIndex = 0
             showingLivePhotoVideo = false
             withAnimation { showCounter = true }
             scheduleCounterHide()
+        }
+        .onChange(of: currentGalleryItem?.id) {
+            if case .group(let group) = currentGalleryItem { loadGroupMediaIfNeeded(for: group.groupId) }
         }
     }
 
@@ -459,7 +439,7 @@ struct MediaDetailView: View {
             Task {
                 exportData = nil
                 exportURL = nil
-                if isVideo(item) {
+                if assetCache.isVideo(item) {
                     exportURL = try? await repository.materializedMediaURL(
                         mediaID: item.mediaId,
                         originalFilename: item.filenameOriginal
@@ -496,15 +476,15 @@ struct MediaDetailView: View {
     }
 
     @ViewBuilder
-    private func resolvedMediaCell(for albumItem: AlbumItem, atIndex cellIdx: Int, size: CGSize) -> some View {
-        switch albumItem {
+    private func resolvedMediaCell(for item: AlbumItem, at position: Int, size: CGSize) -> some View {
+        switch item {
         case .media(let m):
-            mediaCell(for: m, size: size)
+            mediaCell(for: m, at: position, size: size)
         case .group(let g):
-            let media = detailModel.groupMedia[g.groupId] ?? []
-            let displayIdx = (cellIdx == currentIndex) ? groupMediaIndex : 0
+            let media = gallery.groupMedia[g.groupId] ?? []
+            let displayIdx = (position == currentPosition) ? groupMediaIndex : 0
             if let m = media[safe: displayIdx] {
-                mediaCell(for: m, size: size)
+                mediaCell(for: m, at: position, size: size)
             } else {
                 Color.black
                     .frame(width: size.width, height: size.height)
@@ -512,21 +492,21 @@ struct MediaDetailView: View {
         }
     }
 
-    private func mediaCell(for item: FfiMediaItem, size: CGSize) -> some View {
-        let isCurrent = item.mediaId == currentItem?.mediaId
-        let liveVideo = (isCurrent && showingLivePhotoVideo) ? livePhotoVideoItems[item.mediaId] : nil
+    private func mediaCell(for item: FfiMediaItem, at position: Int, size: CGSize) -> some View {
+        let isCurrent = position == gallery.selectedPosition
+        let liveVideo = (isCurrent && showingLivePhotoVideo) ? assetCache.livePhotoVideoItems[item.mediaId] : nil
         return ZStack {
             Color.black
-            if isVideo(item) {
-                videoCell(for: item, size: size, isActive: isCurrent)
+            if assetCache.isVideo(item) {
+                videoCell(for: item, at: position, size: size, isActive: isCurrent)
             } else if let liveVideo {
-                videoCell(for: liveVideo, size: size, isActive: isCurrent)
-            } else if let full = fullImages[item.mediaId] {
+                videoCell(for: liveVideo, at: position, size: size, isActive: isCurrent)
+            } else if let full = assetCache.fullImages[item.mediaId] {
                 full
                     .resizable()
                     .scaledToFit()
                     .frame(width: size.width, height: size.height)
-            } else if let thumb = thumbnails[item.mediaId] {
+            } else if let thumb = assetCache.thumbnails[item.mediaId] {
                 thumb
                     .resizable()
                     .scaledToFit()
@@ -540,8 +520,8 @@ struct MediaDetailView: View {
         }
         .frame(width: size.width, height: size.height)
         .task(id: item.mediaId) {
-            await loadImagesAsync(for: item.mediaId)
-            loadLivePhotoVideoIfNeeded(for: item)
+            await assetCache.loadImages(for: item, at: position)
+            await assetCache.loadLivePhotoVideo(for: item, at: position)
         }
     }
     #endif
@@ -568,9 +548,13 @@ struct MediaDetailView: View {
         .toolbarBackButton(action: { dismiss() })
         .preference(key: HideTabBarKey.self, value: true)
         .onChange(of: currentPosition) {
-            if case .group(let g) = items[safe: currentIndex] { loadGroupMediaIfNeeded(for: g.groupId) }
+            assetCache.select(currentPosition)
+            if case .group(let group) = currentGalleryItem { loadGroupMediaIfNeeded(for: group.groupId) }
             showingLivePhotoVideo = false
             preloadAdjacent()
+        }
+        .task(id: gallery.selectedPosition) {
+            await gallery.ensureLoaded(at: gallery.selectedPosition)
         }
     }
 
@@ -620,17 +604,17 @@ struct MediaDetailView: View {
     }
 
     private func macOSMediaCell(for item: FfiMediaItem?, size: CGSize) -> some View {
-        let liveVideo = showingLivePhotoVideo ? item.flatMap { livePhotoVideoItems[$0.mediaId] } : nil
+        let liveVideo = showingLivePhotoVideo ? item.flatMap { assetCache.livePhotoVideoItems[$0.mediaId] } : nil
         return ZStack {
             Color.black
             if let item {
-                if isVideo(item) {
-                    videoCell(for: item, size: size, isActive: true)
+                if assetCache.isVideo(item) {
+                    videoCell(for: item, at: currentPosition, size: size, isActive: true)
                 } else if let liveVideo {
-                    videoCell(for: liveVideo, size: size, isActive: true)
-                } else if let full = fullImages[item.mediaId] {
+                    videoCell(for: liveVideo, at: currentPosition, size: size, isActive: true)
+                } else if let full = assetCache.fullImages[item.mediaId] {
                     full.resizable().scaledToFit().frame(width: size.width, height: size.height)
-                } else if let thumb = thumbnails[item.mediaId] {
+                } else if let thumb = assetCache.thumbnails[item.mediaId] {
                     thumb.resizable().scaledToFit().frame(width: size.width, height: size.height).blur(radius: 4)
                 } else {
                     Image("image").renderingMode(.template).resizable().frame(width: 72, height: 72).foregroundStyle(Color.white.opacity(0.3))
@@ -640,14 +624,15 @@ struct MediaDetailView: View {
         .frame(width: size.width, height: size.height)
         .task(id: item?.mediaId) {
             guard let item else { return }
-            loadLivePhotoVideoIfNeeded(for: item)
-            if isVideo(item) {
-                loadVideoPlayerIfNeeded(for: item)
+            let position = currentPosition
+            await assetCache.loadLivePhotoVideo(for: item, at: position)
+            if assetCache.isVideo(item) {
+                await assetCache.loadPlayer(for: item, at: position)
                 if item.mediaId == currentItem?.mediaId {
-                    videoPlayers[item.mediaId]?.play()
+                    assetCache.videoPlayers[item.mediaId]?.play()
                 }
             } else {
-                await loadImagesAsync(for: item.mediaId)
+                await assetCache.loadImages(for: item, at: position)
             }
         }
     }
@@ -709,17 +694,17 @@ struct MediaDetailView: View {
 
     private var navPrevButton: some View {
         Button {
-            detailModel.move(by: -1)
+            gallery.move(by: -1)
         } label: {
             Image("angle-left").renderingMode(.template).resizable().frame(width: 18, height: 18)
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(detailModel.neighbors?.previous != nil ? Color.white : Color.white.opacity(0.3))
+                .foregroundStyle(gallery.selectedPosition > 0 ? Color.white : Color.white.opacity(0.3))
                 .frame(width: 36, height: 36)
                 .contentShape(Rectangle())
                 .overlay(Rectangle().stroke(Color.white, lineWidth: 2))
         }
         .buttonStyle(.plain)
-        .disabled(detailModel.neighbors?.previous == nil)
+        .disabled(gallery.selectedPosition == 0)
     }
 
     private var livePhotoToggleButton: some View {
@@ -735,36 +720,31 @@ struct MediaDetailView: View {
 
     private var navNextButton: some View {
         Button {
-            detailModel.move(by: 1)
+            gallery.move(by: 1)
         } label: {
             Image("angle-right").renderingMode(.template).resizable().frame(width: 18, height: 18)
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(detailModel.neighbors?.next != nil ? Color.white : Color.white.opacity(0.3))
+                .foregroundStyle(gallery.selectedPosition + 1 < gallery.totalCount ? Color.white : Color.white.opacity(0.3))
                 .frame(width: 36, height: 36)
                 .contentShape(Rectangle())
                 .overlay(Rectangle().stroke(Color.white, lineWidth: 2))
         }
         .buttonStyle(.plain)
-        .disabled(detailModel.neighbors?.next == nil)
+        .disabled(gallery.selectedPosition + 1 >= gallery.totalCount)
     }
     #endif
 
     // MARK: - Shared
 
-    private func isVideo(_ item: FfiMediaItem) -> Bool {
-        let ext = (item.filenameOriginal as NSString).pathExtension.lowercased()
-        return UTType(filenameExtension: ext)?.conforms(to: .audiovisualContent) == true
-    }
-
     @ViewBuilder
-    private func videoCell(for item: FfiMediaItem, size: CGSize, isActive: Bool) -> some View {
-        let player = videoPlayer(for: item)
+    private func videoCell(for item: FfiMediaItem, at position: Int, size: CGSize, isActive: Bool) -> some View {
+        let player = assetCache.player(for: item)
         VideoPlayer(player: player)
             .frame(width: size.width, height: size.height)
             .task(id: item.mediaId) {
-                loadVideoPlayerIfNeeded(for: item)
+                await assetCache.loadPlayer(for: item, at: position)
                 if isActive {
-                    videoPlayers[item.mediaId]?.play()
+                    assetCache.videoPlayers[item.mediaId]?.play()
                 }
             }
             .onChange(of: isActive) { active in
@@ -776,74 +756,30 @@ struct MediaDetailView: View {
             }
     }
 
-    private func videoPlayer(for item: FfiMediaItem) -> AVPlayer? {
-        videoPlayers[item.mediaId]
-    }
-
-    private func loadVideoPlayerIfNeeded(for item: FfiMediaItem) {
-        guard videoPlayers[item.mediaId] == nil else { return }
-        Task {
-            guard let url = try? await repository.materializedMediaURL(
-                mediaID: item.mediaId,
-                originalFilename: item.filenameOriginal
-            ) else { return }
-            videoPlayers[item.mediaId] = AVPlayer(url: url)
-        }
-    }
-
-    private func loadImagesAsync(for mediaId: FfiMediaUuid) async {
-        guard let item = itemForMediaId(mediaId), !isVideo(item) else { return }
-        if thumbnails[mediaId] == nil,
-           let data = try? await repository.thumbnailAsync(mediaID: mediaId),
-           let img = Image(data: data) {
-            thumbnails[mediaId] = img
-        }
-        if fullImages[mediaId] == nil,
-           let data = try? await repository.nativeMediaBytesAsync(mediaID: mediaId),
-           let img = Image(data: data) {
-            fullImages[mediaId] = img
-        }
-    }
-
     private func preloadAdjacent() {
-        let idx = currentIndex
-        guard items.indices.contains(idx) else { return }
-        preloadFirstFrame(of: items[idx])
-        for neighborIdx in [idx - 1, idx + 1] where items.indices.contains(neighborIdx) {
-            preloadFirstFrame(of: items[neighborIdx])
+        guard gallery.totalCount > 0 else { return }
+        for position in max(0, currentPosition - 1)...min(gallery.totalCount - 1, currentPosition + 1) {
+            guard let item = gallery.item(at: position) else { continue }
+            preloadFirstFrame(of: item, at: position)
         }
-        evictDistantFullImages(around: idx)
+        assetCache.evict(around: currentPosition)
     }
 
-    private func preloadFirstFrame(of item: AlbumItem) {
+    private func preloadFirstFrame(of item: AlbumItem, at position: Int) {
         switch item {
         case .media(let m):
-            Task { await loadImagesAsync(for: m.mediaId) }
+            Task { await assetCache.loadImages(for: m, at: position) }
         case .group(let g):
             loadGroupMediaIfNeeded(for: g.groupId)
-            if let first = detailModel.groupMedia[g.groupId]?.first {
-                Task { await loadImagesAsync(for: first.mediaId) }
+            if let first = gallery.groupMedia[g.groupId]?.first {
+                Task { await assetCache.loadImages(for: first, at: position) }
             }
-        }
-    }
-
-    private func evictDistantFullImages(around idx: Int, window: Int = 2) {
-        let keepRange = (idx - window)...(idx + window)
-        let keepIds = Set(items.indices.flatMap { i -> [FfiMediaUuid] in
-            guard keepRange.contains(i) else { return [] }
-            switch items[i] {
-            case .media(let media): return [media.mediaId]
-            case .group(let group): return detailModel.groupMedia[group.groupId]?.map(\.mediaId) ?? []
-            }
-        })
-        for mediaId in fullImages.keys where !keepIds.contains(mediaId) {
-            fullImages.removeValue(forKey: mediaId)
         }
     }
 
     private var positionLabel: String {
-        guard let currentPosition, let totalCount = detailModel.totalCount else { return "" }
-        return "\(currentPosition + 1) / \(totalCount)"
+        guard gallery.totalCount > 0 else { return "" }
+        return "\(currentPosition + 1) / \(gallery.totalCount)"
     }
 
     // MARK: - Info section

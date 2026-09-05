@@ -150,7 +150,7 @@ struct AlbumsView: View {
                             .navigationTitle("")
                             .hideSystemNavigationBar()
                     case .mediaDetail(let detail):
-                        MediaDetailView(source: detail.source, startPosition: detail.startPosition, repository: repository, onAlbumTap: { album in path.append(.album(album)) })
+                        MediaDetailView(seed: detail.seed, repository: repository, onAlbumTap: { album in path.append(.album(album)) })
                     }
                 }
         }
@@ -469,11 +469,16 @@ struct AlbumContentView: View {
     }
 
     private func openDetail(at position: Int) {
-        guard let albumID = album?.albumId else { return }
-        path.append(.mediaDetail(MediaDetailState(
+        guard let albumID = album?.albumId,
+              albumItems.indices.contains(position),
+              let detailModel else { return }
+        let item = albumItems[position]
+        path.append(.mediaDetail(MediaDetailState(seed: MediaGallerySeed(
             source: .albumByDate(albumID: albumID, ascending: sortAscending),
-            startPosition: position
-        )))
+            position: position,
+            item: item,
+            totalCount: detailModel.totalCount
+        ))))
     }
 
     // MARK: Shared content body

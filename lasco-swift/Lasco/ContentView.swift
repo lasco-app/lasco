@@ -105,7 +105,7 @@ struct ContentView: View {
             .navigationDestination(for: LibraryDestination.self) { dest in
                 switch dest {
                 case .mediaDetail(let state):
-                    MediaDetailView(source: state.source, startPosition: state.startPosition, repository: repository, onAlbumTap: openAlbum)
+                    MediaDetailView(seed: state.seed, repository: repository, onAlbumTap: openAlbum)
                 }
             }
             .sheet(item: $albumsForMedia) { list in
@@ -293,10 +293,12 @@ struct ContentView: View {
                                     selection.insert(item.mediaId)
                                 }
                             } else {
-                                path.append(.mediaDetail(MediaDetailState(
+                                path.append(.mediaDetail(MediaDetailState(seed: MediaGallerySeed(
                                     source: model.showingOrphans ? .orphansByDate : .homeByDate,
-                                    startPosition: position
-                                )))
+                                    position: position,
+                                    item: .media(item),
+                                    totalCount: model.totalCount
+                                ))))
                             }
                         }
                         .onLongPressGesture {

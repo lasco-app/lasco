@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-enum MediaDetailSource: Hashable {
+enum MediaDetailSource: Hashable, Sendable {
     case homeByDate
     case orphansByDate
     case albumByDate(albumID: FfiAlbumUuid, ascending: Bool)
@@ -12,29 +12,6 @@ enum MediaDetailSource: Hashable {
     }
 }
 
-struct MediaDetailNeighbors {
-    let previous: AlbumItem?
-    let current: AlbumItem
-    let next: AlbumItem?
-    let currentPosition: Int
-
-    var items: [AlbumItem] { [previous, current, next].compactMap { $0 } }
-    var currentIndex: Int { previous == nil ? 0 : 1 }
-}
-
-enum MediaDetailLoadState: Equatable {
-    case loading
-    case content
-    case empty
-    case error
-}
-
-private func detailItem(from item: FfiAlbumItem) throws -> AlbumItem {
-    if let media = item.media { return .media(media) }
-    if let group = item.group { return .group(group) }
-    throw LascoError.NotFound
-}
-
 @MainActor
 @Observable
 final class RecentMediaModel {
@@ -42,7 +19,7 @@ final class RecentMediaModel {
     private(set) var hasMore = false
     var showingOrphans = false
     private let repository: any LibraryRepositoryProtocol
-    private var total = 0
+    private(set) var totalCount = 0
     private var isLoading = false
 
     private static let pageSize = 100
@@ -66,13 +43,13 @@ final class RecentMediaModel {
         defer { isLoading = false }
         do {
             if showingOrphans {
-                total = try await repository.orphanMediaByDateCount()
+                totalCount = try await repository.orphanMediaByDateCount()
                 media = try await repository.orphanMediaByDate(offset: 0, limit: Self.pageSize)
             } else {
-                total = try await repository.mediaByDateCount()
+                totalCount = try await repository.mediaByDateCount()
                 media = try await repository.mediaByDate(offset: 0, limit: Self.pageSize)
             }
-            hasMore = media.count < total
+            hasMore = media.count < totalCount
         } catch is CancellationError {
         } catch {
             AppLogger.log(.error, "recent media query failed: \(error)")
@@ -91,7 +68,7 @@ final class RecentMediaModel {
                 next = try await repository.mediaByDate(offset: media.count, limit: Self.pageSize)
             }
             media.append(contentsOf: next)
-            hasMore = media.count < total && !next.isEmpty
+            hasMore = media.count < totalCount && !next.isEmpty
         } catch is CancellationError {
         } catch {
             AppLogger.log(.error, "recent media page query failed: \(error)")
@@ -270,7 +247,7 @@ final class AlbumDetailModel {
     private(set) var hasMore = false
     var ascending = false
     private let repository: any LibraryRepositoryProtocol
-    private var total = 0
+    private(set) var totalCount = 0
     private var isLoading = false
 
     private static let pageSize = 100
@@ -297,10 +274,10 @@ final class AlbumDetailModel {
             async let loadedCount = repository.albumItemsCount(albumID: albumID)
             async let loadedItems = repository.albumItems(albumID: albumID, ascending: ascending, offset: 0, limit: Self.pageSize)
             async let loadedGroups = repository.albumGroups(albumID: albumID)
-            total = try await loadedCount
+            totalCount = try await loadedCount
             items = try await loadedItems
             groups = try await loadedGroups
-            hasMore = items.count < total
+            hasMore = items.count < totalCount
         } catch is CancellationError {
         } catch {
             AppLogger.log(.error, "album \(albumID) query failed: \(error)")
@@ -319,7 +296,7 @@ final class AlbumDetailModel {
                 limit: Self.pageSize
             )
             items.append(contentsOf: next)
-            hasMore = items.count < total && !next.isEmpty
+            hasMore = items.count < totalCount && !next.isEmpty
         } catch is CancellationError {
         } catch {
             AppLogger.log(.error, "album \(albumID) next-page query failed: \(error)")
@@ -353,169 +330,6 @@ final class AlbumDetailModel {
 
     func deleteGroup(groupID: FfiGroupUuid) async throws {
         try await repository.deleteGroup(groupID: groupID)
-    }
-}
-
-@MainActor
-@Observable
-final class MediaDetailModel {
-    let source: MediaDetailSource
-    let startPosition: Int
-    private(set) var state: MediaDetailLoadState = .loading
-    private(set) var neighbors: MediaDetailNeighbors?
-    private(set) var totalCount: Int?
-    private(set) var currentMedia: FfiMediaItem?
-    private(set) var containingAlbums: [FfiAlbum] = []
-    private(set) var groupMedia: [FfiGroupUuid: [FfiMediaItem]] = [:]
-    private let repository: any LibraryRepositoryProtocol
-    private var groupLoads = Set<FfiGroupUuid>()
-    private var requestID = 0
-    private var navigationTask: Task<Void, Never>?
-
-    init(source: MediaDetailSource, startPosition: Int, repository: any LibraryRepositoryProtocol) {
-        self.source = source
-        self.startPosition = startPosition
-        self.repository = repository
-    }
-
-    func start() async {
-        let stream = await repository.changes()
-        await loadNeighbors(at: startPosition)
-        for await change in stream {
-            guard shouldReload(for: change) else { continue }
-            await loadNeighbors(at: neighbors?.currentPosition ?? startPosition)
-        }
-    }
-
-    func move(by delta: Int) {
-        guard let neighbors, delta != 0 else { return }
-        if delta < 0, neighbors.previous == nil { return }
-        if delta > 0, neighbors.next == nil { return }
-        navigationTask?.cancel()
-        let position = neighbors.currentPosition + delta
-        navigationTask = Task { [weak self] in
-            await self?.loadNeighbors(at: position)
-        }
-    }
-
-    func loadGroupMediaIfNeeded(groupID: FfiGroupUuid) async {
-        guard groupMedia[groupID] == nil, groupLoads.insert(groupID).inserted else { return }
-        defer { groupLoads.remove(groupID) }
-        do {
-            let media = try await repository.groupMedia(groupID: groupID)
-            guard !Task.isCancelled, neighbors?.items.contains(where: { if case .group(groupID) = $0.id { return true }; return false }) == true else { return }
-            groupMedia[groupID] = media
-        } catch is CancellationError {
-        } catch {
-            AppLogger.log(.error, "group \(groupID) query failed: \(error)")
-        }
-    }
-
-    func refreshMedia(id: FfiMediaUuid) async {
-        do {
-            let media = try await repository.showMedia(id: id)
-            let albumIDs = try await repository.mediaContainingAlbumIDs(
-                mediaID: id, includeViaGroups: true
-            )
-            let albums = try await repository.albums(withIDs: Set(albumIDs))
-            guard !Task.isCancelled else { return }
-            currentMedia = media
-            containingAlbums = albums
-        } catch is CancellationError {
-        } catch {
-            AppLogger.log(.error, "media \(id) metadata query failed: \(error)")
-        }
-    }
-
-    private func shouldReload(for change: LibraryChange) -> Bool {
-        switch source {
-        case .homeByDate, .orphansByDate:
-            return change == .all || change == .mediaList || change == .albumList
-        case .albumByDate(let albumID, _):
-            return change == .all || change == .mediaList || change == .albumList || change == .album(albumID)
-        }
-    }
-
-    private func sourceCount() async throws -> Int {
-        switch source {
-        case .homeByDate:
-            return try await repository.mediaByDateCount()
-        case .orphansByDate:
-            return try await repository.orphanMediaByDateCount()
-        case .albumByDate(let albumID, _):
-            return try await repository.albumItemsCount(albumID: albumID)
-        }
-    }
-
-    private func loadNeighbors(at position: Int) async {
-        guard position >= 0 else { return }
-        requestID += 1
-        let requestID = requestID
-        state = neighbors == nil ? .loading : .content
-        do {
-            async let total = sourceCount()
-            let loaded: MediaDetailNeighbors
-            switch source {
-            case .homeByDate:
-                let value = try await repository.mediaByDateNeighbors(position: position)
-                loaded = MediaDetailNeighbors(
-                    previous: value.previous.map(AlbumItem.media), current: .media(value.current),
-                    next: value.next.map(AlbumItem.media), currentPosition: position
-                )
-            case .orphansByDate:
-                let value = try await repository.orphanMediaByDateNeighbors(position: position)
-                loaded = MediaDetailNeighbors(
-                    previous: value.previous.map(AlbumItem.media), current: .media(value.current),
-                    next: value.next.map(AlbumItem.media), currentPosition: position
-                )
-            case .albumByDate(let albumID, let ascending):
-                let value = try await repository.albumItemsByDateNeighbors(
-                    albumID: albumID, ascending: ascending, position: position
-                )
-                loaded = MediaDetailNeighbors(
-                    previous: try value.previous.map(detailItem(from:)), current: try detailItem(from: value.current),
-                    next: try value.next.map(detailItem(from:)), currentPosition: position
-                )
-            }
-            let loadedTotal = try await total
-            guard !Task.isCancelled, requestID == self.requestID else { return }
-            neighbors = loaded
-            totalCount = loadedTotal
-            groupMedia = groupMedia.filter { key, _ in
-                loaded.items.contains { if case .group(key) = $0.id { return true }; return false }
-            }
-            currentMedia = nil
-            containingAlbums = []
-            var refreshedMedia: FfiMediaItem?
-            var refreshedAlbums: [FfiAlbum] = []
-            if case .media(let item) = loaded.current {
-                refreshedMedia = try await repository.showMedia(id: item.mediaId)
-                let albumIDs = try await repository.mediaContainingAlbumIDs(
-                    mediaID: item.mediaId, includeViaGroups: true
-                )
-                refreshedAlbums = try await repository.albums(withIDs: Set(albumIDs))
-            }
-            guard !Task.isCancelled, requestID == self.requestID else { return }
-            currentMedia = refreshedMedia
-            containingAlbums = refreshedAlbums
-            state = .content
-        } catch is CancellationError {
-        } catch LascoError.NotFound {
-            guard requestID == self.requestID else { return }
-            neighbors = nil
-            totalCount = nil
-            currentMedia = nil
-            containingAlbums = []
-            state = .empty
-        } catch {
-            guard requestID == self.requestID else { return }
-            AppLogger.log(.error, "media detail query failed: \(error)")
-            state = .error
-        }
-    }
-
-    func rename(mediaID: FfiMediaUuid, name: String?) async throws {
-        try await repository.renameMedia(id: mediaID, name: name)
     }
 }
 
