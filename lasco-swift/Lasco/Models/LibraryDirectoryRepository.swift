@@ -79,6 +79,36 @@ actor LibraryDirectoryRepository {
         return library
     }
 
+    func addExistingLascoCloud(
+        nickname: String,
+        username: String,
+        password: String,
+        newUsername: String?,
+        newPassword: String?,
+        cloudEmail: String,
+        cloudPassword: String
+    ) throws -> FfiLibrary {
+        let library = try ffiAddExistingLibraryLascoCloud(
+            config: FfiLascoCloudImportConfig(
+                nickname: nickname,
+                username: username,
+                password: password,
+                newUsername: newUsername,
+                newPassword: newPassword,
+                cloudBaseUrl: LascoCloudEndpoint.url,
+                cloudEmail: cloudEmail,
+                cloudPassword: cloudPassword,
+                platform: "ios",
+                appVersion: LascoCloudEndpoint.appVersion
+            ),
+            appDir: appSupportDirectory
+        )
+        let effectiveUsername = newUsername?.isEmpty == false ? newUsername! : username
+        storeUsername(effectiveUsername, libraryID: library.libraryId())
+        try library.loadLocalState()
+        return library
+    }
+
     func delete(libraryID: FfiLibraryId) throws {
         try ffiDeleteLibrary(libraryId: libraryID, appDir: appSupportDirectory)
         UserDefaults.standard.removeObject(forKey: "lasco.lastUsername.\(libraryID.value)")

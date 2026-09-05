@@ -144,6 +144,28 @@ final class LibraryDirectoryModel {
         await install(library: library, nickname: nickname, username: effectiveUsername)
     }
 
+    func addExistingLascoCloud(
+        nickname: String,
+        username: String,
+        password: String,
+        newUsername: String?,
+        newPassword: String?,
+        cloudEmail: String,
+        cloudPassword: String
+    ) async throws {
+        let library = try await directory.addExistingLascoCloud(
+            nickname: nickname,
+            username: username,
+            password: password,
+            newUsername: newUsername,
+            newPassword: newPassword,
+            cloudEmail: cloudEmail,
+            cloudPassword: cloudPassword
+        )
+        let effectiveUsername = newUsername?.isEmpty == false ? newUsername! : username
+        await install(library: library, nickname: nickname, username: effectiveUsername)
+    }
+
     func signOut() async {
         guard let activeSession else { return }
         try? await directory.clearSession(libraryID: activeSession.state.libraryID)

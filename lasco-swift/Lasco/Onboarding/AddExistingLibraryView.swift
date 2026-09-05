@@ -1,6 +1,15 @@
 import SwiftUI
 
+enum ExistingLibrarySource: String, Identifiable {
+    case lascoCloud
+    case s3
+
+    var id: Self { self }
+}
+
 struct AddExistingLibraryView: View {
+    let source: ExistingLibrarySource
+
     @Environment(LibraryDirectoryModel.self) private var directory
     @Environment(\.dismiss) private var dismiss
     @Environment(ToastManager.self) var toastManager
@@ -9,6 +18,9 @@ struct AddExistingLibraryView: View {
     @State private var nickname = ""
     @State private var username = ""
     @State private var password = ""
+
+    @State private var cloudEmail = ""
+    @State private var cloudPassword = ""
 
     @State private var createNewUser = false
     @State private var newUsername = ""
@@ -39,12 +51,18 @@ struct AddExistingLibraryView: View {
     }
 
     private var isValid: Bool {
-        !nickname.isEmpty && !username.isEmpty && !password.isEmpty
-            && !remoteName.isEmpty
-            && !endpoint.isEmpty && !bucket.isEmpty && !accessKey.isEmpty && !secretKey.isEmpty
+        let credentialsValid = !nickname.isEmpty && !username.isEmpty && !password.isEmpty
             && (!createNewUser || (!newUsername.isEmpty && !newPassword.isEmpty))
-            && uploadAcknowledged
             && !isAdding
+        switch source {
+        case .lascoCloud:
+            return credentialsValid && !cloudEmail.isEmpty && !cloudPassword.isEmpty
+        case .s3:
+            return credentialsValid
+                && !remoteName.isEmpty
+                && !endpoint.isEmpty && !bucket.isEmpty && !accessKey.isEmpty && !secretKey.isEmpty
+                && uploadAcknowledged
+        }
     }
 
     var body: some View {
@@ -74,7 +92,10 @@ struct AddExistingLibraryView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
-                        Text("Point Lasco at an S3 remote that already holds a library. It downloads the library and syncs it to this device.")
+                        Text(source == .lascoCloud
+                            ? "Sign in to Lasco Cloud to add the library associated with your account."
+                            : "Point Lasco at an S3 remote that already holds a library. It downloads the library and syncs it to this device."
+                        )
                             .font(LascoFont.body(16))
                             .foregroundStyle(theme.inkSub)
                             .fixedSize(horizontal: false, vertical: true)
@@ -105,43 +126,51 @@ struct AddExistingLibraryView: View {
 
                             Divider().overlay(theme.inkMuted.opacity(0.3))
 
-                            inputField("Remote name", placeholder: "my s3 remote", binding: $remoteName)
-                            inputField("Endpoint URL", placeholder: "https://region1.example-s3-server.com", binding: $endpoint)
-                            inputField("Bucket", placeholder: "my-photos-bucket", binding: $bucket)
-                            inputField("Region", placeholder: "region1", binding: $region)
-                            inputField("Path prefix (optional)", placeholder: "photos/", binding: $pathPrefix)
-                            inputField("Access key", placeholder: "", binding: $accessKey)
-                            secureInputField("Secret key", binding: $secretKey)
+                            if source == .lascoCloud {
+                                Text("Sign in to Lasco Cloud to find the library associated with your account.")
+                                    .font(LascoFont.body(14))
+                                    .foregroundStyle(theme.inkSub)
+                                inputField("Lasco Cloud email", placeholder: "you@example.com", binding: $cloudEmail)
+                                secureInputField("Lasco Cloud password", binding: $cloudPassword)
+                            } else {
+                                inputField("Remote name", placeholder: "my s3 remote", binding: $remoteName)
+                                inputField("Endpoint URL", placeholder: "https://region1.example-s3-server.com", binding: $endpoint)
+                                inputField("Bucket", placeholder: "my-photos-bucket", binding: $bucket)
+                                inputField("Region", placeholder: "region1", binding: $region)
+                                inputField("Path prefix (optional)", placeholder: "photos/", binding: $pathPrefix)
+                                inputField("Access key", placeholder: "", binding: $accessKey)
+                                secureInputField("Secret key", binding: $secretKey)
 
-                            LascoCheckbox(
-                                isOn: $uploadAcknowledged,
-                                label: "I understand this app will upload my photos to the S3 bucket configured above."
-                            )
+                                LascoCheckbox(
+                                    isOn: $uploadAcknowledged,
+                                    label: "I understand this app will upload my photos to the S3 bucket configured above."
+                                )
 
-                            Button(action: testConnection) {
-                                HStack(spacing: 8) {
-                                    if testState == .testing {
-                                        ProgressView().controlSize(.small)
+                                Button(action: testConnection) {
+                                    HStack(spacing: 8) {
+                                        if testState == .testing {
+                                            ProgressView().controlSize(.small)
+                                        }
+                                        Text(testState == .testing ? "Testing…" : "Test connection")
                                     }
-                                    Text(testState == .testing ? "Testing…" : "Test connection")
                                 }
-                            }
-                            .buttonStyle(.plain)
-                            .foregroundStyle(canTest ? theme.ink : theme.inkMuted)
-                            .disabled(!canTest)
+                                .buttonStyle(.plain)
+                                .foregroundStyle(canTest ? theme.ink : theme.inkMuted)
+                                .disabled(!canTest)
 
-                            switch testState {
-                            case .success:
-                                Text("Connection succeeded.")
-                                    .font(LascoFont.body(13))
-                                    .foregroundStyle(theme.ok)
-                            case .failure(let msg):
-                                Text(msg)
-                                    .font(LascoFont.body(13))
-                                    .foregroundStyle(theme.error)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            case .idle, .testing:
-                                EmptyView()
+                                switch testState {
+                                case .success:
+                                    Text("Connection succeeded.")
+                                        .font(LascoFont.body(13))
+                                        .foregroundStyle(theme.ok)
+                                case .failure(let msg):
+                                    Text(msg)
+                                        .font(LascoFont.body(13))
+                                        .foregroundStyle(theme.error)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                case .idle, .testing:
+                                    EmptyView()
+                                }
                             }
                         }
 
@@ -184,20 +213,33 @@ struct AddExistingLibraryView: View {
         isAdding = true
         Task {
             do {
-                try await directory.addExisting(
-                    nickname: nickname,
-                    username: username,
-                    password: password,
-                    newUsername: createNewUser ? newUsername : nil,
-                    newPassword: createNewUser ? newPassword : nil,
-                    remoteID: remoteName,
-                    endpoint: endpoint,
-                    bucket: bucket,
-                    region: region,
-                    pathPrefix: pathPrefix,
-                    accessKey: accessKey,
-                    secretKey: secretKey
-                )
+                switch source {
+                case .lascoCloud:
+                    try await directory.addExistingLascoCloud(
+                        nickname: nickname,
+                        username: username,
+                        password: password,
+                        newUsername: createNewUser ? newUsername : nil,
+                        newPassword: createNewUser ? newPassword : nil,
+                        cloudEmail: cloudEmail,
+                        cloudPassword: cloudPassword
+                    )
+                case .s3:
+                    try await directory.addExisting(
+                        nickname: nickname,
+                        username: username,
+                        password: password,
+                        newUsername: createNewUser ? newUsername : nil,
+                        newPassword: createNewUser ? newPassword : nil,
+                        remoteID: remoteName,
+                        endpoint: endpoint,
+                        bucket: bucket,
+                        region: region,
+                        pathPrefix: pathPrefix,
+                        accessKey: accessKey,
+                        secretKey: secretKey
+                    )
+                }
                 isAdding = false
                 dismiss()
             } catch {
@@ -249,5 +291,5 @@ struct AddExistingLibraryView: View {
 }
 
 #Preview {
-    AddExistingLibraryView()
+    AddExistingLibraryView(source: .s3)
 }

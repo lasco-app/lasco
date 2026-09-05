@@ -11,7 +11,8 @@ struct LibraryListView: View {
     @State private var selectedEntry: FfiLibraryEntry?
     @State private var showSettings = false
     @State private var showNewLibrary = false
-    @State private var showAddExisting = false
+    @State private var showExistingLibrarySource = false
+    @State private var existingLibrarySource: ExistingLibrarySource?
 
     var body: some View {
         ZStack {
@@ -114,11 +115,15 @@ struct LibraryListView: View {
                     .frame(maxWidth: .infinity)
 
                     Button("Add existing library") {
-                        showAddExisting = true
+                        showExistingLibrarySource = true
                     }
                     .buttonStyle(.plain)
                     .font(LascoFont.body(15))
                     .foregroundStyle(Color.Lasco.inkMuted)
+                    .confirmationDialog("Where is your library?", isPresented: $showExistingLibrarySource) {
+                        Button("Lasco Cloud") { existingLibrarySource = .lascoCloud }
+                        Button("S3-compatible storage") { existingLibrarySource = .s3 }
+                    }
                 }
                 .padding(.horizontal, 32)
                 .padding(.bottom, 48)
@@ -138,8 +143,8 @@ struct LibraryListView: View {
             )
             .environment(directory)
         }
-        .sheet(isPresented: $showAddExisting) {
-            AddExistingLibraryView()
+        .sheet(item: $existingLibrarySource) { source in
+            AddExistingLibraryView(source: source)
                 .environment(directory)
                 .environment(toastManager)
         }
