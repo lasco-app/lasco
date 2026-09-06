@@ -1249,7 +1249,7 @@ private struct NewAlbumSheet: View {
     var onConfirm: () -> Void
     @Environment(\.dismiss) private var dismiss
     @Environment(\.lascoTheme) var theme
-    @FocusState private var focused: Bool
+    @FocusState private var focused = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -1263,7 +1263,6 @@ private struct NewAlbumSheet: View {
                 .padding(12)
                 .lascoPanel()
                 .focused($focused)
-                .defaultFocus($focused, true)
                 .onSubmit { onConfirm() }
 
             HStack(spacing: 12) {
