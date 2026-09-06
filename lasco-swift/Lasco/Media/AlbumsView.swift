@@ -6,6 +6,15 @@ extension FfiAlbum: Identifiable {
     public var id: FfiAlbumUuid { albumId }
 }
 
+func albumBreadcrumbTitle(_ albumNames: [String]) -> String {
+    guard !albumNames.isEmpty else { return "ALBUMS" }
+
+    let visibleNames = albumNames.count > 2
+        ? ["..."] + Array(albumNames.suffix(2))
+        : albumNames
+    return visibleNames.map { $0.uppercased() }.joined(separator: " / ")
+}
+
 // MARK: - Supporting types
 
 enum ContentSelection {
@@ -121,20 +130,30 @@ enum AlbumsDestination: Hashable {
 // MARK: - Root nav wrapper
 
 struct AlbumsView: View {
-    @State private var path: [AlbumsDestination] = []
+    @Binding private var path: [AlbumsDestination]
     @Environment(\.lascoTheme) var theme
-    @Binding var pendingAlbum: FfiAlbum?
+    let navigation: AlbumNavigationModel
     let repository: LibraryRepository
     let session: LibrarySessionState
     let importCoordinator: MediaImportCoordinator
-    @State private var model: AlbumListModel
+    let model: AlbumListModel
 
-    init(repository: LibraryRepository, session: LibrarySessionState, importCoordinator: MediaImportCoordinator, pendingAlbum: Binding<FfiAlbum?>) {
+    init(
+        repository: LibraryRepository,
+        session: LibrarySessionState,
+        importCoordinator: MediaImportCoordinator,
+        model: AlbumListModel,
+        navigation: AlbumNavigationModel
+    ) {
         self.repository = repository
         self.session = session
         self.importCoordinator = importCoordinator
-        _pendingAlbum = pendingAlbum
-        _model = State(initialValue: AlbumListModel(repository: repository))
+        self.model = model
+        self.navigation = navigation
+        _path = Binding(
+            get: { navigation.path },
+            set: { navigation.replacePath($0, source: .navigationStack) }
+        )
     }
 
     var body: some View {
@@ -150,7 +169,7 @@ struct AlbumsView: View {
                             .navigationTitle("")
                             .hideSystemNavigationBar()
                     case .mediaDetail(let detail):
-                        MediaDetailView(source: detail.source, startPosition: detail.startPosition, repository: repository, onAlbumTap: { album in path.append(.album(album)) })
+                        MediaDetailView(seed: detail.seed, repository: repository, onAlbumTap: { album in path.append(.album(album)) })
                     }
                 }
         }
@@ -158,17 +177,10 @@ struct AlbumsView: View {
         .environment(model)
         .environment(repository)
         .environment(importCoordinator)
-        .task { await model.start() }
-        .onAppear {
-            if let album = pendingAlbum {
-                path = [.album(album)]
-                pendingAlbum = nil
-            }
-        }
-        .onChange(of: pendingAlbum) { album in
-            guard let album else { return }
-            path = [.album(album)]
-            pendingAlbum = nil
+        .task {
+            await navigation.validateCurrentPath()
+            guard !Task.isCancelled else { return }
+            await model.start()
         }
     }
 }
@@ -206,9 +218,8 @@ struct AlbumContentView: View {
     private var isRoot: Bool { album == nil }
 
     private var title: String {
-        let albumNames = path.compactMap { if case .album(let a) = $0 { return a.name.uppercased() } else { return nil } }
-        guard !albumNames.isEmpty else { return "ALBUMS" }
-        return albumNames.joined(separator: " / ")
+        let albumNames = path.compactMap { if case .album(let a) = $0 { return a.name } else { return nil } }
+        return albumBreadcrumbTitle(albumNames)
     }
 
     private var ancestors: Set<FfiAlbumUuid> {
@@ -325,9 +336,14 @@ struct AlbumContentView: View {
                 detailModel = nil
                 return
             }
-            let model = AlbumDetailModel(albumID: albumID, repository: repository)
-            model.ascending = sortAscending
-            detailModel = model
+            let model: AlbumDetailModel
+            if let detailModel, detailModel.albumID == albumID {
+                model = detailModel
+            } else {
+                model = AlbumDetailModel(albumID: albumID, repository: repository)
+                model.ascending = sortAscending
+                detailModel = model
+            }
             await model.start()
         }
         .sheet(isPresented: $showingNewAlbum) {
@@ -469,11 +485,16 @@ struct AlbumContentView: View {
     }
 
     private func openDetail(at position: Int) {
-        guard let albumID = album?.albumId else { return }
-        path.append(.mediaDetail(MediaDetailState(
+        guard let albumID = album?.albumId,
+              albumItems.indices.contains(position),
+              let detailModel else { return }
+        let item = albumItems[position]
+        path.append(.mediaDetail(MediaDetailState(seed: MediaGallerySeed(
             source: .albumByDate(albumID: albumID, ascending: sortAscending),
-            startPosition: position
-        )))
+            position: position,
+            item: item,
+            totalCount: detailModel.totalCount
+        ))))
     }
 
     // MARK: Shared content body

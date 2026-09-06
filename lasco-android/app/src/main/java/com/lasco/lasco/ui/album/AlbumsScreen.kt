@@ -23,6 +23,17 @@ import uniffi.lasco_ffi.FfiAlbumUuid
 @Serializable
 data class AlbumKey(val albumId: String?, val albumName: String? = null) : NavKey
 
+internal fun albumBreadcrumbTitle(albumNames: List<String>): String {
+    if (albumNames.isEmpty()) return "ALBUMS"
+
+    val visibleNames = if (albumNames.size > 2) {
+        listOf("...") + albumNames.takeLast(2)
+    } else {
+        albumNames
+    }
+    return visibleNames.joinToString(" / ") { it.uppercase() }
+}
+
 /**
  * Nav-stack host for Albums, the Android equivalent of Swift's AlbumsView
  * path navigation, plus Media Detail pushed on top of it. The stack is
@@ -63,7 +74,7 @@ fun AlbumsScreen(
         entryProvider = entryProvider {
             entry<AlbumKey> { key ->
                 val path = backStack.filterIsInstance<AlbumKey>().filter { it.albumId != null }
-                val title = if (path.isEmpty()) "ALBUMS" else path.joinToString(" / ") { it.albumName.orEmpty().uppercase() }
+                val title = albumBreadcrumbTitle(path.map { it.albumName.orEmpty() })
                 val backLabel = path.dropLast(1).lastOrNull()?.albumName ?: "Albums"
 
                 AlbumListScreen(

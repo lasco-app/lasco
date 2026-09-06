@@ -1,5 +1,13 @@
 import SwiftUI
 
+struct ManageTabBarHiddenKey: PreferenceKey {
+    static let defaultValue = false
+
+    static func reduce(value: inout Bool, nextValue: () -> Bool) {
+        value = value || nextValue()
+    }
+}
+
 struct RemotesView: View {
     @Environment(ToastManager.self) var toastManager
     @Environment(\.dismiss) private var dismiss
@@ -146,7 +154,7 @@ struct RemotesView: View {
         .navigationTitle("")
         .hideSystemNavigationBar()
         .toolbarBackButton(action: { dismiss() })
-        .preference(key: HideTabBarKey.self, value: true)
+        .preference(key: ManageTabBarHiddenKey.self, value: true)
         .sheet(isPresented: $showRemotePicker) {
             RemoteTypePickerSheet(
                 expertMode: expertMode,

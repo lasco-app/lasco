@@ -3840,6 +3840,146 @@ nonisolated public func FfiConverterTypeFfiLascoCloudAccount_lower(_ value: FfiL
 }
 
 
+/**
+ * Credentials and client information needed to attach an existing Lasco Cloud library.
+ *
+ * This intentionally crosses the FFI boundary as one record. Android's native ABI cannot
+ * reliably marshal the previous wide list of `RustBuffer` arguments.
+ */
+nonisolated public struct FfiLascoCloudImportConfig {
+    public var nickname: String
+    public var username: String
+    public var password: String
+    public var newUsername: String?
+    public var newPassword: String?
+    public var cloudBaseUrl: String
+    public var cloudEmail: String
+    public var cloudPassword: String
+    public var platform: String
+    public var appVersion: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(nickname: String, username: String, password: String, newUsername: String?, newPassword: String?, cloudBaseUrl: String, cloudEmail: String, cloudPassword: String, platform: String, appVersion: String) {
+        self.nickname = nickname
+        self.username = username
+        self.password = password
+        self.newUsername = newUsername
+        self.newPassword = newPassword
+        self.cloudBaseUrl = cloudBaseUrl
+        self.cloudEmail = cloudEmail
+        self.cloudPassword = cloudPassword
+        self.platform = platform
+        self.appVersion = appVersion
+    }
+}
+
+#if compiler(>=6)
+nonisolated extension FfiLascoCloudImportConfig: Sendable {}
+#endif
+
+
+nonisolated extension FfiLascoCloudImportConfig: Equatable, Hashable {
+    public static func ==(lhs: FfiLascoCloudImportConfig, rhs: FfiLascoCloudImportConfig) -> Bool {
+        if lhs.nickname != rhs.nickname {
+            return false
+        }
+        if lhs.username != rhs.username {
+            return false
+        }
+        if lhs.password != rhs.password {
+            return false
+        }
+        if lhs.newUsername != rhs.newUsername {
+            return false
+        }
+        if lhs.newPassword != rhs.newPassword {
+            return false
+        }
+        if lhs.cloudBaseUrl != rhs.cloudBaseUrl {
+            return false
+        }
+        if lhs.cloudEmail != rhs.cloudEmail {
+            return false
+        }
+        if lhs.cloudPassword != rhs.cloudPassword {
+            return false
+        }
+        if lhs.platform != rhs.platform {
+            return false
+        }
+        if lhs.appVersion != rhs.appVersion {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(nickname)
+        hasher.combine(username)
+        hasher.combine(password)
+        hasher.combine(newUsername)
+        hasher.combine(newPassword)
+        hasher.combine(cloudBaseUrl)
+        hasher.combine(cloudEmail)
+        hasher.combine(cloudPassword)
+        hasher.combine(platform)
+        hasher.combine(appVersion)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public struct FfiConverterTypeFfiLascoCloudImportConfig: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiLascoCloudImportConfig {
+        return
+            try FfiLascoCloudImportConfig(
+                nickname: FfiConverterString.read(from: &buf),
+                username: FfiConverterString.read(from: &buf),
+                password: FfiConverterString.read(from: &buf),
+                newUsername: FfiConverterOptionString.read(from: &buf),
+                newPassword: FfiConverterOptionString.read(from: &buf),
+                cloudBaseUrl: FfiConverterString.read(from: &buf),
+                cloudEmail: FfiConverterString.read(from: &buf),
+                cloudPassword: FfiConverterString.read(from: &buf),
+                platform: FfiConverterString.read(from: &buf),
+                appVersion: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiLascoCloudImportConfig, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.nickname, into: &buf)
+        FfiConverterString.write(value.username, into: &buf)
+        FfiConverterString.write(value.password, into: &buf)
+        FfiConverterOptionString.write(value.newUsername, into: &buf)
+        FfiConverterOptionString.write(value.newPassword, into: &buf)
+        FfiConverterString.write(value.cloudBaseUrl, into: &buf)
+        FfiConverterString.write(value.cloudEmail, into: &buf)
+        FfiConverterString.write(value.cloudPassword, into: &buf)
+        FfiConverterString.write(value.platform, into: &buf)
+        FfiConverterString.write(value.appVersion, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public func FfiConverterTypeFfiLascoCloudImportConfig_lift(_ buf: RustBuffer) throws -> FfiLascoCloudImportConfig {
+    return try FfiConverterTypeFfiLascoCloudImportConfig.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated public func FfiConverterTypeFfiLascoCloudImportConfig_lower(_ value: FfiLascoCloudImportConfig) -> RustBuffer {
+    return FfiConverterTypeFfiLascoCloudImportConfig.lower(value)
+}
+
+
 nonisolated public struct FfiLascoCloudRemote {
     public var id: String
     public var libraryId: String?
@@ -6021,6 +6161,20 @@ nonisolated fileprivate func uniffiFutureContinuationCallback(handle: UInt64, po
     }
 }
 /**
+ * Add a library already stored in Lasco Cloud.
+ *
+ * Cloud account credentials authorize storage discovery. Library credentials
+ * decrypt the remote library; they are deliberately separate identities.
+ */
+nonisolated public func ffiAddExistingLibraryLascoCloud(config: FfiLascoCloudImportConfig, appDir: String? = nil)throws  -> FfiLibrary  {
+    return try  FfiConverterTypeFfiLibrary_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_func_ffi_add_existing_library_lasco_cloud(
+        FfiConverterTypeFfiLascoCloudImportConfig_lower(config),
+        FfiConverterOptionString.lower(appDir),$0
+    )
+})
+}
+/**
  * Add a library that already exists on an S3 remote, downloading its crypto
  * metadata and operations and opening it locally. `username`/`password` must be
  * an existing user on the remote. When `new_username`/`new_password` are both
@@ -6169,6 +6323,9 @@ nonisolated private let initializationResult: InitializationResult = {
     let scaffolding_contract_version = ffi_lasco_ffi_uniffi_contract_version()
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_lasco_cloud() != 61860) {
+        return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_s3() != 45002) {
         return InitializationResult.apiChecksumMismatch

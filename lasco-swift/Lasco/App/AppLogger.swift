@@ -30,9 +30,6 @@ enum AppLogger {
         if !FileManager.default.fileExists(atPath: logFileURL.path) {
             FileManager.default.createFile(atPath: logFileURL.path, contents: nil)
         }
-        #if DEBUG
-        print("📋 Log file: \(logFileURL.path)")
-        #endif
         log(.info, "--- Lasco started ---")
     }
 

@@ -1,5 +1,7 @@
 import SwiftUI
 
+private let manageSectionSpacing: CGFloat = 64
+
 struct ManageView: View {
     @Environment(LibraryDirectoryModel.self) private var directory
     @Environment(ToastManager.self) var toastManager
@@ -27,7 +29,7 @@ struct ManageView: View {
                 theme.bg.ignoresSafeArea()
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: manageSectionSpacing) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("MANAGE")
                                 .font(LascoFont.categoryLarge())

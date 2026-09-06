@@ -149,7 +149,7 @@ private fun AlbumBrowserPicker(
         entryProvider = entryProvider {
             entry<PickerAlbumKey> { key ->
                 val path = backStack.filterIsInstance<PickerAlbumKey>().filter { it.albumId != null }
-                val title = if (path.isEmpty()) "ALBUMS" else path.joinToString(" / ") { it.albumName.orEmpty().uppercase() }
+                val title = albumBreadcrumbTitle(path.map { it.albumName.orEmpty() })
                 val backLabel = path.dropLast(1).lastOrNull()?.albumName ?: "Albums"
                 AlbumListScreen(
                     albumId = key.albumId?.let(::FfiAlbumUuid),
