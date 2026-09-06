@@ -69,14 +69,14 @@ final class RecentMediaModel {
         }
     }
 
-    func load(mode: RecentMediaMode? = nil) async {
+    func load(mode: RecentMediaMode? = nil, minimumItemCount: Int = 0) async {
         let mode = mode ?? self.mode
         guard var page = pages[mode], !page.isLoading else { return }
         page.isLoading = true
         pages[mode] = page
         defer { pages[mode]?.isLoading = false }
         do {
-            let loadedItemLimit = max(Self.pageSize, page.media.count)
+            let loadedItemLimit = max(Self.pageSize, page.media.count, minimumItemCount)
             let loadedCount: Int
             let loadedMedia: [FfiMediaItem]
             switch mode {
@@ -97,6 +97,32 @@ final class RecentMediaModel {
         } catch is CancellationError {
         } catch {
             AppLogger.log(.error, "recent media query failed: \(error)")
+        }
+    }
+
+    func scrollTarget(at savedPosition: Int, mode: RecentMediaMode) async -> FfiMediaUuid? {
+        do {
+            let count: Int
+            switch mode {
+            case .all:
+                count = try await repository.mediaByDateCount()
+            case .orphans:
+                count = try await repository.orphanMediaByDateCount()
+            }
+            guard let position = MediaPositionRestoration.clampedPosition(savedPosition, count: count) else {
+                await load(mode: mode)
+                return nil
+            }
+
+            let requestedCount = position + min(Self.pageSize, count - position)
+            await load(mode: mode, minimumItemCount: requestedCount)
+            guard let page = pages[mode], page.media.indices.contains(position) else { return nil }
+            return page.media[position].mediaId
+        } catch is CancellationError {
+            return nil
+        } catch {
+            AppLogger.log(.error, "recent media restoration query failed: \(error)")
+            return nil
         }
     }
 

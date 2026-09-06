@@ -121,20 +121,28 @@ enum AlbumsDestination: Hashable {
 // MARK: - Root nav wrapper
 
 struct AlbumsView: View {
-    @State private var path: [AlbumsDestination] = []
+    @Binding private var path: [AlbumsDestination]
     @Environment(\.lascoTheme) var theme
     @Binding var pendingAlbum: FfiAlbum?
     let repository: LibraryRepository
     let session: LibrarySessionState
     let importCoordinator: MediaImportCoordinator
-    @State private var model: AlbumListModel
+    let model: AlbumListModel
 
-    init(repository: LibraryRepository, session: LibrarySessionState, importCoordinator: MediaImportCoordinator, pendingAlbum: Binding<FfiAlbum?>) {
+    init(
+        repository: LibraryRepository,
+        session: LibrarySessionState,
+        importCoordinator: MediaImportCoordinator,
+        model: AlbumListModel,
+        path: Binding<[AlbumsDestination]>,
+        pendingAlbum: Binding<FfiAlbum?>
+    ) {
         self.repository = repository
         self.session = session
         self.importCoordinator = importCoordinator
+        self.model = model
+        _path = path
         _pendingAlbum = pendingAlbum
-        _model = State(initialValue: AlbumListModel(repository: repository))
     }
 
     var body: some View {

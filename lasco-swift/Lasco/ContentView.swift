@@ -26,14 +26,26 @@ struct ContentView: View {
     let session: LibrarySessionState
     let importCoordinator: MediaImportCoordinator
 
-    @State private var model: RecentMediaModel
+    @Bindable var model: RecentMediaModel
+    @Binding private var allMediaPosition: Int
+    @Binding private var orphanMediaPosition: Int
 
-    init(repository: LibraryRepository, session: LibrarySessionState, importCoordinator: MediaImportCoordinator, openAlbum: @escaping (FfiAlbum) -> Void) {
+    init(
+        repository: LibraryRepository,
+        session: LibrarySessionState,
+        importCoordinator: MediaImportCoordinator,
+        model: RecentMediaModel,
+        allMediaPosition: Binding<Int>,
+        orphanMediaPosition: Binding<Int>,
+        openAlbum: @escaping (FfiAlbum) -> Void
+    ) {
         self.repository = repository
         self.session = session
         self.importCoordinator = importCoordinator
+        self.model = model
+        _allMediaPosition = allMediaPosition
+        _orphanMediaPosition = orphanMediaPosition
         self.openAlbum = openAlbum
-        _model = State(initialValue: RecentMediaModel(repository: repository))
     }
 
     @State private var showingImportMedia = false
@@ -44,6 +56,8 @@ struct ContentView: View {
     @State private var isSelecting = false
     @State private var albumsForMedia: AlbumList? = nil
     @State private var showingAddToAlbumPicker = false
+    @State private var allScrollTarget: FfiMediaUuid?
+    @State private var orphanScrollTarget: FfiMediaUuid?
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -54,6 +68,7 @@ struct ContentView: View {
                 ZStack(alignment: .top) {
                     if model.showingOrphans {
                         RecentMediaScrollView(
+                            scrollPosition: $orphanScrollTarget,
                             header: { header.opacity(isSelecting ? 0 : 1) },
                             content: {
                                 mediaContent(
@@ -65,6 +80,7 @@ struct ContentView: View {
                         )
                     } else {
                         RecentMediaScrollView(
+                            scrollPosition: $allScrollTarget,
                             header: { header.opacity(isSelecting ? 0 : 1) },
                             content: {
                                 mediaContent(
@@ -161,12 +177,27 @@ struct ContentView: View {
         .onAppear {
             AppLogger.log(.info, "home screen shown — \(model.media.count) media items")
         }
-        .task { await model.start() }
+        .task(id: model.mode) {
+            let mode = model.mode
+            await restoreScrollPosition(for: mode)
+            guard !Task.isCancelled else { return }
+            await model.start()
+        }
         .onChange(of: model.showingOrphans) {
             selection = []
             isSelecting = false
-            let mode = model.mode
-            Task { await model.load(mode: mode) }
+        }
+        .onChange(of: allScrollTarget) { _, mediaID in
+            rememberScrollPosition(mediaID, mode: .all)
+        }
+        .onChange(of: orphanScrollTarget) { _, mediaID in
+            rememberScrollPosition(mediaID, mode: .orphans)
+        }
+        .onChange(of: model.totalCount(for: .all)) {
+            rememberScrollPosition(allScrollTarget, mode: .all)
+        }
+        .onChange(of: model.totalCount(for: .orphans)) {
+            rememberScrollPosition(orphanScrollTarget, mode: .orphans)
         }
         .environment(repository)
     }
@@ -281,6 +312,7 @@ struct ContentView: View {
                 ForEach(Array(media.enumerated()), id: \.element.mediaId) { position, item in
                     let isSelected = selection.contains(item.mediaId)
                     MediaGridCell(item: item, isSelected: isSelected)
+                        .id(item.mediaId)
                         .onTapGesture {
                             if isSelecting {
                                 if selection.contains(item.mediaId) {
@@ -321,9 +353,38 @@ struct ContentView: View {
                         }
                 }
             }
+            .scrollTargetLayout()
         }
 
         Spacer(minLength: 40)
+    }
+
+    private func restoreScrollPosition(for mode: RecentMediaMode) async {
+        let savedPosition = switch mode {
+        case .all: allMediaPosition
+        case .orphans: orphanMediaPosition
+        }
+        let target = await model.scrollTarget(at: savedPosition, mode: mode)
+        guard !Task.isCancelled, model.mode == mode else { return }
+        switch mode {
+        case .all:
+            allScrollTarget = target
+        case .orphans:
+            orphanScrollTarget = target
+        }
+    }
+
+    private func rememberScrollPosition(_ mediaID: FfiMediaUuid?, mode: RecentMediaMode) {
+        guard let mediaID,
+              let position = model.media(for: mode).firstIndex(where: { $0.mediaId == mediaID }) else {
+            return
+        }
+        switch mode {
+        case .all:
+            allMediaPosition = position
+        case .orphans:
+            orphanMediaPosition = position
+        }
     }
 
     // MARK: Open album

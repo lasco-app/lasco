@@ -112,6 +112,7 @@ actor LibraryDirectoryRepository {
     func delete(libraryID: FfiLibraryId) throws {
         try ffiDeleteLibrary(libraryId: libraryID, appDir: appSupportDirectory)
         UserDefaults.standard.removeObject(forKey: "lasco.lastUsername.\(libraryID.value)")
+        LibraryUIState.remove(libraryID: libraryID)
     }
 
     func clearSession(libraryID: FfiLibraryId) throws {
