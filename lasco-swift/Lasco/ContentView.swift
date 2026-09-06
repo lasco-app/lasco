@@ -44,8 +44,6 @@ struct ContentView: View {
     @State private var isSelecting = false
     @State private var albumsForMedia: AlbumList? = nil
     @State private var showingAddToAlbumPicker = false
-    @State private var allMediaScrollPosition: FfiMediaUuid?
-    @State private var orphanMediaScrollPosition: FfiMediaUuid?
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -56,8 +54,6 @@ struct ContentView: View {
                 ZStack(alignment: .top) {
                     if model.showingOrphans {
                         RecentMediaScrollView(
-                            mode: .orphans,
-                            scrollPosition: $orphanMediaScrollPosition,
                             header: { header.opacity(isSelecting ? 0 : 1) },
                             content: {
                                 mediaContent(
@@ -69,8 +65,6 @@ struct ContentView: View {
                         )
                     } else {
                         RecentMediaScrollView(
-                            mode: .all,
-                            scrollPosition: $allMediaScrollPosition,
                             header: { header.opacity(isSelecting ? 0 : 1) },
                             content: {
                                 mediaContent(
@@ -327,7 +321,6 @@ struct ContentView: View {
                         }
                 }
             }
-            .scrollTargetLayout()
         }
 
         Spacer(minLength: 40)

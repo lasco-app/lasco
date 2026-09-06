@@ -1249,7 +1249,7 @@ private struct NewAlbumSheet: View {
     var onConfirm: () -> Void
     @Environment(\.dismiss) private var dismiss
     @Environment(\.lascoTheme) var theme
-    @FocusState private var focused = true
+    @FocusState private var focused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -1283,5 +1283,6 @@ private struct NewAlbumSheet: View {
         .padding(24)
         .background(theme.bg)
         .presentationDetents([.height(220)])
+        .onAppear { focused = true }
     }
 }

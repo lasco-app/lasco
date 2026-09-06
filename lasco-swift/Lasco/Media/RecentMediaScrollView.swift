@@ -2,20 +2,13 @@ import SwiftUI
 
 struct RecentMediaScrollView<Header: View, Content: View>: View {
     @Environment(\.lascoTheme) private var theme
-    @Binding private var scrollPosition: FfiMediaUuid?
-
-    private let mode: RecentMediaMode
     private let header: Header
     private let content: Content
 
     init(
-        mode: RecentMediaMode,
-        scrollPosition: Binding<FfiMediaUuid?>,
         @ViewBuilder header: () -> Header,
         @ViewBuilder content: () -> Content
     ) {
-        self.mode = mode
-        _scrollPosition = scrollPosition
         self.header = header()
         self.content = content()
     }
@@ -44,8 +37,6 @@ struct RecentMediaScrollView<Header: View, Content: View>: View {
             }
             #endif
         }
-        .id(mode)
-        .scrollPosition(id: $scrollPosition, anchor: .top)
         .background(theme.bg)
         .scrollContentBackground(.hidden)
     }
