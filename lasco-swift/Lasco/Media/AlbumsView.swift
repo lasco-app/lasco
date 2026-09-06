@@ -1263,6 +1263,7 @@ private struct NewAlbumSheet: View {
                 .padding(12)
                 .lascoPanel()
                 .focused($focused)
+                .defaultFocus($focused, true)
                 .onSubmit { onConfirm() }
 
             HStack(spacing: 12) {
@@ -1283,6 +1284,5 @@ private struct NewAlbumSheet: View {
         .padding(24)
         .background(theme.bg)
         .presentationDetents([.height(220)])
-        .onAppear { focused = true }
     }
 }
