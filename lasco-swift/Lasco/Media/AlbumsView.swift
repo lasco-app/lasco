@@ -123,7 +123,7 @@ enum AlbumsDestination: Hashable {
 struct AlbumsView: View {
     @Binding private var path: [AlbumsDestination]
     @Environment(\.lascoTheme) var theme
-    @Binding var pendingAlbum: FfiAlbum?
+    let navigation: AlbumNavigationModel
     let repository: LibraryRepository
     let session: LibrarySessionState
     let importCoordinator: MediaImportCoordinator
@@ -134,15 +134,17 @@ struct AlbumsView: View {
         session: LibrarySessionState,
         importCoordinator: MediaImportCoordinator,
         model: AlbumListModel,
-        path: Binding<[AlbumsDestination]>,
-        pendingAlbum: Binding<FfiAlbum?>
+        navigation: AlbumNavigationModel
     ) {
         self.repository = repository
         self.session = session
         self.importCoordinator = importCoordinator
         self.model = model
-        _path = path
-        _pendingAlbum = pendingAlbum
+        self.navigation = navigation
+        _path = Binding(
+            get: { navigation.path },
+            set: { navigation.replacePath($0, source: .navigationStack) }
+        )
     }
 
     var body: some View {
@@ -167,41 +169,10 @@ struct AlbumsView: View {
         .environment(repository)
         .environment(importCoordinator)
         .task {
-            await validatePath()
+            await navigation.validateCurrentPath()
             guard !Task.isCancelled else { return }
             await model.start()
         }
-        .onAppear {
-            if let album = pendingAlbum {
-                path = [.album(album)]
-                pendingAlbum = nil
-            }
-        }
-        .onChange(of: pendingAlbum) { _, album in
-            guard let album else { return }
-            path = [.album(album)]
-            pendingAlbum = nil
-        }
-    }
-
-    private func validatePath() async {
-        let albumIDs: [String] = path.compactMap { destination in
-            guard case .album(let album) = destination else { return nil }
-            return album.albumId.value
-        }
-        guard !albumIDs.isEmpty else { return }
-
-        let ids = Set(albumIDs.map(FfiAlbumUuid.init(value:)))
-        guard let albums = try? await repository.albums(withIDs: ids),
-              !Task.isCancelled else {
-            return
-        }
-        let restoredAlbums = AlbumNavigationRestoration.restoredAlbums(
-            savedIDs: albumIDs,
-            albums: albums
-        )
-        guard restoredAlbums.map(\.albumId.value) != albumIDs else { return }
-        path = restoredAlbums.map { .album($0) }
     }
 }
 

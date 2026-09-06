@@ -27,6 +27,7 @@ struct ContentView: View {
     let importCoordinator: MediaImportCoordinator
 
     @Bindable var model: RecentMediaModel
+    @Binding private var path: [LibraryDestination]
     @Binding private var allMediaPosition: Int
     @Binding private var orphanMediaPosition: Int
 
@@ -37,6 +38,7 @@ struct ContentView: View {
         model: RecentMediaModel,
         allMediaPosition: Binding<Int>,
         orphanMediaPosition: Binding<Int>,
+        path: Binding<[LibraryDestination]>,
         openAlbum: @escaping (FfiAlbum) -> Void
     ) {
         self.repository = repository
@@ -45,13 +47,13 @@ struct ContentView: View {
         self.model = model
         _allMediaPosition = allMediaPosition
         _orphanMediaPosition = orphanMediaPosition
+        _path = path
         self.openAlbum = openAlbum
     }
 
     @State private var showingImportMedia = false
     @State private var showingPhotosPicker = false
     @State private var photosPickerItems: [PhotosPickerItem] = []
-    @State private var path: [LibraryDestination] = []
     @State private var selection: Set<FfiMediaUuid> = []
     @State private var isSelecting = false
     @State private var albumsForMedia: AlbumList? = nil

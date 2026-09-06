@@ -5,10 +5,9 @@ struct MainView: View {
     @Environment(\.lascoTheme) var theme
     @Environment(\.scenePhase) private var scenePhase
     @State private var selectedTab: AppTab = .home
-    @State private var hideTabBar = false
-    @State private var albumToOpen: FfiAlbum? = nil
-    @State private var albumsPath: [AlbumsDestination] = []
-    @State private var didRestoreAlbumPath = false
+    @State private var homePath: [LibraryDestination] = []
+    @State private var hideManageTabBar = false
+    @State private var albumNavigation: AlbumNavigationModel
     @State private var recentMediaModel: RecentMediaModel
     @State private var albumListModel: AlbumListModel
     @State private var uiState: LibraryUIState
@@ -37,6 +36,9 @@ struct MainView: View {
         recentMediaModel.showingOrphans = restoredState.showingOrphans
         _recentMediaModel = State(initialValue: recentMediaModel)
         _albumListModel = State(initialValue: AlbumListModel(repository: repository))
+        _albumNavigation = State(initialValue: AlbumNavigationModel { ids in
+            try await repository.albums(withIDs: ids)
+        })
         _uiState = State(initialValue: restoredState)
     }
 
@@ -44,11 +46,14 @@ struct MainView: View {
         ZStack(alignment: .bottom) {
             tabContent
                 .safeAreaInset(edge: .bottom) {
-                    Color.clear.frame(height: hideTabBar ? 0 : 88)
+                    Color.clear.frame(height: hidesTabBar ? 0 : 88)
                 }
-                .onPreferenceChange(HideTabBarKey.self) { hideTabBar = $0 }
+                .onPreferenceChange(ManageTabBarHiddenKey.self) { isHidden in
+                    guard selectedTab == .manage, hideManageTabBar != isHidden else { return }
+                    hideManageTabBar = isHidden
+                }
 
-            if !hideTabBar {
+            if !hidesTabBar {
                 FloatingTabBar(selectedTab: $selectedTab)
                     .padding(.horizontal, 44)
                     .padding(.bottom, 24)
@@ -70,10 +75,10 @@ struct MainView: View {
             }
         }
         .task {
-            await restoreAlbumPath()
+            await albumNavigation.restoreIfNeeded(savedIDs: uiState.albumPathIDs)
             await syncCoordinator.fetchDefaultRemote()
         }
-        .onChange(of: albumsPath) { _, path in
+        .onChange(of: albumNavigation.path) { _, path in
             let albumPathIDs: [String] = path.compactMap { destination in
                 guard case .album(let album) = destination else { return nil }
                 return album.albumId.value
@@ -86,7 +91,10 @@ struct MainView: View {
             uiState.showingOrphans = showingOrphans
             saveUIState()
         }
-        .onChange(of: selectedTab) {
+        .onChange(of: selectedTab) { _, tab in
+            if tab != .manage {
+                hideManageTabBar = false
+            }
             saveUIState()
         }
         .onChange(of: scenePhase) { _, phase in
@@ -98,10 +106,8 @@ struct MainView: View {
         }
     }
 
-    @ViewBuilder
     private var tabContent: some View {
-        switch selectedTab {
-        case .home:
+        TabView(selection: $selectedTab) {
             ContentView(
                 repository: repository,
                 session: session,
@@ -109,46 +115,48 @@ struct MainView: View {
                 model: recentMediaModel,
                 allMediaPosition: $uiState.allMediaPosition,
                 orphanMediaPosition: $uiState.orphanMediaPosition,
+                path: $homePath,
                 openAlbum: openAlbum
             )
-        case .albums:
+            .tag(AppTab.home)
+            .toolbar(.hidden, for: .tabBar)
+
             AlbumsView(
                 repository: repository,
                 session: session,
                 importCoordinator: importCoordinator,
                 model: albumListModel,
-                path: $albumsPath,
-                pendingAlbum: $albumToOpen
+                navigation: albumNavigation
             )
-        // case .search:
-        //     SearchView()
-        case .status:
+            .tag(AppTab.albums)
+            .toolbar(.hidden, for: .tabBar)
+
             StatusView(repository: repository, session: session, syncCoordinator: syncCoordinator)
-        case .manage:
+                .tag(AppTab.status)
+                .toolbar(.hidden, for: .tabBar)
+
             ManageView(repository: repository, session: session, syncCoordinator: syncCoordinator)
+                .tag(AppTab.manage)
+                .toolbar(.hidden, for: .tabBar)
         }
     }
 
     private func openAlbum(_ album: FfiAlbum) {
-        albumToOpen = album
+        albumNavigation.open(album)
         selectedTab = .albums
     }
 
-    private func restoreAlbumPath() async {
-        guard !didRestoreAlbumPath else { return }
-        didRestoreAlbumPath = true
-        guard !uiState.albumPathIDs.isEmpty else { return }
-
-        let ids = Set(uiState.albumPathIDs.map(FfiAlbumUuid.init(value:)))
-        guard let albums = try? await repository.albums(withIDs: ids),
-              !Task.isCancelled else {
-            return
+    private var hidesTabBar: Bool {
+        switch selectedTab {
+        case .home:
+            homePath.contains { if case .mediaDetail = $0 { return true } else { return false } }
+        case .albums:
+            albumNavigation.path.contains { if case .mediaDetail = $0 { return true } else { return false } }
+        case .manage:
+            hideManageTabBar
+        case .status:
+            false
         }
-        let restoredAlbums = AlbumNavigationRestoration.restoredAlbums(
-            savedIDs: uiState.albumPathIDs,
-            albums: albums
-        )
-        albumsPath = restoredAlbums.map { .album($0) }
     }
 
     private func saveUIState() {

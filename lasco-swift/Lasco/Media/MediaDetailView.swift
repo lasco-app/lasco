@@ -2,13 +2,6 @@ import SwiftUI
 import AVKit
 import UniformTypeIdentifiers
 
-struct HideTabBarKey: PreferenceKey {
-    static let defaultValue = false
-    static func reduce(value: inout Bool, nextValue: () -> Bool) {
-        value = value || nextValue()
-    }
-}
-
 struct TitleAvailableWidthPreferenceKey: PreferenceKey {
     static let defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
@@ -233,7 +226,6 @@ struct MediaDetailView: View {
         .navigationTitle("")
         .hideSystemNavigationBar()
         .toolbarBackButton(action: { dismiss() })
-        .preference(key: HideTabBarKey.self, value: true)
         .onChange(of: gallery.selectedPosition) {
             assetCache.select(gallery.selectedPosition)
             AppLogger.log(.info, "media navigated — '\(currentItem.map { $0.name ?? $0.filenameOriginal } ?? "")' (\(currentItem?.mediaId.value ?? "group"))")
@@ -546,7 +538,6 @@ struct MediaDetailView: View {
         .navigationTitle("")
         .hideSystemNavigationBar()
         .toolbarBackButton(action: { dismiss() })
-        .preference(key: HideTabBarKey.self, value: true)
         .onChange(of: currentPosition) {
             assetCache.select(currentPosition)
             if case .group(let group) = currentGalleryItem { loadGroupMediaIfNeeded(for: group.groupId) }
