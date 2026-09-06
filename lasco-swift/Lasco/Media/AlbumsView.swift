@@ -6,6 +6,15 @@ extension FfiAlbum: Identifiable {
     public var id: FfiAlbumUuid { albumId }
 }
 
+func albumBreadcrumbTitle(_ albumNames: [String]) -> String {
+    guard !albumNames.isEmpty else { return "ALBUMS" }
+
+    let visibleNames = albumNames.count > 2
+        ? ["..."] + Array(albumNames.suffix(2))
+        : albumNames
+    return visibleNames.map { $0.uppercased() }.joined(separator: " / ")
+}
+
 // MARK: - Supporting types
 
 enum ContentSelection {
@@ -209,9 +218,8 @@ struct AlbumContentView: View {
     private var isRoot: Bool { album == nil }
 
     private var title: String {
-        let albumNames = path.compactMap { if case .album(let a) = $0 { return a.name.uppercased() } else { return nil } }
-        guard !albumNames.isEmpty else { return "ALBUMS" }
-        return albumNames.joined(separator: " / ")
+        let albumNames = path.compactMap { if case .album(let a) = $0 { return a.name } else { return nil } }
+        return albumBreadcrumbTitle(albumNames)
     }
 
     private var ancestors: Set<FfiAlbumUuid> {
