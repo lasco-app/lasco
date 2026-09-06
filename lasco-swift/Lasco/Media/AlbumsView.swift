@@ -166,18 +166,42 @@ struct AlbumsView: View {
         .environment(model)
         .environment(repository)
         .environment(importCoordinator)
-        .task { await model.start() }
+        .task {
+            await validatePath()
+            guard !Task.isCancelled else { return }
+            await model.start()
+        }
         .onAppear {
             if let album = pendingAlbum {
                 path = [.album(album)]
                 pendingAlbum = nil
             }
         }
-        .onChange(of: pendingAlbum) { album in
+        .onChange(of: pendingAlbum) { _, album in
             guard let album else { return }
             path = [.album(album)]
             pendingAlbum = nil
         }
+    }
+
+    private func validatePath() async {
+        let albumIDs: [String] = path.compactMap { destination in
+            guard case .album(let album) = destination else { return nil }
+            return album.albumId.value
+        }
+        guard !albumIDs.isEmpty else { return }
+
+        let ids = Set(albumIDs.map(FfiAlbumUuid.init(value:)))
+        guard let albums = try? await repository.albums(withIDs: ids),
+              !Task.isCancelled else {
+            return
+        }
+        let restoredAlbums = AlbumNavigationRestoration.restoredAlbums(
+            savedIDs: albumIDs,
+            albums: albums
+        )
+        guard restoredAlbums.map(\.albumId.value) != albumIDs else { return }
+        path = restoredAlbums.map { .album($0) }
     }
 }
 

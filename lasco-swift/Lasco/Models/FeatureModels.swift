@@ -116,8 +116,14 @@ final class RecentMediaModel {
 
             let requestedCount = position + min(Self.pageSize, count - position)
             await load(mode: mode, minimumItemCount: requestedCount)
-            guard let page = pages[mode], page.media.indices.contains(position) else { return nil }
-            return page.media[position].mediaId
+            guard let page = pages[mode],
+                  let loadedPosition = MediaPositionRestoration.clampedPosition(
+                    savedPosition,
+                    count: page.media.count
+                  ) else {
+                return nil
+            }
+            return page.media[loadedPosition].mediaId
         } catch is CancellationError {
             return nil
         } catch {
