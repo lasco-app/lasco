@@ -213,6 +213,8 @@ struct SettingsView: View {
                         Toggle("", isOn: $expertMode)
                             .toggleStyle(LascoToggleStyle())
                             .labelsHidden()
+                            .accessibilityLabel("Expert mode")
+                            .accessibilityIdentifier("settings.expert-mode")
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 14)

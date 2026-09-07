@@ -35,6 +35,8 @@ struct LibraryListView: View {
                             .foregroundStyle(Color.Lasco.inkMuted)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Settings")
+                    .accessibilityIdentifier("library-list.settings")
                     .padding(.top, 6)
                 }
                 .padding(.horizontal, 32)
@@ -111,6 +113,7 @@ struct LibraryListView: View {
                     Button("New library") {
                         showNewLibrary = true
                     }
+                    .accessibilityIdentifier("library-list.new-library")
                     .buttonStyle(LascoPrimaryButtonStyle())
                     .frame(maxWidth: .infinity)
 
