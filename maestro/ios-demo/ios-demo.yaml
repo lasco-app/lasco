@@ -103,4 +103,14 @@ name: iOS Lasco Cloud demo
     timeout: 10000
 - tapOn:
     id: "status.push"
+    index: 1
+- extendedWaitUntil:
+    visible: ".*pushed.*"
+    timeout: 60000
+- tapOn:
+    id: "status.fetch"
+    index: 1
+- extendedWaitUntil:
+    visible: ".*fetched.*"
+    timeout: 30000
 - stopRecording
