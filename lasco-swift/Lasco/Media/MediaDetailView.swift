@@ -248,6 +248,7 @@ struct MediaDetailView: View {
         let currentY = max(0, min(travelH, baseY + panelDragOffset))
 
         return panelBody
+            .accessibilityIdentifier("media-detail.info-panel")
             .frame(height: expandedH)
             .frame(width: geo.size.width)
             .offset(y: currentY)
@@ -386,6 +387,8 @@ struct MediaDetailView: View {
                     .background(Color.black)
                     .overlay(Rectangle().stroke(Color.white, lineWidth: 2))
             }
+            .accessibilityLabel("Back")
+            .accessibilityIdentifier("media-detail.back")
             .buttonStyle(.plain)
 
             Spacer()

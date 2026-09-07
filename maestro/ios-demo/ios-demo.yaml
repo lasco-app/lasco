@@ -1,0 +1,102 @@
+# Required shell environment variables:
+#   MAESTRO_LIBRARY_NAME
+#   MAESTRO_LIBRARY_USERNAME
+#   MAESTRO_LIBRARY_PASSWORD
+
+appId: com.lasco.lasco
+name: iOS Lasco Cloud demo
+---
+- launchApp:
+    clearState: true
+
+# Seed the Simulator Photos library; no manual image transfer is needed.
+- addMedia:
+    - "assets/holidays.jpg"
+
+- startRecording: "artifacts/ios-lasco-cloud-demo"
+
+- tapOn: "Skip"
+- extendedWaitUntil:
+    visible: "Add existing library"
+    timeout: 10000
+- tapOn: "Add existing library"
+- tapOn: "Lasco Cloud"
+
+- tapOn:
+    id: "existing-library.name"
+- inputText: ${MAESTRO_LIBRARY_NAME}
+
+- tapOn:
+    id: "existing-library.username"
+- inputText: ${MAESTRO_LIBRARY_USERNAME}
+
+- tapOn:
+    id: "existing-library.password"
+- inputText: ${MAESTRO_LIBRARY_PASSWORD}
+- pressKey: Enter
+
+- tapOn:
+    id: "existing-library.cloud-email"
+- inputText: ${MAESTRO_CLOUD_EMAIL}
+
+- tapOn:
+    id: "existing-library.cloud-password"
+- inputText: ${MAESTRO_CLOUD_PASSWORD}
+
+- tapOn: "Add library"
+- extendedWaitUntil:
+    visible: "HOME"
+    timeout: 30000
+
+- tapOn:
+    id: "tab.albums"
+- tapOn: "Create album"
+- tapOn:
+    id: "album.name"
+- inputText: "Holidays"
+- tapOn: "Confirm"
+- extendedWaitUntil:
+    visible: "Holidays"
+    timeout: 10000
+- tapOn: "Holidays"
+
+- tapOn: "Add to album"
+- tapOn: "Import and add…"
+- tapOn: "Import from Photos…"
+- tapOn:
+    id: "PXGGridLayout-Info"
+    index: 0
+# The Photos picker localizes its Done label, so use its stable top-right position.
+- tapOn:
+    point: "90%, 13%"
+- extendedWaitUntil:
+    notVisible: "Empty album."
+    timeout: 20000
+
+- tapOn:
+    id: "album.media"
+    index: 0
+- swipe:
+    from:
+      id: "media-detail.info-panel"
+    direction: UP
+    duration: 500
+- extendedWaitUntil:
+    visible: "FILE"
+    timeout: 5000
+- swipe:
+    from:
+      id: "media-detail.info-panel"
+    direction: DOWN
+    duration: 500
+- tapOn:
+    id: "media-detail.back"
+
+- tapOn:
+    id: "tab.status"
+- extendedWaitUntil:
+    visible: "STATUS"
+    timeout: 10000
+- tapOn:
+    id: "status.push"
+- stopRecording

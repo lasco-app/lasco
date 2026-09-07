@@ -8,6 +8,13 @@ enum ExistingLibrarySource: String, Identifiable {
 }
 
 struct AddExistingLibraryView: View {
+    private enum FocusedField: Hashable {
+        case nickname, username, password
+        case newUsername, newPassword
+        case cloudEmail, cloudPassword
+        case remoteName, endpoint, bucket, region, pathPrefix, accessKey, secretKey
+    }
+
     let source: ExistingLibrarySource
 
     @Environment(LibraryDirectoryModel.self) private var directory
@@ -36,6 +43,7 @@ struct AddExistingLibraryView: View {
     @State private var uploadAcknowledged = false
 
     @State private var isAdding = false
+    @FocusState private var focusedField: FocusedField?
 
     enum TestState: Equatable {
         case idle
@@ -90,8 +98,9 @@ struct AddExistingLibraryView: View {
                     .padding(.horizontal, 32)
                     .padding(.bottom, 8)
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 20) {
                         Text(source == .lascoCloud
                             ? "Sign in to Lasco Cloud to add the library associated with your account."
                             : "Point Lasco at an S3 remote that already holds a library. It downloads the library and syncs it to this device."
@@ -102,10 +111,10 @@ struct AddExistingLibraryView: View {
                             .lineSpacing(4)
 
                         VStack(alignment: .leading, spacing: 16) {
-                            inputField("Library name", placeholder: "my-library", binding: $nickname)
+                            inputField("Library name", placeholder: "my-library", binding: $nickname, identifier: "existing-library.name", focus: .nickname)
 
-                            inputField("Username", placeholder: "an existing user", binding: $username)
-                            secureInputField("Password", binding: $password)
+                            inputField("Username", placeholder: "an existing user", binding: $username, identifier: "existing-library.username", focus: .username)
+                            secureInputField("Password", binding: $password, identifier: "existing-library.password", focus: .password)
 
                             Toggle(isOn: $createNewUser) {
                                 Text("Create a new user on this device")
@@ -115,8 +124,8 @@ struct AddExistingLibraryView: View {
                             .tint(theme.ink)
 
                             if createNewUser {
-                                inputField("New username", placeholder: "this device's user", binding: $newUsername)
-                                secureInputField("New password", binding: $newPassword)
+                                inputField("New username", placeholder: "this device's user", binding: $newUsername, focus: .newUsername)
+                                secureInputField("New password", binding: $newPassword, focus: .newPassword)
                                 Text("The new user shares the library but signs in with its own password.")
                                     .font(LascoFont.body(13))
                                     .foregroundStyle(theme.inkMuted)
@@ -130,16 +139,16 @@ struct AddExistingLibraryView: View {
                                 Text("Sign in to Lasco Cloud to find the library associated with your account.")
                                     .font(LascoFont.body(14))
                                     .foregroundStyle(theme.inkSub)
-                                inputField("Lasco Cloud email", placeholder: "you@example.com", binding: $cloudEmail)
-                                secureInputField("Lasco Cloud password", binding: $cloudPassword)
+                                inputField("Lasco Cloud email", placeholder: "you@example.com", binding: $cloudEmail, identifier: "existing-library.cloud-email", focus: .cloudEmail)
+                                secureInputField("Lasco Cloud password", binding: $cloudPassword, identifier: "existing-library.cloud-password", focus: .cloudPassword)
                             } else {
-                                inputField("Remote name", placeholder: "my s3 remote", binding: $remoteName)
-                                inputField("Endpoint URL", placeholder: "https://region1.example-s3-server.com", binding: $endpoint)
-                                inputField("Bucket", placeholder: "my-photos-bucket", binding: $bucket)
-                                inputField("Region", placeholder: "region1", binding: $region)
-                                inputField("Path prefix (optional)", placeholder: "photos/", binding: $pathPrefix)
-                                inputField("Access key", placeholder: "", binding: $accessKey)
-                                secureInputField("Secret key", binding: $secretKey)
+                                inputField("Remote name", placeholder: "my s3 remote", binding: $remoteName, focus: .remoteName)
+                                inputField("Endpoint URL", placeholder: "https://region1.example-s3-server.com", binding: $endpoint, focus: .endpoint)
+                                inputField("Bucket", placeholder: "my-photos-bucket", binding: $bucket, focus: .bucket)
+                                inputField("Region", placeholder: "region1", binding: $region, focus: .region)
+                                inputField("Path prefix (optional)", placeholder: "photos/", binding: $pathPrefix, focus: .pathPrefix)
+                                inputField("Access key", placeholder: "", binding: $accessKey, focus: .accessKey)
+                                secureInputField("Secret key", binding: $secretKey, focus: .secretKey)
 
                                 LascoCheckbox(
                                     isOn: $uploadAcknowledged,
@@ -174,38 +183,37 @@ struct AddExistingLibraryView: View {
                             }
                         }
 
-                        Spacer().frame(height: 100)
+                        Button {
+                            addLibrary()
+                        } label: {
+                            HStack(spacing: 8) {
+                                if isAdding {
+                                    ProgressView().controlSize(.small)
+                                }
+                                Text(isAdding ? "Adding…" : "Add library")
+                            }
+                        }
+                        .buttonStyle(LascoPrimaryButtonStyle())
+                        .frame(maxWidth: .infinity)
+                        .disabled(!isValid)
+                        .opacity(isValid ? 1 : 0.45)
+                        .padding(.top, 8)
+
+                        Spacer().frame(height: 48)
+                        }
+                        .padding(.horizontal, 32)
+                        .padding(.top, 8)
                     }
-                    .padding(.horizontal, 32)
-                    .padding(.top, 8)
+                    .scrollDismissesKeyboard(.interactively)
+                    .onChange(of: focusedField) { _, field in
+                        guard let field else { return }
+                        withAnimation {
+                            proxy.scrollTo(field, anchor: .center)
+                        }
+                    }
                 }
             }
 
-            VStack(spacing: 0) {
-                Button {
-                    addLibrary()
-                } label: {
-                    HStack(spacing: 8) {
-                        if isAdding {
-                            ProgressView().controlSize(.small)
-                        }
-                        Text(isAdding ? "Adding…" : "Add library")
-                    }
-                }
-                .buttonStyle(LascoPrimaryButtonStyle())
-                .frame(maxWidth: .infinity)
-                .disabled(!isValid)
-                .opacity(isValid ? 1 : 0.45)
-            }
-            .padding(.horizontal, 32)
-            .padding(.top, 20)
-            .padding(.bottom, 48)
-            .background(
-                LinearGradient(
-                    colors: [theme.bg.opacity(0), theme.bg],
-                    startPoint: .top, endPoint: .bottom
-                )
-            )
         }
     }
 
@@ -267,26 +275,47 @@ struct AddExistingLibraryView: View {
         }
     }
 
-    private func inputField(_ label: String, placeholder: String, binding: Binding<String>) -> some View {
+    private func inputField(
+        _ label: String,
+        placeholder: String,
+        binding: Binding<String>,
+        identifier: String? = nil,
+        focus: FocusedField
+    ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             FieldLabel(text: label, size: 14)
             TextField(placeholder, text: binding)
                 .textFieldStyle(.plain)
                 .lascoInput()
+                .accessibilityIdentifier(identifier ?? label)
+                .focused($focusedField, equals: focus)
                 .autocorrectionDisabled()
                 #if os(iOS)
                 .textInputAutocapitalization(.never)
                 #endif
         }
+        .id(focus)
     }
 
-    private func secureInputField(_ label: String, binding: Binding<String>) -> some View {
+    private func secureInputField(
+        _ label: String,
+        binding: Binding<String>,
+        identifier: String? = nil,
+        focus: FocusedField
+    ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             FieldLabel(text: label, size: 14)
             SecureField("", text: binding)
                 .textFieldStyle(.plain)
                 .lascoInput()
+                .accessibilityIdentifier(identifier ?? label)
+                .focused($focusedField, equals: focus)
+                .submitLabel(.done)
+                .onSubmit {
+                    focusedField = nil
+                }
         }
+        .id(focus)
     }
 }
 

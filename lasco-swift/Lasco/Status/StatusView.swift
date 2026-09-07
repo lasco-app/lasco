@@ -515,6 +515,7 @@ private struct SyncStatusRow: View {
             }
             .contentShape(Rectangle())
         }
+        .accessibilityIdentifier("status.\(label.lowercased())")
         .buttonStyle(.plain)
         .disabled(!enabled)
         .opacity(enabled ? 1 : 0.4)

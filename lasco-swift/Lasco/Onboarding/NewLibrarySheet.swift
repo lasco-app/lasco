@@ -14,6 +14,7 @@ struct LibraryCreateForm: View {
                 TextField("My Photos", text: $name)
                     .textFieldStyle(.plain)
                     .lascoInput()
+                    .accessibilityIdentifier("new-library.name")
                     .autocorrectionDisabled()
             }
 
@@ -22,6 +23,7 @@ struct LibraryCreateForm: View {
                 TextField("", text: $username)
                     .textFieldStyle(.plain)
                     .lascoInput()
+                    .accessibilityIdentifier("new-library.username")
                     .autocorrectionDisabled()
                     #if os(iOS)
                     .textInputAutocapitalization(.never)
@@ -33,6 +35,7 @@ struct LibraryCreateForm: View {
                 SecureField("", text: $password)
                     .textFieldStyle(.plain)
                     .lascoInput()
+                    .accessibilityIdentifier("new-library.password")
                 if !password.isEmpty && password.count < 5 {
                     Text("Password must be at least 5 characters.")
                         .font(LascoFont.body(14))
@@ -45,6 +48,7 @@ struct LibraryCreateForm: View {
                 SecureField("", text: $confirmPassword)
                     .textFieldStyle(.plain)
                     .lascoInput()
+                    .accessibilityIdentifier("new-library.confirm-password")
                 if !confirmPassword.isEmpty && confirmPassword != password {
                     Text("Passwords do not match.")
                         .font(LascoFont.body(14))
@@ -61,4 +65,3 @@ struct LibraryCreateForm: View {
         }
     }
 }
-

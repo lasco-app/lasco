@@ -1001,6 +1001,9 @@ struct AlbumContentView: View {
     private func mediaGridCell(_ item: FfiMediaItem) -> some View {
         let isSelected = selection.containsMedia(item.mediaId)
         MediaGridCell(item: item, isSelected: isSelected)
+            .accessibilityLabel("Open media")
+            .accessibilityIdentifier("album.media")
+            .accessibilityAddTraits(.isButton)
             .onTapGesture {
                 if selection.isSelecting {
                     selection.toggleMedia(item.mediaId)
@@ -1273,6 +1276,7 @@ private struct NewAlbumSheet: View {
                 .textFieldStyle(.plain)
                 .padding(12)
                 .lascoPanel()
+                .accessibilityIdentifier("album.name")
                 .focused($focused)
                 .onSubmit { onConfirm() }
 

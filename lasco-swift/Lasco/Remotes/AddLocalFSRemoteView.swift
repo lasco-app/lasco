@@ -73,6 +73,7 @@ struct AddLocalFSRemoteView: View {
                                 TextField("local-test", text: $name)
                                     .textFieldStyle(.plain)
                                     .lascoInput()
+                                    .accessibilityIdentifier("local-fs-remote.name")
                                     .autocorrectionDisabled()
                                     .focused($nameFieldFocused)
                                     #if os(iOS)
