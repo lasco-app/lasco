@@ -39,9 +39,13 @@ name: iOS Lasco Cloud demo
     id: "existing-library.cloud-email"
 - inputText: ${MAESTRO_CLOUD_EMAIL}
 
-- tapOn:
-    id: "existing-library.cloud-password"
+# The app advances its focused field from email to password while keeping the
+# keyboard visible, so the recording never needs to tap a covered field.
+- pressKey: Enter
 - inputText: ${MAESTRO_CLOUD_PASSWORD}
+# SecureField's submit handler clears focus, dismissing the keyboard before
+# Maestro taps the button below it.
+- pressKey: Enter
 
 - tapOn: "Add library"
 - extendedWaitUntil:
