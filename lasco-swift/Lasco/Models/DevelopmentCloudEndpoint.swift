@@ -1,7 +1,9 @@
 import Foundation
 
 enum DevelopmentCloudEndpoint {
-    static let defaultURL = "http://localhost:3000"
+    /// Lasco Cloud is the safe default. Debug builds present an explicit
+    /// endpoint picker before they can use a development server.
+    static let defaultURL = "https://cloud.getlasco.app"
     private static let key = "lasco.developmentCloudEndpoint"
 
     static var url: String {
