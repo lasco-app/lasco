@@ -139,7 +139,14 @@ struct AddExistingLibraryView: View {
                                 Text("Sign in to Lasco Cloud to find the library associated with your account.")
                                     .font(LascoFont.body(14))
                                     .foregroundStyle(theme.inkSub)
-                                inputField("Lasco Cloud email", placeholder: "you@example.com", binding: $cloudEmail, identifier: "existing-library.cloud-email", focus: .cloudEmail)
+                                inputField(
+                                    "Lasco Cloud email",
+                                    placeholder: "you@example.com",
+                                    binding: $cloudEmail,
+                                    identifier: "existing-library.cloud-email",
+                                    focus: .cloudEmail,
+                                    onSubmit: { focusedField = .cloudPassword }
+                                )
                                 secureInputField("Lasco Cloud password", binding: $cloudPassword, identifier: "existing-library.cloud-password", focus: .cloudPassword)
                             } else {
                                 inputField("Remote name", placeholder: "my s3 remote", binding: $remoteName, focus: .remoteName)
@@ -280,7 +287,8 @@ struct AddExistingLibraryView: View {
         placeholder: String,
         binding: Binding<String>,
         identifier: String? = nil,
-        focus: FocusedField
+        focus: FocusedField,
+        onSubmit: (() -> Void)? = nil
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             FieldLabel(text: label, size: 14)
@@ -290,6 +298,8 @@ struct AddExistingLibraryView: View {
                 .accessibilityIdentifier(identifier ?? label)
                 .focused($focusedField, equals: focus)
                 .autocorrectionDisabled()
+                .submitLabel(onSubmit == nil ? .done : .next)
+                .onSubmit { onSubmit?() }
                 #if os(iOS)
                 .textInputAutocapitalization(.never)
                 #endif

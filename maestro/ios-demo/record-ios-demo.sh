@@ -97,7 +97,6 @@ xcodebuild \
   -destination "platform=iOS Simulator,id=$simulator_udid" \
   -derivedDataPath "$derived_data_path" \
   build \
-  CODE_SIGNING_ALLOWED=NO \
   SWIFT_OPTIMIZATION_LEVEL=-Onone
 
 app_path="$derived_data_path/Build/Products/Release-iphonesimulator/Lasco.app"
