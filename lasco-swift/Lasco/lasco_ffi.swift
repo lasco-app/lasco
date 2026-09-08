@@ -3937,15 +3937,15 @@ nonisolated public struct FfiConverterTypeFfiLascoCloudImportConfig: FfiConverte
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiLascoCloudImportConfig {
         return
             try FfiLascoCloudImportConfig(
-                nickname: FfiConverterString.read(from: &buf),
-                username: FfiConverterString.read(from: &buf),
-                password: FfiConverterString.read(from: &buf),
-                newUsername: FfiConverterOptionString.read(from: &buf),
-                newPassword: FfiConverterOptionString.read(from: &buf),
-                cloudBaseUrl: FfiConverterString.read(from: &buf),
-                cloudEmail: FfiConverterString.read(from: &buf),
-                cloudPassword: FfiConverterString.read(from: &buf),
-                platform: FfiConverterString.read(from: &buf),
+                nickname: FfiConverterString.read(from: &buf), 
+                username: FfiConverterString.read(from: &buf), 
+                password: FfiConverterString.read(from: &buf), 
+                newUsername: FfiConverterOptionString.read(from: &buf), 
+                newPassword: FfiConverterOptionString.read(from: &buf), 
+                cloudBaseUrl: FfiConverterString.read(from: &buf), 
+                cloudEmail: FfiConverterString.read(from: &buf), 
+                cloudPassword: FfiConverterString.read(from: &buf), 
+                platform: FfiConverterString.read(from: &buf), 
                 appVersion: FfiConverterString.read(from: &buf)
         )
     }

@@ -51,6 +51,10 @@ struct StablePageViewController<Content: View>: UIViewControllerRepresentable {
             self.parent = parent
         }
 
+        deinit {
+            controllers.removeAll()
+        }
+
         func apply(parent: StablePageViewController, to pageViewController: UIPageViewController) {
             pageCount = parent.pageCount
             guard pageCount > 0, (0..<pageCount).contains(parent.selection) else {
