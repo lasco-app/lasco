@@ -345,7 +345,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = Lasco;
 				INFOPLIST_KEY_LASCO_CLOUD_URL = "$(LASCO_CLOUD_URL)";
 				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads = YES;
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = " Lasco imports new photos and videos into your library\n  automatically.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Lasco accesses your photo library to import your photos and videos and back them up to your configured remote storage. For example, it can import your existing library during setup and new photos you add later.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -395,7 +395,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Lasco;
 				INFOPLIST_KEY_LASCO_CLOUD_URL = "$(LASCO_CLOUD_URL)";
-				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = " Lasco imports new photos and videos into your library\n  automatically.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Lasco accesses your photo library to import your photos and videos and back them up to your configured remote storage. For example, it can import your existing library during setup and new photos you add later.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
