@@ -1,0 +1,25 @@
+appId: com.lasco.lasco
+name: Verify existing Lasco Cloud selection
+---
+- launchApp:
+    stopApp: false
+- runFlow:
+    when:
+      visible: "times"
+    commands:
+      - tapOn: "times"
+- extendedWaitUntil:
+    visible:
+      id: "library-list.add-existing"
+    timeout: 10000
+- tapOn:
+    id: "library-list.add-existing"
+    retryTapIfNoChange: true
+- extendedWaitUntil:
+    visible: "Lasco Cloud"
+    timeout: 10000
+- tapOn: "Lasco Cloud"
+- extendedWaitUntil:
+    visible:
+      id: "existing-library.name"
+    timeout: 10000

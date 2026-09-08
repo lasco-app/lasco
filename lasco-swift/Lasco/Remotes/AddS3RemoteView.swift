@@ -1,6 +1,10 @@
 import SwiftUI
 
 struct AddS3RemoteView: View {
+    private enum Field: Hashable {
+        case name, endpoint, bucket, region, pathPrefix, accessKey, secretKey
+    }
+
     @Environment(LibraryRepository.self) private var repository
     @Environment(LibraryDirectoryModel.self) private var directory
     @Environment(\.dismiss) private var dismiss
@@ -9,7 +13,7 @@ struct AddS3RemoteView: View {
 
     let onRemoteReady: @MainActor () async throws -> Void
 
-    @FocusState private var nameFieldFocused: Bool
+    @FocusState private var focusedField: Field?
     @State private var name = ""
     @State private var endpoint = ""
     @State private var bucket = ""
@@ -39,7 +43,7 @@ struct AddS3RemoteView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .bottom) {
+        ZStack {
             theme.bg.ignoresSafeArea()
 
             VStack(spacing: 0) {
@@ -77,18 +81,21 @@ struct AddS3RemoteView: View {
                                 TextField("my-backups", text: $name)
                                     .textFieldStyle(.plain)
                                     .lascoInput()
+                                    .accessibilityIdentifier("s3-remote.name")
                                     .autocorrectionDisabled()
-                                    .focused($nameFieldFocused)
+                                    .focused($focusedField, equals: .name)
+                                    .submitLabel(.next)
+                                    .onSubmit { focusedField = .endpoint }
                                     #if os(iOS)
                                     .textInputAutocapitalization(.never)
                                     #endif
                             }
-                            inputField("Endpoint URL", placeholder: "https://region1.example-s3-server.com", binding: $endpoint)
-                            inputField("Bucket", placeholder: "my-photos-bucket", binding: $bucket)
-                            inputField("Region", placeholder: "region1", binding: $region)
-                            inputField("Path prefix (optional)", placeholder: "photos/", binding: $pathPrefix)
-                            inputField("Access key", placeholder: "", binding: $accessKey)
-                            secureInputField("Secret key", binding: $secretKey)
+                            inputField("Endpoint URL", placeholder: "https://region1.example-s3-server.com", binding: $endpoint, identifier: "s3-remote.endpoint", field: .endpoint, nextField: .bucket)
+                            inputField("Bucket", placeholder: "my-photos-bucket", binding: $bucket, identifier: "s3-remote.bucket", field: .bucket, nextField: .region)
+                            inputField("Region", placeholder: "region1", binding: $region, identifier: "s3-remote.region", field: .region, nextField: .pathPrefix)
+                            inputField("Path prefix (optional)", placeholder: "photos/", binding: $pathPrefix, identifier: "s3-remote.path-prefix", field: .pathPrefix, nextField: .accessKey)
+                            inputField("Access key", placeholder: "", binding: $accessKey, identifier: "s3-remote.access-key", field: .accessKey, nextField: .secretKey)
+                            secureInputField("Secret key", binding: $secretKey, identifier: "s3-remote.secret-key", field: .secretKey)
 
                             Text("The secret key is stored locally and encrypted with the library password.")
                                 .font(LascoFont.body(13))
@@ -133,59 +140,53 @@ struct AddS3RemoteView: View {
                                     .foregroundStyle(theme.error)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
+
+                            Button("Add Remote") {
+                                addRemote()
+                            }
+                            .buttonStyle(LascoPrimaryButtonStyle())
+                            .frame(maxWidth: .infinity)
+                            .disabled(!isValid || isAdding)
+                            .opacity(isValid && !isAdding ? 1 : 0.45)
                         }
 
-                        Spacer().frame(height: 100)
+                        Spacer().frame(height: 32)
                     }
                     .padding(.horizontal, 32)
                     .padding(.top, 8)
                 }
             }
 
-            VStack(spacing: 0) {
-                Button("Add Remote") {
-                    guard !isAdding else { return }
-                    isAdding = true
-                    addErrorMessage = nil
-                    Task {
-                        var addedRemoteID: FfiRemoteUuid?
-                        do {
-                            let remoteID = try await repository.addRemoteS3(id: name, endpoint: endpoint, bucket: bucket, region: region, pathPrefix: pathPrefix, accessKey: accessKey, secretKey: secretKey)
-                            addedRemoteID = remoteID
-                            try await repository.initializeRemote(id: remoteID)
-                            try await onRemoteReady()
-                            dismiss()
-                            toastManager.show(ok: "\(name): initialized")
-                        } catch {
-                            if let addedRemoteID {
-                                try? await repository.removeRemote(id: addedRemoteID)
-                            }
-                            addErrorMessage = error.localizedDescription
-                        }
-                        isAdding = false
-                    }
-                }
-                .buttonStyle(LascoPrimaryButtonStyle())
-                .frame(maxWidth: .infinity)
-                .disabled(!isValid || isAdding)
-                .opacity(isValid && !isAdding ? 1 : 0.45)
-            }
-            .padding(.horizontal, 32)
-            .padding(.top, 20)
-            .padding(.bottom, 48)
-            .background(
-                LinearGradient(
-                    colors: [theme.bg.opacity(0), theme.bg],
-                    startPoint: .top, endPoint: .bottom
-                )
-            )
         }
-        .onAppear { nameFieldFocused = true }
+        .onAppear { focusedField = .name }
     }
 
     private var isValid: Bool {
         !name.isEmpty && !endpoint.isEmpty && !bucket.isEmpty && !accessKey.isEmpty && !secretKey.isEmpty
             && uploadAcknowledged
+    }
+
+    private func addRemote() {
+        guard !isAdding else { return }
+        isAdding = true
+        addErrorMessage = nil
+        Task {
+            var addedRemoteID: FfiRemoteUuid?
+            do {
+                let remoteID = try await repository.addRemoteS3(id: name, endpoint: endpoint, bucket: bucket, region: region, pathPrefix: pathPrefix, accessKey: accessKey, secretKey: secretKey)
+                addedRemoteID = remoteID
+                try await repository.initializeRemote(id: remoteID)
+                try await onRemoteReady()
+                dismiss()
+                toastManager.show(ok: "\(name): initialized")
+            } catch {
+                if let addedRemoteID {
+                    try? await repository.removeRemote(id: addedRemoteID)
+                }
+                addErrorMessage = error.localizedDescription
+            }
+            isAdding = false
+        }
     }
 
     private func testConnection() {
@@ -206,25 +207,45 @@ struct AddS3RemoteView: View {
         }
     }
 
-    private func inputField(_ label: String, placeholder: String, binding: Binding<String>) -> some View {
+    private func inputField(
+        _ label: String,
+        placeholder: String,
+        binding: Binding<String>,
+        identifier: String,
+        field: Field,
+        nextField: Field
+    ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             FieldLabel(text: label, size: 14)
             TextField(placeholder, text: binding)
                 .textFieldStyle(.plain)
                 .lascoInput()
+                .accessibilityIdentifier(identifier)
                 .autocorrectionDisabled()
+                .focused($focusedField, equals: field)
+                .submitLabel(.next)
+                .onSubmit { focusedField = nextField }
                 #if os(iOS)
                 .textInputAutocapitalization(.never)
                 #endif
         }
     }
 
-    private func secureInputField(_ label: String, binding: Binding<String>) -> some View {
+    private func secureInputField(
+        _ label: String,
+        binding: Binding<String>,
+        identifier: String,
+        field: Field
+    ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             FieldLabel(text: label, size: 14)
             SecureField("", text: binding)
                 .textFieldStyle(.plain)
                 .lascoInput()
+                .accessibilityIdentifier(identifier)
+                .focused($focusedField, equals: field)
+                .submitLabel(.done)
+                .onSubmit { focusedField = nil }
         }
     }
 }

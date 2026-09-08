@@ -373,6 +373,7 @@ struct NewLibraryWizard: View {
                     .padding(.vertical, 12)
                 }
                 .lascoPanel()
+                .accessibilityIdentifier("initial-import.scan-complete")
 
                 if masterKeyCopied {
                     Text("Master key copied")
@@ -658,6 +659,7 @@ struct NewLibraryWizard: View {
                     }
                 }
                 .buttonStyle(LascoPrimaryButtonStyle())
+                .accessibilityIdentifier("initial-import.start")
                 .frame(maxWidth: .infinity)
                 .disabled(initialImportController?.scan == nil)
                 .opacity(initialImportController?.scan == nil ? 0.45 : 1)

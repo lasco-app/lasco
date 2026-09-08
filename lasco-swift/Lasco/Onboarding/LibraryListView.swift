@@ -120,9 +120,12 @@ struct LibraryListView: View {
                     Button("Add existing library") {
                         showExistingLibrarySource = true
                     }
+                    .accessibilityIdentifier("library-list.add-existing")
                     .buttonStyle(.plain)
                     .font(LascoFont.body(15))
                     .foregroundStyle(Color.Lasco.inkMuted)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .contentShape(Rectangle())
                     .confirmationDialog("Where is your library?", isPresented: $showExistingLibrarySource) {
                         Button("Lasco Cloud") { existingLibrarySource = .lascoCloud }
                         Button("S3-compatible storage") { existingLibrarySource = .s3 }
