@@ -314,6 +314,7 @@ struct ContentView: View {
                 ForEach(Array(media.enumerated()), id: \.element.mediaId) { position, item in
                     let isSelected = selection.contains(item.mediaId)
                     MediaGridCell(item: item, isSelected: isSelected)
+                        .accessibilityIdentifier("home.media")
                         .id(item.mediaId)
                         .onTapGesture {
                             if isSelecting {

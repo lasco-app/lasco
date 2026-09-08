@@ -1,0 +1,128 @@
+appId: com.lasco.lasco
+---
+# Add the pre-existing Lasco Cloud library and retain the original demo flow.
+- tapOn:
+    id: "library-list.add-existing"
+    retryTapIfNoChange: true
+- extendedWaitUntil:
+    visible: "Lasco Cloud"
+    timeout: 10000
+- tapOn: "Lasco Cloud"
+
+- tapOn:
+    id: "existing-library.name"
+- inputText: ${MAESTRO_LIBRARY_NAME}
+
+- tapOn:
+    id: "existing-library.username"
+- inputText: ${MAESTRO_LIBRARY_USERNAME}
+
+- tapOn:
+    id: "existing-library.password"
+- inputText: ${MAESTRO_LIBRARY_PASSWORD}
+- pressKey: Enter
+
+- tapOn:
+    id: "existing-library.cloud-email"
+- inputText: ${MAESTRO_CLOUD_EMAIL}
+
+# The app advances its focused field from email to password while keeping the
+# keyboard visible, so the recording never needs to tap a covered field.
+- pressKey: Enter
+- inputText: ${MAESTRO_CLOUD_PASSWORD}
+# SecureField's submit handler clears focus, dismissing the keyboard before
+# Maestro taps the button below it.
+- pressKey: Enter
+
+- tapOn: "Add library"
+- extendedWaitUntil:
+    visible: "HOME"
+    timeout: 30000
+
+# Hold on Home, preview the first item, then continue with the album demo.
+- tapOn:
+    id: "tab.home"
+    repeat: 2
+    delay: 10000
+- tapOn:
+    id: "home.media"
+    index: 0
+- waitForAnimationToEnd:
+    timeout: 5000
+- tapOn:
+    id: "media-detail.info-panel"
+    repeat: 3
+    delay: 5000
+- swipe:
+    direction: LEFT
+    duration: 500
+- waitForAnimationToEnd:
+    timeout: 5000
+- tapOn:
+    id: "media-detail.back"
+
+- tapOn:
+    id: "tab.albums"
+- tapOn: "Create album"
+- tapOn:
+    id: "album.name"
+- inputText: "Holidays"
+- tapOn: "Confirm"
+- extendedWaitUntil:
+    visible: "Holidays"
+    timeout: 10000
+- tapOn: "Holidays"
+
+- tapOn: "Add to album"
+- tapOn: "Add from library…"
+- tapOn:
+    text: "Select media"
+    index: 0
+- tapOn: "Add 1"
+- extendedWaitUntil:
+    notVisible: "Empty album."
+    timeout: 20000
+
+- tapOn:
+    id: "album.media"
+    index: 0
+- swipe:
+    from:
+      id: "media-detail.info-panel"
+    direction: UP
+    duration: 500
+- extendedWaitUntil:
+    visible: "FILE"
+    timeout: 5000
+- swipe:
+    from:
+      id: "media-detail.info-panel"
+    direction: DOWN
+    duration: 500
+- tapOn:
+    id: "media-detail.back"
+
+- tapOn:
+    id: "tab.status"
+- extendedWaitUntil:
+    visible: "STATUS"
+    timeout: 10000
+- scroll
+- tapOn:
+    id: "status.push"
+- extendedWaitUntil:
+    visible: ".*pushed.*"
+    timeout: 60000
+- tapOn:
+    id: "status.push"
+    index: 1
+- extendedWaitUntil:
+    visible: ".*pushed.*"
+    timeout: 60000
+# Keep the completed sync result visible for 50 seconds before fetching.
+- tapOn:
+    id: "tab.status"
+    repeat: 5
+    delay: 10000
+- tapOn:
+    id: "status.fetch"
