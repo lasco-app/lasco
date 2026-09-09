@@ -1,0 +1,32 @@
+# Required shell environment variables:
+#   MAESTRO_LIBRARY_NAME
+#   MAESTRO_LIBRARY_USERNAME
+#   MAESTRO_LIBRARY_PASSWORD
+#   MAESTRO_CLOUD_EMAIL
+#   MAESTRO_CLOUD_PASSWORD
+#   MAESTRO_S3_REMOTE_NAME
+#   MAESTRO_S3_REMOTE_ENDPOINT
+#   MAESTRO_S3_REMOTE_BUCKET
+#   MAESTRO_S3_REMOTE_REGION
+#   MAESTRO_S3_REMOTE_PATH_PREFIX
+#   MAESTRO_S3_REMOTE_ACCESS_KEY
+#   MAESTRO_S3_REMOTE_SECRET_KEY
+
+appId: com.lasco.lasco
+name: iOS Lasco Cloud demo
+---
+- launchApp:
+    clearState: true
+
+- startRecording: "artifacts/ios-lasco-demo"
+
+- tapOn: "Skip"
+- extendedWaitUntil:
+    visible: "New library"
+    timeout: 10000
+
+# The component flows share this recording and app session.
+- runFlow: ios-demo-s3.yaml
+- runFlow: ios-demo-lasco-cloud.yaml
+
+- stopRecording

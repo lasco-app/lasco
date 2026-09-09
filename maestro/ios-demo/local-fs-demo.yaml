@@ -1,0 +1,117 @@
+appId: com.lasco.lasco
+name: iOS local filesystem demo
+---
+- launchApp:
+    clearState: true
+
+# Seed the Simulator Photos library; no manual image transfer is needed.
+- addMedia:
+    - "assets/holidays.jpg"
+
+- startRecording: "artifacts/ios-local-fs-demo"
+
+- tapOn: "Skip"
+- extendedWaitUntil:
+    visible: "New library"
+    timeout: 10000
+
+- tapOn:
+    id: "library-list.settings"
+- tapOn:
+    id: "settings.expert-mode"
+- tapOn: "Done"
+
+- tapOn:
+    id: "library-list.new-library"
+- tapOn:
+    id: "new-library.name"
+- inputText: "Maestro local demo"
+- tapOn:
+    id: "new-library.username"
+- inputText: "maestro"
+- tapOn:
+    id: "new-library.password"
+- inputText: "maestro-demo"
+- tapOn:
+    id: "new-library.confirm-password"
+- inputText: "maestro-demo"
+- pressKey: Enter
+- tapOn: "Create Library"
+
+- extendedWaitUntil:
+    visible: "Save your master key."
+    timeout: 10000
+- tapOn: "I've saved my key"
+
+- extendedWaitUntil:
+    visible: "Add local filesystem remote"
+    timeout: 10000
+- tapOn: "Add local filesystem remote"
+- tapOn:
+    id: "local-fs-remote.name"
+- inputText: "Maestro local remote"
+- tapOn: "Add Remote"
+
+- extendedWaitUntil:
+    visible: "Import your device photos?"
+    timeout: 10000
+- tapOn: "No, not now"
+
+- extendedWaitUntil:
+    visible: "Automatically import new photos?"
+    timeout: 10000
+- tapOn: "No, not now"
+
+- extendedWaitUntil:
+    visible: "HOME"
+    timeout: 10000
+
+- tapOn:
+    id: "tab.albums"
+- tapOn: "Create album"
+- tapOn:
+    id: "album.name"
+- inputText: "Holidays"
+- tapOn: "Confirm"
+- extendedWaitUntil:
+    visible: "Holidays"
+    timeout: 10000
+- tapOn: "Holidays"
+
+- tapOn: "Add to album"
+- tapOn: "Import and add…"
+- tapOn: "Import from Photos…"
+- tapOn:
+    id: "PXGGridLayout-Info"
+    index: 0
+# The Photos picker localizes its Done label, so use its stable top-right position.
+- tapOn:
+    point: "90%, 13%"
+- extendedWaitUntil:
+    notVisible: "Empty album."
+    timeout: 20000
+
+- tapOn:
+    id: "album.media"
+    index: 0
+- swipe:
+    from:
+      id: "media-detail.info-panel"
+    direction: UP
+    duration: 500
+- extendedWaitUntil:
+    visible: "FILE"
+    timeout: 5000
+- swipe:
+    from:
+      id: "media-detail.info-panel"
+    direction: DOWN
+    duration: 500
+- tapOn:
+    id: "media-detail.back"
+
+- tapOn:
+    id: "tab.status"
+- tapOn:
+    id: "status.push"
+- stopRecording

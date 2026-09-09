@@ -26,63 +26,73 @@ struct ContentView: View {
     let session: LibrarySessionState
     let importCoordinator: MediaImportCoordinator
 
-    @State private var model: RecentMediaModel
+    @Bindable var model: RecentMediaModel
+    @Binding private var path: [LibraryDestination]
+    @Binding private var allMediaPosition: Int
+    @Binding private var orphanMediaPosition: Int
 
-    init(repository: LibraryRepository, session: LibrarySessionState, importCoordinator: MediaImportCoordinator, openAlbum: @escaping (FfiAlbum) -> Void) {
+    init(
+        repository: LibraryRepository,
+        session: LibrarySessionState,
+        importCoordinator: MediaImportCoordinator,
+        model: RecentMediaModel,
+        allMediaPosition: Binding<Int>,
+        orphanMediaPosition: Binding<Int>,
+        path: Binding<[LibraryDestination]>,
+        openAlbum: @escaping (FfiAlbum) -> Void
+    ) {
         self.repository = repository
         self.session = session
         self.importCoordinator = importCoordinator
+        self.model = model
+        _allMediaPosition = allMediaPosition
+        _orphanMediaPosition = orphanMediaPosition
+        _path = path
         self.openAlbum = openAlbum
-        _model = State(initialValue: RecentMediaModel(repository: repository))
     }
 
     @State private var showingImportMedia = false
     @State private var showingPhotosPicker = false
     @State private var photosPickerItems: [PhotosPickerItem] = []
-    @State private var path: [LibraryDestination] = []
     @State private var selection: Set<FfiMediaUuid> = []
     @State private var isSelecting = false
     @State private var albumsForMedia: AlbumList? = nil
     @State private var showingAddToAlbumPicker = false
+    @State private var allScrollTarget: FfiMediaUuid?
+    @State private var orphanScrollTarget: FfiMediaUuid?
 
     var body: some View {
         NavigationStack(path: $path) {
             GeometryReader { geo in
                 let columns = geo.size.width > 500 ? 3 : 2
                 let gridColumns = Array(repeating: GridItem(.flexible(), spacing: 3), count: columns)
-                let media = model.media
 
                 ZStack(alignment: .top) {
-                    ScrollView {
-                        #if canImport(UIKit)
-                        LazyVStack(alignment: .leading, spacing: 24, pinnedViews: [.sectionHeaders]) {
-                            Section {
-                                VStack(alignment: .leading, spacing: 24) {
-                                    // mascotBanner
-                                    mediaContent(media: media, gridColumns: gridColumns)
-                                }
-                                .padding(.horizontal, 20)
-                            } header: {
-                                header
-                                    .padding(.horizontal, 20)
-                                    .background(theme.bg)
-                                    .opacity(isSelecting ? 0 : 1)
+                    if model.showingOrphans {
+                        RecentMediaScrollView(
+                            scrollPosition: $orphanScrollTarget,
+                            header: { header.opacity(isSelecting ? 0 : 1) },
+                            content: {
+                                mediaContent(
+                                    media: model.media(for: .orphans),
+                                    mode: .orphans,
+                                    gridColumns: gridColumns
+                                )
                             }
-                        }
-                        #else
-                        VStack(alignment: .leading, spacing: 24) {
-                            header
-                                .padding(.horizontal, 20)
-                                .opacity(isSelecting ? 0 : 1)
-                            // mascotBanner
-                            //     .padding(.horizontal, 20)
-                            mediaContent(media: media, gridColumns: gridColumns)
-                                .padding(.horizontal, 20)
-                        }
-                        #endif
+                        )
+                    } else {
+                        RecentMediaScrollView(
+                            scrollPosition: $allScrollTarget,
+                            header: { header.opacity(isSelecting ? 0 : 1) },
+                            content: {
+                                mediaContent(
+                                    media: model.media(for: .all),
+                                    mode: .all,
+                                    gridColumns: gridColumns
+                                )
+                            }
+                        )
                     }
-                    .background(theme.bg)
-                    .scrollContentBackground(.hidden)
 
                     #if canImport(UIKit)
                     theme.bg
@@ -105,7 +115,7 @@ struct ContentView: View {
             .navigationDestination(for: LibraryDestination.self) { dest in
                 switch dest {
                 case .mediaDetail(let state):
-                    MediaDetailView(source: state.source, startPosition: state.startPosition, repository: repository, onAlbumTap: openAlbum)
+                    MediaDetailView(seed: state.seed, repository: repository, onAlbumTap: openAlbum)
                 }
             }
             .sheet(item: $albumsForMedia) { list in
@@ -169,11 +179,27 @@ struct ContentView: View {
         .onAppear {
             AppLogger.log(.info, "home screen shown — \(model.media.count) media items")
         }
-        .task { await model.start() }
+        .task(id: model.mode) {
+            let mode = model.mode
+            await restoreScrollPosition(for: mode)
+            guard !Task.isCancelled else { return }
+            await model.start()
+        }
         .onChange(of: model.showingOrphans) {
             selection = []
             isSelecting = false
-            Task { await model.load() }
+        }
+        .onChange(of: allScrollTarget) { _, mediaID in
+            rememberScrollPosition(mediaID, mode: .all)
+        }
+        .onChange(of: orphanScrollTarget) { _, mediaID in
+            rememberScrollPosition(mediaID, mode: .orphans)
+        }
+        .onChange(of: model.totalCount(for: .all)) {
+            rememberScrollPosition(allScrollTarget, mode: .all)
+        }
+        .onChange(of: model.totalCount(for: .orphans)) {
+            rememberScrollPosition(orphanScrollTarget, mode: .orphans)
         }
         .environment(repository)
     }
@@ -272,9 +298,13 @@ struct ContentView: View {
     // MARK: Media content
 
     @ViewBuilder
-    private func mediaContent(media: [FfiMediaItem], gridColumns: [GridItem]) -> some View {
+    private func mediaContent(
+        media: [FfiMediaItem],
+        mode: RecentMediaMode,
+        gridColumns: [GridItem]
+    ) -> some View {
         if media.isEmpty {
-            Text(model.showingOrphans ? "No orphan media." : "No media yet.")
+            Text(mode == .orphans ? "No orphan media." : "No media yet.")
                 .font(LascoFont.title())
                 .foregroundStyle(theme.inkSub)
                 .padding(20)
@@ -284,6 +314,8 @@ struct ContentView: View {
                 ForEach(Array(media.enumerated()), id: \.element.mediaId) { position, item in
                     let isSelected = selection.contains(item.mediaId)
                     MediaGridCell(item: item, isSelected: isSelected)
+                        .accessibilityIdentifier("home.media")
+                        .id(item.mediaId)
                         .onTapGesture {
                             if isSelecting {
                                 if selection.contains(item.mediaId) {
@@ -293,10 +325,12 @@ struct ContentView: View {
                                     selection.insert(item.mediaId)
                                 }
                             } else {
-                                path.append(.mediaDetail(MediaDetailState(
-                                    source: model.showingOrphans ? .orphansByDate : .homeByDate,
-                                    startPosition: position
-                                )))
+                                path.append(.mediaDetail(MediaDetailState(seed: MediaGallerySeed(
+                                    source: mode == .orphans ? .orphansByDate : .homeByDate,
+                                    position: position,
+                                    item: .media(item),
+                                    totalCount: model.totalCount(for: mode)
+                                ))))
                             }
                         }
                         .onLongPressGesture {
@@ -318,13 +352,42 @@ struct ContentView: View {
                         #endif
                         .onAppear {
                             guard item.mediaId == media.last?.mediaId else { return }
-                            Task { await model.loadMore() }
+                            Task { await model.loadMore(mode: mode) }
                         }
                 }
             }
+            .scrollTargetLayout()
         }
 
         Spacer(minLength: 40)
+    }
+
+    private func restoreScrollPosition(for mode: RecentMediaMode) async {
+        let savedPosition = switch mode {
+        case .all: allMediaPosition
+        case .orphans: orphanMediaPosition
+        }
+        let target = await model.scrollTarget(at: savedPosition, mode: mode)
+        guard !Task.isCancelled, model.mode == mode else { return }
+        switch mode {
+        case .all:
+            allScrollTarget = target
+        case .orphans:
+            orphanScrollTarget = target
+        }
+    }
+
+    private func rememberScrollPosition(_ mediaID: FfiMediaUuid?, mode: RecentMediaMode) {
+        guard let mediaID,
+              let position = model.media(for: mode).firstIndex(where: { $0.mediaId == mediaID }) else {
+            return
+        }
+        switch mode {
+        case .all:
+            allMediaPosition = position
+        case .orphans:
+            orphanMediaPosition = position
+        }
     }
 
     // MARK: Open album

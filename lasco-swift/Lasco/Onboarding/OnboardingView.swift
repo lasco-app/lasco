@@ -26,7 +26,7 @@ struct OnboardingView: View {
     @State private var cloudLibraryName = ""
     @State private var cloudStep = 0
 
-    @State private var showAddExistingS3Sheet = false
+    @State private var existingLibrarySource: ExistingLibrarySource?
     @State private var libraryCountBeforeAddExisting = 0
 
     var body: some View {
@@ -289,18 +289,25 @@ struct OnboardingView: View {
             bottomBar {
                 Button("S3-compatible storage") {
                     libraryCountBeforeAddExisting = directory.libraries.count
-                    showAddExistingS3Sheet = true
+                    existingLibrarySource = .s3
                 }
                     .buttonStyle(LascoPrimaryButtonStyle())
                     .frame(maxWidth: .infinity)
-                    .sheet(isPresented: $showAddExistingS3Sheet, onDismiss: {
-                        if directory.libraries.count > libraryCountBeforeAddExisting { directory.showOnboarding = false }
-                    }) {
-                        AddExistingLibraryView()
-                            .environment(directory)
-                            .environment(toastManager)
-                    }
+
+                Button("Lasco Cloud") {
+                    libraryCountBeforeAddExisting = directory.libraries.count
+                    existingLibrarySource = .lascoCloud
+                }
+                .buttonStyle(LascoSecondaryButtonStyle())
+                .frame(maxWidth: .infinity)
             }
+        }
+        .sheet(item: $existingLibrarySource, onDismiss: {
+            if directory.libraries.count > libraryCountBeforeAddExisting { directory.showOnboarding = false }
+        }) { source in
+            AddExistingLibraryView(source: source)
+                .environment(directory)
+                .environment(toastManager)
         }
     }
 

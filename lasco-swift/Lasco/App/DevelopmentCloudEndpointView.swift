@@ -3,11 +3,10 @@ import SwiftUI
 
 struct DevelopmentCloudEndpointView: View {
     private static let endpointInputPrefix = "https://"
-    private static let lascoCloudURL = "https://cloud.getlasco.app"
 
     @Environment(\.lascoTheme) private var theme
     @Binding var isPresented: Bool
-    @State private var endpoint = "https://"
+    @State private var endpoint = DevelopmentCloudEndpoint.url
 
     var body: some View {
         ZStack {
@@ -43,7 +42,7 @@ struct DevelopmentCloudEndpointView: View {
     }
 
     private func useLascoCloud() {
-        endpoint = Self.lascoCloudURL
+        endpoint = DevelopmentCloudEndpoint.defaultURL
     }
 
     private var isEndpointIncomplete: Bool {

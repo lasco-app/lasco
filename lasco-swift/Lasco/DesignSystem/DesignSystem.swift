@@ -604,6 +604,8 @@ struct FloatingTabBar: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(tab.label)
+                .accessibilityIdentifier("tab.\(tab.label.lowercased())")
             }
         }
         .background(theme.surfaceAlt)

@@ -8,6 +8,8 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -45,6 +47,7 @@ import kotlinx.serialization.Serializable
 
 private const val PRIVACY_POLICY_URL = "https://getlasco.app/privacy-policy"
 private const val TERMS_OF_SERVICE_URL = "https://getlasco.app/terms-of-service"
+private val MANAGE_SECTION_SPACING = 64.dp
 
 @Serializable
 private data object ManageRootKey : NavKey
@@ -180,6 +183,7 @@ private fun ManageRootScreen(
         modifier = modifier
             .fillMaxSize()
             .background(colors.bg)
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp),
     ) {
         Column(modifier = Modifier.padding(top = 20.dp, bottom = 16.dp)) {
@@ -201,7 +205,7 @@ private fun ManageRootScreen(
             )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(MANAGE_SECTION_SPACING))
 
         if (cloudConnected) {
             Column(modifier = Modifier.fillMaxWidth().background(colors.pink)) {
@@ -213,7 +217,7 @@ private fun ManageRootScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(MANAGE_SECTION_SPACING))
         }
 
         Column(modifier = Modifier.fillMaxWidth().lascoPanel()) {
@@ -225,13 +229,13 @@ private fun ManageRootScreen(
         }
 
         if (expertMode) {
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(MANAGE_SECTION_SPACING))
             Column(modifier = Modifier.fillMaxWidth().lascoPanel()) {
                 ManageRow(label = "Operations", onClick = onOpenOperations)
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(MANAGE_SECTION_SPACING))
 
         Column(modifier = Modifier.fillMaxWidth().lascoPanel()) {
             ManageRow(label = "Licenses", onClick = { showLicenses = true })
@@ -247,7 +251,7 @@ private fun ManageRootScreen(
             )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(MANAGE_SECTION_SPACING))
 
         Column(modifier = Modifier.fillMaxWidth().lascoPanel()) {
             ManageRow(
