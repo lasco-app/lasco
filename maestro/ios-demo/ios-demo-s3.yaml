@@ -1,0 +1,125 @@
+appId: com.lasco.lasco
+---
+# Create a fresh S3-backed library and import the device photo library.
+- tapOn: "New library"
+- tapOn:
+    id: "new-library.name"
+- inputText: "Maestro S3 demo"
+- pressKey: Enter
+- tapOn:
+    id: "new-library.username"
+- inputText: "maestro"
+- pressKey: Enter
+- tapOn:
+    id: "new-library.password"
+- inputText: "maestro123"
+- pressKey: Enter
+- tapOn:
+    id: "new-library.confirm-password"
+- inputText: "maestro123"
+- pressKey: Enter
+- tapOn: "Create Library"
+- extendedWaitUntil:
+    visible: "Save your master key."
+    timeout: 10000
+- tapOn: "I've saved my key"
+- extendedWaitUntil:
+    visible: "Add S3-compatible remote"
+    timeout: 10000
+- tapOn: "Add S3-compatible remote"
+- tapOn:
+    id: "s3-remote.name"
+- inputText: ${MAESTRO_S3_REMOTE_NAME}
+- pressKey: Enter
+- inputText: ${MAESTRO_S3_REMOTE_ENDPOINT}
+- pressKey: Enter
+- inputText: ${MAESTRO_S3_REMOTE_BUCKET}
+- pressKey: Enter
+- inputText: ${MAESTRO_S3_REMOTE_REGION}
+- pressKey: Enter
+- inputText: ${MAESTRO_S3_REMOTE_PATH_PREFIX}
+- pressKey: Enter
+- inputText: ${MAESTRO_S3_REMOTE_ACCESS_KEY}
+- pressKey: Enter
+- inputText: ${MAESTRO_S3_REMOTE_SECRET_KEY}
+- pressKey: Enter
+- tapOn: "I understand this app will upload my photos to the S3 bucket configured above."
+- tapOn: "Add Remote"
+- extendedWaitUntil:
+    visible: "Import your device photos?"
+    timeout: 30000
+- tapOn: "Yes, import my photos"
+- extendedWaitUntil:
+    visible: "Access your photos."
+    timeout: 10000
+- tapOn: "Continue"
+- runFlow:
+    when:
+      visible: "Allow Full Access"
+    commands:
+      - tapOn: "Allow Full Access"
+- extendedWaitUntil:
+    visible: "Import your photo library?"
+    timeout: 10000
+- tapOn:
+    id: "initial-import.start"
+- extendedWaitUntil:
+    visible: "All done."
+    timeout: 60000
+- tapOn: "Continue"
+- extendedWaitUntil:
+    visible: "Automatically import new photos?"
+    timeout: 10000
+- tapOn: "Yes, auto-import new photos"
+- extendedWaitUntil:
+    visible: "Auto-import is on"
+    timeout: 10000
+- tapOn: "Get started"
+- extendedWaitUntil:
+    visible: "HOME"
+    timeout: 10000
+
+# Add the imported photos to an album.
+- tapOn:
+    id: "tab.albums"
+- tapOn: "Create album"
+- tapOn:
+    id: "album.name"
+- inputText: "Holidays"
+- tapOn: "Confirm"
+- extendedWaitUntil:
+    visible: "Holidays"
+    timeout: 10000
+- tapOn: "Holidays"
+- tapOn: "Add to album"
+- tapOn: "Add from library…"
+- tapOn:
+    text: "Select media"
+    index: 0
+- tapOn:
+    text: "Select media"
+    index: 1
+- tapOn: "Add 2"
+- extendedWaitUntil:
+    notVisible: "Empty album."
+    timeout: 10000
+
+# Back up the new library, then leave it before the existing Lasco Cloud flow.
+- tapOn:
+    id: "tab.status"
+- extendedWaitUntil:
+    visible: "STATUS"
+    timeout: 10000
+- tapOn:
+    id: "status.push"
+- extendedWaitUntil:
+    visible: ".*pushed.*"
+    timeout: 60000
+- tapOn:
+    id: "status.fetch"
+- tapOn:
+    id: "tab.manage"
+- tapOn: "Sign out current library"
+- extendedWaitUntil:
+    visible: "Add existing library"
+    timeout: 10000

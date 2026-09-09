@@ -60,6 +60,7 @@ protocol LibraryRepositoryProtocol: Sendable {
     func thumbnailAsync(mediaID: FfiMediaUuid) async throws -> Data
     func mediaBytesAsync(mediaID: FfiMediaUuid) async throws -> Data
     func nativeMediaBytesAsync(mediaID: FfiMediaUuid) async throws -> Data
+    func materializedMediaURL(mediaID: FfiMediaUuid, originalFilename: String) async throws -> URL
 
     func renameMedia(id: FfiMediaUuid, name: String?) async throws
     func deleteMedia(id: FfiMediaUuid) async throws
@@ -139,6 +140,7 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
     private let library: FfiLibrary
     private let changeHub = LibraryChangeHub()
     private var closed = false
+    private var materializingMedia: [String: Task<URL, Error>] = [:]
 
     let libraryID: FfiLibraryId
     let appSupportDirectory: String?
@@ -465,6 +467,49 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
             // finished with the no-copy buffer.
             withExtendedLifetime(nativeBytes) {}
         })
+    }
+
+    /// Materializes plaintext media into the app cache without returning it as
+    /// Foundation `Data`. This keeps large videos on the Rust side of the FFI
+    /// boundary while AVFoundation and the share sheet consume a file URL.
+    func materializedMediaURL(mediaID: FfiMediaUuid, originalFilename: String) async throws -> URL {
+        try ensureOpen()
+        let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("lasco-media", isDirectory: true)
+        let fileExtension = URL(fileURLWithPath: originalFilename).pathExtension
+        let filename = fileExtension.isEmpty ? mediaID.value : "\(mediaID.value).\(fileExtension)"
+        let destination = directory.appendingPathComponent(filename, isDirectory: false)
+
+        if FileManager.default.fileExists(atPath: destination.path()) {
+            return destination
+        }
+
+        let key = destination.path()
+        if let task = materializingMedia[key] {
+            return try await task.value
+        }
+
+        let task = Task { [library, appSupportDirectory, destination] in
+            let staging = destination.deletingLastPathComponent()
+                .appendingPathComponent(".\(UUID().uuidString).part", isDirectory: false)
+            defer { try? FileManager.default.removeItem(at: staging) }
+            _ = try await library.materializeMediaToPathAsync(
+                mediaId: mediaID,
+                appSupportDir: appSupportDirectory,
+                destinationPath: staging.path
+            )
+            try FileManager.default.moveItem(at: staging, to: destination)
+            return destination
+        }
+        materializingMedia[key] = task
+        do {
+            let result = try await task.value
+            materializingMedia[key] = nil
+            return result
+        } catch {
+            materializingMedia[key] = nil
+            throw error
+        }
     }
 
     func renameMedia(id: FfiMediaUuid, name: String?) async throws {
@@ -922,6 +967,9 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     func thumbnailAsync(mediaID: FfiMediaUuid) async throws -> Data { try await storage.thumbnailAsync(mediaID: mediaID) }
     func mediaBytesAsync(mediaID: FfiMediaUuid) async throws -> Data { try await storage.mediaBytesAsync(mediaID: mediaID) }
     func nativeMediaBytesAsync(mediaID: FfiMediaUuid) async throws -> Data { try await storage.nativeMediaBytesAsync(mediaID: mediaID) }
+    func materializedMediaURL(mediaID: FfiMediaUuid, originalFilename: String) async throws -> URL {
+        try await storage.materializedMediaURL(mediaID: mediaID, originalFilename: originalFilename)
+    }
     func renameMedia(id: FfiMediaUuid, name: String?) async throws { try await storage.renameMedia(id: id, name: name) }
     func deleteMedia(id: FfiMediaUuid) async throws { try await storage.deleteMedia(id: id) }
     func addMediaToAlbum(albumID: FfiAlbumUuid, mediaID: FfiMediaUuid) async throws { try await storage.addMediaToAlbum(albumID: albumID, mediaID: mediaID) }
