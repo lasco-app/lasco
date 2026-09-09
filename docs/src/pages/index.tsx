@@ -199,11 +199,14 @@ function ScreenshotScrollSection() {
                   />
                 )}
               </div>
-              {desc && (
-                <p className={`${styles.featureDesc} ${idx === 0 ? styles.introDesc : ''}`}>
-                  {desc}
-                </p>
-              )}
+              {desc && (idx === 0 ? (
+                <div className={styles.introDownload}>
+                  <GooglePlayBadge />
+                  <p className={`${styles.featureDesc} ${styles.introDesc}`}>{desc}</p>
+                </div>
+              ) : (
+                <p className={styles.featureDesc}>{desc}</p>
+              ))}
             </div>
           ))}
         </div>
@@ -264,6 +267,29 @@ function WhyLascoSection() {
         </ul>
       </div>
     </section>
+  );
+}
+
+function GooglePlaySection() {
+  return (
+    <section className={styles.googlePlaySection}>
+      <div className="container">
+        <GooglePlayBadge />
+      </div>
+    </section>
+  );
+}
+
+function GooglePlayBadge() {
+  return (
+    <a
+      className={styles.googlePlayBadge}
+      href="https://play.google.com/store/apps/details?id=com.lasco.lasco"
+      target="_blank"
+      rel="noreferrer"
+      aria-label="Get Lasco on Google Play">
+      <img src="/img/google-play-badge.svg" alt="Get it on Google Play" />
+    </a>
   );
 }
 
@@ -468,10 +494,10 @@ export default function Home(): ReactNode {
       description="Keep your memories usable, safe and private.">
       <main>
         <h1 className={styles.heroTitle}>Private photo management. No server to deploy.</h1>
-        <p className={styles.mobileIntroText}>{SCREENSHOT_PANELS[0].desc}</p>
         <div style={{width: '100%', aspectRatio: '1448/360', display: 'block'}} />
         <ScreenshotScrollSection />
         <WhyLascoSection />
+        <GooglePlaySection />
         <LascoCloudSection />
         <div style={{display: 'flex', justifyContent: 'center', padding: '120px 0 200px'}}>
           <RiveMascot
