@@ -111,12 +111,15 @@
 .solutionComparison {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
   max-width: 1024px;
   margin: 0 auto;
 }
 
 .solutionColumn {
-  padding: 0 clamp(2rem, 5vw, 5rem) 0 0;
+  padding: clamp(1.5rem, 3vw, 2.25rem);
+  background: #f6dfdc;
+  border: 2px solid #e6b8b1;
   color: var(--lasco-ink-sub);
   font-family: 'Space Grotesk', sans-serif;
   font-size: 18px;
@@ -124,8 +127,8 @@
 }
 
 .lascoSolutionColumn {
-  padding: 0 0 0 clamp(2rem, 5vw, 5rem);
-  border-left: 2px solid var(--lasco-line-soft);
+  background: #e1eed8;
+  border-color: #b8d2a9;
 }
 
 .solutionColumn p {
@@ -203,13 +206,11 @@
   }
 
   .lascoSolutionColumn {
-    padding: 2.5rem 0 0;
-    border-top: 2px solid var(--lasco-line-soft);
-    border-left: 0;
+    padding: clamp(1.5rem, 3vw, 2.25rem);
   }
 
   .solutionColumn {
-    padding-right: 0;
+    padding: clamp(1.5rem, 3vw, 2.25rem);
   }
 
   .productStoryCopy {
