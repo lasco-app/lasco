@@ -125,19 +125,19 @@ const config: Config = {
             // },
           ],
         },
-        // {
-        //   title: 'COMPARISONS',
-        //   items: [
-        //     {
-        //       label: 'Compare',
-        //       to: '/compared',
-        //     },
-        //     {
-        //       label: 'Lasco vs. Ente',
-        //       to: '/vs-ente',
-        //     },
-        //   ],
-        // },
+        {
+          title: 'COMPARISONS',
+          items: [
+            {
+              label: 'Lasco vs. Immich',
+              to: '/lasco-vs-immich',
+            },
+            {
+              label: 'Lasco vs. Ente',
+              to: '/lasco-vs-ente',
+            },
+          ],
+        },
         {
           title: 'COMMUNITY',
           items: [

@@ -1,0 +1,35 @@
+---
+title: Lasco vs. Ente
+---
+
+# Lasco vs. Ente
+
+Lasco and Ente both offer private photo backup with end-to-end encryption, but they use different storage models.
+
+Ente is a managed photo cloud service. It stores your encrypted library on its infrastructure, replicating it across three cloud locations. Ente provides the storage, web app, desktop apps, sharing, and photo-library features.
+
+Lasco, on the other hand, is only a mobile app. It connects directly to file storage you choose and encrypts your library before upload. There is no Lasco server to deploy or maintain.
+
+## Comparison
+
+| | Lasco | Ente |
+| --- | --- | --- |
+| **How it works** | Mobile app that connects directly to your storage | Managed, end-to-end encrypted photo cloud service, used through its web access or companion app |
+| **Where photos live** | Storage you choose: an S3 bucket, Lasco Cloud, and soon a NAS or USB drive | Ente's managed cloud storage, replicated across three locations |
+| **Server to set up** | No | No |
+| **Server and database maintenance** | No | No |
+| **Backups** | Add a dedicated backup remote in Lasco. A backup is no different from a usual sync. | Ente manages three encrypted replicas of your library |
+| **Replication** | Easily sync the same library to several S3 buckets or NAS devices in different locations | Ente manages replication across its three cloud locations |
+| **Cloud option** | Optional Lasco Cloud remote, the easiest way to get two S3 remotes in different locations | Ente Cloud is the recommended approach; self-hosting is technically possible |
+| **Encryption** | Photos and metadata are encrypted on your device before upload | Photos and metadata are end-to-end encrypted |
+| **Web app and sharing** | Not available today | Full web app, desktop apps, sharing, and multi-user features |
+| **Smart search and ML analysis** | Planned | Available |
+| **Maturity** | Still early, with a focused and limited feature set | Robust and feature-complete |
+
+## Which one should you choose?
+
+Choose **Lasco** if you want private, encrypted photo backup using storage you select and control. It is a good fit if you want to replicate your library across your own S3 storage, NAS devices, or, soon, USB backups without managing a server.
+
+Choose **Ente** if you want a mature, managed and end-to-end encrypted photo service. It is the better fit if you want desktop and web apps, sharing, smart search, and managed replication without configuring your own storage.
+
+Ente is much more mature today. Lasco is still early, and useful features such as ML photo analysis are on the roadmap.
