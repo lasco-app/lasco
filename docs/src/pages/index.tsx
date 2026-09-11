@@ -34,181 +34,83 @@ function RiveMascot({src, className}: {src: string; className?: string}) {
 }
 
 // =============================================
-// Screenshot Scroll Section
+// Main sync visual
 // =============================================
 
-const SCREENSHOT_PANELS = [
-  {
-    id: 'intro',
-    img: 'https://public.getlasco.app/screen_main.webp',
-    title: '',
-    desc: 'Lasco is a client-side app that syncs your photos to S3, Lasco Cloud, and soon a NAS or hard drive.',
-  },
-  {
-    id: 'timeline',
-    img: 'https://public.getlasco.app/screen_remote.webp',
-    title: 'Sync your photos to S3',
-    desc: 'Push your library to S3. Everything is stored as regular (encrypted) files!',
-  },
-  {
-    id: 'albums',
-    img: 'https://public.getlasco.app/screen_album2.webp',
-    title: 'Organize your photos',
-    desc: 'Organize your photos into albums that can be nested.',
-  },
-  {
-    id: 'shared',
-    img: 'https://public.getlasco.app/user_list.png',
-    title: 'Share with loved ones',
-    desc: 'Add multiple users to your library and build memories together.',
-  },
-  {
-    id: 'encrypted',
-    img: 'https://public.getlasco.app/screen_album2.webp',
-    title: 'Encrypted on your device',
-    desc: 'Everything is encrypted client-side before it leaves. Servers store only ciphertext.',
-  },
-];
-
-function ScreenshotScrollSection() {
-  const [activeIdx, setActiveIdx] = React.useState(0);
-  const [scrollProgress, setScrollProgress] = React.useState(0);
-  const [storageOpacity, setStorageOpacity] = React.useState(0);
-  const panelRefs = React.useRef<(HTMLDivElement | null)[]>([]);
-  const sectionRef = React.useRef<HTMLElement>(null);
-
-  React.useEffect(() => {
-    const obs = new IntersectionObserver(entries => {
-      for (const e of entries) {
-        if (e.isIntersecting) {
-          const idx = Number(e.target.getAttribute('data-idx'));
-          setActiveIdx(idx);
-        }
-      }
-    }, {threshold: 0.5});
-    for (const ref of panelRefs.current) {
-      if (ref) obs.observe(ref);
-    }
-    return () => obs.disconnect();
-  }, []);
-
-  React.useEffect(() => {
-    const section = sectionRef.current;
-    if (!section) return;
-    const handleScroll = () => {
-      const sectionTop = section.getBoundingClientRect().top + window.scrollY;
-      const progress = Math.min(Math.max((window.scrollY - sectionTop) / 400, 0), 1);
-      setScrollProgress(progress);
-
-      const timelinePanel = panelRefs.current[1];
-      if (timelinePanel) {
-        const rect = timelinePanel.getBoundingClientRect();
-        const panelCenter = rect.top + rect.height / 2;
-        const viewportCenter = window.innerHeight / 2;
-        const distance = Math.abs(panelCenter - viewportCenter);
-        const signedDistance = panelCenter - viewportCenter;
-        const fadeRange = signedDistance > 0
-          ? window.innerHeight * 0.5
-          : window.innerHeight * 0.2;
-        const t = Math.max(0, 1 - Math.abs(signedDistance) / fadeRange);
-        setStorageOpacity(t * t * (3 - 2 * t));
-      }
-    };
-    window.addEventListener('scroll', handleScroll, {passive: true});
-    handleScroll();
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  const scale = 1.1 - scrollProgress * 0.1;
-  const tx = (1 - scrollProgress) * 25;
-  const imgTransform = `translateX(${tx}vw) scale(${scale})`;
-  // Only mount the storage image while it is fading in on the timeline panel.
-  // When it is absent the screenshot is the stage's only child, so the flex
-  // centering lands it in the true middle of the left column at every width.
-  const storageVisible = storageOpacity > 0.05;
-
+function StorageDiagram() {
   return (
-    <section className={styles.screenshotScrollSection} ref={sectionRef}>
-      <div className={styles.mascotFlamingoWrap}>
-        <RiveMascot
-          src="/img/macot_hero_anim.riv"
-          className={styles.mascotFlamingo}
+    <section className={styles.storageDiagramSection} aria-label="Lasco connects directly to your storage">
+      <div className="container">
+        <img
+          src="/img/mascot_main_anim2.png"
+          alt="The Lasco mascot using the app to sync photos directly with a NAS, S3 storage, and an external drive"
+          className={styles.mainSyncVisual}
         />
       </div>
-      <div className={styles.screenshotScrollWrap}>
-        <div className={styles.screenshotScrollLeft}>
-          <div className={styles.screenshotStage}>
-            <img
-              src={SCREENSHOT_PANELS[activeIdx].img}
-              alt={SCREENSHOT_PANELS[activeIdx].title}
-              className={styles.screenshotScrollImg}
-              style={{transform: imgTransform, transformOrigin: 'top center'}}
-            />
-            {storageVisible && (
-              <img
-                src="/img/storage.png"
-                aria-hidden="true"
-                className={styles.stickyStorage}
-                style={{opacity: storageOpacity}}
-              />
-            )}
+    </section>
+  );
+}
+
+function DownloadAppPrompt() {
+  return (
+    <section className={styles.downloadAppPrompt} aria-label="Download Lasco for Android">
+      <div className="container">
+        <div className={styles.downloadAppPromptInner}>
+          <GooglePlayBadge />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function EasySyncSection() {
+  return (
+    <section className={styles.productStorySection} aria-labelledby="easy-sync-title">
+      <div className="container">
+        <h2 id="easy-sync-title" className={styles.productStoryTitle}>
+          The easiest way to sync your photo library to storage you control
+        </h2>
+        <div className={styles.solutionComparison}>
+          <div className={styles.solutionColumn}>
+            <h3 className={styles.solutionLabel}>Existing solutions</h3>
+            <ol className={styles.setupSteps}>
+              <li>Follow a long tutorial to install a photo server on your NAS or home server.</li>
+              <li>Set up Docker, storage paths, and configuration files.</li>
+              <li>Keep the server and its services running.</li>
+              <li>Handle updates and database migrations when they arrive.</li>
+              <li>Set up and manage backups outside the photo app.</li>
+            </ol>
+          </div>
+          <div className={`${styles.solutionColumn} ${styles.lascoSolutionColumn}`}>
+            <h3 className={styles.solutionLabel}>With Lasco</h3>
+            <ol className={styles.setupSteps}>
+              <li>Download the app on your phone.</li>
+              <li>Connect your NAS or S3 bucket.</li>
+              <li>Sync.</li>
+            </ol>
           </div>
         </div>
-        <div className={styles.screenshotScrollRight}>
-          {SCREENSHOT_PANELS.map(({id, title, desc, img}, idx) => (
-            <div
-              key={id}
-              className={`${styles.screenshotScrollPanel} ${idx === 0 ? styles.screenshotScrollPanelFirst : ''}`}
-              data-idx={idx}
-              ref={el => { panelRefs.current[idx] = el; }}
-            >
-              <div className={styles.mobilePanelImages}>
-                <img src={img} alt={title || 'Lasco screenshot'} className={styles.mobilePanelScreenshot} />
-                {idx === 1 && (
-                  <img src="/img/storage.png" aria-hidden="true" className={styles.mobilePanelStorage} />
-                )}
-              </div>
-              <div className={styles.panelBottom}>
-                {title && <h2 className={styles.featureTitle}>{title}</h2>}
-                {idx === 1 && (
-                  <img
-                    src="https://public.getlasco.app/mascot_cloud.png"
-                    aria-hidden="true"
-                    className={styles.panelMascot}
-                  />
-                )}
-                {idx === 2 && (
-                  <img
-                    src="https://public.getlasco.app/mascot_album.png"
-                    aria-hidden="true"
-                    className={styles.panelMascot}
-                  />
-                )}
-                {idx === 3 && (
-                  <img
-                    src="https://public.getlasco.app/mascot_love.png"
-                    aria-hidden="true"
-                    className={styles.panelMascot}
-                  />
-                )}
-                {idx === 4 && (
-                  <img
-                    src="https://public.getlasco.app/mascot_encrypted_0_5x.png"
-                    aria-hidden="true"
-                    className={styles.panelMascot}
-                  />
-                )}
-              </div>
-              {desc && (idx === 0 ? (
-                <div className={styles.introDownload}>
-                  <GooglePlayBadge />
-                  <p className={`${styles.featureDesc} ${styles.introDesc}`}>{desc}</p>
-                </div>
-              ) : (
-                <p className={styles.featureDesc}>{desc}</p>
-              ))}
-            </div>
-          ))}
+      </div>
+    </section>
+  );
+}
+
+function BackupRemoteSection() {
+  return (
+    <section className={`${styles.productStorySection} ${styles.backupSection}`} aria-labelledby="backup-remote-title">
+      <div className="container">
+        <h2 id="backup-remote-title" className={styles.productStoryTitle}>
+          A backup is just another remote
+        </h2>
+        <div className={styles.backupContent}>
+          <img
+            src="/img/phone_ssd.png"
+            alt="A phone connected directly to an external SSD"
+            className={styles.backupVisual}
+          />
+          <div className={styles.productStoryCopy}>
+            <p>Plug in a USB drive, add it as a remote, and sync.</p>
+          </div>
         </div>
       </div>
     </section>
@@ -223,17 +125,12 @@ const WHY_ITEMS = [
   {
     id: 'no-server',
     title: 'No server to self-host',
-    desc: 'Lasco syncs directly to file servers, NAS, or cloud storage. No backend to deploy and maintain.',
-  },
-  {
-    id: 'sync-primitives',
-    title: 'One sync model for everything',
-    desc: 'The same primitives push to your cloud provider and back up to a local hard drive.',
+    desc: 'Syncs directly from the app to the storage you control. No backend to deploy and maintain.',
   },
   {
     id: 'multi-device',
     title: 'Multi-device',
-    desc: 'Lasco uses CRDTs so edits from every device merge nicely.',
+    desc: 'Changes from all your devices merge safely thanks to CRDT algorithms.',
   },
   {
     id: 'open-source',
@@ -250,18 +147,45 @@ const WHY_ITEMS = [
     title: 'E2EE',
     desc: 'Your photos are encrypted on your device before they leave.',
   },
+  {
+    id: 'multiple-users',
+    title: 'Multiple users',
+    desc: 'Add people to your library and build memories together.',
+    screenshot: 'https://public.getlasco.app/user_list.png',
+  },
 ];
 
 function WhyLascoSection() {
   return (
     <section className={styles.whySection}>
       <div className="container">
-        <h2 className={styles.whySectionTitle}>What makes Lasco different</h2>
         <ul className={styles.whyList}>
-          {WHY_ITEMS.map(({ id, title, desc }) => (
+          {WHY_ITEMS.map(({ id, title, desc, screenshot }) => (
             <li key={id} className={styles.whyItem}>
               <span className={styles.whyItemTitle}>{title}</span>
               <span className={styles.whyItemDesc}>{desc}</span>
+              {id === 'no-server' && (
+                <ul className={styles.noServerRemoteList}>
+                  <li>S3 bucket</li>
+                  <li>NAS <span className={styles.comingSoon}>Coming soon</span></li>
+                  <li>USB drive <span className={styles.comingSoon}>Coming soon</span></li>
+                  <li>Lasco Cloud</li>
+                </ul>
+              )}
+              {id === 'native' && (
+                <img
+                  src="/img/screen.webp"
+                  alt="Lasco photo library on a phone"
+                  className={styles.nativeAppScreenshot}
+                />
+              )}
+              {id === 'multiple-users' && screenshot && (
+                <img
+                  src={screenshot}
+                  alt="Lasco library member list"
+                  className={styles.multipleUsersScreenshot}
+                />
+              )}
             </li>
           ))}
         </ul>
@@ -270,11 +194,48 @@ function WhyLascoSection() {
   );
 }
 
-function GooglePlaySection() {
+function GetStartedSection() {
   return (
-    <section className={styles.googlePlaySection}>
+    <section className={styles.getStartedSection} aria-labelledby="get-started-title">
       <div className="container">
-        <GooglePlayBadge />
+        <div className={styles.getStartedCard}>
+          <h2 id="get-started-title" className={styles.getStartedTitle}>Get started</h2>
+          <ol className={styles.getStartedSteps}>
+            <li className={styles.getStartedStep}>
+              <span className={styles.getStartedMarker} aria-hidden="true" />
+              <div>
+                <h3>Download the app</h3>
+                <GooglePlayBadge />
+              </div>
+            </li>
+            <li className={styles.getStartedStep}>
+              <span className={styles.getStartedMarker} aria-hidden="true" />
+              <div>
+                <h3>Set up a remote</h3>
+                <ul>
+                  <li>S3 bucket</li>
+                  <li>NAS <span className={styles.comingSoon}>Coming soon</span></li>
+                  <li>USB drive <span className={styles.comingSoon}>Coming soon</span></li>
+                  <li>Lasco Cloud</li>
+                </ul>
+              </div>
+            </li>
+            <li className={styles.getStartedStep}>
+              <span className={styles.getStartedMarker} aria-hidden="true" />
+              <div>
+                <h3>Import your library <span className={styles.optional}>Optional</span></h3>
+                <p>On iOS, import iCloud or local photos through the app. On Android, import photos from your device.</p>
+              </div>
+            </li>
+            <li className={styles.getStartedStep}>
+              <span className={styles.getStartedMarker} aria-hidden="true" />
+              <div>
+                <h3>Keep using your library</h3>
+                <p>Add new photos, organize them, sync, and back up.</p>
+              </div>
+            </li>
+          </ol>
+        </div>
       </div>
     </section>
   );
@@ -356,7 +317,6 @@ function LascoCloudSection() {
               <ul className={styles.cloudFeatures}>
                 <li>50 GB of encrypted photo storage</li>
                 <li>Two remote copies of your library (2 × 50 GB)</li>
-                <li>Works seamlessly with Lasco</li>
               </ul>
             </div>
           </div>
@@ -494,10 +454,12 @@ export default function Home(): ReactNode {
       description="Keep your memories usable, safe and private.">
       <main>
         <h1 className={styles.heroTitle}>Private photo management. No server to deploy.</h1>
-        <div style={{width: '100%', aspectRatio: '1448/360', display: 'block'}} />
-        <ScreenshotScrollSection />
+        <StorageDiagram />
+        <DownloadAppPrompt />
+        <EasySyncSection />
+        <BackupRemoteSection />
         <WhyLascoSection />
-        <GooglePlaySection />
+        <GetStartedSection />
         <LascoCloudSection />
         <div style={{display: 'flex', justifyContent: 'center', padding: '120px 0 200px'}}>
           <RiveMascot
