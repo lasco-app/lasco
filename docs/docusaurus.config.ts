@@ -59,14 +59,15 @@ const config: Config = {
     // Replace with your project's social card
     image: 'img/logo.svg',
     colorMode: {
-      respectPrefersColorScheme: true,
+      defaultMode: 'light',
+      respectPrefersColorScheme: false,
+      disableSwitch: true,
     },
     navbar: {
       title: '',
       logo: {
         alt: 'Lasco Logo',
         src: 'img/logo_transparent_0_5.png',
-        srcDark: 'img/logo_black_0_5.png',
       },
       items: [
         {
@@ -124,19 +125,19 @@ const config: Config = {
             // },
           ],
         },
-        // {
-        //   title: 'COMPARISONS',
-        //   items: [
-        //     {
-        //       label: 'Compare',
-        //       to: '/compared',
-        //     },
-        //     {
-        //       label: 'Lasco vs. Ente',
-        //       to: '/vs-ente',
-        //     },
-        //   ],
-        // },
+        {
+          title: 'COMPARISONS',
+          items: [
+            {
+              label: 'Lasco vs. Immich',
+              to: '/lasco-vs-immich',
+            },
+            {
+              label: 'Lasco vs. Ente',
+              to: '/lasco-vs-ente',
+            },
+          ],
+        },
         {
           title: 'COMMUNITY',
           items: [
