@@ -1,0 +1,9 @@
+{
+  "flows": [
+    {
+      "id": "expert-local-fs",
+      "flow": "maestro/flows/expert-local-fs.yaml",
+      "definition": "maestro/flows/expert-local-fs.definition.json"
+    }
+  ]
+}

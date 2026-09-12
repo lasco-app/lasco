@@ -316,6 +316,7 @@ fun AddLocalFSRemoteDialog(
                 onValueChange = { name = it },
                 placeholder = "local-test",
                 autoFocus = true,
+                testTag = "local-fs-remote.name",
             )
             addError?.let { message ->
                 Text(text = message, style = LascoTheme.type.body(13), color = colors.error)

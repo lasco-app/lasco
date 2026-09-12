@@ -56,6 +56,7 @@ import com.lasco.lasco.ui.components.ErrorBanner
 import com.lasco.lasco.ui.components.LascoField
 import com.lasco.lasco.ui.components.LascoPrimaryButton
 import com.lasco.lasco.ui.components.LascoSecondaryButton
+import com.lasco.lasco.ui.components.maestroTag
 import com.lasco.lasco.ui.manage.AddLocalFSRemoteDialog
 import com.lasco.lasco.ui.manage.AddS3RemoteDialog
 import com.lasco.lasco.ui.manage.LascoCloudLoginDialog
@@ -259,13 +260,19 @@ private fun CreateStep(
             color = colors.inkSub,
         )
 
-        LascoField("Library name", name, { name = it }, placeholder = "My Photos")
-        LascoField("Username", username, { username = it })
-        LascoField("Password", password, { password = it }, secure = true)
+        LascoField("Library name", name, { name = it }, placeholder = "My Photos", testTag = "new-library.name")
+        LascoField("Username", username, { username = it }, testTag = "new-library.username")
+        LascoField("Password", password, { password = it }, secure = true, testTag = "new-library.password")
         if (password.isNotEmpty() && password.length < 5) {
             Text(text = "Password must be at least 5 characters.", style = LascoTheme.type.body(14), color = colors.ink)
         }
-        LascoField("Confirm password", confirmPassword, { confirmPassword = it }, secure = true)
+        LascoField(
+            "Confirm password",
+            confirmPassword,
+            { confirmPassword = it },
+            secure = true,
+            testTag = "new-library.confirm-password",
+        )
         if (confirmPassword.isNotEmpty() && confirmPassword != password) {
             Text(text = "Passwords do not match.", style = LascoTheme.type.body(14), color = colors.ink)
         }
@@ -764,6 +771,7 @@ private fun ImportStep(
                         text = "Import Now",
                         onClick = { viewModel.startDeviceImport() },
                         enabled = state.deviceScan?.let { it.tooLargeCount == 0 } == true,
+                        modifier = Modifier.maestroTag("initial-import.start"),
                     )
                     LascoSecondaryButton(text = "Skip for now", onClick = onDone)
                 }
