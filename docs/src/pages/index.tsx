@@ -53,10 +53,10 @@ function StorageDiagram() {
 
 function DownloadAppPrompt() {
   return (
-    <section className={styles.downloadAppPrompt} aria-label="Download Lasco for Android">
+    <section className={styles.downloadAppPrompt} aria-label="Download Lasco">
       <div className="container">
         <div className={styles.downloadAppPromptInner}>
-          <GooglePlayBadge />
+          <StoreBadges />
         </div>
       </div>
     </section>
@@ -205,7 +205,7 @@ function GetStartedSection() {
               <span className={styles.getStartedMarker} aria-hidden="true" />
               <div>
                 <h3>Download the app</h3>
-                <GooglePlayBadge />
+                <StoreBadges />
               </div>
             </li>
             <li className={styles.getStartedStep}>
@@ -241,6 +241,15 @@ function GetStartedSection() {
   );
 }
 
+function StoreBadges() {
+  return (
+    <div className={styles.storeBadges}>
+      <GooglePlayBadge />
+      <AppStoreBadge />
+    </div>
+  );
+}
+
 function GooglePlayBadge() {
   return (
     <a
@@ -250,6 +259,19 @@ function GooglePlayBadge() {
       rel="noreferrer"
       aria-label="Get Lasco on Google Play">
       <img src="/img/google-play-badge.svg" alt="Get it on Google Play" />
+    </a>
+  );
+}
+
+function AppStoreBadge() {
+  return (
+    <a
+      className={styles.appStoreBadge}
+      href="https://apps.apple.com/us/app/lasco/id6792332707"
+      target="_blank"
+      rel="noreferrer"
+      aria-label="Download Lasco on the App Store">
+      <img src="/img/app-store-badge.svg" alt="Download on the App Store" />
     </a>
   );
 }
