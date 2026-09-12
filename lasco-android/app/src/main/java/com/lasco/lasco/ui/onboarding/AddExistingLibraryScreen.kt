@@ -21,6 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import com.lasco.lasco.ui.components.maestroTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -101,6 +102,7 @@ fun AddExistingLibraryScreen(
             modifier = Modifier
                 .padding(horizontal = 32.dp)
                 .padding(top = 32.dp, bottom = 16.dp)
+                .maestroTag("existing-library.back")
                 .clickable(interactionSource = null, indication = null) { onBack() },
         )
 

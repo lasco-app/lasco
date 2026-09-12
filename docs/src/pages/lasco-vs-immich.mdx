@@ -1,0 +1,36 @@
+---
+title: Lasco vs. Immich
+description: Compare Lasco and Immich for private photo backup. See the differences in self-hosting, storage, encryption, backups, replication, and feature maturity.
+---
+
+# Lasco vs. Immich
+
+Lasco and Immich both help you keep your photo library under your control, but they use different models.
+
+Immich is a photo-server application. You host it on a NAS, home server, or cloud machine, then set it up and maintain it over time. The usual approach is to use Docker to run the services it needs. You also choose which local drive stores your files. The server manages your photos, database, accounts, and web interface.
+
+Lasco, on the other hand, is only a mobile app. It connects directly to file storage you choose and encrypts your library before upload. There is no Lasco server, database, or Docker stack to deploy and maintain.
+
+## Comparison
+
+| | Lasco | Immich |
+| --- | --- | --- |
+| **How it works** | Mobile app that connects directly to your storage | Photo server, used through its web access or companion app |
+| **Where photos live** | Storage you choose: an S3 bucket, Lasco Cloud, and soon a NAS or USB drive | Storage attached to your Immich server; external S3 is possible with additional setup |
+| **Server to set up** | No | Yes |
+| **Server and database maintenance** | No | Yes |
+| **Backups** | Add a dedicated backup remote in Lasco. A backup is no different from a usual sync. | Manually back up the database and files outside Immich |
+| **Replication** | Easily sync the same library to several S3 buckets or NAS devices in different locations | No built-in replication |
+| **Cloud option** | Optional Lasco Cloud remote, the easiest way to get two S3 remotes in different locations | No official Immich hosting; third-party providers exist |
+| **Encryption** | Photos and metadata are encrypted on your device before upload | No encryption is integrated into Immich; you can encrypt the disk at the operating-system level |
+| **Web app and sharing** | Not available today | Full web app, sharing, and multi-user features |
+| **Smart search and ML analysis** | Planned | Available |
+| **Maturity** | Still early, with a focused and limited feature set | Robust and feature-complete |
+
+## Which one should you choose?
+
+Choose **Lasco** if you want private, encrypted photo backup without operating a server. It is a good fit when you want to keep copies in storage locations you control, but do not want to manage Docker, a database, server updates, or a separate server-backup process.
+
+Choose **Immich** if you want a mature, self-hosted photo platform with a web app, sharing, smart search, face recognition, and other rich library features, and you are comfortable setting up and maintaining the server that provides them.
+
+Immich is much more mature today. Lasco is still early, and useful features such as ML photo analysis are on the roadmap.

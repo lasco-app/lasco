@@ -86,6 +86,7 @@ struct AddExistingLibraryView: View {
                             .foregroundStyle(theme.ink)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("existing-library.back")
                 }
                 .padding(.horizontal, 32)
                 .padding(.top, 32)

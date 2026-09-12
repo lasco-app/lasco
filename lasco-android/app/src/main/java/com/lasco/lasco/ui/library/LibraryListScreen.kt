@@ -25,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
+import com.lasco.lasco.ui.components.maestroTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -75,7 +76,7 @@ fun LibraryListScreen(
                 )
             }
             Spacer(modifier = Modifier.weight(1f))
-            IconButton(onClick = { showSettings = true }) {
+            IconButton(onClick = { showSettings = true }, modifier = Modifier.maestroTag("library-list.settings")) {
                 Icon(
                     painter = painterResource(R.drawable.ic_tab_cog),
                     contentDescription = "Settings",
@@ -131,7 +132,11 @@ fun LibraryListScreen(
                 .padding(bottom = 48.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            LascoPrimaryButton(text = "New library", onClick = onNewLibrary)
+            LascoPrimaryButton(
+                text = "New library",
+                onClick = onNewLibrary,
+                modifier = Modifier.maestroTag("library-list.new-library"),
+            )
             Text(
                 text = "Add existing library",
                 style = LascoTheme.type.body(15),
@@ -139,6 +144,7 @@ fun LibraryListScreen(
                 textAlign = TextAlign.Center,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .maestroTag("library-list.add-existing")
                     .clickable(interactionSource = null, indication = null) { onAddExisting() },
             )
         }

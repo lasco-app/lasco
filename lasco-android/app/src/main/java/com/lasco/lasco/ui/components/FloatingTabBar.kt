@@ -52,6 +52,7 @@ fun FloatingTabBar(
             Box(
                 modifier = Modifier
                     .weight(1f)
+                    .maestroTag("tab.${tab.name.lowercase()}")
                     .clickable(interactionSource = null, indication = null) { onTabSelected(tab) }
                     .padding(vertical = 12.dp),
                 contentAlignment = Alignment.Center,
