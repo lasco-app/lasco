@@ -69,8 +69,19 @@
   text-transform: uppercase;
 }
 
-.downloadAppPrompt .googlePlayBadge {
-  width: 220px;
+.storeBadges {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.downloadAppPrompt .storeBadges {
+  margin: 0;
+}
+
+.downloadAppPrompt .googlePlayBadge,
+.downloadAppPrompt .appStoreBadge {
   margin: 0;
 }
 
@@ -226,26 +237,30 @@
   }
 }
 
-.googlePlayBadge {
+.googlePlayBadge,
+.appStoreBadge {
   display: block;
   width: 220px;
   margin: 1.5rem auto 0;
 }
 
-.googlePlayBadge img {
+.googlePlayBadge img,
+.appStoreBadge img {
   display: block;
   width: 100%;
   height: auto;
 }
 
-.googlePlayBadge:focus-visible {
+.googlePlayBadge:focus-visible,
+.appStoreBadge:focus-visible {
   outline: 3px solid var(--ifm-color-primary);
   outline-offset: 4px;
 }
 
 @media screen and (max-width: 768px) {
-  .googlePlayBadge {
-    width: 190px;
+  .googlePlayBadge,
+  .appStoreBadge {
+    width: min(190px, calc((100vw - 4.5rem) / 2));
     margin-top: 1rem;
   }
 }
@@ -400,7 +415,7 @@
   margin-top: -45vh;
 }
 
-.introDownload .googlePlayBadge {
+.introDownload .storeBadges {
   margin: 0 0 1rem;
 }
 
@@ -535,7 +550,7 @@
     margin-top: 0;
   }
 
-  .introDownload .googlePlayBadge {
+  .introDownload .storeBadges {
     margin: 0 auto;
   }
 
@@ -813,8 +828,14 @@
   content: '';
 }
 
-.getStartedStep .googlePlayBadge {
+.getStartedStep .storeBadges {
   margin: 1rem 0 0;
+  justify-content: flex-start;
+}
+
+.getStartedStep .googlePlayBadge,
+.getStartedStep .appStoreBadge {
+  margin: 0;
 }
 
 .comingSoon,
