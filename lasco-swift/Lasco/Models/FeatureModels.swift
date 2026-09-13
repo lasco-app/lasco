@@ -175,6 +175,76 @@ final class RecentMediaModel {
 
 @MainActor
 @Observable
+final class TrashMediaModel {
+    private let repository: any LibraryRepositoryProtocol
+    private static let pageSize = 100
+
+    private(set) var media: [FfiMediaItem] = []
+    private(set) var totalCount = 0
+    private(set) var hasMore = false
+    private(set) var isLoading = false
+
+    init(repository: any LibraryRepositoryProtocol) {
+        self.repository = repository
+    }
+
+    func start() async {
+        await reload()
+        let changes = await repository.changes()
+        for await change in changes {
+            guard !Task.isCancelled else { return }
+            guard change == .all || change == .mediaList else { continue }
+            await reload()
+        }
+    }
+
+    func reload() async {
+        guard !isLoading else { return }
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            async let count = repository.trashedMediaByDateCount()
+            async let items = repository.trashedMediaByDate(offset: 0, limit: Self.pageSize)
+            let (loadedCount, loadedMedia) = try await (count, items)
+            guard !Task.isCancelled else { return }
+            totalCount = loadedCount
+            media = loadedMedia
+            hasMore = loadedMedia.count < loadedCount
+        } catch is CancellationError {
+        } catch {
+            AppLogger.log(.error, "trash page query failed: \(error)")
+        }
+    }
+
+    func loadMore() async {
+        guard hasMore, !isLoading else { return }
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            let next = try await repository.trashedMediaByDate(offset: media.count, limit: Self.pageSize)
+            guard !Task.isCancelled else { return }
+            media.append(contentsOf: next)
+            hasMore = media.count < totalCount && !next.isEmpty
+        } catch is CancellationError {
+        } catch {
+            AppLogger.log(.error, "trash next-page query failed: \(error)")
+        }
+    }
+
+    func restore(_ mediaID: FfiMediaUuid) {
+        Task {
+            do {
+                try await repository.restoreMedia(id: mediaID)
+                await reload()
+            } catch {
+                AppLogger.log(.error, "restore media failed: \(error)")
+            }
+        }
+    }
+}
+
+@MainActor
+@Observable
 final class AlbumListModel {
     private let repository: any LibraryRepositoryProtocol
     private var albumsByParent: [FfiAlbumUuid?: [FfiAlbum]] = [:]
@@ -296,6 +366,10 @@ final class AlbumListModel {
 
     func removeMediaFromAlbum(albumID: FfiAlbumUuid, mediaID: FfiMediaUuid) {
         Task { try? await repository.removeMediaFromAlbum(albumID: albumID, mediaID: mediaID) }
+    }
+
+    func deleteMedia(id: FfiMediaUuid) {
+        Task { try? await repository.deleteMedia(id: id) }
     }
 
     func moveMediaToAlbum(mediaID: FfiMediaUuid, fromAlbumID: FfiAlbumUuid, toAlbumID: FfiAlbumUuid) {

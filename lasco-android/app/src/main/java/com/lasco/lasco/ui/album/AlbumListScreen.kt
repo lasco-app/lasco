@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -52,6 +53,7 @@ import com.lasco.lasco.ui.components.LascoConfirmDialog
 import com.lasco.lasco.ui.components.LascoTextInputDialog
 import com.lasco.lasco.ui.components.MediaThumbnail
 import com.lasco.lasco.ui.components.ThumbnailPickerDialog
+import com.lasco.lasco.ui.components.TrashAlbumCard
 import com.lasco.lasco.ui.media.DetailTarget
 import com.lasco.lasco.ui.media.MediaDetailInitialThumbnail
 import com.lasco.lasco.ui.theme.LascoTheme
@@ -89,6 +91,7 @@ fun AlbumListScreen(
     backLabel: String? = null,
     onBack: (() -> Unit)? = null,
     onOpenChild: (FfiAlbum) -> Unit = {},
+    onOpenTrash: () -> Unit = {},
     onOpenMedia: (position: Int, ascending: Boolean, target: DetailTarget, thumbnail: MediaDetailInitialThumbnail?) -> Unit = { _, _, _, _ -> },
     pickerState: AlbumPickerState? = null,
     onPickerVisibleChange: (Boolean) -> Unit = {},
@@ -280,7 +283,7 @@ fun AlbumListScreen(
                 canAddToAlbum = selectedMediaIds.isNotEmpty(),
                 canMove = selectedGroupIds.isEmpty() && (selectedMediaIds.isNotEmpty() || selectedAlbumIds.isNotEmpty()),
                 canRemove = albumId != null && selectedMediaIds.isNotEmpty() && selectedGroupIds.isEmpty() && selectedAlbumIds.isEmpty(),
-                canDelete = selectedAlbumIds.isNotEmpty() || selectedGroupIds.isNotEmpty(),
+                canDelete = selectedMediaIds.isNotEmpty() || selectedAlbumIds.isNotEmpty() || selectedGroupIds.isNotEmpty(),
                 onClose = { clearSelection() },
                 onRename = { showRenameDialog = true },
                 onGroup = {
@@ -299,7 +302,17 @@ fun AlbumListScreen(
                         clearSelection()
                     }
                 },
-                onDelete = { showDeleteConfirm = true },
+                onDelete = {
+                    if (selectedMediaIds.isNotEmpty()) {
+                        val mediaIds = selectedMediaIds.toList()
+                        scope.launch {
+                            for (id in mediaIds) repo.softDeleteMedia(id)
+                            clearSelection()
+                        }
+                    } else {
+                        showDeleteConfirm = true
+                    }
+                },
             )
         } else {
             AlbumHeader(
@@ -354,60 +367,96 @@ fun AlbumListScreen(
                 Text("Could not load media. Tap to retry.", color = colors.inkMuted, modifier = Modifier.clickable { media.retry() })
             }
         } else if (entryCount == 0) {
-            Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                Text(
-                    text = if (albumId == null) "No albums yet" else "Empty album.",
-                    style = LascoTheme.type.body(),
-                    color = colors.inkMuted,
-                )
+            if (albumId == null) {
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                    val columns = if (maxWidth > 500.dp) 3 else 2
+                    val trashCardWidth = (maxWidth - 12.dp * (columns - 1).toFloat()) / columns
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        Box(
+                            modifier = Modifier.fillMaxWidth().weight(1f),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = "No albums yet",
+                                style = LascoTheme.type.body(),
+                                color = colors.inkMuted,
+                            )
+                        }
+                        TrashAlbumCard(
+                            onClick = onOpenTrash,
+                            modifier = Modifier
+                                .width(trashCardWidth)
+                                .padding(top = 12.dp, bottom = 12.dp),
+                        )
+                    }
+                }
+            } else {
+                Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                    Text(
+                        text = "Empty album.",
+                        style = LascoTheme.type.body(),
+                        color = colors.inkMuted,
+                    )
+                }
             }
         } else {
             BoxWithConstraints(modifier = Modifier.fillMaxWidth().weight(1f)) {
                 val columns = if (maxWidth > 500.dp) 3 else 2
-                AlbumSectionsGrid(
-                    modifier = Modifier.fillMaxSize(),
-                    repo = repo,
-                    columns = columns,
-                    albums = albums,
-                    disconnectedAlbums = disconnectedAlbums,
-                    media = media,
-                    isGridLayout = isGridLayout,
-                    selectedAlbumIds = selectedAlbumIds,
-                    selectedMediaIds = pickerState?.selectedIds ?: selectedMediaIds,
-                    selectedGroupIds = selectedGroupIds,
-                    isSelecting = isSelecting,
-                    pickerState = pickerState,
-                    onAlbumTap = { child ->
-                        when {
-                            pickerState != null -> onOpenChild(child)
-                            isSelecting -> {
-                                selectedAlbumNames += child.albumId to child.name
-                                toggleAlbum(child.albumId)
+                val trashCardWidth = (maxWidth - 12.dp * (columns - 1).toFloat()) / columns
+                Column(modifier = Modifier.fillMaxSize()) {
+                    AlbumSectionsGrid(
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        repo = repo,
+                        columns = columns,
+                        albums = albums,
+                        disconnectedAlbums = disconnectedAlbums,
+                        media = media,
+                        isGridLayout = isGridLayout,
+                        selectedAlbumIds = selectedAlbumIds,
+                        selectedMediaIds = pickerState?.selectedIds ?: selectedMediaIds,
+                        selectedGroupIds = selectedGroupIds,
+                        isSelecting = isSelecting,
+                        pickerState = pickerState,
+                        onAlbumTap = { child ->
+                            when {
+                                pickerState != null -> onOpenChild(child)
+                                isSelecting -> {
+                                    selectedAlbumNames += child.albumId to child.name
+                                    toggleAlbum(child.albumId)
+                                }
+                                else -> onOpenChild(child)
                             }
-                            else -> onOpenChild(child)
-                        }
-                    },
-                    onAlbumLongPress = { child -> if (pickerState == null) { selectedAlbumNames += child.albumId to child.name; toggleAlbum(child.albumId) } },
-                    onItemTap = { indexed, thumbnail ->
-                        val item = indexed.item
-                        val mediaId = item.media?.mediaId
-                        val groupId = item.group?.groupId
-                        when {
-                            pickerState != null && mediaId != null && mediaId !in pickerState.disabledIds ->
-                                pickerState.onToggle(mediaId)
-                            pickerState != null -> Unit
-                            isSelecting && mediaId != null -> toggleMedia(mediaId)
-                            isSelecting && groupId != null -> toggleGroup(groupId)
-                            else -> onOpenMedia(indexed.position, sortAscending, indexed.item.toDetailTarget(), thumbnail)
-                        }
-                    },
-                    onItemLongPress = { item ->
-                        if (pickerState == null) {
-                            item.media?.let { toggleMedia(it.mediaId) }
-                            item.group?.let { toggleGroup(it.groupId) }
-                        }
-                    },
-                )
+                        },
+                        onAlbumLongPress = { child -> if (pickerState == null) { selectedAlbumNames += child.albumId to child.name; toggleAlbum(child.albumId) } },
+                        onItemTap = { indexed, thumbnail ->
+                            val item = indexed.item
+                            val mediaId = item.media?.mediaId
+                            val groupId = item.group?.groupId
+                            when {
+                                pickerState != null && mediaId != null && mediaId !in pickerState.disabledIds ->
+                                    pickerState.onToggle(mediaId)
+                                pickerState != null -> Unit
+                                isSelecting && mediaId != null -> toggleMedia(mediaId)
+                                isSelecting && groupId != null -> toggleGroup(groupId)
+                                else -> onOpenMedia(indexed.position, sortAscending, indexed.item.toDetailTarget(), thumbnail)
+                            }
+                        },
+                        onItemLongPress = { item ->
+                            if (pickerState == null) {
+                                item.media?.let { toggleMedia(it.mediaId) }
+                                item.group?.let { toggleGroup(it.groupId) }
+                            }
+                        },
+                    )
+                    if (albumId == null) {
+                        TrashAlbumCard(
+                            onClick = onOpenTrash,
+                            modifier = Modifier
+                                .width(trashCardWidth)
+                                .padding(top = 12.dp, bottom = 12.dp),
+                        )
+                    }
+                }
             }
         }
     }

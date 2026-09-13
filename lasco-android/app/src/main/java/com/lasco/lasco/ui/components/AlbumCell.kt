@@ -1,7 +1,10 @@
 package com.lasco.lasco.ui.components
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -79,5 +82,38 @@ fun AlbumCell(
                 modifier = Modifier.align(Alignment.TopEnd).padding(6.dp),
             )
         }
+    }
+}
+
+/** A root-level Trash entry, styled to match an album card but with a pink outline. */
+@Composable
+fun TrashAlbumCard(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = LascoTheme.colors
+
+    Column(
+        modifier = modifier
+            .background(colors.surfaceAlt)
+            .border(2.dp, colors.pink)
+            .combinedClickable(onClick = onClick),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .background(colors.bgDeep),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(text = "TRASH", style = LascoTheme.type.body(14), color = colors.pink)
+        }
+        Text(
+            text = "Trash",
+            style = LascoTheme.type.body(14),
+            color = colors.ink,
+            maxLines = 1,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+        )
     }
 }
