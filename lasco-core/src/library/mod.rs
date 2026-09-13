@@ -309,7 +309,7 @@ impl Library {
             local_dirs.library_id(),
             &master_key,
         ));
-        Ok(Library {
+        let library = Library {
             inner: Arc::new(LibraryInner {
                 library_id: local_dirs.library_id(),
                 master_key,
@@ -322,7 +322,12 @@ impl Library {
                 remote_media_list_lock: RemoteMediaListLock::new(),
                 cloud_runtime,
             }),
-        })
+        };
+        // The operation log is authoritative. Reclaim any cache blobs that a
+        // previously completed hard deletion left behind before this process
+        // starts serving media again. A missing file is intentionally harmless.
+        let _ = library.cleanup_hard_deleted_local();
+        Ok(library)
     }
 
     /// Open with a pre-loaded `MasterKey` (session cache path).
@@ -353,7 +358,7 @@ impl Library {
             library_id,
             &master_key,
         ));
-        Ok(Library {
+        let library = Library {
             inner: Arc::new(LibraryInner {
                 master_key,
                 library_id,
@@ -366,7 +371,10 @@ impl Library {
                 remote_media_list_lock: RemoteMediaListLock::new(),
                 cloud_runtime,
             }),
-        })
+        };
+        // Keep the session-cache opening path consistent with normal open.
+        let _ = library.cleanup_hard_deleted_local();
+        Ok(library)
     }
 
     /// Rebuilds the disposable materialized snapshot from the durable operation log.

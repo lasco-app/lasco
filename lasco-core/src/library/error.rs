@@ -23,6 +23,8 @@ pub enum LibraryError {
     Storage(#[from] crate::storage::StorageError),
     #[error("file {0} not found")]
     MediaNotFound(MediaUuid),
+    #[error("media {0} must be in Trash before permanent deletion")]
+    MediaMustBeTrashed(MediaUuid),
     #[error("album {0} not found")]
     AlbumNotFound(AlbumUuid),
     #[error("group {0} not found")]

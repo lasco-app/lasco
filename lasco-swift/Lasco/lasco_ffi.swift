@@ -770,7 +770,7 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     /**
      * # Errors
      *
-     * Returns an error if `media_id` is invalid, absent, or the delete operation cannot be persisted.
+     * Moves media to Trash. Its encrypted data remains available for Restore.
      */
     func deleteMedia(mediaId: FfiMediaUuid) throws 
     
@@ -785,6 +785,12 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * Returns an error when the start position exceeds the end position.
      */
     func disconnectedAlbumsRange(posStartInclusive: UInt32, posEndInclusive: UInt32) throws  -> [FfiAlbum]
+    
+    /**
+     * Permanently deletes every item in Trash, including hidden companions.
+     * Remote blobs are reclaimed after their tombstones are pushed.
+     */
+    func emptyTrash() throws  -> UInt64
     
     /**
      * # Errors
@@ -877,6 +883,13 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * Returns an error if `group_id` is invalid or absent.
      */
     func groupListMedia(groupId: FfiGroupUuid) throws  -> [FfiMediaItem]
+    
+    /**
+     * Permanently deletes media already in Trash and its trashed companions from CRDT state
+     * and the local encrypted cache.
+     * Remote blobs are reclaimed after the tombstone is pushed to each remote.
+     */
+    func hardDeleteMedia(mediaId: FfiMediaUuid) throws 
     
     func hasUnpushedChanges(remoteId: FfiRemoteUuid)  -> Bool
     
@@ -1191,6 +1204,8 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      */
     func reparentAlbum(albumId: FfiAlbumUuid, newParentAlbumId: FfiAlbumUuid?) throws 
     
+    func restoreMedia(mediaId: FfiMediaUuid) throws 
+    
     /**
      * # Errors
      *
@@ -1250,6 +1265,21 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * Returns an error if `media_id` is invalid or does not identify media in the local state.
      */
     func showMedia(mediaId: FfiMediaUuid) throws  -> FfiMediaItem
+    
+    func softDeleteMedia(mediaId: FfiMediaUuid) throws 
+    
+    /**
+     * Returns every trashed media record, including companions hidden from
+     * normal Trash browsing. This is intended for maintenance flows.
+     */
+    func trashedMediaAll()  -> [FfiMediaItem]
+    
+    func trashedMediaByDateCount()  -> UInt64
+    
+    /**
+     * Positions are zero-based and both ends of the range are inclusive.
+     */
+    func trashedMediaByDateRange(posStartInclusive: UInt32, posEndInclusive: UInt32) throws  -> [FfiMediaItem]
     
     /**
      * # Errors
@@ -1729,7 +1759,7 @@ nonisolated open func deleteGroup(groupId: FfiGroupUuid)throws   {try rustCallWi
     /**
      * # Errors
      *
-     * Returns an error if `media_id` is invalid, absent, or the delete operation cannot be persisted.
+     * Moves media to Trash. Its encrypted data remains available for Restore.
      */
 nonisolated open func deleteMedia(mediaId: FfiMediaUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_delete_media(self.uniffiClonePointer(),
@@ -1758,6 +1788,17 @@ nonisolated open func disconnectedAlbumsRange(posStartInclusive: UInt32, posEndI
     uniffi_lasco_ffi_fn_method_ffilibrary_disconnected_albums_range(self.uniffiClonePointer(),
         FfiConverterUInt32.lower(posStartInclusive),
         FfiConverterUInt32.lower(posEndInclusive),$0
+    )
+})
+}
+    
+    /**
+     * Permanently deletes every item in Trash, including hidden companions.
+     * Remote blobs are reclaimed after their tombstones are pushed.
+     */
+nonisolated open func emptyTrash()throws  -> UInt64  {
+    return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_empty_trash(self.uniffiClonePointer(),$0
     )
 })
 }
@@ -1964,6 +2005,18 @@ nonisolated open func groupListMedia(groupId: FfiGroupUuid)throws  -> [FfiMediaI
         FfiConverterTypeFfiGroupUuid_lower(groupId),$0
     )
 })
+}
+    
+    /**
+     * Permanently deletes media already in Trash and its trashed companions from CRDT state
+     * and the local encrypted cache.
+     * Remote blobs are reclaimed after the tombstone is pushed to each remote.
+     */
+nonisolated open func hardDeleteMedia(mediaId: FfiMediaUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_hard_delete_media(self.uniffiClonePointer(),
+        FfiConverterTypeFfiMediaUuid_lower(mediaId),$0
+    )
+}
 }
     
 nonisolated open func hasUnpushedChanges(remoteId: FfiRemoteUuid) -> Bool  {
@@ -2660,6 +2713,13 @@ nonisolated open func reparentAlbum(albumId: FfiAlbumUuid, newParentAlbumId: Ffi
 }
 }
     
+nonisolated open func restoreMedia(mediaId: FfiMediaUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_restore_media(self.uniffiClonePointer(),
+        FfiConverterTypeFfiMediaUuid_lower(mediaId),$0
+    )
+}
+}
+    
     /**
      * # Errors
      *
@@ -2755,6 +2815,43 @@ nonisolated open func showMedia(mediaId: FfiMediaUuid)throws  -> FfiMediaItem  {
     return try  FfiConverterTypeFfiMediaItem_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_show_media(self.uniffiClonePointer(),
         FfiConverterTypeFfiMediaUuid_lower(mediaId),$0
+    )
+})
+}
+    
+nonisolated open func softDeleteMedia(mediaId: FfiMediaUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_soft_delete_media(self.uniffiClonePointer(),
+        FfiConverterTypeFfiMediaUuid_lower(mediaId),$0
+    )
+}
+}
+    
+    /**
+     * Returns every trashed media record, including companions hidden from
+     * normal Trash browsing. This is intended for maintenance flows.
+     */
+nonisolated open func trashedMediaAll() -> [FfiMediaItem]  {
+    return try!  FfiConverterSequenceTypeFfiMediaItem.lift(try! rustCall() {
+    uniffi_lasco_ffi_fn_method_ffilibrary_trashed_media_all(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+nonisolated open func trashedMediaByDateCount() -> UInt64  {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
+    uniffi_lasco_ffi_fn_method_ffilibrary_trashed_media_by_date_count(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Positions are zero-based and both ends of the range are inclusive.
+     */
+nonisolated open func trashedMediaByDateRange(posStartInclusive: UInt32, posEndInclusive: UInt32)throws  -> [FfiMediaItem]  {
+    return try  FfiConverterSequenceTypeFfiMediaItem.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_trashed_media_by_date_range(self.uniffiClonePointer(),
+        FfiConverterUInt32.lower(posStartInclusive),
+        FfiConverterUInt32.lower(posEndInclusive),$0
     )
 })
 }
@@ -4564,12 +4661,26 @@ nonisolated public struct FfiMediaItem {
     public var sizeBytes: UInt64
     public var contentHash: String
     public var author: String
+    /**
+     * Person who performed the current trash action, when the item is in Trash.
+     */
+    public var trashedBy: String?
+    /**
+     * RFC 3339 timestamp of the current trash action, when the item is in Trash.
+     */
+    public var trashedAt: String?
     public var appleAaeMediaId: FfiMediaUuid?
     public var appleLivePhotoMediaId: FfiMediaUuid?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(mediaId: FfiMediaUuid, filenameOriginal: String, name: String?, date: String, year: UInt16, month: UInt8, sizeBytes: UInt64, contentHash: String, author: String, appleAaeMediaId: FfiMediaUuid?, appleLivePhotoMediaId: FfiMediaUuid?) {
+    public init(mediaId: FfiMediaUuid, filenameOriginal: String, name: String?, date: String, year: UInt16, month: UInt8, sizeBytes: UInt64, contentHash: String, author: String, 
+        /**
+         * Person who performed the current trash action, when the item is in Trash.
+         */trashedBy: String?, 
+        /**
+         * RFC 3339 timestamp of the current trash action, when the item is in Trash.
+         */trashedAt: String?, appleAaeMediaId: FfiMediaUuid?, appleLivePhotoMediaId: FfiMediaUuid?) {
         self.mediaId = mediaId
         self.filenameOriginal = filenameOriginal
         self.name = name
@@ -4579,6 +4690,8 @@ nonisolated public struct FfiMediaItem {
         self.sizeBytes = sizeBytes
         self.contentHash = contentHash
         self.author = author
+        self.trashedBy = trashedBy
+        self.trashedAt = trashedAt
         self.appleAaeMediaId = appleAaeMediaId
         self.appleLivePhotoMediaId = appleLivePhotoMediaId
     }
@@ -4618,6 +4731,12 @@ nonisolated extension FfiMediaItem: Equatable, Hashable {
         if lhs.author != rhs.author {
             return false
         }
+        if lhs.trashedBy != rhs.trashedBy {
+            return false
+        }
+        if lhs.trashedAt != rhs.trashedAt {
+            return false
+        }
         if lhs.appleAaeMediaId != rhs.appleAaeMediaId {
             return false
         }
@@ -4637,6 +4756,8 @@ nonisolated extension FfiMediaItem: Equatable, Hashable {
         hasher.combine(sizeBytes)
         hasher.combine(contentHash)
         hasher.combine(author)
+        hasher.combine(trashedBy)
+        hasher.combine(trashedAt)
         hasher.combine(appleAaeMediaId)
         hasher.combine(appleLivePhotoMediaId)
     }
@@ -4660,6 +4781,8 @@ nonisolated public struct FfiConverterTypeFfiMediaItem: FfiConverterRustBuffer {
                 sizeBytes: FfiConverterUInt64.read(from: &buf), 
                 contentHash: FfiConverterString.read(from: &buf), 
                 author: FfiConverterString.read(from: &buf), 
+                trashedBy: FfiConverterOptionString.read(from: &buf), 
+                trashedAt: FfiConverterOptionString.read(from: &buf), 
                 appleAaeMediaId: FfiConverterOptionTypeFfiMediaUuid.read(from: &buf), 
                 appleLivePhotoMediaId: FfiConverterOptionTypeFfiMediaUuid.read(from: &buf)
         )
@@ -4675,6 +4798,8 @@ nonisolated public struct FfiConverterTypeFfiMediaItem: FfiConverterRustBuffer {
         FfiConverterUInt64.write(value.sizeBytes, into: &buf)
         FfiConverterString.write(value.contentHash, into: &buf)
         FfiConverterString.write(value.author, into: &buf)
+        FfiConverterOptionString.write(value.trashedBy, into: &buf)
+        FfiConverterOptionString.write(value.trashedAt, into: &buf)
         FfiConverterOptionTypeFfiMediaUuid.write(value.appleAaeMediaId, into: &buf)
         FfiConverterOptionTypeFfiMediaUuid.write(value.appleLivePhotoMediaId, into: &buf)
     }
@@ -5258,6 +5383,7 @@ nonisolated public enum LascoError: Swift.Error {
     
     case InvalidCredentials
     case NotFound
+    case MediaMustBeTrashed
     case SyncBusy
     case CloudQuotaExceeded(msg: String
     )
@@ -5290,25 +5416,26 @@ nonisolated public struct FfiConverterTypeLascoError: FfiConverterRustBuffer {
         
         case 1: return .InvalidCredentials
         case 2: return .NotFound
-        case 3: return .SyncBusy
-        case 4: return .CloudQuotaExceeded(
+        case 3: return .MediaMustBeTrashed
+        case 4: return .SyncBusy
+        case 5: return .CloudQuotaExceeded(
             msg: try FfiConverterString.read(from: &buf)
             )
-        case 5: return .MissingLocalMedia(
+        case 6: return .MissingLocalMedia(
             mediaIds: try FfiConverterSequenceTypeFfiMediaId.read(from: &buf)
             )
-        case 6: return .MissingMediaOnConfiguredSources(
+        case 7: return .MissingMediaOnConfiguredSources(
             mediaIds: try FfiConverterSequenceTypeFfiMediaId.read(from: &buf)
             )
-        case 7: return .MediaTooLarge(
+        case 8: return .MediaTooLarge(
             sizeBytes: try FfiConverterUInt64.read(from: &buf), 
             limitBytes: try FfiConverterUInt64.read(from: &buf)
             )
-        case 8: return .CrdtRecoveryAvailable
-        case 9: return .Storage(
+        case 9: return .CrdtRecoveryAvailable
+        case 10: return .Storage(
             msg: try FfiConverterString.read(from: &buf)
             )
-        case 10: return .Other(
+        case 11: return .Other(
             msg: try FfiConverterString.read(from: &buf)
             )
 
@@ -5331,42 +5458,46 @@ nonisolated public struct FfiConverterTypeLascoError: FfiConverterRustBuffer {
             writeInt(&buf, Int32(2))
         
         
-        case .SyncBusy:
+        case .MediaMustBeTrashed:
             writeInt(&buf, Int32(3))
         
         
-        case let .CloudQuotaExceeded(msg):
+        case .SyncBusy:
             writeInt(&buf, Int32(4))
+        
+        
+        case let .CloudQuotaExceeded(msg):
+            writeInt(&buf, Int32(5))
             FfiConverterString.write(msg, into: &buf)
             
         
         case let .MissingLocalMedia(mediaIds):
-            writeInt(&buf, Int32(5))
-            FfiConverterSequenceTypeFfiMediaId.write(mediaIds, into: &buf)
-            
-        
-        case let .MissingMediaOnConfiguredSources(mediaIds):
             writeInt(&buf, Int32(6))
             FfiConverterSequenceTypeFfiMediaId.write(mediaIds, into: &buf)
             
         
-        case let .MediaTooLarge(sizeBytes,limitBytes):
+        case let .MissingMediaOnConfiguredSources(mediaIds):
             writeInt(&buf, Int32(7))
+            FfiConverterSequenceTypeFfiMediaId.write(mediaIds, into: &buf)
+            
+        
+        case let .MediaTooLarge(sizeBytes,limitBytes):
+            writeInt(&buf, Int32(8))
             FfiConverterUInt64.write(sizeBytes, into: &buf)
             FfiConverterUInt64.write(limitBytes, into: &buf)
             
         
         case .CrdtRecoveryAvailable:
-            writeInt(&buf, Int32(8))
+            writeInt(&buf, Int32(9))
         
         
         case let .Storage(msg):
-            writeInt(&buf, Int32(9))
+            writeInt(&buf, Int32(10))
             FfiConverterString.write(msg, into: &buf)
             
         
         case let .Other(msg):
-            writeInt(&buf, Int32(10))
+            writeInt(&buf, Int32(11))
             FfiConverterString.write(msg, into: &buf)
             
         }
@@ -6426,13 +6557,16 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_delete_group() != 44891) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_delete_media() != 3803) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_delete_media() != 50469) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_disconnected_albums_count() != 3821) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_disconnected_albums_range() != 62195) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_empty_trash() != 11047) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_evict_local_data() != 58897) {
@@ -6472,6 +6606,9 @@ nonisolated private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_group_list_media() != 51462) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_hard_delete_media() != 43537) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_has_unpushed_changes() != 50625) {
@@ -6615,6 +6752,9 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_reparent_album() != 42959) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_restore_media() != 64357) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_set_album_thumbnail() != 48225) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -6634,6 +6774,18 @@ nonisolated private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_show_media() != 45030) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_soft_delete_media() != 52124) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_trashed_media_all() != 38098) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_trashed_media_by_date_count() != 41319) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_trashed_media_by_date_range() != 735) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_user_add() != 31541) {

@@ -962,6 +962,20 @@ internal open class UniffiVTableCallbackInterfacePushProgressSink(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1051,6 +1065,8 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_disconnected_albums_count(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_disconnected_albums_range(
 ): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_empty_trash(
+): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_evict_local_data(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_evict_local_thumbnails(
@@ -1076,6 +1092,8 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_thumbnail(
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_get_media_thumbnail_async(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_group_list_media(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_hard_delete_media(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_has_unpushed_changes(
 ): Short
@@ -1171,6 +1189,8 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_rename_media(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_reparent_album(
 ): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_restore_media(
+): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_set_album_thumbnail(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_set_auto_import_device_media(
@@ -1184,6 +1204,14 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_set_media_thumbnail(
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_set_remote_auto_push(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_show_media(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_soft_delete_media(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_trashed_media_all(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_trashed_media_by_date_count(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_trashed_media_by_date_range(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_user_add(
 ): Short
@@ -1309,6 +1337,8 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_disconnected_albums_count(`ptr`: Point
 ): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_disconnected_albums_range(`ptr`: Pointer,`posStartInclusive`: Int,`posEndInclusive`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_lasco_ffi_fn_method_ffilibrary_empty_trash(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_evict_local_data(`ptr`: Pointer,`mediaIds`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_evict_local_thumbnails(`ptr`: Pointer,`mediaIds`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1335,6 +1365,8 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_get_media_thumbnail_async(`ptr`: Point
 ): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_group_list_media(`ptr`: Pointer,`groupId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_lasco_ffi_fn_method_ffilibrary_hard_delete_media(`ptr`: Pointer,`mediaId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_has_unpushed_changes(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
 fun uniffi_lasco_ffi_fn_method_ffilibrary_import_media(`ptr`: Pointer,`path`: RustBuffer.ByValue,`albumId`: RustBuffer.ByValue,`originalFilename`: RustBuffer.ByValue,`appleAaeMediaId`: RustBuffer.ByValue,`appleLivePhotoMediaId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1429,6 +1461,8 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_rename_media(`ptr`: Pointer,`mediaId`:
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_reparent_album(`ptr`: Pointer,`albumId`: RustBuffer.ByValue,`newParentAlbumId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_lasco_ffi_fn_method_ffilibrary_restore_media(`ptr`: Pointer,`mediaId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_set_album_thumbnail(`ptr`: Pointer,`albumId`: RustBuffer.ByValue,`mediaId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_set_auto_import_device_media(`ptr`: Pointer,`enabled`: Byte,uniffi_out_err: UniffiRustCallStatus, 
@@ -1442,6 +1476,14 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_set_media_thumbnail(`ptr`: Pointer,`me
 fun uniffi_lasco_ffi_fn_method_ffilibrary_set_remote_auto_push(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`enabled`: Byte,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_show_media(`ptr`: Pointer,`mediaId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_lasco_ffi_fn_method_ffilibrary_soft_delete_media(`ptr`: Pointer,`mediaId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_lasco_ffi_fn_method_ffilibrary_trashed_media_all(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_lasco_ffi_fn_method_ffilibrary_trashed_media_by_date_count(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+): Long
+fun uniffi_lasco_ffi_fn_method_ffilibrary_trashed_media_by_date_range(`ptr`: Pointer,`posStartInclusive`: Int,`posEndInclusive`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_user_add(`ptr`: Pointer,`username`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -1703,13 +1745,16 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_delete_group() != 44891.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_delete_media() != 3803.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_delete_media() != 50469.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_disconnected_albums_count() != 3821.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_disconnected_albums_range() != 62195.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_empty_trash() != 11047.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_evict_local_data() != 58897.toShort()) {
@@ -1749,6 +1794,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_group_list_media() != 51462.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_hard_delete_media() != 43537.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_has_unpushed_changes() != 50625.toShort()) {
@@ -1892,6 +1940,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_reparent_album() != 42959.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_restore_media() != 64357.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_set_album_thumbnail() != 48225.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1911,6 +1962,18 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_show_media() != 45030.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_soft_delete_media() != 52124.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_trashed_media_all() != 38098.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_trashed_media_by_date_count() != 41319.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_trashed_media_by_date_range() != 735.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_user_add() != 31541.toShort()) {
@@ -2659,7 +2722,7 @@ public interface FfiLibraryInterface {
     /**
      * # Errors
      *
-     * Returns an error if `media_id` is invalid, absent, or the delete operation cannot be persisted.
+     * Moves media to Trash. Its encrypted data remains available for Restore.
      */
     fun `deleteMedia`(`mediaId`: FfiMediaUuid)
     
@@ -2674,6 +2737,12 @@ public interface FfiLibraryInterface {
      * Returns an error when the start position exceeds the end position.
      */
     fun `disconnectedAlbumsRange`(`posStartInclusive`: kotlin.UInt, `posEndInclusive`: kotlin.UInt): List<FfiAlbum>
+    
+    /**
+     * Permanently deletes every item in Trash, including hidden companions.
+     * Remote blobs are reclaimed after their tombstones are pushed.
+     */
+    fun `emptyTrash`(): kotlin.ULong
     
     /**
      * # Errors
@@ -2766,6 +2835,13 @@ public interface FfiLibraryInterface {
      * Returns an error if `group_id` is invalid or absent.
      */
     fun `groupListMedia`(`groupId`: FfiGroupUuid): List<FfiMediaItem>
+    
+    /**
+     * Permanently deletes media already in Trash and its trashed companions from CRDT state
+     * and the local encrypted cache.
+     * Remote blobs are reclaimed after the tombstone is pushed to each remote.
+     */
+    fun `hardDeleteMedia`(`mediaId`: FfiMediaUuid)
     
     fun `hasUnpushedChanges`(`remoteId`: FfiRemoteUuid): kotlin.Boolean
     
@@ -3080,6 +3156,8 @@ public interface FfiLibraryInterface {
      */
     fun `reparentAlbum`(`albumId`: FfiAlbumUuid, `newParentAlbumId`: FfiAlbumUuid?)
     
+    fun `restoreMedia`(`mediaId`: FfiMediaUuid)
+    
     /**
      * # Errors
      *
@@ -3139,6 +3217,21 @@ public interface FfiLibraryInterface {
      * Returns an error if `media_id` is invalid or does not identify media in the local state.
      */
     fun `showMedia`(`mediaId`: FfiMediaUuid): FfiMediaItem
+    
+    fun `softDeleteMedia`(`mediaId`: FfiMediaUuid)
+    
+    /**
+     * Returns every trashed media record, including companions hidden from
+     * normal Trash browsing. This is intended for maintenance flows.
+     */
+    fun `trashedMediaAll`(): List<FfiMediaItem>
+    
+    fun `trashedMediaByDateCount`(): kotlin.ULong
+    
+    /**
+     * Positions are zero-based and both ends of the range are inclusive.
+     */
+    fun `trashedMediaByDateRange`(`posStartInclusive`: kotlin.UInt, `posEndInclusive`: kotlin.UInt): List<FfiMediaItem>
     
     /**
      * # Errors
@@ -3734,7 +3827,7 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     /**
      * # Errors
      *
-     * Returns an error if `media_id` is invalid, absent, or the delete operation cannot be persisted.
+     * Moves media to Trash. Its encrypted data remains available for Restore.
      */
     @Throws(LascoException::class)override fun `deleteMedia`(`mediaId`: FfiMediaUuid)
         = 
@@ -3774,6 +3867,23 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     uniffiRustCallWithError(LascoException) { _status ->
     UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_disconnected_albums_range(
         it, FfiConverterUInt.lower(`posStartInclusive`),FfiConverterUInt.lower(`posEndInclusive`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Permanently deletes every item in Trash, including hidden companions.
+     * Remote blobs are reclaimed after their tombstones are pushed.
+     */
+    @Throws(LascoException::class)override fun `emptyTrash`(): kotlin.ULong {
+            return FfiConverterULong.lift(
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_empty_trash(
+        it, _status)
 }
     }
     )
@@ -4041,6 +4151,23 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     }
     )
     }
+    
+
+    
+    /**
+     * Permanently deletes media already in Trash and its trashed companions from CRDT state
+     * and the local encrypted cache.
+     * Remote blobs are reclaimed after the tombstone is pushed to each remote.
+     */
+    @Throws(LascoException::class)override fun `hardDeleteMedia`(`mediaId`: FfiMediaUuid)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_hard_delete_media(
+        it, FfiConverterTypeFfiMediaUuid.lower(`mediaId`),_status)
+}
+    }
+    
     
 
     override fun `hasUnpushedChanges`(`remoteId`: FfiRemoteUuid): kotlin.Boolean {
@@ -4950,6 +5077,18 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    @Throws(LascoException::class)override fun `restoreMedia`(`mediaId`: FfiMediaUuid)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_restore_media(
+        it, FfiConverterTypeFfiMediaUuid.lower(`mediaId`),_status)
+}
+    }
+    
+    
+
+    
     /**
      * # Errors
      *
@@ -5074,6 +5213,62 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     uniffiRustCallWithError(LascoException) { _status ->
     UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_show_media(
         it, FfiConverterTypeFfiMediaUuid.lower(`mediaId`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    @Throws(LascoException::class)override fun `softDeleteMedia`(`mediaId`: FfiMediaUuid)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_soft_delete_media(
+        it, FfiConverterTypeFfiMediaUuid.lower(`mediaId`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Returns every trashed media record, including companions hidden from
+     * normal Trash browsing. This is intended for maintenance flows.
+     */override fun `trashedMediaAll`(): List<FfiMediaItem> {
+            return FfiConverterSequenceTypeFfiMediaItem.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_trashed_media_all(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    override fun `trashedMediaByDateCount`(): kotlin.ULong {
+            return FfiConverterULong.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_trashed_media_by_date_count(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Positions are zero-based and both ends of the range are inclusive.
+     */
+    @Throws(LascoException::class)override fun `trashedMediaByDateRange`(`posStartInclusive`: kotlin.UInt, `posEndInclusive`: kotlin.UInt): List<FfiMediaItem> {
+            return FfiConverterSequenceTypeFfiMediaItem.lift(
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_trashed_media_by_date_range(
+        it, FfiConverterUInt.lower(`posStartInclusive`),FfiConverterUInt.lower(`posEndInclusive`),_status)
 }
     }
     )
@@ -6190,6 +6385,14 @@ data class FfiMediaItem (
     var `sizeBytes`: kotlin.ULong, 
     var `contentHash`: kotlin.String, 
     var `author`: kotlin.String, 
+    /**
+     * Person who performed the current trash action, when the item is in Trash.
+     */
+    var `trashedBy`: kotlin.String?, 
+    /**
+     * RFC 3339 timestamp of the current trash action, when the item is in Trash.
+     */
+    var `trashedAt`: kotlin.String?, 
     var `appleAaeMediaId`: FfiMediaUuid?, 
     var `appleLivePhotoMediaId`: FfiMediaUuid?
 ) {
@@ -6212,6 +6415,8 @@ public object FfiConverterTypeFfiMediaItem: FfiConverterRustBuffer<FfiMediaItem>
             FfiConverterULong.read(buf),
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
             FfiConverterOptionalTypeFfiMediaUuid.read(buf),
             FfiConverterOptionalTypeFfiMediaUuid.read(buf),
         )
@@ -6227,6 +6432,8 @@ public object FfiConverterTypeFfiMediaItem: FfiConverterRustBuffer<FfiMediaItem>
             FfiConverterULong.allocationSize(value.`sizeBytes`) +
             FfiConverterString.allocationSize(value.`contentHash`) +
             FfiConverterString.allocationSize(value.`author`) +
+            FfiConverterOptionalString.allocationSize(value.`trashedBy`) +
+            FfiConverterOptionalString.allocationSize(value.`trashedAt`) +
             FfiConverterOptionalTypeFfiMediaUuid.allocationSize(value.`appleAaeMediaId`) +
             FfiConverterOptionalTypeFfiMediaUuid.allocationSize(value.`appleLivePhotoMediaId`)
     )
@@ -6241,6 +6448,8 @@ public object FfiConverterTypeFfiMediaItem: FfiConverterRustBuffer<FfiMediaItem>
             FfiConverterULong.write(value.`sizeBytes`, buf)
             FfiConverterString.write(value.`contentHash`, buf)
             FfiConverterString.write(value.`author`, buf)
+            FfiConverterOptionalString.write(value.`trashedBy`, buf)
+            FfiConverterOptionalString.write(value.`trashedAt`, buf)
             FfiConverterOptionalTypeFfiMediaUuid.write(value.`appleAaeMediaId`, buf)
             FfiConverterOptionalTypeFfiMediaUuid.write(value.`appleLivePhotoMediaId`, buf)
     }
@@ -6526,6 +6735,12 @@ sealed class LascoException: kotlin.Exception() {
             get() = ""
     }
     
+    class MediaMustBeTrashed(
+        ) : LascoException() {
+        override val message
+            get() = ""
+    }
+    
     class SyncBusy(
         ) : LascoException() {
         override val message
@@ -6606,25 +6821,26 @@ public object FfiConverterTypeLascoError : FfiConverterRustBuffer<LascoException
         return when(buf.getInt()) {
             1 -> LascoException.InvalidCredentials()
             2 -> LascoException.NotFound()
-            3 -> LascoException.SyncBusy()
-            4 -> LascoException.CloudQuotaExceeded(
+            3 -> LascoException.MediaMustBeTrashed()
+            4 -> LascoException.SyncBusy()
+            5 -> LascoException.CloudQuotaExceeded(
                 FfiConverterString.read(buf),
                 )
-            5 -> LascoException.MissingLocalMedia(
+            6 -> LascoException.MissingLocalMedia(
                 FfiConverterSequenceTypeFfiMediaId.read(buf),
                 )
-            6 -> LascoException.MissingMediaOnConfiguredSources(
+            7 -> LascoException.MissingMediaOnConfiguredSources(
                 FfiConverterSequenceTypeFfiMediaId.read(buf),
                 )
-            7 -> LascoException.MediaTooLarge(
+            8 -> LascoException.MediaTooLarge(
                 FfiConverterULong.read(buf),
                 FfiConverterULong.read(buf),
                 )
-            8 -> LascoException.CrdtRecoveryAvailable()
-            9 -> LascoException.Storage(
+            9 -> LascoException.CrdtRecoveryAvailable()
+            10 -> LascoException.Storage(
                 FfiConverterString.read(buf),
                 )
-            10 -> LascoException.Other(
+            11 -> LascoException.Other(
                 FfiConverterString.read(buf),
                 )
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
@@ -6638,6 +6854,10 @@ public object FfiConverterTypeLascoError : FfiConverterRustBuffer<LascoException
                 4UL
             )
             is LascoException.NotFound -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is LascoException.MediaMustBeTrashed -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
             )
@@ -6693,42 +6913,46 @@ public object FfiConverterTypeLascoError : FfiConverterRustBuffer<LascoException
                 buf.putInt(2)
                 Unit
             }
-            is LascoException.SyncBusy -> {
+            is LascoException.MediaMustBeTrashed -> {
                 buf.putInt(3)
                 Unit
             }
-            is LascoException.CloudQuotaExceeded -> {
+            is LascoException.SyncBusy -> {
                 buf.putInt(4)
+                Unit
+            }
+            is LascoException.CloudQuotaExceeded -> {
+                buf.putInt(5)
                 FfiConverterString.write(value.`msg`, buf)
                 Unit
             }
             is LascoException.MissingLocalMedia -> {
-                buf.putInt(5)
-                FfiConverterSequenceTypeFfiMediaId.write(value.`mediaIds`, buf)
-                Unit
-            }
-            is LascoException.MissingMediaOnConfiguredSources -> {
                 buf.putInt(6)
                 FfiConverterSequenceTypeFfiMediaId.write(value.`mediaIds`, buf)
                 Unit
             }
-            is LascoException.MediaTooLarge -> {
+            is LascoException.MissingMediaOnConfiguredSources -> {
                 buf.putInt(7)
+                FfiConverterSequenceTypeFfiMediaId.write(value.`mediaIds`, buf)
+                Unit
+            }
+            is LascoException.MediaTooLarge -> {
+                buf.putInt(8)
                 FfiConverterULong.write(value.`sizeBytes`, buf)
                 FfiConverterULong.write(value.`limitBytes`, buf)
                 Unit
             }
             is LascoException.CrdtRecoveryAvailable -> {
-                buf.putInt(8)
+                buf.putInt(9)
                 Unit
             }
             is LascoException.Storage -> {
-                buf.putInt(9)
+                buf.putInt(10)
                 FfiConverterString.write(value.`msg`, buf)
                 Unit
             }
             is LascoException.Other -> {
-                buf.putInt(10)
+                buf.putInt(11)
                 FfiConverterString.write(value.`msg`, buf)
                 Unit
             }
