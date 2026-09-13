@@ -62,6 +62,7 @@ blake3 = "1"
 directories = "6"
 tempfile = "3"
 futures-util = "0.3"
+smb2 = "=0.21.0"
 
 # On Android rust-s3 uses native-tls which links OpenSSL, and there is no system
 # OpenSSL for the android targets. Build OpenSSL from source there via the vendored
