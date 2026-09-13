@@ -1796,7 +1796,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_group_list_media() != 51462.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_hard_delete_media() != 61944.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_hard_delete_media() != 43537.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_has_unpushed_changes() != 50625.toShort()) {
@@ -2837,7 +2837,8 @@ public interface FfiLibraryInterface {
     fun `groupListMedia`(`groupId`: FfiGroupUuid): List<FfiMediaItem>
     
     /**
-     * Permanently deletes media already in Trash from CRDT state and local encrypted cache.
+     * Permanently deletes media already in Trash and its trashed companions from CRDT state
+     * and the local encrypted cache.
      * Remote blobs are reclaimed after the tombstone is pushed to each remote.
      */
     fun `hardDeleteMedia`(`mediaId`: FfiMediaUuid)
@@ -4154,7 +4155,8 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
 
     
     /**
-     * Permanently deletes media already in Trash from CRDT state and local encrypted cache.
+     * Permanently deletes media already in Trash and its trashed companions from CRDT state
+     * and the local encrypted cache.
      * Remote blobs are reclaimed after the tombstone is pushed to each remote.
      */
     @Throws(LascoException::class)override fun `hardDeleteMedia`(`mediaId`: FfiMediaUuid)

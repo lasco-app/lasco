@@ -3,6 +3,8 @@ import SwiftUI
 struct TrashMediaRow: View {
     let item: FfiMediaItem
     let onRestore: () -> Void
+    let onDelete: () -> Void
+    @State private var showingDeleteConfirm = false
     @Environment(\.lascoTheme) private var theme
 
     var body: some View {
@@ -27,11 +29,31 @@ struct TrashMediaRow: View {
                         .foregroundStyle(theme.inkMuted)
                 }
 
-                Button("Restore", action: onRestore)
-                    .buttonStyle(.plain)
-                    .font(LascoFont.body())
-                    .foregroundStyle(theme.ink)
-                    .frame(minHeight: 44)
+                HStack(spacing: 16) {
+                    Button("Restore", action: onRestore)
+                        .buttonStyle(.plain)
+                        .font(LascoFont.body())
+                        .foregroundStyle(theme.ink)
+                        .frame(minHeight: 44)
+
+                    Button("Delete", role: .destructive) {
+                        showingDeleteConfirm = true
+                    }
+                        .buttonStyle(.plain)
+                        .font(LascoFont.body())
+                        .foregroundStyle(theme.error)
+                        .frame(minHeight: 44)
+                        .confirmationDialog(
+                            "Permanently delete this item?",
+                            isPresented: $showingDeleteConfirm,
+                            titleVisibility: .visible,
+                        ) {
+                            Button("Delete", role: .destructive, action: onDelete)
+                            Button("Cancel", role: .cancel) {}
+                        } message: {
+                            Text("This can't be undone.")
+                        }
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }

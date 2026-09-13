@@ -885,7 +885,8 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     func groupListMedia(groupId: FfiGroupUuid) throws  -> [FfiMediaItem]
     
     /**
-     * Permanently deletes media already in Trash from CRDT state and local encrypted cache.
+     * Permanently deletes media already in Trash and its trashed companions from CRDT state
+     * and the local encrypted cache.
      * Remote blobs are reclaimed after the tombstone is pushed to each remote.
      */
     func hardDeleteMedia(mediaId: FfiMediaUuid) throws 
@@ -2007,7 +2008,8 @@ nonisolated open func groupListMedia(groupId: FfiGroupUuid)throws  -> [FfiMediaI
 }
     
     /**
-     * Permanently deletes media already in Trash from CRDT state and local encrypted cache.
+     * Permanently deletes media already in Trash and its trashed companions from CRDT state
+     * and the local encrypted cache.
      * Remote blobs are reclaimed after the tombstone is pushed to each remote.
      */
 nonisolated open func hardDeleteMedia(mediaId: FfiMediaUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
@@ -6606,7 +6608,7 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_group_list_media() != 51462) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_hard_delete_media() != 61944) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_hard_delete_media() != 43537) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_has_unpushed_changes() != 50625) {

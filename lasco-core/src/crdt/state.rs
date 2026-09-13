@@ -164,8 +164,8 @@ pub enum OperationContent {
         media_id: MediaUuid,
         trashed: bool,
     },
-    /// Permanent deletion of explicitly selected IDs. The public command emits
-    /// one ID and never expands a deletion to companion resources.
+    /// Permanent deletion of the selected trashed media and its trashed
+    /// companion closure. `media_ids` captures the exact IDs at command time.
     MediaDeletion {
         media_ids: Vec<MediaUuid>,
     },

@@ -626,11 +626,11 @@ impl Library {
         Ok(())
     }
 
-    /// Permanently tombstones one already-trashed media item. The tombstone is
-    /// durable before local cache cleanup begins, so a cleanup failure can be
-    /// retried without resurrecting media.
+    /// Permanently tombstones one already-trashed media item and every trashed
+    /// companion. The tombstone is durable before local cache cleanup begins,
+    /// so a cleanup failure can be retried without resurrecting media.
     pub async fn media_hard_delete(&self, media_id: MediaUuid) -> Result<()> {
-        {
+        let media_ids = {
             let state = self.inner.state.read();
             let entry = state
                 .media(media_id)
@@ -638,12 +638,18 @@ impl Library {
             if !entry.trashed {
                 return Err(LibraryError::MediaMustBeTrashed(media_id));
             }
-        }
+            media_companion_closure(&state, media_id)
+                .into_iter()
+                .filter(|companion_id| {
+                    state
+                        .media(*companion_id)
+                        .is_some_and(|companion| companion.trashed)
+                })
+                .collect()
+        };
         self.record_local_operation(
             chrono::Utc::now(),
-            OperationContent::MediaDeletion {
-                media_ids: vec![media_id],
-            },
+            OperationContent::MediaDeletion { media_ids },
         )?;
         // Logical deletion is already durable. Cache cleanup is best-effort and
         // repeated on fetch/open, so it must not roll back or obscure success.
@@ -845,7 +851,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn trash_and_restore_include_companions_but_hard_delete_does_not() {
+    async fn trash_restore_and_hard_delete_include_trashed_companions() {
         let tmp = TempDir::new().unwrap();
         let (lib, _) = make_library(&tmp);
         let companion_path = tmp.path().join("edit.aae");
@@ -888,7 +894,8 @@ mod tests {
         lib.media_soft_delete(primary_id).await.unwrap();
         lib.media_hard_delete(primary_id).await.unwrap();
         assert!(lib.media_show(primary_id).is_err());
-        assert!(lib.inner.state.read().is_media_trashed(companion_id));
+        assert!(lib.media_show(companion_id).is_err());
+        assert!(lib.media_list(MediaListScope::Trashed).is_empty());
     }
 
     #[tokio::test]

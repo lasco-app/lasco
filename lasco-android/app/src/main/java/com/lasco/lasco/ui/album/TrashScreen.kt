@@ -16,6 +16,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -27,6 +32,7 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
 import com.lasco.lasco.data.LibraryRepository
 import com.lasco.lasco.ui.components.MediaThumbnail
+import com.lasco.lasco.ui.components.LascoConfirmDialog
 import com.lasco.lasco.ui.theme.LascoTheme
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -41,20 +47,41 @@ fun TrashScreen(
     val colors = LascoTheme.colors
     val repo = LibraryRepository.from(LocalContext.current)
     val media = viewModel.media.collectAsLazyPagingItems()
+    var pendingDelete by remember { mutableStateOf<FfiMediaItem?>(null) }
+    var showingEmptyTrashConfirm by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier.fillMaxSize().background(colors.bg).padding(20.dp),
     ) {
-        Text(
-            text = "←  TRASH",
-            style = LascoTheme.type.categoryLarge(),
-            color = colors.ink,
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 48.dp)
-                .clickable(onClick = onBack)
-                .padding(bottom = 16.dp),
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "←",
+                style = LascoTheme.type.categoryLarge(),
+                color = colors.ink,
+                modifier = Modifier
+                    .heightIn(min = 48.dp)
+                    .clickable(role = Role.Button, onClick = onBack)
+                    .padding(end = 8.dp),
+            )
+            Text(text = "TRASH", style = LascoTheme.type.categoryLarge(), color = colors.ink)
+            Box(modifier = Modifier.weight(1f))
+            Text(
+                text = "DELETE ALL",
+                style = LascoTheme.type.body(14),
+                color = if (media.itemCount > 0) colors.error else colors.inkMuted,
+                modifier = Modifier
+                    .heightIn(min = 48.dp)
+                    .clickable(
+                        enabled = media.itemCount > 0,
+                        role = Role.Button,
+                        onClick = { showingEmptyTrashConfirm = true },
+                    )
+                    .padding(start = 8.dp),
+            )
+        }
         when {
             media.loadState.refresh is LoadState.Loading && media.itemCount == 0 ->
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -69,10 +96,41 @@ fun TrashScreen(
                 modifier = Modifier.fillMaxSize(),
             ) {
                 items(count = media.itemCount, key = media.itemKey { it.mediaId.value }) { index ->
-                    media[index]?.let { item -> TrashMediaCard(item, repo, viewModel::restore) }
+                    media[index]?.let { item ->
+                        TrashMediaCard(
+                            item = item,
+                            repo = repo,
+                            onRestore = viewModel::restore,
+                            onDelete = { pendingDelete = item },
+                        )
+                    }
                 }
             }
         }
+    }
+
+    pendingDelete?.let { item ->
+        LascoConfirmDialog(
+            title = "Permanently delete this item?",
+            message = "This can't be undone.",
+            onConfirm = {
+                viewModel.hardDelete(item.mediaId)
+                pendingDelete = null
+            },
+            onCancel = { pendingDelete = null },
+        )
+    }
+    if (showingEmptyTrashConfirm) {
+        LascoConfirmDialog(
+            title = "Permanently delete all items in Trash?",
+            message = "This can't be undone.",
+            confirmLabel = "Delete all",
+            onConfirm = {
+                viewModel.emptyTrash()
+                showingEmptyTrashConfirm = false
+            },
+            onCancel = { showingEmptyTrashConfirm = false },
+        )
     }
 }
 
@@ -81,6 +139,7 @@ private fun TrashMediaCard(
     item: FfiMediaItem,
     repo: LibraryRepository,
     onRestore: (uniffi.lasco_ffi.FfiMediaUuid) -> Unit,
+    onDelete: () -> Unit,
 ) {
     val colors = LascoTheme.colors
     Row(
@@ -98,12 +157,26 @@ private fun TrashMediaCard(
             item.trashedAt?.let { timestamp ->
                 Text(formattedTrashTimestamp(timestamp), style = LascoTheme.type.pixel(12), color = colors.inkMuted)
             }
-            Text(
-                text = "Restore",
-                style = LascoTheme.type.body(14),
-                color = colors.ink,
-                modifier = Modifier.heightIn(min = 48.dp).clickable { onRestore(item.mediaId) }.padding(vertical = 12.dp),
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(
+                    text = "Restore",
+                    style = LascoTheme.type.body(14),
+                    color = colors.ink,
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .clickable(role = Role.Button) { onRestore(item.mediaId) }
+                        .padding(vertical = 12.dp),
+                )
+                Text(
+                    text = "Delete",
+                    style = LascoTheme.type.body(14),
+                    color = colors.error,
+                    modifier = Modifier
+                        .heightIn(min = 48.dp)
+                        .clickable(role = Role.Button, onClick = onDelete)
+                        .padding(vertical = 12.dp),
+                )
+            }
         }
     }
 }

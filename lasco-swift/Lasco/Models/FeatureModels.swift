@@ -183,14 +183,15 @@ final class TrashMediaModel {
     private(set) var totalCount = 0
     private(set) var hasMore = false
     private(set) var isLoading = false
+    private var reloadPending = false
 
     init(repository: any LibraryRepositoryProtocol) {
         self.repository = repository
     }
 
     func start() async {
-        await reload()
         let changes = await repository.changes()
+        await reload()
         for await change in changes {
             guard !Task.isCancelled else { return }
             guard change == .all || change == .mediaList else { continue }
@@ -199,35 +200,47 @@ final class TrashMediaModel {
     }
 
     func reload() async {
-        guard !isLoading else { return }
-        isLoading = true
-        defer { isLoading = false }
-        do {
-            async let count = repository.trashedMediaByDateCount()
-            async let items = repository.trashedMediaByDate(offset: 0, limit: Self.pageSize)
-            let (loadedCount, loadedMedia) = try await (count, items)
-            guard !Task.isCancelled else { return }
-            totalCount = loadedCount
-            media = loadedMedia
-            hasMore = loadedMedia.count < loadedCount
-        } catch is CancellationError {
-        } catch {
-            AppLogger.log(.error, "trash page query failed: \(error)")
+        guard !isLoading else {
+            reloadPending = true
+            return
         }
+
+        repeat {
+            reloadPending = false
+            isLoading = true
+            do {
+                async let count = repository.trashedMediaByDateCount()
+                async let items = repository.trashedMediaByDate(offset: 0, limit: Self.pageSize)
+                let (loadedCount, loadedMedia) = try await (count, items)
+                if !Task.isCancelled {
+                    totalCount = loadedCount
+                    media = loadedMedia
+                    hasMore = loadedMedia.count < loadedCount
+                }
+            } catch is CancellationError {
+            } catch {
+                AppLogger.log(.error, "trash page query failed: \(error)")
+            }
+            isLoading = false
+        } while reloadPending && !Task.isCancelled
     }
 
     func loadMore() async {
         guard hasMore, !isLoading else { return }
         isLoading = true
-        defer { isLoading = false }
         do {
             let next = try await repository.trashedMediaByDate(offset: media.count, limit: Self.pageSize)
-            guard !Task.isCancelled else { return }
-            media.append(contentsOf: next)
-            hasMore = media.count < totalCount && !next.isEmpty
+            if !Task.isCancelled {
+                media.append(contentsOf: next)
+                hasMore = media.count < totalCount && !next.isEmpty
+            }
         } catch is CancellationError {
         } catch {
             AppLogger.log(.error, "trash next-page query failed: \(error)")
+        }
+        isLoading = false
+        if reloadPending {
+            await reload()
         }
     }
 
@@ -235,9 +248,28 @@ final class TrashMediaModel {
         Task {
             do {
                 try await repository.restoreMedia(id: mediaID)
-                await reload()
             } catch {
                 AppLogger.log(.error, "restore media failed: \(error)")
+            }
+        }
+    }
+
+    func hardDelete(_ mediaID: FfiMediaUuid) {
+        Task {
+            do {
+                try await repository.hardDeleteMedia(id: mediaID)
+            } catch {
+                AppLogger.log(.error, "permanently delete media failed: \(error)")
+            }
+        }
+    }
+
+    func emptyTrash() {
+        Task {
+            do {
+                _ = try await repository.emptyTrash()
+            } catch {
+                AppLogger.log(.error, "empty trash failed: \(error)")
             }
         }
     }

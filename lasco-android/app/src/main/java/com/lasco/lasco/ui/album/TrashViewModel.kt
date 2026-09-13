@@ -43,6 +43,14 @@ class TrashViewModel(
         viewModelScope.launch { repo.restoreMedia(mediaId) }
     }
 
+    fun hardDelete(mediaId: FfiMediaUuid) {
+        viewModelScope.launch { repo.hardDeleteMedia(mediaId) }
+    }
+
+    fun emptyTrash() {
+        viewModelScope.launch { repo.emptyTrash() }
+    }
+
     companion object {
         private const val PAGE_SIZE = 100
         private const val PREFETCH_DISTANCE = 30

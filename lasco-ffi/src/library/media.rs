@@ -834,7 +834,8 @@ impl FfiLibrary {
             .map_err(LascoError::from)
     }
 
-    /// Permanently deletes media already in Trash from CRDT state and local encrypted cache.
+    /// Permanently deletes media already in Trash and its trashed companions from CRDT state
+    /// and the local encrypted cache.
     /// Remote blobs are reclaimed after the tombstone is pushed to each remote.
     pub fn hard_delete_media(&self, media_id: FfiMediaUuid) -> Result<(), LascoError> {
         let media_uuid = media_id.try_into()?;
