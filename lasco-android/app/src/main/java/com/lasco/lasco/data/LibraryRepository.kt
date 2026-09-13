@@ -510,6 +510,23 @@ class LibraryRepository(
         return id
     }
 
+    suspend fun addRemoteSmb(
+        name: String,
+        server: String,
+        port: UShort,
+        share: String,
+        pathPrefix: String,
+        username: String,
+        password: String,
+        domain: String?,
+    ): FfiRemoteUuid {
+        val id = withContext(io) {
+            lib.addRemoteSmb(name, server, port, share, pathPrefix, username, password, domain)
+        }
+        refreshSessionState()
+        return id
+    }
+
     /** Logs this local library into Cloud and reconciles the two server-owned remotes. */
     suspend fun authenticateLascoCloud(
         email: String,

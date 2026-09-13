@@ -63,6 +63,7 @@ fun RemotesScreen(
 
     var showRemotePicker by remember { mutableStateOf(false) }
     var showAddS3 by remember { mutableStateOf(false) }
+    var showAddSmb by remember { mutableStateOf(false) }
     var showAddLocalFS by remember { mutableStateOf(false) }
     var showCloudLogin by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<FfiRemote?>(null) }
@@ -207,6 +208,7 @@ fun RemotesScreen(
             showCloud = !cloudConnected,
             onCloud = { showRemotePicker = false; showCloudLogin = true },
             onS3 = { showRemotePicker = false; showAddS3 = true },
+            onSmb = { showRemotePicker = false; showAddSmb = true },
             onLocalFS = { showRemotePicker = false; showAddLocalFS = true },
             onDismiss = { showRemotePicker = false },
         )
@@ -220,6 +222,12 @@ fun RemotesScreen(
     if (showAddS3) {
         AddS3RemoteDialog(
             onDismiss = { showAddS3 = false },
+            onResult = { name, error -> feedback = error ?: "$name: initialized" },
+        )
+    }
+    if (showAddSmb) {
+        AddSmbRemoteDialog(
+            onDismiss = { showAddSmb = false },
             onResult = { name, error -> feedback = error ?: "$name: initialized" },
         )
     }

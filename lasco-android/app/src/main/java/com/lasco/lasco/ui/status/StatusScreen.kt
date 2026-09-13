@@ -49,6 +49,7 @@ import com.lasco.lasco.ui.components.LascoInfoDialog
 import com.lasco.lasco.ui.components.LascoPrimaryButton
 import com.lasco.lasco.ui.manage.AddLocalFSRemoteDialog
 import com.lasco.lasco.ui.manage.AddS3RemoteDialog
+import com.lasco.lasco.ui.manage.AddSmbRemoteDialog
 import com.lasco.lasco.ui.manage.LascoCloudLoginDialog
 import com.lasco.lasco.ui.manage.RemoteTypePickerDialog
 import com.lasco.lasco.ui.theme.LascoTheme
@@ -88,6 +89,7 @@ fun StatusScreen(modifier: Modifier = Modifier) {
 
     var showRemotePicker by remember { mutableStateOf(false) }
     var showAddS3 by remember { mutableStateOf(false) }
+    var showAddSmb by remember { mutableStateOf(false) }
     var showAddLocalFS by remember { mutableStateOf(false) }
     var showCloudLogin by remember { mutableStateOf(false) }
     var showCleanConfirm by remember { mutableStateOf(false) }
@@ -276,6 +278,7 @@ fun StatusScreen(modifier: Modifier = Modifier) {
             showCloud = !cloudConnected,
             onCloud = { showRemotePicker = false; showCloudLogin = true },
             onS3 = { showRemotePicker = false; showAddS3 = true },
+            onSmb = { showRemotePicker = false; showAddSmb = true },
             onLocalFS = { showRemotePicker = false; showAddLocalFS = true },
             onDismiss = { showRemotePicker = false },
         )
@@ -289,6 +292,12 @@ fun StatusScreen(modifier: Modifier = Modifier) {
     if (showAddS3) {
         AddS3RemoteDialog(
             onDismiss = { showAddS3 = false },
+            onResult = { name, error -> feedback = error ?: "$name: initialized" },
+        )
+    }
+    if (showAddSmb) {
+        AddSmbRemoteDialog(
+            onDismiss = { showAddSmb = false },
             onResult = { name, error -> feedback = error ?: "$name: initialized" },
         )
     }

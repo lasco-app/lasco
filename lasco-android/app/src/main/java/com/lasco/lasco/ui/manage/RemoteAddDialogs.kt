@@ -21,6 +21,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,6 +38,7 @@ import kotlinx.coroutines.launch
 import uniffi.lasco_ffi.LascoException
 import uniffi.lasco_ffi.FfiRemoteUuid
 import uniffi.lasco_ffi.ffiTestS3Remote
+import uniffi.lasco_ffi.ffiTestSmbRemote
 
 @Composable
 private fun FullSheet(onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
@@ -67,6 +69,7 @@ fun RemoteTypePickerDialog(
     showCloud: Boolean,
     onCloud: () -> Unit,
     onS3: () -> Unit,
+    onSmb: () -> Unit,
     onLocalFS: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -85,10 +88,86 @@ fun RemoteTypePickerDialog(
                 Spacer(modifier = Modifier.height(12.dp))
             }
             LascoPrimaryButton(text = "Add S3-compatible remote", onClick = onS3)
+            Spacer(modifier = Modifier.height(12.dp))
+            LascoPrimaryButton(text = "Add SMB remote", onClick = onSmb)
             if (expertMode) {
                 Spacer(modifier = Modifier.height(12.dp))
                 LascoPrimaryButton(text = "Add local filesystem remote", onClick = onLocalFS)
             }
+        }
+    }
+}
+
+/** Adds an SMB 2/3 share after a real write/read/delete connection probe. */
+@Composable
+fun AddSmbRemoteDialog(onDismiss: () -> Unit, onResult: (name: String, error: String?) -> Unit) {
+    val colors = LascoTheme.colors
+    val context = LocalContext.current
+    val repo = remember { LibraryRepository.from(context) }
+    val scope = rememberCoroutineScope()
+    var name by rememberSaveable { mutableStateOf("") }
+    var server by rememberSaveable { mutableStateOf("") }
+    var portText by rememberSaveable { mutableStateOf("445") }
+    var share by rememberSaveable { mutableStateOf("") }
+    var pathPrefix by rememberSaveable { mutableStateOf("") }
+    var username by rememberSaveable { mutableStateOf("") }
+    var password by rememberSaveable { mutableStateOf("") }
+    var domain by rememberSaveable { mutableStateOf("") }
+    var acknowledged by rememberSaveable { mutableStateOf(false) }
+    var testing by rememberSaveable { mutableStateOf(false) }
+    var submitting by rememberSaveable { mutableStateOf(false) }
+    var message by rememberSaveable { mutableStateOf<Pair<Boolean, String>?>(null) }
+    val port = portText.toUShortOrNull()
+    val canTest = server.isNotBlank() && port != null && share.isNotBlank() && username.isNotBlank() && password.isNotBlank() && !testing
+    val canSubmit = name.isNotBlank() && canTest && acknowledged && !submitting
+    FullSheet(onDismiss = onDismiss) {
+        Column(
+            modifier = Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(horizontal = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text("Add an SMB remote", style = LascoTheme.type.title(26), color = colors.ink)
+            Text("Connect to a SMB 2 or SMB 3 share on your NAS, server, or local network.", style = LascoTheme.type.body(16), color = colors.inkSub)
+            LascoField(label = "Remote name", value = name, onValueChange = { name = it }, placeholder = "home-nas", testTag = "smb-remote.name")
+            LascoField(label = "Server", value = server, onValueChange = { server = it }, placeholder = "nas.local or 192.168.1.20", testTag = "smb-remote.server")
+            LascoField(label = "Port", value = portText, onValueChange = { portText = it }, placeholder = "445", testTag = "smb-remote.port")
+            LascoField(label = "Share", value = share, onValueChange = { share = it }, placeholder = "photos", testTag = "smb-remote.share")
+            LascoField(label = "Path inside share (optional)", value = pathPrefix, onValueChange = { pathPrefix = it }, placeholder = "lasco", testTag = "smb-remote.path")
+            LascoField(label = "Username", value = username, onValueChange = { username = it }, testTag = "smb-remote.username")
+            LascoField(label = "Domain or workgroup (optional)", value = domain, onValueChange = { domain = it }, placeholder = "WORKGROUP", testTag = "smb-remote.domain")
+            LascoField(label = "Password", value = password, onValueChange = { password = it }, secure = true, testTag = "smb-remote.password")
+            Text("The password is stored locally and encrypted with the library password.", style = LascoTheme.type.body(13), color = colors.inkMuted)
+            LascoCheckbox(checked = acknowledged, onCheckedChange = { acknowledged = it }, label = "I understand this app will upload my photos to the SMB share configured above.")
+            LascoPrimaryButton(text = if (testing) "Testing…" else "Test connection", enabled = canTest, onClick = {
+                val validPort = port ?: return@LascoPrimaryButton
+                testing = true; message = null
+                scope.launch {
+                    message = try {
+                        ffiTestSmbRemote(server, validPort, share, pathPrefix, username, password, domain.ifBlank { null })
+                        true to "Connection succeeded."
+                    } catch (e: Exception) {
+                        false to (e.message?.ifBlank { "Connection failed." } ?: "Connection failed.")
+                    }
+                    testing = false
+                }
+            })
+            message?.let { (ok, text) -> Text(text, style = LascoTheme.type.body(13), color = if (ok) colors.ok else colors.error) }
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+        Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 20.dp)) {
+            LascoPrimaryButton(text = if (submitting) "Adding…" else "Add Remote", enabled = canSubmit, onClick = {
+                val validPort = port ?: return@LascoPrimaryButton
+                submitting = true
+                scope.launch {
+                    var added: FfiRemoteUuid? = null
+                    try {
+                        val id = repo.addRemoteSmb(name, server, validPort, share, pathPrefix, username, password, domain.ifBlank { null })
+                        added = id; repo.initializeRemote(id, null); onDismiss(); onResult(name, null)
+                    } catch (e: Exception) {
+                        added?.let { runCatching { repo.removeRemote(it) } }
+                        message = false to (e.message?.ifBlank { "Failed to add remote" } ?: "Failed to add remote")
+                    } finally { submitting = false }
+                }
+            })
         }
     }
 }
