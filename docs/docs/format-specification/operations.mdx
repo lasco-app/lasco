@@ -68,7 +68,7 @@ CrdtOperation {
 operation content. Receivers may apply a duplicate operation: each affected CRDT substate is
 idempotent using its own stored dots.
 
-`OperationContent` is one of the fourteen operations listed below. `MediaCreation` carries a
+`OperationContent` is one of the sixteen operations listed below. `MediaCreation` carries a
 struct of its own; every other variant carries its fields inline.
 
 ## Operation list
@@ -102,14 +102,44 @@ entity exist.
   <Field name="key" type="String" />
   <Field name="value" type="String" note="Opaque to the format, which imposes no encoding. No client emits this operation yet; clients merge and display it." />
 </SchemaCard>
+<SchemaCard title="MediaTrashSet" description="Moves a media item into or out of the virtual Trash collection.">
+  <Field name="media_id" type="MediaUuid" />
+  <Field name="trashed" type="bool" note="true moves the item to Trash; false restores it. The winning dot decides concurrent Trash and Restore operations." />
+</SchemaCard>
+<SchemaCard title="MediaDeletion" description="Permanently tombstones explicitly selected media.">
+  <Field name="media_ids" type="Vec&lt;MediaUuid&gt;" note="The public command emits exactly one selected media ID; hard deletion never expands to companions." />
+</SchemaCard>
 </CardGrid>
 
 A media referenced by another media's `apple_aae_media_id` or `apple_live_photo_media_id` is a
 companion. Companions are stored as ordinary media, but they are never added to an album or a
 group, so they never appear in listings on their own.
 
-There is intentionally no `MediaDeletion`. Media may leave albums and groups, but it remains in
-the library.
+## Media lifecycle
+
+For the complete lifecycle, cleanup, and remote-reclamation contract, see
+[Media deletion](./media-deletion).
+
+Trash is a virtual system collection, not an `AlbumEntry` and not a reserved `AlbumUuid`. A
+soft-deleted media item remains live CRDT state and retains its encrypted data, thumbnail, and
+existing album/group membership dots. It is hidden from Home, albums, groups, and Orphans, and is
+shown only in Trash. Restore makes the retained memberships visible again.
+
+Soft deletion keeps existing album and group membership dots. While the media is trashed, browse
+views hide it; Restore makes its previous collections visible again. Trash is never an orphan
+state. A local album or group add addressed to a trashed item is a successful no-op; a concurrent
+add remains hidden until Restore.
+
+`MediaTrashSet` is a last-write-wins boolean register ordered by its dot. `MediaDeletion` is a
+permanent tombstone: for every listed ID its dot is retained as the maximum deletion dot and is
+never cleared. A tombstone wins over creation, rename, properties, membership, Trash, and Restore,
+including when the deletion arrives before creation. Creation metadata is retained behind a
+tombstone solely to locate encrypted blobs for cleanup; tombstoned media is never resolved into a
+browseable entry or a sync-upload candidate.
+
+Soft delete and Restore apply to a media item and its connected AAE/Live Photo companions. Hard
+delete requires the selected item to be in Trash and records a tombstone for that item only; it
+does not automatically delete companions.
 
 ### Albums
 
@@ -177,6 +207,8 @@ product constraint rather than an implementation accident.
 | `MediaCreation` | Immutable creation record keyed by `media_id`, with a deterministic dot tie-break for the same-ID conflict that normal use cannot produce. |
 | `MediaRename` | LWW register of `Option<MediaName>`. |
 | `MediaPropsUpdate` | Per-key LWW `String` register. |
+| `MediaTrashSet` | LWW `bool` register. `true` hides the live item in the virtual Trash collection; `false` restores it. |
+| `MediaDeletion` | Permanent per-media tombstone. It prevents all later resolution and retains creation metadata only for local/remote blob cleanup. |
 | `AlbumCreation` | Marks the entity created and writes `name` and desired parent to their LWW registers using the creation dot. |
 | `AlbumMediaAdd` / `AlbumMediaRemove` | Add-wins observed-remove set. An add stores its dot; a remove carries the exact `observed` set of add dots it cancels. |
 | `AlbumDeletion` | Permanent tombstone. It hides the album and its contents without erasing their CRDT metadata. |
@@ -250,12 +282,20 @@ dot deduplication.
 Fetch caches immutable remote files, verifies that all dots previously cached for that remote are
 still covered by the remote's current files, then applies their operations to `CrdtState` and the
 local operation log. Each immutable file is marked merged only after its operations have been
-persisted. Fetch records confirmed `MediaCreation` objects in the positive-only media inventory.
+persisted. Fetch records confirmed non-tombstoned `MediaCreation` objects in the positive-only
+media inventory. After it durably applies operations and rebuilds state, it removes local `.data`
+and `.thumb` cache files for every known `MediaDeletion` tombstone. The same cleanup runs when a
+library opens, so an interrupted cleanup is retried.
 
 Push compares dots in the complete local operation log with dots covered by the target remote's
 cached files. It uploads uncovered operations in one compaction file and writes the same ciphertext
 into the target's last-known-state cache. `CrdtState` is a materialized CRDT-state snapshot,
 not an operation outbox. The operation log is the sole source used to decide what Push delivers.
+
+Media reads first check live resolved CRDT state. A hard-deleted ID is rejected before local-cache
+or remote access. If a remote read was already in flight when Fetch applies a tombstone, the read
+checks live state again before writing downloaded ciphertext to the local cache and discards it if
+the item was deleted.
 
 ## Debug UI
 
