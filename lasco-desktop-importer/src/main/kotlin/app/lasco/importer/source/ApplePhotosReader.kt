@@ -1,0 +1,80 @@
+package app.lasco.importer.source
+
+import app.lasco.importer.model.ImportAsset
+import app.lasco.importer.model.ImportSource
+import app.lasco.importer.model.ResourceRole
+import app.lasco.importer.model.SourceMetadata
+import app.lasco.importer.model.StagedAsset
+import com.sun.jna.Library
+import com.sun.jna.Native
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import java.nio.file.Files
+import java.nio.file.Path
+
+/** JVM view of the Kotlin/Native PhotoKit bridge. It is never loaded off macOS. */
+private interface PhotoKitNative : Library {
+    fun lasco_photos_authorization_status(): Int
+    fun lasco_photos_request_authorization(): Int
+    fun lasco_photos_discover_json(): String
+    fun lasco_photos_stage(resourceId: String, destinationDirectory: String): String
+}
+
+@Serializable
+private data class NativePhotoResource(
+    val resourceId: String,
+    val assetId: String,
+    val type: String,
+    val filename: String,
+    val byteCount: Long,
+    val capturedAt: String? = null,
+    val modifiedAt: String? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val albumNames: List<String> = emptyList(),
+    val pairedVideoResourceId: String? = null,
+    val aaeResourceId: String? = null,
+)
+
+/**
+ * Uses PhotoKit directly through the bundled Kotlin/Native bridge. Discovery maps Photos resource
+ * IDs to durable import IDs; resume asks PhotoKit for exactly those IDs and does not re-enumerate
+ * the library. iCloud-only originals are downloaded by `PHAssetResourceManager` into staging.
+ */
+class ApplePhotosReader(private val bridge: PhotoKitNative = loadBridge()) : ImportSourceReader {
+    override val source = ImportSource.APPLE_PHOTOS
+    private val json = Json { ignoreUnknownKeys = true }
+
+    fun hasPermission(): Boolean = bridge.lasco_photos_authorization_status() == 3
+    fun requestPermission(): Boolean = bridge.lasco_photos_request_authorization() == 3
+
+    override suspend fun discover(): List<ImportAsset> {
+        check(hasPermission()) { "Apple Photos permission has not been granted" }
+        val resources = json.decodeFromString<List<NativePhotoResource>>(bridge.lasco_photos_discover_json())
+        return resources.map { resource ->
+            ImportAsset(
+                sourceId = "photos:${resource.resourceId}", source = source,
+                resourceRole = when (resource.type) { "aae" -> ResourceRole.AAE_SIDECAR; "pairedVideo" -> ResourceRole.LIVE_PHOTO_VIDEO; else -> ResourceRole.PRIMARY },
+                displayName = resource.filename, byteCount = resource.byteCount,
+                metadata = SourceMetadata(resource.filename, resource.capturedAt, resource.modifiedAt, resource.latitude, resource.longitude),
+                sourceLocator = resource.resourceId, albumNames = resource.albumNames,
+                aaeSourceId = resource.aaeResourceId?.let { "photos:$it" }, liveVideoSourceId = resource.pairedVideoResourceId?.let { "photos:$it" },
+            )
+        }
+    }
+
+    override suspend fun stage(asset: ImportAsset, stagingDirectory: Path): StagedAsset {
+        Files.createDirectories(stagingDirectory)
+        val staged = Path.of(bridge.lasco_photos_stage(asset.sourceLocator, stagingDirectory.toString())).normalize()
+        require(staged.startsWith(stagingDirectory.normalize())) { "PhotoKit returned a path outside the staging directory" }
+        require(Files.isRegularFile(staged)) { "PhotoKit did not stage ${asset.displayName}" }
+        return StagedAsset(asset, staged)
+    }
+
+    private companion object {
+        fun loadBridge(): PhotoKitNative {
+            check(System.getProperty("os.name").lowercase().contains("mac")) { "Apple Photos import is macOS-only" }
+            return Native.load("lasco_photos_bridge", PhotoKitNative::class.java)
+        }
+    }
+}
