@@ -45,6 +45,60 @@ fn a_created_media_item_is_visible_with_its_original_metadata() {
 }
 
 #[test]
+fn trash_hides_media_until_a_later_restore_wins() {
+    let media_id = media(1);
+    let operations = [
+        create_media(media_id),
+        operation(
+            Dot {
+                lamport_counter: 2,
+                device_id: DeviceId(1),
+            },
+            OperationContent::MediaTrashSet {
+                media_id,
+                trashed: true,
+            },
+        ),
+        operation(
+            Dot {
+                lamport_counter: 3,
+                device_id: DeviceId(1),
+            },
+            OperationContent::MediaTrashSet {
+                media_id,
+                trashed: false,
+            },
+        ),
+    ];
+    assert_every_delivery_order(&operations, |state| {
+        assert!(state.media(media_id).is_some());
+        assert!(!state.is_media_trashed(media_id));
+    });
+}
+
+#[test]
+fn hard_deletion_wins_when_creation_arrives_late() {
+    let media_id = media(1);
+    let operations = [
+        create_media(media_id),
+        operation(
+            Dot {
+                lamport_counter: 2,
+                device_id: DeviceId(1),
+            },
+            OperationContent::MediaDeletion {
+                media_ids: vec![media_id],
+            },
+        ),
+    ];
+    assert_every_delivery_order(&operations, |state| {
+        assert!(state.media(media_id).is_none());
+        assert_eq!(state.hard_deleted_media().len(), 1);
+        assert_eq!(state.hard_deleted_media()[0].media_id, media_id);
+    });
+}
+
+#[test]
 fn a_media_item_renamed_on_another_device_keeps_the_latest_name() {
     let media_id = media(1);
     let operations = [

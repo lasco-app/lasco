@@ -39,6 +39,8 @@ protocol LibraryRepositoryProtocol: Sendable {
     func orphanMediaByDateCount() async throws -> Int
     func orphanMediaByDate(offset: Int, limit: Int) async throws -> [FfiMediaItem]
     func orphanMediaByDateNeighbors(position: Int) async throws -> FfiMediaNeighbors
+    func trashedMediaByDateCount() async throws -> Int
+    func trashedMediaByDate(offset: Int, limit: Int) async throws -> [FfiMediaItem]
     func albumsCount(parentID: FfiAlbumUuid?) async throws -> Int
     func albums(parentID: FfiAlbumUuid?, offset: Int, limit: Int) async throws -> [FfiAlbum]
     func albums(withIDs ids: Set<FfiAlbumUuid>) async throws -> [FfiAlbum]
@@ -64,6 +66,9 @@ protocol LibraryRepositoryProtocol: Sendable {
 
     func renameMedia(id: FfiMediaUuid, name: String?) async throws
     func deleteMedia(id: FfiMediaUuid) async throws
+    func restoreMedia(id: FfiMediaUuid) async throws
+    func hardDeleteMedia(id: FfiMediaUuid) async throws
+    func emptyTrash() async throws -> Int
     func addMediaToAlbum(albumID: FfiAlbumUuid, mediaID: FfiMediaUuid) async throws
     func addMediaToAlbumWithoutNotification(albumID: FfiAlbumUuid, mediaID: FfiMediaUuid) async throws
     func removeMediaFromAlbum(albumID: FfiAlbumUuid, mediaID: FfiMediaUuid) async throws
@@ -298,6 +303,18 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         return try library.orphanMediaByDateNeighbors(position: UInt32(position))
     }
 
+    func trashedMediaByDateCount() async throws -> Int {
+        try ensureOpen()
+        return Int(library.trashedMediaByDateCount())
+    }
+
+    func trashedMediaByDate(offset: Int, limit: Int) async throws -> [FfiMediaItem] {
+        try ensureOpen()
+        return try page(offset: offset, limit: limit) { start, end in
+            try library.trashedMediaByDateRange(posStartInclusive: start, posEndInclusive: end)
+        }
+    }
+
     func albumsCount(parentID: FfiAlbumUuid?) async throws -> Int {
         try ensureOpen()
         return Int(try library.albumAlbumsCount(parentAlbumId: parentID))
@@ -528,6 +545,33 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         await notify(.mediaList)
         await notify(.albumList)
         await notify(.localMutation)
+    }
+
+    func restoreMedia(id: FfiMediaUuid) async throws {
+        try ensureOpen()
+        try library.restoreMedia(mediaId: id)
+        await notify(.media(id))
+        await notify(.mediaList)
+        await notify(.albumList)
+        await notify(.localMutation)
+    }
+
+    func hardDeleteMedia(id: FfiMediaUuid) async throws {
+        try ensureOpen()
+        try library.hardDeleteMedia(mediaId: id)
+        await notify(.media(id))
+        await notify(.mediaList)
+        await notify(.albumList)
+        await notify(.localMutation)
+    }
+
+    func emptyTrash() async throws -> Int {
+        try ensureOpen()
+        let deleted = Int(try library.emptyTrash())
+        await notify(.mediaList)
+        await notify(.albumList)
+        await notify(.localMutation)
+        return deleted
     }
 
     func addMediaToAlbum(albumID: FfiAlbumUuid, mediaID: FfiMediaUuid) async throws {
@@ -945,6 +989,8 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     func orphanMediaByDateCount() async throws -> Int { try await storage.orphanMediaByDateCount() }
     func orphanMediaByDate(offset: Int, limit: Int) async throws -> [FfiMediaItem] { try await storage.orphanMediaByDate(offset: offset, limit: limit) }
     func orphanMediaByDateNeighbors(position: Int) async throws -> FfiMediaNeighbors { try await storage.orphanMediaByDateNeighbors(position: position) }
+    func trashedMediaByDateCount() async throws -> Int { try await storage.trashedMediaByDateCount() }
+    func trashedMediaByDate(offset: Int, limit: Int) async throws -> [FfiMediaItem] { try await storage.trashedMediaByDate(offset: offset, limit: limit) }
     func albumsCount(parentID: FfiAlbumUuid?) async throws -> Int { try await storage.albumsCount(parentID: parentID) }
     func albums(parentID: FfiAlbumUuid?, offset: Int, limit: Int) async throws -> [FfiAlbum] { try await storage.albums(parentID: parentID, offset: offset, limit: limit) }
     func albums(withIDs ids: Set<FfiAlbumUuid>) async throws -> [FfiAlbum] { try await storage.albums(withIDs: ids) }
@@ -972,6 +1018,9 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     }
     func renameMedia(id: FfiMediaUuid, name: String?) async throws { try await storage.renameMedia(id: id, name: name) }
     func deleteMedia(id: FfiMediaUuid) async throws { try await storage.deleteMedia(id: id) }
+    func restoreMedia(id: FfiMediaUuid) async throws { try await storage.restoreMedia(id: id) }
+    func hardDeleteMedia(id: FfiMediaUuid) async throws { try await storage.hardDeleteMedia(id: id) }
+    func emptyTrash() async throws -> Int { try await storage.emptyTrash() }
     func addMediaToAlbum(albumID: FfiAlbumUuid, mediaID: FfiMediaUuid) async throws { try await storage.addMediaToAlbum(albumID: albumID, mediaID: mediaID) }
     func addMediaToAlbumWithoutNotification(albumID: FfiAlbumUuid, mediaID: FfiMediaUuid) async throws { try await storage.addMediaToAlbumWithoutNotification(albumID: albumID, mediaID: mediaID) }
     func removeMediaFromAlbum(albumID: FfiAlbumUuid, mediaID: FfiMediaUuid) async throws { try await storage.removeMediaFromAlbum(albumID: albumID, mediaID: mediaID) }

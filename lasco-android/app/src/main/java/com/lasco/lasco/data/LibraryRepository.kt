@@ -206,6 +206,14 @@ class LibraryRepository(
         lib.orphanMediaByDateNeighbors(position.toUInt())
     }
 
+    suspend fun trashedMediaByDateCount(): Int = withContext(io) {
+        lib.trashedMediaByDateCount().toInt()
+    }
+
+    suspend fun trashedMediaByDate(offset: Int, limit: Int): List<FfiMediaItem> = withContext(io) {
+        page(offset, limit, lib::trashedMediaByDateRange)
+    }
+
     suspend fun albumChildrenCount(parentAlbumId: FfiAlbumUuid?): Int = withContext(io) {
         lib.albumAlbumsCount(parentAlbumId).toInt()
     }
@@ -276,6 +284,36 @@ class LibraryRepository(
         changes.emit(Change.MediaList)
         // Membership unknown, so start broad and narrow to
         // mediaContainingAlbumIds(id) later if this proves heavy.
+        changes.emit(Change.AlbumList)
+        localMutations.emit(Unit)
+    }
+
+    suspend fun restoreMedia(mediaId: FfiMediaUuid) {
+        withContext(io) { lib.restoreMedia(mediaId) }
+        notifyMediaLifecycleChanged(mediaId)
+    }
+
+    suspend fun softDeleteMedia(mediaId: FfiMediaUuid) {
+        withContext(io) { lib.softDeleteMedia(mediaId) }
+        notifyMediaLifecycleChanged(mediaId)
+    }
+
+    suspend fun hardDeleteMedia(mediaId: FfiMediaUuid) {
+        withContext(io) { lib.hardDeleteMedia(mediaId) }
+        notifyMediaLifecycleChanged(mediaId)
+    }
+
+    suspend fun emptyTrash(): Int {
+        val deleted = withContext(io) { lib.emptyTrash().toInt() }
+        changes.emit(Change.MediaList)
+        changes.emit(Change.AlbumList)
+        localMutations.emit(Unit)
+        return deleted
+    }
+
+    private suspend fun notifyMediaLifecycleChanged(mediaId: FfiMediaUuid) {
+        changes.emit(Change.Media(mediaId))
+        changes.emit(Change.MediaList)
         changes.emit(Change.AlbumList)
         localMutations.emit(Unit)
     }

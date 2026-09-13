@@ -1137,6 +1137,19 @@ fn operation_to_ffi(op: OperationContent, timestamp: String) -> FfiOperation {
                 kv("value", &value),
             ],
         },
+        OperationContent::MediaTrashSet { media_id, trashed } => FfiOperation {
+            kind: "MediaTrashSet".to_string(),
+            timestamp: timestamp.clone(),
+            args: vec![kv("media_id", &media_id), kv("trashed", &trashed)],
+        },
+        OperationContent::MediaDeletion { media_ids } => FfiOperation {
+            kind: "MediaDeletion".to_string(),
+            timestamp: timestamp.clone(),
+            args: media_ids
+                .iter()
+                .map(|media_id| kv("media_id", media_id))
+                .collect(),
+        },
         OperationContent::AlbumCreation {
             album_id,
             name,

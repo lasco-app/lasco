@@ -622,6 +622,35 @@ impl FfiLibrary {
             .collect())
     }
 
+    pub fn trashed_media_by_date_count(&self) -> u64 {
+        ffi_count(self.inner.trashed_media_by_date_count())
+    }
+
+    /// Positions are zero-based and both ends of the range are inclusive.
+    pub fn trashed_media_by_date_range(
+        &self,
+        pos_start_inclusive: u32,
+        pos_end_inclusive: u32,
+    ) -> Result<Vec<FfiMediaItem>, LascoError> {
+        let (start, end) = inclusive_range(pos_start_inclusive, pos_end_inclusive)?;
+        Ok(self
+            .inner
+            .trashed_media_by_date_range(start, end)
+            .into_iter()
+            .map(media_entry_to_ffi)
+            .collect())
+    }
+
+    /// Returns every trashed media record, including companions hidden from
+    /// normal Trash browsing. This is intended for maintenance flows.
+    pub fn trashed_media_all(&self) -> Vec<FfiMediaItem> {
+        self.inner
+            .trashed_media_all()
+            .into_iter()
+            .map(media_entry_to_ffi)
+            .collect()
+    }
+
     /// # Errors
     ///
     /// Returns an error if `media_id` is not a valid UUID.
@@ -786,11 +815,40 @@ impl FfiLibrary {
 
     /// # Errors
     ///
-    /// Returns an error if `media_id` is invalid, absent, or the delete operation cannot be persisted.
+    /// Moves media to Trash. Its encrypted data remains available for Restore.
     pub fn delete_media(&self, media_id: FfiMediaUuid) -> Result<(), LascoError> {
+        self.soft_delete_media(media_id)
+    }
+
+    pub fn soft_delete_media(&self, media_id: FfiMediaUuid) -> Result<(), LascoError> {
         let media_uuid = media_id.try_into()?;
         self.rt
-            .block_on(self.inner.media_delete(media_uuid))
+            .block_on(self.inner.media_soft_delete(media_uuid))
+            .map_err(LascoError::from)
+    }
+
+    pub fn restore_media(&self, media_id: FfiMediaUuid) -> Result<(), LascoError> {
+        let media_uuid = media_id.try_into()?;
+        self.rt
+            .block_on(self.inner.media_restore(media_uuid))
+            .map_err(LascoError::from)
+    }
+
+    /// Permanently deletes media already in Trash from CRDT state and local encrypted cache.
+    /// Remote blobs are reclaimed after the tombstone is pushed to each remote.
+    pub fn hard_delete_media(&self, media_id: FfiMediaUuid) -> Result<(), LascoError> {
+        let media_uuid = media_id.try_into()?;
+        self.rt
+            .block_on(self.inner.media_hard_delete(media_uuid))
+            .map_err(LascoError::from)
+    }
+
+    /// Permanently deletes every item in Trash, including hidden companions.
+    /// Remote blobs are reclaimed after their tombstones are pushed.
+    pub fn empty_trash(&self) -> Result<u64, LascoError> {
+        self.rt
+            .block_on(self.inner.media_empty_trash())
+            .map(ffi_count)
             .map_err(LascoError::from)
     }
 }

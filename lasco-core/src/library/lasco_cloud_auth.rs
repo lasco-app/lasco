@@ -74,7 +74,9 @@ pub struct LascoCloudStorageUsageCheck {
     pub proposed_media_bytes: u64,
 }
 #[derive(Clone, Deserialize)]
-pub struct LascoCloudStorageUsage { pub approximate_used_bytes: u64 }
+pub struct LascoCloudStorageUsage {
+    pub approximate_used_bytes: u64,
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum LascoCloudAuthError {
@@ -213,23 +215,53 @@ impl LascoCloudAuthManager {
         remotes: Vec<(String, u64)>,
     ) -> Result<LascoCloudStorageUsageCheck, LascoCloudAuthError> {
         #[derive(Serialize)]
-        struct Remote { remote_id: String, media_bytes: u64 }
+        struct Remote {
+            remote_id: String,
+            media_bytes: u64,
+        }
         #[derive(Serialize)]
-        struct Request { remotes: Vec<Remote> }
-        self.authenticated_json(Method::POST, "api/v1/storage-usage/check", Some(Request {
-            remotes: remotes.into_iter().map(|(remote_id, media_bytes)| Remote { remote_id, media_bytes }).collect(),
-        })).await
+        struct Request {
+            remotes: Vec<Remote>,
+        }
+        self.authenticated_json(
+            Method::POST,
+            "api/v1/storage-usage/check",
+            Some(Request {
+                remotes: remotes
+                    .into_iter()
+                    .map(|(remote_id, media_bytes)| Remote {
+                        remote_id,
+                        media_bytes,
+                    })
+                    .collect(),
+            }),
+        )
+        .await
     }
     pub async fn storage_usage(&self) -> Result<LascoCloudStorageUsage, LascoCloudAuthError> {
-        self.authenticated_json(Method::GET, "api/v1/storage-usage", None::<()>).await
+        self.authenticated_json(Method::GET, "api/v1/storage-usage", None::<()>)
+            .await
     }
 
     pub async fn confirm_storage_usage(
-        &self, remote_id: String, media_bytes_added: u64,
+        &self,
+        remote_id: String,
+        media_bytes_added: u64,
     ) -> Result<(), LascoCloudAuthError> {
         #[derive(Serialize)]
-        struct Request { remote_id: String, media_bytes_added: u64 }
-        self.authenticated_json(Method::POST, "api/v1/storage-usage/confirm", Some(Request { remote_id, media_bytes_added })).await
+        struct Request {
+            remote_id: String,
+            media_bytes_added: u64,
+        }
+        self.authenticated_json(
+            Method::POST,
+            "api/v1/storage-usage/confirm",
+            Some(Request {
+                remote_id,
+                media_bytes_added,
+            }),
+        )
+        .await
     }
 
     pub async fn revoke(&self) -> Result<(), LascoCloudAuthError> {

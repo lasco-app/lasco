@@ -16,6 +16,8 @@ pub struct ComputedViews {
     pub home_visible_newest: Vec<MediaUuid>,
     /// Primary media with no live album or group membership, newest first.
     pub home_orphaned_newest: Vec<MediaUuid>,
+    /// Primary media in Trash, newest first.
+    pub home_trashed_newest: Vec<MediaUuid>,
     pub by_album: FxHashMap<AlbumUuid, Vec<MediaUuid>>,
     pub album_children: FxHashMap<Option<AlbumUuid>, Vec<AlbumUuid>>,
     /// Non-deleted direct child albums, ordered by name then ID. `None` is root.

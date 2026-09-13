@@ -73,6 +73,9 @@ impl Library {
             &local_state_crdt,
         )
         .await?;
+        // Fetch may have merged permanent deletions. Their CRDT state is
+        // already durable; now reclaim any matching local encrypted blobs.
+        let _ = self.cleanup_hard_deleted_local();
         Ok(report)
     }
 }

@@ -266,6 +266,10 @@ impl Library {
             )
             .await?
         };
+        // The fetch half may have merged media tombstones. Reclaim cache files
+        // before planning the push half; failures are retryable and never undo
+        // the durable logical deletion.
+        let _ = self.cleanup_hard_deleted_local();
         let remote = StorageReadWrite::new(storage);
         let push_report = self
             .push_impl(

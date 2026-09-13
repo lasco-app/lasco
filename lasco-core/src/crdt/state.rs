@@ -40,10 +40,21 @@ pub struct MediaEntry {
     pub gps: Option<GpsCoords>,
     pub apple_aae_media_id: Option<MediaUuid>,
     pub apple_live_photo_media_id: Option<MediaUuid>,
+    /// A trashed item remains a live media record for sync and Restore, but is
+    /// excluded from ordinary browse views.
+    pub trashed: bool,
     /// Set when another media references this one as its companion resource. It is derived
     /// from the creation payloads of every other media, never stored.
     pub companion_kind: Option<CompanionKind>,
     pub group_ids: Vec<GroupUuid>,
+}
+
+/// Metadata retained for a permanently deleted item so cache and remote cleanup
+/// can find its immutable blob paths without making the item browseable again.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HardDeletedMedia {
+    pub media_id: MediaUuid,
+    pub storage_date: StorageDate,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AlbumEntry {
@@ -144,6 +155,15 @@ pub enum OperationContent {
         media_id: MediaUuid,
         key: String,
         value: String,
+    },
+    MediaTrashSet {
+        media_id: MediaUuid,
+        trashed: bool,
+    },
+    /// Permanent deletion of explicitly selected IDs. The public command emits
+    /// one ID and never expands a deletion to companion resources.
+    MediaDeletion {
+        media_ids: Vec<MediaUuid>,
     },
     AlbumCreation {
         album_id: AlbumUuid,
@@ -289,6 +309,11 @@ pub struct MediaCrdt {
     pub author: Option<LastWriteWin<LibraryUsername>>,
     pub name: Option<LastWriteWin<Option<MediaName>>>,
     pub properties: HashMap<String, LastWriteWin<String>>,
+    pub trashed: Option<LastWriteWin<bool>>,
+    /// A media tombstone is irreversible. It remains alongside creation
+    /// metadata so delayed operations cannot resurrect the item and cleanup
+    /// can still derive the immutable storage path.
+    pub tombstone: Option<Dot>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -378,6 +403,23 @@ impl CrdtState {
                             value: value.clone(),
                         });
                 register.write(operation.dot, value.clone());
+            }
+            OperationContent::MediaTrashSet { media_id, trashed } => {
+                write_optional(
+                    &mut self.media.entry(*media_id).or_default().trashed,
+                    operation.dot,
+                    *trashed,
+                );
+            }
+            OperationContent::MediaDeletion { media_ids } => {
+                for media_id in media_ids {
+                    let media = self.media.entry(*media_id).or_default();
+                    media.tombstone = Some(
+                        media
+                            .tombstone
+                            .map_or(operation.dot, |old| old.max(operation.dot)),
+                    );
+                }
             }
             OperationContent::AlbumCreation {
                 album_id,
@@ -522,6 +564,39 @@ impl CrdtState {
             .is_some_and(|album| album.creation.is_some() && album.tombstone.is_none())
     }
 
+    #[must_use]
+    pub fn is_media_trashed(&self, id: MediaUuid) -> bool {
+        self.media.get(&id).is_some_and(|media| {
+            media.tombstone.is_none()
+                && media
+                    .trashed
+                    .as_ref()
+                    .is_some_and(|register| register.value)
+        })
+    }
+
+    /// Returns paths for all tombstoned media whose creation metadata has been
+    /// observed. A deletion may arrive first; it becomes cleanup-eligible when
+    /// the creation operation later arrives.
+    #[must_use]
+    pub fn hard_deleted_media(&self) -> Vec<HardDeletedMedia> {
+        let mut result: Vec<_> = self
+            .media
+            .values()
+            .filter_map(|media| {
+                (media.tombstone.is_some())
+                    .then_some(media.creation.as_ref())
+                    .flatten()
+                    .map(|creation| HardDeletedMedia {
+                        media_id: creation.value.media_id,
+                        storage_date: creation.value.storage_date,
+                    })
+            })
+            .collect();
+        result.sort_by_key(|entry| entry.media_id.0);
+        result
+    }
+
     /// Resolves parents, cycles, and visibility without mutating canonical data.
     ///
     /// # Panics
@@ -597,6 +672,9 @@ impl CrdtState {
         // Creation payloads are immutable, so this reverse index only needs one pass.
         let mut companion_kinds: HashMap<MediaUuid, CompanionKind> = HashMap::new();
         for media in self.media.values() {
+            if media.tombstone.is_some() {
+                continue;
+            }
             let Some(creation) = &media.creation else {
                 continue;
             };
@@ -612,6 +690,9 @@ impl CrdtState {
         }
         let mut media_entries = Vec::new();
         for media in self.media.values() {
+            if media.tombstone.is_some() {
+                continue;
+            }
             let Some(creation) = &media.creation else {
                 continue;
             };
@@ -640,6 +721,10 @@ impl CrdtState {
                 gps: value.gps,
                 apple_aae_media_id: value.apple_aae_media_id,
                 apple_live_photo_media_id: value.apple_live_photo_media_id,
+                trashed: media
+                    .trashed
+                    .as_ref()
+                    .is_some_and(|register| register.value),
                 companion_kind: companion_kinds.get(&value.media_id).copied(),
                 group_ids: Vec::new(),
             });

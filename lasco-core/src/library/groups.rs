@@ -30,6 +30,15 @@ impl Library {
     ///
     /// Returns an error if the group or media is absent, or the membership operation cannot be persisted.
     pub async fn group_add_media(&self, group_id: GroupUuid, media_id: MediaUuid) -> Result<()> {
+        {
+            let state = self.inner.state.read();
+            if state.media(media_id).is_none() {
+                return Err(LibraryError::MediaNotFound(media_id));
+            }
+            if state.is_media_trashed(media_id) {
+                return Ok(());
+            }
+        }
         self.record_local_operation(
             Utc::now(),
             OperationContent::GroupMediaAdd { group_id, media_id },

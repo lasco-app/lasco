@@ -74,6 +74,58 @@ async fn fetch_idempotent() {
 }
 
 #[tokio::test]
+async fn fetch_hard_deletion_reclaims_a_previously_downloaded_local_blob() {
+    let storage = StorageMockMemory::new();
+    let tmp_a = TempDir::new().unwrap();
+    let tmp_b = TempDir::new().unwrap();
+    let lib_a = make_library(&tmp_a).await;
+    lib_a
+        .initialize_remote(&storage, remote_uuid())
+        .await
+        .unwrap();
+    let lib_b = make_library_with_same_keys(&tmp_b, &lib_a).await;
+
+    let media_id = lib_a
+        .media_add(
+            crate::library::media::upload::MediaAddSource::CopyFrom(write_file(
+                tmp_a.path(),
+                "delete-on-fetch.jpg",
+                b"data",
+            )),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap()
+        .id();
+    lib_a.push(&storage, REMOTE_ID).await.unwrap();
+    lib_b.fetch(&storage, REMOTE_ID).await.unwrap();
+
+    // Materialize a local encrypted cache copy on B before A deletes it.
+    lib_b
+        .media_get_bytes(media_id, Some(&storage))
+        .await
+        .unwrap();
+    let entry = lib_b.media_show(media_id).unwrap();
+    let cached_data = lib_b.inner.local_dirs.local_state_media_dir().data_path(
+        entry.storage_date.year,
+        entry.storage_date.month,
+        &media_id,
+    );
+    assert!(cached_data.exists());
+
+    lib_a.media_soft_delete(media_id).await.unwrap();
+    lib_a.media_hard_delete(media_id).await.unwrap();
+    lib_a.push(&storage, REMOTE_ID).await.unwrap();
+    lib_b.fetch(&storage, REMOTE_ID).await.unwrap();
+
+    assert!(!cached_data.exists());
+    assert!(lib_b.media_show(media_id).is_err());
+}
+
+#[tokio::test]
 // fetch calls storage.list() exactly three times per invocation: once to verify remote
 // identity, once for library/ (step 1), and once for operations/ (step 2). Media
 // listing is handled separately.

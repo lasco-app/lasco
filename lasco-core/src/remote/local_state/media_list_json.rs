@@ -80,4 +80,11 @@ impl MediaList {
         }
         changed
     }
+
+    /// Removes an observation after this client has reclaimed the corresponding
+    /// remote blobs. Unlike `record`, this is used only for a permanent CRDT
+    /// tombstone, never to infer absence from a failed probe.
+    pub fn forget(&mut self, media_id: &MediaUuid) -> bool {
+        self.media.remove(media_id).is_some()
+    }
 }
