@@ -14,7 +14,7 @@ use crate::identifiers::{MediaUuid, RemoteUuid};
 use crate::library::Library;
 use crate::storage::{AtomicWriteMode, StorageError};
 use fetch::{FetchAccess, fetch_impl};
-use push::PushAccess;
+use push::{DEFAULT_MAX_CONCURRENT_MEDIA_UPLOADS, PushAccess};
 use remote_access::{StorageRead, StorageReadWrite};
 use std::collections::HashMap;
 
@@ -284,6 +284,7 @@ impl Library {
                 PushMediaSource::LocalOnly,
                 None,
                 None,
+                DEFAULT_MAX_CONCURRENT_MEDIA_UPLOADS,
             )
             .await?;
         Ok(SyncReport {

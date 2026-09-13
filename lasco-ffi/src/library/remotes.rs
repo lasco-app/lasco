@@ -45,6 +45,72 @@ fn next_media_fetch_priority(remote_count: usize) -> Result<u32, LascoError> {
     })
 }
 
+const DEFAULT_IMPORTER_REMOTE_UPLOAD_CONCURRENCY: usize = 2;
+const MAX_IMPORTER_REMOTE_UPLOAD_CONCURRENCY: usize = 5;
+
+async fn push_configured_media_sources(
+    library: &FfiLibrary,
+    target_remote_id: FfiRemoteUuid,
+    app_support_dir: Option<String>,
+    progress: Box<dyn PushProgressSink>,
+    max_concurrent_media_uploads: usize,
+) -> Result<u64, LascoError> {
+    let target: RemoteUuid = target_remote_id.try_into()?;
+    let config = library.load_library_json()?;
+    let resolution = library
+        .inner
+        .resolve_push_media(target, &config.media_source_order)?;
+    if !resolution.unresolved_data.is_empty() {
+        return Err(LascoError::from(lasco_core::error::LibraryError::Sync(
+            lasco_core::error::SyncError::MissingMediaOnConfiguredSources(
+                resolution.unresolved_data,
+            ),
+        )));
+    }
+
+    // Only the remotes the plan names are opened. Push verifies each of them before
+    // reading anything from it.
+    let mut sources: HashMap<RemoteUuid, Box<dyn lasco_core::storage::Storage + Send + Sync>> =
+        HashMap::new();
+    for source_id in resolution.source_remote_ids() {
+        sources.insert(
+            source_id,
+            library.build_storage_for_remote(&source_id, app_support_dir.as_deref())?,
+        );
+    }
+    let target_storage = library.build_storage_for_remote(&target, app_support_dir.as_deref())?;
+    let inner = library.inner.clone();
+    let assignments = resolution.assignments;
+    let progress = FfiPushProgressObserver { sink: progress };
+    // The push runs on the runtime owned by this library, not on the foreign
+    // executor driving this exported async function. Storage backends build
+    // network clients that need a Tokio context.
+    let report = library
+        .rt
+        .spawn(async move {
+            let source_reads = sources
+                .iter()
+                .map(|(id, storage)| (*id, StorageRead::new(storage.as_ref())))
+                .collect();
+            inner
+                .push_with_media_source_and_progress_with_concurrency(
+                    target_storage.as_ref(),
+                    target,
+                    PushMediaSource::Plan(lasco_core::library::sync::PushMediaPlan {
+                        assignments,
+                        sources: source_reads,
+                    }),
+                    Some(&progress),
+                    max_concurrent_media_uploads,
+                )
+                .await
+        })
+        .await
+        .map_err(|e| LascoError::Other { msg: e.to_string() })?
+        .map_err(LascoError::from)?;
+    Ok(ffi_count(report.ops_uploaded))
+}
+
 #[uniffi::export]
 impl FfiLibrary {
     /// Adds one Lasco Cloud storage destination. The core resolves and caches
@@ -756,59 +822,45 @@ impl FfiLibrary {
         app_support_dir: Option<String>,
         progress: Box<dyn PushProgressSink>,
     ) -> Result<u64, LascoError> {
-        let target: RemoteUuid = target_remote_id.try_into()?;
-        let config = self.load_library_json()?;
-        let resolution = self
-            .inner
-            .resolve_push_media(target, &config.media_source_order)?;
-        if !resolution.unresolved_data.is_empty() {
-            return Err(LascoError::from(lasco_core::error::LibraryError::Sync(
-                lasco_core::error::SyncError::MissingMediaOnConfiguredSources(
-                    resolution.unresolved_data,
-                ),
-            )));
-        }
+        push_configured_media_sources(
+            self,
+            target_remote_id,
+            app_support_dir,
+            progress,
+            DEFAULT_IMPORTER_REMOTE_UPLOAD_CONCURRENCY,
+        )
+        .await
+    }
 
-        // Only the remotes the plan names are opened. Push verifies each of them before
-        // reading anything from it.
-        let mut sources: HashMap<RemoteUuid, Box<dyn lasco_core::storage::Storage + Send + Sync>> =
-            HashMap::new();
-        for source_id in resolution.source_remote_ids() {
-            sources.insert(
-                source_id,
-                self.build_storage_for_remote(&source_id, app_support_dir.as_deref())?,
-            );
+    /// Push using configured media sources with a bounded number of concurrent full-media
+    /// uploads for this target. A desktop importer should choose this after benchmarking the
+    /// target and schedule several remotes independently.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a concurrency outside 1 through 5, or for the same failures as
+    /// [`Self::push_remote_using_configured_media_sources_async`].
+    pub async fn push_remote_using_configured_media_sources_with_options_async(
+        &self,
+        target_remote_id: FfiRemoteUuid,
+        app_support_dir: Option<String>,
+        progress: Box<dyn PushProgressSink>,
+        max_concurrent_media_uploads: u8,
+    ) -> Result<u64, LascoError> {
+        let max_concurrent_media_uploads = usize::from(max_concurrent_media_uploads);
+        if !(1..=MAX_IMPORTER_REMOTE_UPLOAD_CONCURRENCY).contains(&max_concurrent_media_uploads) {
+            return Err(LascoError::Other {
+                msg: "media upload concurrency must be between 1 and 5".to_string(),
+            });
         }
-        let target_storage = self.build_storage_for_remote(&target, app_support_dir.as_deref())?;
-        let inner = self.inner.clone();
-        let assignments = resolution.assignments;
-        let progress = FfiPushProgressObserver { sink: progress };
-        // The push runs on the runtime owned by this library, not on the foreign
-        // executor driving this exported async function. Storage backends build
-        // network clients that need a Tokio context.
-        let report = self
-            .rt
-            .spawn(async move {
-                let source_reads = sources
-                    .iter()
-                    .map(|(id, storage)| (*id, StorageRead::new(storage.as_ref())))
-                    .collect();
-                inner
-                    .push_with_media_source_and_progress(
-                        target_storage.as_ref(),
-                        target,
-                        PushMediaSource::Plan(lasco_core::library::sync::PushMediaPlan {
-                            assignments,
-                            sources: source_reads,
-                        }),
-                        Some(&progress),
-                    )
-                    .await
-            })
-            .await
-            .map_err(|e| LascoError::Other { msg: e.to_string() })?
-            .map_err(LascoError::from)?;
-        Ok(ffi_count(report.ops_uploaded))
+        push_configured_media_sources(
+            self,
+            target_remote_id,
+            app_support_dir,
+            progress,
+            max_concurrent_media_uploads,
+        )
+        .await
     }
 
     /// Confirms which media blobs a remote holds and records them in its media inventory,
