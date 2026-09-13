@@ -160,6 +160,7 @@ fun LascoRoot(modifier: Modifier = Modifier, onLibraryOpenChanged: (Boolean) -> 
     val openSession = app.librarySession
     if (current is Screen.Opened && openSession != null) {
         LifecycleResumeEffect(openSession.sessionState.value.libraryId) {
+            scope.launch { openSession.sync.fetchDefaultRemote() }
             openSession.importNewDeviceMediaIfNeeded()
             onPauseOrDispose { }
         }

@@ -76,7 +76,7 @@ class LibraryRepository(
     private val changes = MutableSharedFlow<Change>(extraBufferCapacity = 64)
 
     // Separate from changes, which also fires on remote refreshes (Change.All)
-    // and would wrongly trigger auto push if reused here.
+    // and would wrongly trigger Auto Sync if reused here.
     private val localMutations = MutableSharedFlow<Unit>(extraBufferCapacity = 64)
 
     // Screen ViewModels are activity-scoped, so their StateFlows can outlive the
@@ -105,7 +105,7 @@ class LibraryRepository(
     )
 
     init {
-        scope.launch { localMutations.collect { sync.schedulePush() } }
+        scope.launch { localMutations.collect { sync.scheduleSync() } }
         scope.launch(io) {
             runCatching {
                 lib.configureLascoCloudAuth(DevelopmentCloudEndpoint.activeUrl(appContext))

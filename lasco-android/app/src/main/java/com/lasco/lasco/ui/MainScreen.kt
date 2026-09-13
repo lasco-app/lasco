@@ -78,7 +78,7 @@ fun MainScreen(
     val showUpdateBanner =
         (tab == AppTab.Home || tab == AppTab.Albums) && releasePolicy?.updateAvailable == true
     var isAlbumPickerVisible by remember { mutableStateOf(false) }
-    var showScheduledPushExitDialog by remember { mutableStateOf(false) }
+    var showScheduledSyncExitDialog by remember { mutableStateOf(false) }
 
     fun openAlbum(albumId: String) {
         albumsBackStack.clear()
@@ -94,7 +94,7 @@ fun MainScreen(
         AppTab.Albums -> albumsBackStack.size == 1
         AppTab.Status, AppTab.Manage -> true
     }
-    val pushScheduled = syncState?.pushDeadlineElapsedMs != null
+    val syncScheduled = syncState?.syncDeadlineElapsedMs != null
 
     Box(modifier = modifier.fillMaxSize().background(colors.bg)) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -195,16 +195,16 @@ fun MainScreen(
 
     // Only intercept the final Back gesture. Navigating out of a media detail or album still
     // behaves normally. Status gives the user immediate visibility of the planned sync.
-    BackHandler(enabled = pushScheduled && isAtAppExit) {
+    BackHandler(enabled = syncScheduled && isAtAppExit) {
         tab = AppTab.Status
-        showScheduledPushExitDialog = true
+        showScheduledSyncExitDialog = true
     }
 
-    if (showScheduledPushExitDialog) {
+    if (showScheduledSyncExitDialog) {
         LascoInfoDialog(
-            title = "Sync planned",
-            message = "A sync is planned shortly. Keep Lasco open until it starts.",
-            onDismiss = { showScheduledPushExitDialog = false },
+            title = "Auto Sync planned",
+            message = "An automatic sync is planned shortly. Keep Lasco open until it starts.",
+            onDismiss = { showScheduledSyncExitDialog = false },
         )
     }
 }

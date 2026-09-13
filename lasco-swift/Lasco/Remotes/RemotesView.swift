@@ -39,7 +39,7 @@ struct RemotesView: View {
     /// A scheduled push claims the remote when it fires, which would make the removal fail on
     /// timing alone. Refusing up front says so while the countdown is still visible.
     private func isPushScheduled(for remote: FfiRemote) -> Bool {
-        remote.autoPush && syncCoordinator.nextPushDate != nil
+        remote.autoPush && syncCoordinator.nextSyncDate != nil
     }
 
     private func removeRemote(_ remote: FfiRemote) async {
@@ -182,7 +182,7 @@ struct RemotesView: View {
             }
         }
         .alert(
-            "Push scheduled",
+            "Sync scheduled",
             isPresented: Binding(
                 get: { removalBlockedByScheduledPush != nil },
                 set: { if !$0 { removalBlockedByScheduledPush = nil } }
@@ -191,7 +191,7 @@ struct RemotesView: View {
             Button("OK", role: .cancel) {}
         } message: {
             if let remote = removalBlockedByScheduledPush {
-                Text("A push to \(remote.name) is about to run. Let it finish, or turn off Auto Push, then remove the remote.")
+                Text("A sync to \(remote.name) is about to run. Let it finish, or turn off Auto Sync, then remove the remote.")
             }
         }
         .sheet(item: $removalBlocked) { context in
@@ -417,7 +417,7 @@ private struct RemoteCard: View {
                         Text(remote.name)
                             .font(LascoFont.body())
                             .foregroundStyle(theme.ink)
-                        Toggle("Auto push", isOn: Binding(
+                        Toggle("Auto sync", isOn: Binding(
                             get: { remote.autoPush },
                             set: onSetAutoPush
                         ))
