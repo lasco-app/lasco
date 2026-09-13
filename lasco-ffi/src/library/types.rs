@@ -86,6 +86,10 @@ pub struct FfiMediaItem {
     pub size_bytes: u64,
     pub content_hash: String,
     pub author: String,
+    /// Person who performed the current trash action, when the item is in Trash.
+    pub trashed_by: Option<String>,
+    /// RFC 3339 timestamp of the current trash action, when the item is in Trash.
+    pub trashed_at: Option<String>,
     pub apple_aae_media_id: Option<FfiMediaUuid>,
     pub apple_live_photo_media_id: Option<FfiMediaUuid>,
 }

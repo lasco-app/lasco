@@ -73,6 +73,8 @@ struct MediaGallerySessionTests {
                 sizeBytes: 1,
                 contentHash: "hash-\(index)",
                 author: "test",
+                trashedBy: nil,
+                trashedAt: nil,
                 appleAaeMediaId: nil,
                 appleLivePhotoMediaId: nil
             ))

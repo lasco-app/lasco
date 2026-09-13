@@ -182,6 +182,64 @@ async fn push_no_pending_returns_zeros() {
 }
 
 #[tokio::test]
+async fn push_publishes_hard_deletion_before_reclaiming_remote_blobs() {
+    use crate::storage::StorageError;
+
+    let storage = StorageMockMemory::new();
+    stamp_remote_id(&storage).await;
+    let tmp = TempDir::new().unwrap();
+    let lib = make_library(&tmp).await;
+    let media_id = add_one_media(&lib, &tmp, "hard-delete.jpg").await;
+    let storage_date = lib.inner.state.read().media(media_id).unwrap().storage_date;
+    let data_key = format!(
+        "media/{}/{:02}/{}.data",
+        storage_date.year, storage_date.month, media_id
+    );
+    let thumb_key = format!(
+        "media/{}/{:02}/{}.thumb",
+        storage_date.year, storage_date.month, media_id
+    );
+
+    lib.push(&storage, REMOTE_ID).await.unwrap();
+    assert!(storage.get(&data_key).await.is_ok());
+
+    lib.media_soft_delete(media_id).await.unwrap();
+    lib.media_hard_delete(media_id).await.unwrap();
+    let report = lib.push(&storage, REMOTE_ID).await.unwrap();
+
+    assert_eq!(report.ops_uploaded, 2);
+    assert!(matches!(
+        storage.get(&data_key).await,
+        Err(StorageError::NotFound)
+    ));
+    assert!(matches!(
+        storage.get(&thumb_key).await,
+        Err(StorageError::NotFound)
+    ));
+}
+
+#[tokio::test]
+async fn push_keeps_soft_deleted_media_backed_up_for_restore() {
+    let storage = StorageMockMemory::new();
+    stamp_remote_id(&storage).await;
+    let tmp = TempDir::new().unwrap();
+    let lib = make_library(&tmp).await;
+    let media_id = add_one_media(&lib, &tmp, "trash.jpg").await;
+    let storage_date = lib.inner.state.read().media(media_id).unwrap().storage_date;
+    let data_key = format!(
+        "media/{}/{:02}/{}.data",
+        storage_date.year, storage_date.month, media_id
+    );
+
+    lib.media_soft_delete(media_id).await.unwrap();
+    let report = lib.push(&storage, REMOTE_ID).await.unwrap();
+
+    assert_eq!(report.media_uploaded, 1);
+    assert!(storage.get(&data_key).await.is_ok());
+    assert_eq!(lib.trashed_media_by_date_count(), 1);
+}
+
+#[tokio::test]
 async fn push_progress_counts_only_completed_full_media_uploads() {
     let storage = StorageMockMemory::new();
     stamp_remote_id(&storage).await;

@@ -127,6 +127,13 @@ fun RecentMediaScreen(
                 count = selection.size,
                 onClose = { clearSelection() },
                 onAddToAlbum = ::showAddToAlbumPicker,
+                onMoveToTrash = {
+                    val mediaIds = selection
+                    scope.launch {
+                        mediaIds.forEach { mediaId -> repo.softDeleteMedia(mediaId) }
+                        clearSelection()
+                    }
+                },
             )
         } else {
             Row(
@@ -265,7 +272,12 @@ fun RecentMediaScreen(
 }
 
 @Composable
-private fun SelectionBar(count: Int, onClose: () -> Unit, onAddToAlbum: () -> Unit) {
+private fun SelectionBar(
+    count: Int,
+    onClose: () -> Unit,
+    onAddToAlbum: () -> Unit,
+    onMoveToTrash: () -> Unit,
+) {
     val colors = LascoTheme.colors
     var showActionMenu by remember { mutableStateOf(false) }
     Row(
@@ -304,6 +316,13 @@ private fun SelectionBar(count: Int, onClose: () -> Unit, onAddToAlbum: () -> Un
                     onClick = {
                         showActionMenu = false
                         onAddToAlbum()
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("Move to Trash") },
+                    onClick = {
+                        showActionMenu = false
+                        onMoveToTrash()
                     },
                 )
             }

@@ -1116,6 +1116,8 @@ pub(super) fn media_entry_to_ffi(e: lasco_core::library::media::MediaEntry) -> F
         size_bytes: e.size_bytes,
         content_hash: e.content_hash.to_hex(),
         author: e.author,
+        trashed_by: e.trashed_by,
+        trashed_at: e.trashed_at.map(|timestamp| timestamp.to_rfc3339()),
         apple_aae_media_id: e.apple_aae_media_id.map(Into::into),
         apple_live_photo_media_id: e.apple_live_photo_media_id.map(Into::into),
     }
@@ -1181,6 +1183,19 @@ fn operation_to_ffi(op: OperationContent, timestamp: String) -> FfiOperation {
                 kv("key", &key),
                 kv("value", &value),
             ],
+        },
+        OperationContent::MediaTrashSet { media_id, trashed } => FfiOperation {
+            kind: "MediaTrashSet".to_string(),
+            timestamp: timestamp.clone(),
+            args: vec![kv("media_id", &media_id), kv("trashed", &trashed)],
+        },
+        OperationContent::MediaDeletion { media_ids } => FfiOperation {
+            kind: "MediaDeletion".to_string(),
+            timestamp: timestamp.clone(),
+            args: media_ids
+                .iter()
+                .map(|media_id| kv("media_id", media_id))
+                .collect(),
         },
         OperationContent::AlbumCreation {
             album_id,

@@ -7,6 +7,8 @@ extension LascoError {
             return "Incorrect username or password."
         case .NotFound:
             return "That library could not be found."
+        case .MediaMustBeTrashed:
+            return "Media must be moved to the trash before it can be permanently deleted."
         case .SyncBusy:
             return "A sync is already in progress."
         case .CloudQuotaExceeded(let msg):
