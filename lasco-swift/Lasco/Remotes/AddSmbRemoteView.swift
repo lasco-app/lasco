@@ -54,13 +54,13 @@ struct AddSmbRemoteView: View {
                     .padding(.horizontal, 32).padding(.bottom, 8)
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        Text("Connect to a SMB 2 or SMB 3 share on your NAS, server, or local network.")
+                        Text("Connect to an SMB 2 or SMB 3 shared folder on your NAS, server, or local network. For \\nas.local\\photos, enter photos as the shared folder name, then optionally choose a folder within it.")
                             .font(LascoFont.body(16)).foregroundStyle(theme.inkSub)
                         field("Remote name", placeholder: "home-nas", value: $name, identifier: "smb-remote.name")
-                        field("Server", placeholder: "nas.local or 192.168.1.20", value: $server, identifier: "smb-remote.server")
+                        field("Server address", placeholder: "nas.local or 192.168.1.20", value: $server, identifier: "smb-remote.server")
                         field("Port", placeholder: "445", value: $port, identifier: "smb-remote.port")
-                        field("Share", placeholder: "photos", value: $share, identifier: "smb-remote.share")
-                        field("Path inside share (optional)", placeholder: "lasco", value: $pathPrefix, identifier: "smb-remote.path")
+                        field("Shared folder name", placeholder: "photos", value: $share, identifier: "smb-remote.share")
+                        field("Folders within shared folder (optional)", placeholder: "lasco", value: $pathPrefix, identifier: "smb-remote.path")
                         field("Username", placeholder: "lasco", value: $username, identifier: "smb-remote.username")
                         field("Domain or workgroup (optional)", placeholder: "WORKGROUP", value: $domain, identifier: "smb-remote.domain")
                         secureField("Password", value: $password)

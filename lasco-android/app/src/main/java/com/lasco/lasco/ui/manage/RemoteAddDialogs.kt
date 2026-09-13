@@ -126,12 +126,12 @@ fun AddSmbRemoteDialog(onDismiss: () -> Unit, onResult: (name: String, error: St
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text("Add an SMB remote", style = LascoTheme.type.title(26), color = colors.ink)
-            Text("Connect to a SMB 2 or SMB 3 share on your NAS, server, or local network.", style = LascoTheme.type.body(16), color = colors.inkSub)
+            Text("Connect to an SMB 2 or SMB 3 shared folder on your NAS, server, or local network. For \\nas.local\\photos, enter photos as the shared folder name, then optionally choose a folder within it.", style = LascoTheme.type.body(16), color = colors.inkSub)
             LascoField(label = "Remote name", value = name, onValueChange = { name = it }, placeholder = "home-nas", testTag = "smb-remote.name")
-            LascoField(label = "Server", value = server, onValueChange = { server = it }, placeholder = "nas.local or 192.168.1.20", testTag = "smb-remote.server")
+            LascoField(label = "Server address", value = server, onValueChange = { server = it }, placeholder = "nas.local or 192.168.1.20", testTag = "smb-remote.server")
             LascoField(label = "Port", value = portText, onValueChange = { portText = it }, placeholder = "445", testTag = "smb-remote.port")
-            LascoField(label = "Share", value = share, onValueChange = { share = it }, placeholder = "photos", testTag = "smb-remote.share")
-            LascoField(label = "Path inside share (optional)", value = pathPrefix, onValueChange = { pathPrefix = it }, placeholder = "lasco", testTag = "smb-remote.path")
+            LascoField(label = "Shared folder name", value = share, onValueChange = { share = it }, placeholder = "photos", testTag = "smb-remote.share")
+            LascoField(label = "Folders within shared folder (optional)", value = pathPrefix, onValueChange = { pathPrefix = it }, placeholder = "lasco", testTag = "smb-remote.path")
             LascoField(label = "Username", value = username, onValueChange = { username = it }, testTag = "smb-remote.username")
             LascoField(label = "Domain or workgroup (optional)", value = domain, onValueChange = { domain = it }, placeholder = "WORKGROUP", testTag = "smb-remote.domain")
             LascoField(label = "Password", value = password, onValueChange = { password = it }, secure = true, testTag = "smb-remote.password")
