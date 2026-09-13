@@ -502,6 +502,43 @@ pub async fn add_existing_library_smb(
     .await
 }
 
+/// Add a library that already exists at a trusted local filesystem path.
+///
+/// The caller is responsible for obtaining the user's permission to access the path on platforms
+/// which require it. The path is stored as a fixed-path remote after the library master key has
+/// been recovered.
+pub async fn add_existing_library_fixed_path(
+    app_dir: &Path,
+    nickname: String,
+    username: LibraryUsername,
+    password: LibraryPassword,
+    new_user: Option<(LibraryUsername, LibraryPassword)>,
+    remote_id: String,
+    root_dir: std::path::PathBuf,
+    session_dir: Option<&Path>,
+) -> Result<(LibraryId, Library)> {
+    let storage = StorageLocalFs::new(&root_dir);
+    let remote_root_dir = root_dir.clone();
+    add_existing_library_from_storage(
+        app_dir,
+        nickname,
+        username,
+        password,
+        new_user,
+        remote_id,
+        &storage,
+        |_master_key| {
+            Ok(RemoteKind::FixedPath(
+                crate::library_json::FixedPathConfig {
+                    root_dir: remote_root_dir,
+                },
+            ))
+        },
+        session_dir,
+    )
+    .await
+}
+
 /// Shared bootstrap workflow for storage remotes whose credentials are supplied
 /// by the caller and encrypted only after the library master key is available.
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)]

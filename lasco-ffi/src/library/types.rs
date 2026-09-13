@@ -60,6 +60,21 @@ pub struct FfiMediaAddResult {
     pub already_existed: bool,
 }
 
+/// Optional source metadata supplied by a desktop importer.
+///
+/// Timestamps are RFC 3339 strings. The source file's bytes, including any embedded metadata,
+/// are always copied unchanged; this record exists for Lasco's queryable index fields.
+#[derive(uniffi::Record, Debug)]
+pub struct FfiMediaImportMetadata {
+    pub original_filename: Option<String>,
+    pub captured_at: Option<String>,
+    pub modified_at: Option<String>,
+    pub latitude: Option<f64>,
+    pub longitude: Option<f64>,
+    pub apple_aae_media_id: Option<FfiMediaUuid>,
+    pub apple_live_photo_media_id: Option<FfiMediaUuid>,
+}
+
 /// A media identifier returned to clients when a local-only push cannot find
 /// every required original in this device's cache.
 #[derive(uniffi::Record, Debug, Clone)]

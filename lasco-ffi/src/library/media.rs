@@ -3,12 +3,16 @@ use lasco_core::library::media::upload::MediaAddResult;
 use super::native_media_bytes::FfiNativeMediaBytes;
 use super::remotes::media_entry_to_ffi;
 use super::types::{
-    FfiLocalStateStats, FfiMediaAddResult, FfiMediaNeighbors, FfiRemoteMediaShortfall,
+    FfiLocalStateStats, FfiMediaAddResult, FfiMediaImportMetadata, FfiMediaNeighbors,
+    FfiRemoteMediaShortfall,
 };
 use super::{FfiLibrary, FfiMediaItem, ffi_count};
 use crate::error::LascoError;
 use crate::ids::{FfiAlbumUuid, FfiLibraryId, FfiMediaUuid, FfiRemoteUuid};
+use chrono::{DateTime, Utc};
 use lasco_core::identifiers::RemoteUuid;
+use lasco_core::library::media::upload::MediaAddMetadata;
+use lasco_core::operations::GpsCoords;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -456,6 +460,67 @@ impl FfiLibrary {
         })
     }
 
+    /// Imports a media file with source-supplied metadata.
+    ///
+    /// Importers must preserve the original bytes and pass the source filename. Timestamps are
+    /// RFC 3339 UTC offsets accepted by `chrono`; latitude and longitude must be supplied as a
+    /// pair within their geographic ranges.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if an ID or metadata value is invalid, the source cannot be read, media
+    /// encryption/storage fails, or the creation operation cannot be persisted.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
+    pub fn import_media_with_metadata(
+        &self,
+        path: String,
+        album_id: Option<FfiAlbumUuid>,
+        metadata: FfiMediaImportMetadata,
+    ) -> Result<FfiMediaAddResult, LascoError> {
+        let album_uuid = album_id.map(TryInto::try_into).transpose()?;
+        let apple_aae_media_uuid = metadata
+            .apple_aae_media_id
+            .map(TryInto::try_into)
+            .transpose()?;
+        let apple_live_photo_media_uuid = metadata
+            .apple_live_photo_media_id
+            .map(TryInto::try_into)
+            .transpose()?;
+        let captured_at = parse_import_timestamp(metadata.captured_at, "captured_at")?;
+        let modified_at = parse_import_timestamp(metadata.modified_at, "modified_at")?;
+        let gps = parse_import_gps(metadata.latitude, metadata.longitude)?;
+        let source =
+            lasco_core::library::media::upload::MediaAddSource::CopyFrom(PathBuf::from(path));
+        let result = self
+            .rt
+            .block_on(self.inner.media_add_with_metadata(
+                source,
+                album_uuid,
+                metadata.original_filename,
+                apple_aae_media_uuid,
+                apple_live_photo_media_uuid,
+                MediaAddMetadata {
+                    captured_at,
+                    modified_at,
+                    gps,
+                },
+            ))
+            .map_err(LascoError::from)?;
+        Ok(match result {
+            MediaAddResult::Added(id) => FfiMediaAddResult {
+                media_id: id.into(),
+                already_existed: false,
+            },
+            MediaAddResult::AlreadyExists(id) => FfiMediaAddResult {
+                media_id: id.into(),
+                already_existed: true,
+            },
+        })
+    }
+
     #[allow(
         clippy::needless_pass_by_value,
         reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
@@ -851,6 +916,71 @@ impl FfiLibrary {
             .block_on(self.inner.media_empty_trash())
             .map(ffi_count)
             .map_err(LascoError::from)
+    }
+}
+
+fn parse_import_timestamp(
+    value: Option<String>,
+    field: &str,
+) -> Result<Option<DateTime<Utc>>, LascoError> {
+    value
+        .map(|timestamp| {
+            DateTime::parse_from_rfc3339(&timestamp)
+                .map(|parsed| parsed.with_timezone(&Utc))
+                .map_err(|error| LascoError::Other {
+                    msg: format!("{field} must be RFC 3339: {error}"),
+                })
+        })
+        .transpose()
+}
+
+fn parse_import_gps(
+    latitude: Option<f64>,
+    longitude: Option<f64>,
+) -> Result<Option<GpsCoords>, LascoError> {
+    let (Some(latitude), Some(longitude)) = (latitude, longitude) else {
+        if latitude.is_none() && longitude.is_none() {
+            return Ok(None);
+        }
+        return Err(LascoError::Other {
+            msg: "latitude and longitude must be supplied together".to_string(),
+        });
+    };
+    if !latitude.is_finite() || !(-90.0..=90.0).contains(&latitude) {
+        return Err(LascoError::Other {
+            msg: "latitude must be finite and between -90 and 90".to_string(),
+        });
+    }
+    if !longitude.is_finite() || !(-180.0..=180.0).contains(&longitude) {
+        return Err(LascoError::Other {
+            msg: "longitude must be finite and between -180 and 180".to_string(),
+        });
+    }
+    Ok(Some(GpsCoords {
+        latitude,
+        longitude,
+    }))
+}
+
+#[cfg(test)]
+mod importer_metadata_tests {
+    use super::{parse_import_gps, parse_import_timestamp};
+
+    #[test]
+    fn parses_metadata_timestamps_as_utc() {
+        let timestamp =
+            parse_import_timestamp(Some("2024-06-01T12:30:00+02:00".to_string()), "captured_at")
+                .unwrap()
+                .unwrap();
+
+        assert_eq!(timestamp.to_rfc3339(), "2024-06-01T10:30:00+00:00");
+    }
+
+    #[test]
+    fn rejects_partial_or_out_of_range_gps() {
+        assert!(parse_import_gps(Some(48.8566), None).is_err());
+        assert!(parse_import_gps(Some(91.0), Some(2.3522)).is_err());
+        assert!(parse_import_gps(Some(48.8566), Some(181.0)).is_err());
     }
 }
 
