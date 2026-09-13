@@ -786,7 +786,7 @@ struct AlbumContentView: View {
                     }
                 }
                 if canDeleteMedia {
-                    Button("Delete", role: .destructive) {
+                    Button("Move to Trash", role: .destructive) {
                         handleDeleteMedia()
                     }
                 }
@@ -966,7 +966,7 @@ struct AlbumContentView: View {
                     selection = .albums([child.albumId])
                     showingMovePicker = true
                 }
-                Button("Delete", role: .destructive) {
+                Button("Move to Trash", role: .destructive) {
                     selection = .albums([child.albumId])
                     showingDeleteConfirm = true
                 }
@@ -1204,6 +1204,7 @@ struct AlbumCell: View {
 
 private struct TrashAlbumCard: View {
     let onOpen: () -> Void
+    @Environment(LibraryRepository.self) private var repository
     @Environment(\.lascoTheme) private var theme
 
     var body: some View {
@@ -1212,11 +1213,7 @@ private struct TrashAlbumCard: View {
                 theme.bgDeep
                     .aspectRatio(1, contentMode: .fit)
                     .overlay {
-                        Image("trash")
-                            .renderingMode(.template)
-                            .resizable()
-                            .frame(width: 28, height: 28)
-                            .foregroundStyle(theme.pink)
+                        TrashThumbnailCollage(repository: repository)
                     }
 
                 Text("Trash")

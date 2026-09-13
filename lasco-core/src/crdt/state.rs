@@ -43,6 +43,10 @@ pub struct MediaEntry {
     /// A trashed item remains a live media record for sync and Restore, but is
     /// excluded from ordinary browse views.
     pub trashed: bool,
+    /// Audit metadata for the operation that placed this item in Trash. It is
+    /// present only while the active trash register is `true`.
+    pub trashed_by: Option<LibraryUsername>,
+    pub trashed_at: Option<DateTime<Utc>>,
     /// Set when another media references this one as its companion resource. It is derived
     /// from the creation payloads of every other media, never stored.
     pub companion_kind: Option<CompanionKind>,
@@ -232,6 +236,15 @@ pub struct LastWriteWin<T> {
     pub value: T,
 }
 
+/// Audit details paired with a `MediaTrashSet` register write. Keeping this
+/// separate from the boolean register preserves its conflict-resolution
+/// behavior while making the winning trash action available to the UI.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrashMetadata {
+    pub author: LibraryUsername,
+    pub timestamp: DateTime<Utc>,
+}
+
 impl<T> LastWriteWin<T> {
     fn write(&mut self, dot: Dot, value: T) {
         if dot > self.dot {
@@ -310,6 +323,7 @@ pub struct MediaCrdt {
     pub name: Option<LastWriteWin<Option<MediaName>>>,
     pub properties: HashMap<String, LastWriteWin<String>>,
     pub trashed: Option<LastWriteWin<bool>>,
+    pub trash_metadata: Option<LastWriteWin<TrashMetadata>>,
     /// A media tombstone is irreversible. It remains alongside creation
     /// metadata so delayed operations cannot resurrect the item and cleanup
     /// can still derive the immutable storage path.
@@ -405,10 +419,15 @@ impl CrdtState {
                 register.write(operation.dot, value.clone());
             }
             OperationContent::MediaTrashSet { media_id, trashed } => {
+                let media = self.media.entry(*media_id).or_default();
+                write_optional(&mut media.trashed, operation.dot, *trashed);
                 write_optional(
-                    &mut self.media.entry(*media_id).or_default().trashed,
+                    &mut media.trash_metadata,
                     operation.dot,
-                    *trashed,
+                    TrashMetadata {
+                        author: operation.author.clone(),
+                        timestamp: operation.timestamp,
+                    },
                 );
             }
             OperationContent::MediaDeletion { media_ids } => {
@@ -697,6 +716,11 @@ impl CrdtState {
                 continue;
             };
             let value = &creation.value;
+            let trashed_register = media.trashed.as_ref();
+            let is_trashed = trashed_register.is_some_and(|register| register.value);
+            let trash_metadata = media.trash_metadata.as_ref().filter(|metadata| {
+                trashed_register.is_some_and(|register| register.dot == metadata.dot)
+            });
             media_entries.push(MediaEntry {
                 media_id: value.media_id,
                 filename_original: value.filename_original.clone(),
@@ -721,10 +745,13 @@ impl CrdtState {
                 gps: value.gps,
                 apple_aae_media_id: value.apple_aae_media_id,
                 apple_live_photo_media_id: value.apple_live_photo_media_id,
-                trashed: media
-                    .trashed
-                    .as_ref()
-                    .is_some_and(|register| register.value),
+                trashed: is_trashed,
+                trashed_by: is_trashed
+                    .then(|| trash_metadata.map(|metadata| metadata.value.author.clone()))
+                    .flatten(),
+                trashed_at: is_trashed
+                    .then(|| trash_metadata.map(|metadata| metadata.value.timestamp))
+                    .flatten(),
                 companion_kind: companion_kinds.get(&value.media_id).copied(),
                 group_ids: Vec::new(),
             });

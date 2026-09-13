@@ -383,6 +383,7 @@ fun AlbumListScreen(
                             )
                         }
                         TrashAlbumCard(
+                            repo = repo,
                             onClick = onOpenTrash,
                             modifier = Modifier
                                 .width(trashCardWidth)
@@ -450,6 +451,7 @@ fun AlbumListScreen(
                     )
                     if (albumId == null) {
                         TrashAlbumCard(
+                            repo = repo,
                             onClick = onOpenTrash,
                             modifier = Modifier
                                 .width(trashCardWidth)

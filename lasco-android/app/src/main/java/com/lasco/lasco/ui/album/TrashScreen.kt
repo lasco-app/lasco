@@ -5,14 +5,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -28,6 +28,8 @@ import androidx.paging.compose.itemKey
 import com.lasco.lasco.data.LibraryRepository
 import com.lasco.lasco.ui.components.MediaThumbnail
 import com.lasco.lasco.ui.theme.LascoTheme
+import java.text.SimpleDateFormat
+import java.util.Locale
 import uniffi.lasco_ffi.FfiMediaItem
 
 @Composable
@@ -62,13 +64,11 @@ fun TrashScreen(
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("Trash is empty", style = LascoTheme.type.body(), color = colors.inkMuted)
                 }
-            else -> LazyVerticalGrid(
-                columns = GridCells.Adaptive(140.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            else -> LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.fillMaxSize(),
             ) {
-                items(media.itemCount, key = media.itemKey { it.mediaId.value }) { index ->
+                items(count = media.itemCount, key = media.itemKey { it.mediaId.value }) { index ->
                     media[index]?.let { item -> TrashMediaCard(item, repo, viewModel::restore) }
                 }
             }
@@ -83,18 +83,33 @@ private fun TrashMediaCard(
     onRestore: (uniffi.lasco_ffi.FfiMediaUuid) -> Unit,
 ) {
     val colors = LascoTheme.colors
-    Column(modifier = Modifier.background(colors.surfaceAlt)) {
-        MediaThumbnail(item.mediaId, repo, modifier = Modifier.fillMaxWidth().aspectRatio(1f))
-        Text(item.name ?: item.filenameOriginal, style = LascoTheme.type.body(14), color = colors.ink, maxLines = 1, modifier = Modifier.padding(8.dp))
-        Text(
-            text = "Restore",
-            style = LascoTheme.type.body(14),
-            color = colors.ink,
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 48.dp)
-                .clickable { onRestore(item.mediaId) }
-                .padding(12.dp),
-        )
+    Row(
+        modifier = Modifier.fillMaxWidth().background(colors.surfaceAlt).padding(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        MediaThumbnail(item.mediaId, repo, modifier = Modifier.size(88.dp))
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(item.name ?: item.filenameOriginal, style = LascoTheme.type.body(14), color = colors.ink, maxLines = 2)
+            Text(
+                text = item.trashedBy?.let { "Trashed by $it" } ?: "Trashed",
+                style = LascoTheme.type.pixel(12),
+                color = colors.inkMuted,
+            )
+            item.trashedAt?.let { timestamp ->
+                Text(formattedTrashTimestamp(timestamp), style = LascoTheme.type.pixel(12), color = colors.inkMuted)
+            }
+            Text(
+                text = "Restore",
+                style = LascoTheme.type.body(14),
+                color = colors.ink,
+                modifier = Modifier.heightIn(min = 48.dp).clickable { onRestore(item.mediaId) }.padding(vertical = 12.dp),
+            )
+        }
     }
 }
+
+private fun formattedTrashTimestamp(timestamp: String): String = runCatching {
+    val parser = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", Locale.US)
+    val date = parser.parse(timestamp) ?: return@runCatching timestamp
+    SimpleDateFormat("MMM d, yyyy HH:mm", Locale.getDefault()).format(date)
+}.getOrElse { timestamp }

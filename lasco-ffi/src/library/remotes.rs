@@ -1071,6 +1071,8 @@ pub(super) fn media_entry_to_ffi(e: lasco_core::library::media::MediaEntry) -> F
         size_bytes: e.size_bytes,
         content_hash: e.content_hash.to_hex(),
         author: e.author,
+        trashed_by: e.trashed_by,
+        trashed_at: e.trashed_at.map(|timestamp| timestamp.to_rfc3339()),
         apple_aae_media_id: e.apple_aae_media_id.map(Into::into),
         apple_live_photo_media_id: e.apple_live_photo_media_id.map(Into::into),
     }

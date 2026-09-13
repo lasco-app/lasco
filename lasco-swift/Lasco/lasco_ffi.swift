@@ -4659,12 +4659,26 @@ nonisolated public struct FfiMediaItem {
     public var sizeBytes: UInt64
     public var contentHash: String
     public var author: String
+    /**
+     * Person who performed the current trash action, when the item is in Trash.
+     */
+    public var trashedBy: String?
+    /**
+     * RFC 3339 timestamp of the current trash action, when the item is in Trash.
+     */
+    public var trashedAt: String?
     public var appleAaeMediaId: FfiMediaUuid?
     public var appleLivePhotoMediaId: FfiMediaUuid?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(mediaId: FfiMediaUuid, filenameOriginal: String, name: String?, date: String, year: UInt16, month: UInt8, sizeBytes: UInt64, contentHash: String, author: String, appleAaeMediaId: FfiMediaUuid?, appleLivePhotoMediaId: FfiMediaUuid?) {
+    public init(mediaId: FfiMediaUuid, filenameOriginal: String, name: String?, date: String, year: UInt16, month: UInt8, sizeBytes: UInt64, contentHash: String, author: String, 
+        /**
+         * Person who performed the current trash action, when the item is in Trash.
+         */trashedBy: String?, 
+        /**
+         * RFC 3339 timestamp of the current trash action, when the item is in Trash.
+         */trashedAt: String?, appleAaeMediaId: FfiMediaUuid?, appleLivePhotoMediaId: FfiMediaUuid?) {
         self.mediaId = mediaId
         self.filenameOriginal = filenameOriginal
         self.name = name
@@ -4674,6 +4688,8 @@ nonisolated public struct FfiMediaItem {
         self.sizeBytes = sizeBytes
         self.contentHash = contentHash
         self.author = author
+        self.trashedBy = trashedBy
+        self.trashedAt = trashedAt
         self.appleAaeMediaId = appleAaeMediaId
         self.appleLivePhotoMediaId = appleLivePhotoMediaId
     }
@@ -4713,6 +4729,12 @@ nonisolated extension FfiMediaItem: Equatable, Hashable {
         if lhs.author != rhs.author {
             return false
         }
+        if lhs.trashedBy != rhs.trashedBy {
+            return false
+        }
+        if lhs.trashedAt != rhs.trashedAt {
+            return false
+        }
         if lhs.appleAaeMediaId != rhs.appleAaeMediaId {
             return false
         }
@@ -4732,6 +4754,8 @@ nonisolated extension FfiMediaItem: Equatable, Hashable {
         hasher.combine(sizeBytes)
         hasher.combine(contentHash)
         hasher.combine(author)
+        hasher.combine(trashedBy)
+        hasher.combine(trashedAt)
         hasher.combine(appleAaeMediaId)
         hasher.combine(appleLivePhotoMediaId)
     }
@@ -4755,6 +4779,8 @@ nonisolated public struct FfiConverterTypeFfiMediaItem: FfiConverterRustBuffer {
                 sizeBytes: FfiConverterUInt64.read(from: &buf), 
                 contentHash: FfiConverterString.read(from: &buf), 
                 author: FfiConverterString.read(from: &buf), 
+                trashedBy: FfiConverterOptionString.read(from: &buf), 
+                trashedAt: FfiConverterOptionString.read(from: &buf), 
                 appleAaeMediaId: FfiConverterOptionTypeFfiMediaUuid.read(from: &buf), 
                 appleLivePhotoMediaId: FfiConverterOptionTypeFfiMediaUuid.read(from: &buf)
         )
@@ -4770,6 +4796,8 @@ nonisolated public struct FfiConverterTypeFfiMediaItem: FfiConverterRustBuffer {
         FfiConverterUInt64.write(value.sizeBytes, into: &buf)
         FfiConverterString.write(value.contentHash, into: &buf)
         FfiConverterString.write(value.author, into: &buf)
+        FfiConverterOptionString.write(value.trashedBy, into: &buf)
+        FfiConverterOptionString.write(value.trashedAt, into: &buf)
         FfiConverterOptionTypeFfiMediaUuid.write(value.appleAaeMediaId, into: &buf)
         FfiConverterOptionTypeFfiMediaUuid.write(value.appleLivePhotoMediaId, into: &buf)
     }

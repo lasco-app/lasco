@@ -797,6 +797,9 @@ mod tests {
             lib.media_list(MediaListScope::Trashed)[0].media_id,
             media_id
         );
+        let trashed = &lib.media_list(MediaListScope::Trashed)[0];
+        assert_eq!(trashed.trashed_by.as_deref(), Some("alice"));
+        assert!(trashed.trashed_at.is_some());
         assert!(lib.album_list_media(album_id).unwrap().is_empty());
 
         lib.media_restore(media_id).await.unwrap();

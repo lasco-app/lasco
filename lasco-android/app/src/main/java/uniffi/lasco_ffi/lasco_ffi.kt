@@ -6383,6 +6383,14 @@ data class FfiMediaItem (
     var `sizeBytes`: kotlin.ULong, 
     var `contentHash`: kotlin.String, 
     var `author`: kotlin.String, 
+    /**
+     * Person who performed the current trash action, when the item is in Trash.
+     */
+    var `trashedBy`: kotlin.String?, 
+    /**
+     * RFC 3339 timestamp of the current trash action, when the item is in Trash.
+     */
+    var `trashedAt`: kotlin.String?, 
     var `appleAaeMediaId`: FfiMediaUuid?, 
     var `appleLivePhotoMediaId`: FfiMediaUuid?
 ) {
@@ -6405,6 +6413,8 @@ public object FfiConverterTypeFfiMediaItem: FfiConverterRustBuffer<FfiMediaItem>
             FfiConverterULong.read(buf),
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
             FfiConverterOptionalTypeFfiMediaUuid.read(buf),
             FfiConverterOptionalTypeFfiMediaUuid.read(buf),
         )
@@ -6420,6 +6430,8 @@ public object FfiConverterTypeFfiMediaItem: FfiConverterRustBuffer<FfiMediaItem>
             FfiConverterULong.allocationSize(value.`sizeBytes`) +
             FfiConverterString.allocationSize(value.`contentHash`) +
             FfiConverterString.allocationSize(value.`author`) +
+            FfiConverterOptionalString.allocationSize(value.`trashedBy`) +
+            FfiConverterOptionalString.allocationSize(value.`trashedAt`) +
             FfiConverterOptionalTypeFfiMediaUuid.allocationSize(value.`appleAaeMediaId`) +
             FfiConverterOptionalTypeFfiMediaUuid.allocationSize(value.`appleLivePhotoMediaId`)
     )
@@ -6434,6 +6446,8 @@ public object FfiConverterTypeFfiMediaItem: FfiConverterRustBuffer<FfiMediaItem>
             FfiConverterULong.write(value.`sizeBytes`, buf)
             FfiConverterString.write(value.`contentHash`, buf)
             FfiConverterString.write(value.`author`, buf)
+            FfiConverterOptionalString.write(value.`trashedBy`, buf)
+            FfiConverterOptionalString.write(value.`trashedAt`, buf)
             FfiConverterOptionalTypeFfiMediaUuid.write(value.`appleAaeMediaId`, buf)
             FfiConverterOptionalTypeFfiMediaUuid.write(value.`appleLivePhotoMediaId`, buf)
     }
