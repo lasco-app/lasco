@@ -40,7 +40,7 @@ private fun ImporterWizard() {
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var source by remember { mutableStateOf("Google Takeout") }
-    var archivePath by remember { mutableStateOf("") }
+    var archivePaths by remember { mutableStateOf(emptyList<String>()) }
     var remoteSummary by remember { mutableStateOf("No remote connected yet") }
 
     Column(Modifier.fillMaxSize().padding(32.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
@@ -51,8 +51,8 @@ private fun ImporterWizard() {
             Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 when (step) {
                     0 -> LibraryPage(nickname, username, password, remoteSummary, { nickname = it }, { username = it }, { password = it })
-                    1 -> SourcePage(source, archivePath, { source = it }, { archivePath = chooseTakeoutZip() ?: archivePath })
-                    2 -> ReviewPage(source, archivePath, remoteSummary)
+                    1 -> SourcePage(source, archivePaths, { source = it }, { archivePaths = chooseTakeoutZips() })
+                    2 -> ReviewPage(source, archivePaths, remoteSummary)
                     3 -> ImportPage()
                 }
             }
@@ -79,7 +79,7 @@ private fun LibraryPage(nickname: String, username: String, password: String, re
 }
 
 @Composable
-private fun SourcePage(source: String, archivePath: String, setSource: (String) -> Unit, chooseArchive: () -> Unit) {
+private fun SourcePage(source: String, archivePaths: List<String>, setSource: (String) -> Unit, chooseArchives: () -> Unit) {
     Text("Choose a source")
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Button(onClick = { setSource("Google Takeout") }) { Text("Google Takeout") }
@@ -87,19 +87,19 @@ private fun SourcePage(source: String, archivePath: String, setSource: (String) 
     }
     if (source == "Google Takeout") {
         Text("Select one or more Takeout ZIP archives. They remain in place and are read lazily.")
-        Button(onClick = chooseArchive) { Text("Choose ZIP") }
-        if (archivePath.isNotEmpty()) Text(archivePath)
+        Button(onClick = chooseArchives) { Text("Choose ZIP archives") }
+        archivePaths.forEach { Text(it) }
     } else Text("The app requests Photos access, discovers albums/resources once, and downloads iCloud originals only as each chunk is imported.")
 }
 
 @Composable
-private fun ReviewPage(source: String, archivePath: String, remoteSummary: String) {
+private fun ReviewPage(source: String, archivePaths: List<String>, remoteSummary: String) {
     Text("Review before import")
     Text("Source: $source")
     Text("Remote status: $remoteSummary")
     Text("The recap will show candidates, bytes, albums, selected upload parallelism, and an ETA after discovery and 4 MiB remote benchmarks.")
     Text("Exact existing-library duplicates are confirmed during Rust import by content hash; they are never guessed from filenames.")
-    if (archivePath.isNotEmpty()) Text("Archive: $archivePath")
+    archivePaths.forEach { Text("Archive: $it") }
 }
 
 @Composable
@@ -112,8 +112,9 @@ private fun ImportPage() {
     }
 }
 
-private fun chooseTakeoutZip(): String? {
+private fun chooseTakeoutZips(): List<String> {
     val dialog = FileDialog(null as Frame?, "Choose Google Takeout ZIP", FileDialog.LOAD)
+    dialog.isMultipleMode = true
     dialog.isVisible = true
-    return dialog.file?.let { Path.of(dialog.directory, it).toString() }
+    return dialog.files.map { Path.of(it.toURI()).toString() }
 }
