@@ -1,3 +1,4 @@
+use futures_util::stream::{FuturesUnordered, StreamExt};
 use lasco_core::crdt::{CrdtOperation, OperationContent};
 use lasco_core::identifiers::RemoteUuid;
 use lasco_core::library::sync::{
@@ -9,12 +10,15 @@ use lasco_core::library_json::{
     RemoteConfig, RemoteKind, UsbAndroidConfig, UsbAppleConfig,
 };
 use lasco_core::operations::{LibraryPassword, LibraryUsername};
+use lasco_core::storage::AtomicWriteMode;
+use rand::RngCore;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::time::Instant;
 
 use super::{
     FfiCompactionLockInfo, FfiCrdtOperation, FfiDot, FfiKv, FfiLibrary, FfiMediaItem, FfiOperation,
-    FfiRemote, ffi_count,
+    FfiRemote, FfiUploadBenchmarkSample, ffi_count,
 };
 use crate::error::LascoError;
 use crate::ids::FfiRemoteUuid;
@@ -47,6 +51,24 @@ fn next_media_fetch_priority(remote_count: usize) -> Result<u32, LascoError> {
 
 const DEFAULT_IMPORTER_REMOTE_UPLOAD_CONCURRENCY: usize = 2;
 const MAX_IMPORTER_REMOTE_UPLOAD_CONCURRENCY: usize = 5;
+const MAX_BENCHMARK_BYTES: u64 = 16 * 1024 * 1024;
+
+fn validate_benchmark_request(
+    bytes_per_upload: u64,
+    max_parallel_uploads: u8,
+) -> Result<(), LascoError> {
+    if bytes_per_upload == 0 || bytes_per_upload > MAX_BENCHMARK_BYTES {
+        return Err(LascoError::Other {
+            msg: "benchmark upload size must be between 1 byte and 16 MiB".to_string(),
+        });
+    }
+    if !(1..=MAX_IMPORTER_REMOTE_UPLOAD_CONCURRENCY).contains(&usize::from(max_parallel_uploads)) {
+        return Err(LascoError::Other {
+            msg: "benchmark parallel uploads must be between 1 and 5".to_string(),
+        });
+    }
+    Ok(())
+}
 
 async fn push_configured_media_sources(
     library: &FfiLibrary,
@@ -863,6 +885,98 @@ impl FfiLibrary {
         .await
     }
 
+    /// Measures one remote at each parallelism from one through `max_parallel_uploads`.
+    /// Temporary random benchmark objects are removed before this method returns.
+    ///
+    /// The desktop importer runs this concurrently for selected remotes, then uses the result to
+    /// select an individual remote upload limit and to compare aggregate throughput against the
+    /// sum of isolated remote rates.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the request is outside 1 through 16 MiB or 1 through 5 uploads,
+    /// storage construction fails, or a temporary upload or cleanup fails.
+    pub async fn benchmark_remote_upload_async(
+        &self,
+        remote_id: FfiRemoteUuid,
+        app_support_dir: Option<String>,
+        bytes_per_upload: u64,
+        max_parallel_uploads: u8,
+    ) -> Result<Vec<FfiUploadBenchmarkSample>, LascoError> {
+        validate_benchmark_request(bytes_per_upload, max_parallel_uploads)?;
+        let remote_id: RemoteUuid = remote_id.try_into()?;
+        let storage = self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
+        let buffer_size = usize::try_from(bytes_per_upload).map_err(|_| LascoError::Other {
+            msg: "benchmark upload size is too large for this platform".to_string(),
+        })?;
+        let mut payload = vec![0_u8; buffer_size];
+        rand::rngs::OsRng.fill_bytes(&mut payload);
+        let benchmark_id = uuid::Uuid::new_v4();
+
+        self.rt
+            .spawn(async move {
+                let mut samples = Vec::with_capacity(usize::from(max_parallel_uploads));
+                for parallel_uploads in 1..=max_parallel_uploads {
+                    let keys: Vec<String> = (0..parallel_uploads)
+                        .map(|ordinal| {
+                            format!(
+                                "lasco-importer-benchmark/{benchmark_id}/{parallel_uploads}/{ordinal}"
+                            )
+                        })
+                        .collect();
+                    let start = Instant::now();
+                    let mut writes = FuturesUnordered::new();
+                    for key in &keys {
+                        writes.push(storage.put_atomic(key, &payload, AtomicWriteMode::Replace));
+                    }
+                    let mut upload_error = None;
+                    while let Some(result) = writes.next().await {
+                        if let Err(error) = result {
+                            upload_error.get_or_insert(error);
+                        }
+                    }
+                    let elapsed = start.elapsed();
+
+                    // Attempt every deletion so a failure cannot strand the rest of this sample.
+                    let mut cleanup_error = None;
+                    for key in &keys {
+                        if let Err(error) = storage.delete(key).await {
+                            cleanup_error.get_or_insert(error);
+                        }
+                    }
+                    if let Some(error) = cleanup_error {
+                        return Err(LascoError::Storage {
+                            msg: format!("benchmark cleanup failed: {error}"),
+                        });
+                    }
+                    if let Some(error) = upload_error {
+                        return Err(LascoError::Storage {
+                            msg: format!("benchmark upload failed: {error}"),
+                        });
+                    }
+
+                    let elapsed_millis = u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX);
+                    let elapsed_nanos = elapsed.as_nanos().max(1);
+                    let total_bytes = bytes_per_upload.saturating_mul(u64::from(parallel_uploads));
+                    let bytes_per_second = u64::try_from(
+                        (u128::from(total_bytes) * 1_000_000_000) / elapsed_nanos,
+                    )
+                    .unwrap_or(u64::MAX);
+                    samples.push(FfiUploadBenchmarkSample {
+                        parallel_uploads,
+                        bytes_per_upload,
+                        elapsed_millis,
+                        bytes_per_second,
+                    });
+                }
+                Ok::<_, LascoError>(samples)
+            })
+            .await
+            .map_err(|error| LascoError::Other {
+                msg: format!("benchmark task failed: {error}"),
+            })?
+    }
+
     /// Confirms which media blobs a remote holds and records them in its media inventory,
     /// without fetching. Returns how many blobs it newly confirmed.
     ///
@@ -1155,6 +1269,59 @@ pub(super) fn remote_config_to_ffi(r: &RemoteConfig) -> FfiRemote {
         }
     }
     remote
+}
+
+#[cfg(test)]
+mod importer_benchmark_tests {
+    use super::*;
+
+    fn contains_file(path: &std::path::Path) -> bool {
+        std::fs::read_dir(path).unwrap().flatten().any(|entry| {
+            let path = entry.path();
+            path.is_file() || (path.is_dir() && contains_file(&path))
+        })
+    }
+
+    #[test]
+    fn benchmark_uploads_to_a_fixed_path_and_removes_temporary_objects() {
+        let temp = tempfile::tempdir().unwrap();
+        let app_dir = temp.path().join("app");
+        let remote_dir = temp.path().join("remote");
+        std::fs::create_dir_all(&remote_dir).unwrap();
+        let app_dir_string = app_dir.to_string_lossy().into_owned();
+
+        crate::library::ffi_create_library(
+            "importer-benchmark".to_string(),
+            "tester".to_string(),
+            "password".to_string(),
+            Some(app_dir_string.clone()),
+        )
+        .unwrap();
+        let library = FfiLibrary::open(
+            Some("importer-benchmark".to_string()),
+            "tester".to_string(),
+            "password".to_string(),
+            Some(app_dir_string),
+        )
+        .unwrap();
+        let remote = library
+            .add_remote_fixed_path(
+                "benchmark remote".to_string(),
+                remote_dir.to_string_lossy().into_owned(),
+            )
+            .unwrap();
+
+        let samples = library
+            .rt
+            .block_on(library.benchmark_remote_upload_async(remote, None, 1024, 3))
+            .unwrap();
+
+        assert_eq!(samples.len(), 3);
+        assert_eq!(samples[0].parallel_uploads, 1);
+        assert_eq!(samples[2].parallel_uploads, 3);
+        assert!(samples.iter().all(|sample| sample.bytes_per_second > 0));
+        assert!(!contains_file(&remote_dir.join("lasco-importer-benchmark")));
+    }
 }
 
 pub(super) fn media_entry_to_ffi(e: lasco_core::library::media::MediaEntry) -> FfiMediaItem {

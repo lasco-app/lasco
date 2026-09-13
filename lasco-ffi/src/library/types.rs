@@ -204,6 +204,18 @@ pub struct FfiRemoteMediaShortfall {
     pub missing_thumb: u64,
 }
 
+/// Result from one isolated remote throughput measurement.
+///
+/// `bytes_per_second` is the aggregate rate for all transfers in this sample, not a per-transfer
+/// rate. Benchmark objects are random, temporary objects and are deleted after measurement.
+#[derive(uniffi::Record, Debug)]
+pub struct FfiUploadBenchmarkSample {
+    pub parallel_uploads: u8,
+    pub bytes_per_upload: u64,
+    pub elapsed_millis: u64,
+    pub bytes_per_second: u64,
+}
+
 /// Remote compaction-lock metadata. Absence of this record means no lock is held.
 #[derive(uniffi::Record, Debug)]
 pub struct FfiCompactionLockInfo {
