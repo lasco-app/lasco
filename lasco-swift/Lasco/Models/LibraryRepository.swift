@@ -105,6 +105,7 @@ protocol LibraryRepositoryProtocol: Sendable {
     func addRemoteFixedPath(name: String, path: String) async throws -> FfiRemoteUuid
     func addRemoteDebugLocalApple(name: String) async throws -> FfiRemoteUuid
     func addRemoteS3(id: String, endpoint: String, bucket: String, region: String, pathPrefix: String, accessKey: String, secretKey: String) async throws -> FfiRemoteUuid
+    func addRemoteSmb(id: String, server: String, port: UInt16, share: String, pathPrefix: String, username: String, password: String, domain: String?) async throws -> FfiRemoteUuid
     func removeRemote(id: FfiRemoteUuid) async throws
     func initializeRemote(id: FfiRemoteUuid) async throws
     func connectRemote(id: FfiRemoteUuid) async throws
@@ -791,6 +792,13 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         return remoteID
     }
 
+    func addRemoteSmb(id: String, server: String, port: UInt16, share: String, pathPrefix: String, username: String, password: String, domain: String?) async throws -> FfiRemoteUuid {
+        try ensureOpen()
+        let remoteID = try library.addRemoteSmb(name: id, server: server, port: port, share: share, pathPrefix: pathPrefix, username: username, password: password, domain: domain)
+        await notify(.session)
+        return remoteID
+    }
+
     func removeRemote(id: FfiRemoteUuid) async throws {
         try ensureOpen()
         try library.removeRemote(remoteId: id)
@@ -1055,6 +1063,7 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     func addRemoteFixedPath(name: String, path: String) async throws -> FfiRemoteUuid { try await storage.addRemoteFixedPath(name: name, path: path) }
     func addRemoteDebugLocalApple(name: String) async throws -> FfiRemoteUuid { try await storage.addRemoteDebugLocalApple(name: name) }
     func addRemoteS3(id: String, endpoint: String, bucket: String, region: String, pathPrefix: String, accessKey: String, secretKey: String) async throws -> FfiRemoteUuid { try await storage.addRemoteS3(id: id, endpoint: endpoint, bucket: bucket, region: region, pathPrefix: pathPrefix, accessKey: accessKey, secretKey: secretKey) }
+    func addRemoteSmb(id: String, server: String, port: UInt16, share: String, pathPrefix: String, username: String, password: String, domain: String?) async throws -> FfiRemoteUuid { try await storage.addRemoteSmb(id: id, server: server, port: port, share: share, pathPrefix: pathPrefix, username: username, password: password, domain: domain) }
     func removeRemote(id: FfiRemoteUuid) async throws { try await storage.removeRemote(id: id) }
     func initializeRemote(id: FfiRemoteUuid) async throws { try await storage.initializeRemote(id: id) }
     func connectRemote(id: FfiRemoteUuid) async throws { try await storage.connectRemote(id: id) }

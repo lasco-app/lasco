@@ -152,6 +152,12 @@ pub struct FfiRemote {
     pub bucket: Option<String>,
     pub region: Option<String>,
     pub path: Option<String>,
+    /// SMB server hostname/IP. Credentials are intentionally never exposed.
+    pub server: Option<String>,
+    pub port: Option<u16>,
+    pub share: Option<String>,
+    pub username: Option<String>,
+    pub domain: Option<String>,
 }
 
 #[derive(uniffi::Record, Debug)]

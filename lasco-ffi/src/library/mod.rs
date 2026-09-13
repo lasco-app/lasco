@@ -185,6 +185,39 @@ pub fn ffi_test_s3_remote(
     Ok(())
 }
 
+/// Test connectivity and read/write access to an SMB 2/3 share without saving
+/// any credentials. The probe is removed before this function returns.
+#[uniffi::export]
+#[allow(clippy::needless_pass_by_value)]
+pub fn ffi_test_smb_remote(
+    server: String,
+    port: u16,
+    share: String,
+    path_prefix: String,
+    username: String,
+    password: String,
+    domain: Option<String>,
+) -> Result<(), LascoError> {
+    let path_prefix = (!path_prefix.trim().is_empty()).then_some(path_prefix.as_str());
+    let config = lasco_core::storage::SmbConnectionConfig::new(
+        &server,
+        port,
+        &share,
+        path_prefix,
+        &username,
+        &password,
+        domain.as_deref(),
+    )
+    .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+    let storage = lasco_core::storage::StorageSmb::new(config);
+    let rt =
+        tokio::runtime::Runtime::new().map_err(|e| LascoError::Other { msg: e.to_string() })?;
+    rt.block_on(storage.test_connection())
+        .map_err(|e| LascoError::Other {
+            msg: format!("remote unreachable: {e}"),
+        })
+}
+
 /// Try to open a library using a cached session (OS keychain), without a password.
 /// Returns `None` if no session is cached — the caller should then prompt for credentials.
 ///
@@ -330,6 +363,71 @@ pub fn ffi_add_existing_library_s3(
         .map(remote_config_to_ffi)
         .collect();
 
+    Ok(Arc::new(FfiLibrary {
+        inner: library,
+        rt,
+        app_dir,
+        remotes: Mutex::new(remotes),
+        #[cfg(test)]
+        test_remotes: Mutex::new(HashMap::new()),
+    }))
+}
+
+/// Add a library that already exists on an SMB 2/3 remote.
+#[uniffi::export(default(app_dir = None))]
+#[allow(clippy::too_many_arguments, clippy::needless_pass_by_value)]
+pub fn ffi_add_existing_library_smb(
+    nickname: String,
+    username: String,
+    password: String,
+    new_username: Option<String>,
+    new_password: Option<String>,
+    remote_name: String,
+    server: String,
+    port: u16,
+    share: String,
+    path_prefix: String,
+    smb_username: String,
+    smb_password: String,
+    domain: Option<String>,
+    app_dir: Option<String>,
+) -> Result<Arc<FfiLibrary>, LascoError> {
+    let rt =
+        tokio::runtime::Runtime::new().map_err(|e| LascoError::Other { msg: e.to_string() })?;
+    let app_dir = crate::resolve_app_dir(app_dir)?;
+    let sessions = sessions_dir(&app_dir);
+    let new_user = match (new_username, new_password) {
+        (Some(username), Some(password)) if !username.is_empty() => {
+            Some((LibraryUsername(username), LibraryPassword(password)))
+        }
+        _ => None,
+    };
+    let path_prefix = (!path_prefix.trim().is_empty()).then_some(path_prefix);
+    let (_library_id, library) = rt
+        .block_on(lasco_core::client::add_existing_library_smb(
+            &app_dir,
+            nickname,
+            LibraryUsername(username),
+            LibraryPassword(password),
+            new_user,
+            remote_name,
+            server,
+            port,
+            share,
+            path_prefix,
+            smb_username,
+            smb_password,
+            domain,
+            Some(&sessions),
+        ))
+        .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+    let library_config =
+        LibraryJson::load(&app_dir, &library.library_id())?.ok_or(LascoError::NotFound)?;
+    let remotes = library_config
+        .remotes
+        .iter()
+        .map(remote_config_to_ffi)
+        .collect();
     Ok(Arc::new(FfiLibrary {
         inner: library,
         rt,

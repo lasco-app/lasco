@@ -17,6 +17,7 @@ struct RemotesView: View {
 
     @State private var showRemotePicker = false
     @State private var showAddS3 = false
+    @State private var showAddSmb = false
     @State private var showAddLocalFS = false
     @State private var showCloudLogin = false
     @State private var cloudConnected = false
@@ -161,6 +162,7 @@ struct RemotesView: View {
                 showCloud: !cloudConnected,
                 onCloud: { showRemotePicker = false; showCloudLogin = true },
                 onS3: { showRemotePicker = false; showAddS3 = true },
+                onSmb: { showRemotePicker = false; showAddSmb = true },
                 onLocalFS: { showRemotePicker = false; showAddLocalFS = true },
                 onDismiss: { showRemotePicker = false }
             )
@@ -216,6 +218,12 @@ struct RemotesView: View {
         }
         .sheet(isPresented: $showAddS3) {
             AddS3RemoteView()
+                .environment(repository)
+                .environment(\.lascoTheme, .dark)
+                .preferredColorScheme(.dark)
+        }
+        .sheet(isPresented: $showAddSmb) {
+            AddSmbRemoteView()
                 .environment(repository)
                 .environment(\.lascoTheme, .dark)
                 .preferredColorScheme(.dark)
@@ -292,6 +300,7 @@ struct RemoteTypePickerSheet: View {
     let showCloud: Bool
     let onCloud: () -> Void
     let onS3: () -> Void
+    let onSmb: () -> Void
     let onLocalFS: () -> Void
     let onDismiss: () -> Void
     @Environment(\.lascoTheme) var theme
@@ -329,6 +338,9 @@ struct RemoteTypePickerSheet: View {
                             .frame(maxWidth: .infinity)
                     }
                     Button("Add S3-compatible remote", action: onS3)
+                        .buttonStyle(LascoPrimaryButtonStyle())
+                        .frame(maxWidth: .infinity)
+                    Button("Add SMB remote", action: onSmb)
                         .buttonStyle(LascoPrimaryButtonStyle())
                         .frame(maxWidth: .infinity)
 

@@ -976,6 +976,12 @@ internal open class UniffiVTableCallbackInterfacePushProgressSink(
 
 
 
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -995,6 +1001,8 @@ internal interface IntegrityCheckingUniffiLib : Library {
 ): Short
 fun uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_s3(
 ): Short
+fun uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_smb(
+): Short
 fun uniffi_lasco_ffi_checksum_func_ffi_create_library(
 ): Short
 fun uniffi_lasco_ffi_checksum_func_ffi_delete_library(
@@ -1004,6 +1012,8 @@ fun uniffi_lasco_ffi_checksum_func_ffi_open_cached(
 fun uniffi_lasco_ffi_checksum_func_ffi_recover_library_state(
 ): Short
 fun uniffi_lasco_ffi_checksum_func_ffi_test_s3_remote(
+): Short
+fun uniffi_lasco_ffi_checksum_func_ffi_test_smb_remote(
 ): Short
 fun uniffi_lasco_ffi_checksum_func_list_libraries(
 ): Short
@@ -1022,6 +1032,8 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_debug_local_apple(
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_fixed_path(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_s3(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_smb(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_usb_android(
 ): Short
@@ -1295,6 +1307,8 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_fixed_path(`ptr`: Pointer,`
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_s3(`ptr`: Pointer,`name`: RustBuffer.ByValue,`endpoint`: RustBuffer.ByValue,`bucket`: RustBuffer.ByValue,`region`: RustBuffer.ByValue,`pathPrefix`: RustBuffer.ByValue,`accessKey`: RustBuffer.ByValue,`secretKey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_smb(`ptr`: Pointer,`name`: RustBuffer.ByValue,`server`: RustBuffer.ByValue,`port`: Short,`share`: RustBuffer.ByValue,`pathPrefix`: RustBuffer.ByValue,`username`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,`domain`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_usb_android(`ptr`: Pointer,`name`: RustBuffer.ByValue,`treeUri`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_usb_apple(`ptr`: Pointer,`name`: RustBuffer.ByValue,`bookmarkBase64`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1503,6 +1517,8 @@ fun uniffi_lasco_ffi_fn_func_ffi_add_existing_library_lasco_cloud(`config`: Rust
 ): Pointer
 fun uniffi_lasco_ffi_fn_func_ffi_add_existing_library_s3(`nickname`: RustBuffer.ByValue,`username`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,`newUsername`: RustBuffer.ByValue,`newPassword`: RustBuffer.ByValue,`remoteName`: RustBuffer.ByValue,`endpoint`: RustBuffer.ByValue,`bucket`: RustBuffer.ByValue,`region`: RustBuffer.ByValue,`pathPrefix`: RustBuffer.ByValue,`accessKey`: RustBuffer.ByValue,`secretKey`: RustBuffer.ByValue,`appDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Pointer
+fun uniffi_lasco_ffi_fn_func_ffi_add_existing_library_smb(`nickname`: RustBuffer.ByValue,`username`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,`newUsername`: RustBuffer.ByValue,`newPassword`: RustBuffer.ByValue,`remoteName`: RustBuffer.ByValue,`server`: RustBuffer.ByValue,`port`: Short,`share`: RustBuffer.ByValue,`pathPrefix`: RustBuffer.ByValue,`smbUsername`: RustBuffer.ByValue,`smbPassword`: RustBuffer.ByValue,`domain`: RustBuffer.ByValue,`appDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Pointer
 fun uniffi_lasco_ffi_fn_func_ffi_create_library(`nickname`: RustBuffer.ByValue,`username`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,`appDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_func_ffi_delete_library(`libraryId`: RustBuffer.ByValue,`appDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1512,6 +1528,8 @@ fun uniffi_lasco_ffi_fn_func_ffi_open_cached(`nickname`: RustBuffer.ByValue,`use
 fun uniffi_lasco_ffi_fn_func_ffi_recover_library_state(`nickname`: RustBuffer.ByValue,`username`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,`appDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_lasco_ffi_fn_func_ffi_test_s3_remote(`endpoint`: RustBuffer.ByValue,`bucket`: RustBuffer.ByValue,`region`: RustBuffer.ByValue,`pathPrefix`: RustBuffer.ByValue,`accessKey`: RustBuffer.ByValue,`secretKey`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_lasco_ffi_fn_func_ffi_test_smb_remote(`server`: RustBuffer.ByValue,`port`: Short,`share`: RustBuffer.ByValue,`pathPrefix`: RustBuffer.ByValue,`username`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,`domain`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_lasco_ffi_fn_func_list_libraries(`appDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
@@ -1649,6 +1667,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_s3() != 45002.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_smb() != 13877.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_lasco_ffi_checksum_func_ffi_create_library() != 46039.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1662,6 +1683,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_func_ffi_test_s3_remote() != 38987.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_func_ffi_test_smb_remote() != 22096.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_func_list_libraries() != 63304.toShort()) {
@@ -1689,6 +1713,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_s3() != 5472.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_smb() != 51856.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_usb_android() != 31100.toShort()) {
@@ -2592,6 +2619,12 @@ public interface FfiLibraryInterface {
     fun `addRemoteS3`(`name`: kotlin.String, `endpoint`: kotlin.String, `bucket`: kotlin.String, `region`: kotlin.String, `pathPrefix`: kotlin.String, `accessKey`: kotlin.String, `secretKey`: kotlin.String): FfiRemoteUuid
     
     /**
+     * Adds an SMB 2/3 share. The password is encrypted with this library's
+     * master key and is never included in [`FfiRemote`].
+     */
+    fun `addRemoteSmb`(`name`: kotlin.String, `server`: kotlin.String, `port`: kotlin.UShort, `share`: kotlin.String, `pathPrefix`: kotlin.String, `username`: kotlin.String, `password`: kotlin.String, `domain`: kotlin.String?): FfiRemoteUuid
+    
+    /**
      * Add a wired USB drive selected through Android's Storage Access
      * Framework. `tree_uri` is an opaque, persistable access grant.
      *
@@ -3469,6 +3502,23 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     uniffiRustCallWithError(LascoException) { _status ->
     UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_s3(
         it, FfiConverterString.lower(`name`),FfiConverterString.lower(`endpoint`),FfiConverterString.lower(`bucket`),FfiConverterString.lower(`region`),FfiConverterString.lower(`pathPrefix`),FfiConverterString.lower(`accessKey`),FfiConverterString.lower(`secretKey`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Adds an SMB 2/3 share. The password is encrypted with this library's
+     * master key and is never included in [`FfiRemote`].
+     */
+    @Throws(LascoException::class)override fun `addRemoteSmb`(`name`: kotlin.String, `server`: kotlin.String, `port`: kotlin.UShort, `share`: kotlin.String, `pathPrefix`: kotlin.String, `username`: kotlin.String, `password`: kotlin.String, `domain`: kotlin.String?): FfiRemoteUuid {
+            return FfiConverterTypeFfiRemoteUuid.lift(
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_smb(
+        it, FfiConverterString.lower(`name`),FfiConverterString.lower(`server`),FfiConverterUShort.lower(`port`),FfiConverterString.lower(`share`),FfiConverterString.lower(`pathPrefix`),FfiConverterString.lower(`username`),FfiConverterString.lower(`password`),FfiConverterOptionalString.lower(`domain`),_status)
 }
     }
     )
@@ -6607,7 +6657,15 @@ data class FfiRemote (
     var `endpoint`: kotlin.String?, 
     var `bucket`: kotlin.String?, 
     var `region`: kotlin.String?, 
-    var `path`: kotlin.String?
+    var `path`: kotlin.String?, 
+    /**
+     * SMB server hostname/IP. Credentials are intentionally never exposed.
+     */
+    var `server`: kotlin.String?, 
+    var `port`: kotlin.UShort?, 
+    var `share`: kotlin.String?, 
+    var `username`: kotlin.String?, 
+    var `domain`: kotlin.String?
 ) {
     
     companion object
@@ -6627,6 +6685,11 @@ public object FfiConverterTypeFfiRemote: FfiConverterRustBuffer<FfiRemote> {
             FfiConverterOptionalString.read(buf),
             FfiConverterOptionalString.read(buf),
             FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalUShort.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
         )
     }
 
@@ -6638,7 +6701,12 @@ public object FfiConverterTypeFfiRemote: FfiConverterRustBuffer<FfiRemote> {
             FfiConverterOptionalString.allocationSize(value.`endpoint`) +
             FfiConverterOptionalString.allocationSize(value.`bucket`) +
             FfiConverterOptionalString.allocationSize(value.`region`) +
-            FfiConverterOptionalString.allocationSize(value.`path`)
+            FfiConverterOptionalString.allocationSize(value.`path`) +
+            FfiConverterOptionalString.allocationSize(value.`server`) +
+            FfiConverterOptionalUShort.allocationSize(value.`port`) +
+            FfiConverterOptionalString.allocationSize(value.`share`) +
+            FfiConverterOptionalString.allocationSize(value.`username`) +
+            FfiConverterOptionalString.allocationSize(value.`domain`)
     )
 
     override fun write(value: FfiRemote, buf: ByteBuffer) {
@@ -6650,6 +6718,11 @@ public object FfiConverterTypeFfiRemote: FfiConverterRustBuffer<FfiRemote> {
             FfiConverterOptionalString.write(value.`bucket`, buf)
             FfiConverterOptionalString.write(value.`region`, buf)
             FfiConverterOptionalString.write(value.`path`, buf)
+            FfiConverterOptionalString.write(value.`server`, buf)
+            FfiConverterOptionalUShort.write(value.`port`, buf)
+            FfiConverterOptionalString.write(value.`share`, buf)
+            FfiConverterOptionalString.write(value.`username`, buf)
+            FfiConverterOptionalString.write(value.`domain`, buf)
     }
 }
 
@@ -7019,6 +7092,38 @@ internal object uniffiCallbackInterfacePushProgressSink {
  * @suppress
  */
 public object FfiConverterTypePushProgressSink: FfiConverterCallbackInterface<PushProgressSink>()
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalUShort: FfiConverterRustBuffer<kotlin.UShort?> {
+    override fun read(buf: ByteBuffer): kotlin.UShort? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterUShort.read(buf)
+    }
+
+    override fun allocationSize(value: kotlin.UShort?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterUShort.allocationSize(value)
+        }
+    }
+
+    override fun write(value: kotlin.UShort?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterUShort.write(value, buf)
+        }
+    }
+}
 
 
 
@@ -7776,6 +7881,19 @@ public object FfiConverterSequenceTypeFfiRemoteUuid: FfiConverterRustBuffer<List
     
 
         /**
+         * Add a library that already exists on an SMB 2/3 remote.
+         */
+    @Throws(LascoException::class) fun `ffiAddExistingLibrarySmb`(`nickname`: kotlin.String, `username`: kotlin.String, `password`: kotlin.String, `newUsername`: kotlin.String?, `newPassword`: kotlin.String?, `remoteName`: kotlin.String, `server`: kotlin.String, `port`: kotlin.UShort, `share`: kotlin.String, `pathPrefix`: kotlin.String, `smbUsername`: kotlin.String, `smbPassword`: kotlin.String, `domain`: kotlin.String?, `appDir`: kotlin.String? = null): FfiLibrary {
+            return FfiConverterTypeFfiLibrary.lift(
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_func_ffi_add_existing_library_smb(
+        FfiConverterString.lower(`nickname`),FfiConverterString.lower(`username`),FfiConverterString.lower(`password`),FfiConverterOptionalString.lower(`newUsername`),FfiConverterOptionalString.lower(`newPassword`),FfiConverterString.lower(`remoteName`),FfiConverterString.lower(`server`),FfiConverterUShort.lower(`port`),FfiConverterString.lower(`share`),FfiConverterString.lower(`pathPrefix`),FfiConverterString.lower(`smbUsername`),FfiConverterString.lower(`smbPassword`),FfiConverterOptionalString.lower(`domain`),FfiConverterOptionalString.lower(`appDir`),_status)
+}
+    )
+    }
+    
+
+        /**
          * # Errors
          *
          * Returns an error if the app directory/runtime cannot be created or library state, config, or session key cannot be initialized.
@@ -7852,6 +7970,19 @@ public object FfiConverterSequenceTypeFfiRemoteUuid: FfiConverterRustBuffer<List
     uniffiRustCallWithError(LascoException) { _status ->
     UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_func_ffi_test_s3_remote(
         FfiConverterString.lower(`endpoint`),FfiConverterString.lower(`bucket`),FfiConverterString.lower(`region`),FfiConverterString.lower(`pathPrefix`),FfiConverterString.lower(`accessKey`),FfiConverterString.lower(`secretKey`),_status)
+}
+    
+    
+
+        /**
+         * Test connectivity and read/write access to an SMB 2/3 share without saving
+         * any credentials. The probe is removed before this function returns.
+         */
+    @Throws(LascoException::class) fun `ffiTestSmbRemote`(`server`: kotlin.String, `port`: kotlin.UShort, `share`: kotlin.String, `pathPrefix`: kotlin.String, `username`: kotlin.String, `password`: kotlin.String, `domain`: kotlin.String?)
+        = 
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_func_ffi_test_smb_remote(
+        FfiConverterString.lower(`server`),FfiConverterUShort.lower(`port`),FfiConverterString.lower(`share`),FfiConverterString.lower(`pathPrefix`),FfiConverterString.lower(`username`),FfiConverterString.lower(`password`),FfiConverterOptionalString.lower(`domain`),_status)
 }
     
     

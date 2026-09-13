@@ -18,6 +18,7 @@ struct NewLibraryWizard: View {
     @State private var confirmPassword = ""
     @State private var showCloudLoginSheet = false
     @State private var showAddS3Sheet = false
+    @State private var showAddSmbSheet = false
     @State private var showAddLocalFSSheet = false
     @State private var masterKeyCopied = false
     @State private var masterKey: String?
@@ -143,6 +144,9 @@ struct NewLibraryWizard: View {
                 Button("Add S3-compatible remote") { showAddS3Sheet = true }
                     .buttonStyle(LascoPrimaryButtonStyle())
                     .frame(maxWidth: .infinity)
+                Button("Add SMB remote") { showAddSmbSheet = true }
+                    .buttonStyle(LascoPrimaryButtonStyle())
+                    .frame(maxWidth: .infinity)
                 if expertMode {
                     Button("Add local filesystem remote") { showAddLocalFSSheet = true }
                         .buttonStyle(LascoDevButtonStyle())
@@ -170,6 +174,18 @@ struct NewLibraryWizard: View {
             .sheet(isPresented: $showAddS3Sheet) {
                 if let activeSession = directory.activeSession {
                     AddS3RemoteView {
+                        try await activeSession.refresh()
+                        guard !activeSession.state.remotes.isEmpty else {
+                            throw LibraryDirectoryModelError.remoteUnavailableAfterRefresh
+                        }
+                        advanceFromRemote()
+                    }
+                    .environment(activeSession.repository)
+                }
+            }
+            .sheet(isPresented: $showAddSmbSheet) {
+                if let activeSession = directory.activeSession {
+                    AddSmbRemoteView {
                         try await activeSession.refresh()
                         guard !activeSession.state.remotes.isEmpty else {
                             throw LibraryDirectoryModelError.remoteUnavailableAfterRefresh

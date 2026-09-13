@@ -428,6 +428,48 @@ impl FfiLibrary {
         Ok(remote_uuid.into())
     }
 
+    /// Adds an SMB 2/3 share. The password is encrypted with this library's
+    /// master key and is never included in [`FfiRemote`].
+    #[allow(clippy::too_many_arguments, clippy::needless_pass_by_value)]
+    pub fn add_remote_smb(
+        &self,
+        name: String,
+        server: String,
+        port: u16,
+        share: String,
+        path_prefix: String,
+        username: String,
+        password: String,
+        domain: Option<String>,
+    ) -> Result<FfiRemoteUuid, LascoError> {
+        let connection = lasco_core::storage::SmbConnectionConfig::new(
+            &server,
+            port,
+            &share,
+            (!path_prefix.trim().is_empty()).then_some(path_prefix.as_str()),
+            &username,
+            &password,
+            domain.as_deref(),
+        )
+        .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+        let (password_encrypted, password_encryption_description) =
+            lasco_core::smb_secret::encrypt_smb_password(self.inner.master_key(), &password)
+                .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+        self.add_remote_config(
+            name,
+            RemoteKind::Smb(lasco_core::library_json::SmbConfig {
+                server: connection.server,
+                port: connection.port,
+                share: connection.share,
+                path_prefix: connection.path_prefix,
+                username: connection.username,
+                domain: connection.domain,
+                password_encrypted,
+                password_encryption_description,
+            }),
+        )
+    }
+
     /// Removes a remote from the configuration and deletes everything this client cached
     /// about it.
     ///
@@ -1009,55 +1051,58 @@ impl FfiLibrary {
 }
 
 pub(super) fn remote_config_to_ffi(r: &RemoteConfig) -> FfiRemote {
-    let (kind, endpoint, bucket, region, path) = match &r.kind {
-        RemoteKind::S3(s3) => (
-            "s3".to_string(),
-            Some(s3.endpoint.clone()),
-            Some(s3.bucket.clone()),
-            Some(s3.region.clone()),
-            s3.path_prefix.clone(),
-        ),
-        RemoteKind::CloudS3(cloud) => (
-            "lasco_cloud_s3".to_string(),
-            None,
-            None,
-            None,
-            Some(cloud.cloud_storage_id.clone()),
-        ),
-        RemoteKind::FixedPath(fs) => (
-            "fixed_path".to_string(),
-            None,
-            None,
-            None,
-            Some(fs.root_dir.to_string_lossy().into_owned()),
-        ),
-        RemoteKind::UsbAndroid(_) => ("usb_android".to_string(), None, None, None, None),
-        RemoteKind::UsbApple(_) => ("usb_apple".to_string(), None, None, None, None),
-        RemoteKind::DebugLocalApple(cfg) => (
-            "debug_local_apple".to_string(),
-            None,
-            None,
-            None,
-            Some(cfg.local_dir_name.clone()),
-        ),
-        RemoteKind::DebugLocalAndroid(cfg) => (
-            "debug_local_android".to_string(),
-            None,
-            None,
-            None,
-            Some(cfg.local_dir_name.clone()),
-        ),
-    };
-    FfiRemote {
+    let mut remote = FfiRemote {
         remote_id: r.remote_uuid.into(),
         name: r.name.clone(),
         auto_push: r.auto_push,
-        kind,
-        endpoint,
-        bucket,
-        region,
-        path,
+        kind: String::new(),
+        endpoint: None,
+        bucket: None,
+        region: None,
+        path: None,
+        server: None,
+        port: None,
+        share: None,
+        username: None,
+        domain: None,
+    };
+    match &r.kind {
+        RemoteKind::S3(s3) => {
+            remote.kind = "s3".to_string();
+            remote.endpoint = Some(s3.endpoint.clone());
+            remote.bucket = Some(s3.bucket.clone());
+            remote.region = Some(s3.region.clone());
+            remote.path = s3.path_prefix.clone();
+        }
+        RemoteKind::Smb(smb) => {
+            remote.kind = "smb".to_string();
+            remote.server = Some(smb.server.clone());
+            remote.port = Some(smb.port);
+            remote.share = Some(smb.share.clone());
+            remote.path = smb.path_prefix.clone();
+            remote.username = Some(smb.username.clone());
+            remote.domain = smb.domain.clone();
+        }
+        RemoteKind::CloudS3(cloud) => {
+            remote.kind = "lasco_cloud_s3".to_string();
+            remote.path = Some(cloud.cloud_storage_id.clone());
+        }
+        RemoteKind::FixedPath(fs) => {
+            remote.kind = "fixed_path".to_string();
+            remote.path = Some(fs.root_dir.to_string_lossy().into_owned());
+        }
+        RemoteKind::UsbAndroid(_) => remote.kind = "usb_android".to_string(),
+        RemoteKind::UsbApple(_) => remote.kind = "usb_apple".to_string(),
+        RemoteKind::DebugLocalApple(cfg) => {
+            remote.kind = "debug_local_apple".to_string();
+            remote.path = Some(cfg.local_dir_name.clone());
+        }
+        RemoteKind::DebugLocalAndroid(cfg) => {
+            remote.kind = "debug_local_android".to_string();
+            remote.path = Some(cfg.local_dir_name.clone());
+        }
     }
+    remote
 }
 
 pub(super) fn media_entry_to_ffi(e: lasco_core::library::media::MediaEntry) -> FfiMediaItem {

@@ -54,6 +54,7 @@ uniffi = { version = "0.29", features = ["build"] }
 proptest = "1"
 rand = "0.8"
 tempfile = "3"
+smb2 = { version = "=0.21.0", features = ["testing"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.21"

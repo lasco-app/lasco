@@ -640,6 +640,12 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     func addRemoteS3(name: String, endpoint: String, bucket: String, region: String, pathPrefix: String, accessKey: String, secretKey: String) throws  -> FfiRemoteUuid
     
     /**
+     * Adds an SMB 2/3 share. The password is encrypted with this library's
+     * master key and is never included in [`FfiRemote`].
+     */
+    func addRemoteSmb(name: String, server: String, port: UInt16, share: String, pathPrefix: String, username: String, password: String, domain: String?) throws  -> FfiRemoteUuid
+    
+    /**
      * Add a wired USB drive selected through Android's Storage Access
      * Framework. `tree_uri` is an opaque, persistable access grant.
      *
@@ -1481,6 +1487,25 @@ nonisolated open func addRemoteS3(name: String, endpoint: String, bucket: String
         FfiConverterString.lower(pathPrefix),
         FfiConverterString.lower(accessKey),
         FfiConverterString.lower(secretKey),$0
+    )
+})
+}
+    
+    /**
+     * Adds an SMB 2/3 share. The password is encrypted with this library's
+     * master key and is never included in [`FfiRemote`].
+     */
+nonisolated open func addRemoteSmb(name: String, server: String, port: UInt16, share: String, pathPrefix: String, username: String, password: String, domain: String?)throws  -> FfiRemoteUuid  {
+    return try  FfiConverterTypeFfiRemoteUuid_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_smb(self.uniffiClonePointer(),
+        FfiConverterString.lower(name),
+        FfiConverterString.lower(server),
+        FfiConverterUInt16.lower(port),
+        FfiConverterString.lower(share),
+        FfiConverterString.lower(pathPrefix),
+        FfiConverterString.lower(username),
+        FfiConverterString.lower(password),
+        FfiConverterOptionString.lower(domain),$0
     )
 })
 }
@@ -5132,10 +5157,21 @@ nonisolated public struct FfiRemote {
     public var bucket: String?
     public var region: String?
     public var path: String?
+    /**
+     * SMB server hostname/IP. Credentials are intentionally never exposed.
+     */
+    public var server: String?
+    public var port: UInt16?
+    public var share: String?
+    public var username: String?
+    public var domain: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(remoteId: FfiRemoteUuid, name: String, autoPush: Bool, kind: String, endpoint: String?, bucket: String?, region: String?, path: String?) {
+    public init(remoteId: FfiRemoteUuid, name: String, autoPush: Bool, kind: String, endpoint: String?, bucket: String?, region: String?, path: String?, 
+        /**
+         * SMB server hostname/IP. Credentials are intentionally never exposed.
+         */server: String?, port: UInt16?, share: String?, username: String?, domain: String?) {
         self.remoteId = remoteId
         self.name = name
         self.autoPush = autoPush
@@ -5144,6 +5180,11 @@ nonisolated public struct FfiRemote {
         self.bucket = bucket
         self.region = region
         self.path = path
+        self.server = server
+        self.port = port
+        self.share = share
+        self.username = username
+        self.domain = domain
     }
 }
 
@@ -5178,6 +5219,21 @@ nonisolated extension FfiRemote: Equatable, Hashable {
         if lhs.path != rhs.path {
             return false
         }
+        if lhs.server != rhs.server {
+            return false
+        }
+        if lhs.port != rhs.port {
+            return false
+        }
+        if lhs.share != rhs.share {
+            return false
+        }
+        if lhs.username != rhs.username {
+            return false
+        }
+        if lhs.domain != rhs.domain {
+            return false
+        }
         return true
     }
 
@@ -5190,6 +5246,11 @@ nonisolated extension FfiRemote: Equatable, Hashable {
         hasher.combine(bucket)
         hasher.combine(region)
         hasher.combine(path)
+        hasher.combine(server)
+        hasher.combine(port)
+        hasher.combine(share)
+        hasher.combine(username)
+        hasher.combine(domain)
     }
 }
 
@@ -5209,7 +5270,12 @@ nonisolated public struct FfiConverterTypeFfiRemote: FfiConverterRustBuffer {
                 endpoint: FfiConverterOptionString.read(from: &buf), 
                 bucket: FfiConverterOptionString.read(from: &buf), 
                 region: FfiConverterOptionString.read(from: &buf), 
-                path: FfiConverterOptionString.read(from: &buf)
+                path: FfiConverterOptionString.read(from: &buf), 
+                server: FfiConverterOptionString.read(from: &buf), 
+                port: FfiConverterOptionUInt16.read(from: &buf), 
+                share: FfiConverterOptionString.read(from: &buf), 
+                username: FfiConverterOptionString.read(from: &buf), 
+                domain: FfiConverterOptionString.read(from: &buf)
         )
     }
 
@@ -5222,6 +5288,11 @@ nonisolated public struct FfiConverterTypeFfiRemote: FfiConverterRustBuffer {
         FfiConverterOptionString.write(value.bucket, into: &buf)
         FfiConverterOptionString.write(value.region, into: &buf)
         FfiConverterOptionString.write(value.path, into: &buf)
+        FfiConverterOptionString.write(value.server, into: &buf)
+        FfiConverterOptionUInt16.write(value.port, into: &buf)
+        FfiConverterOptionString.write(value.share, into: &buf)
+        FfiConverterOptionString.write(value.username, into: &buf)
+        FfiConverterOptionString.write(value.domain, into: &buf)
     }
 }
 
@@ -5654,6 +5725,30 @@ nonisolated public func FfiConverterCallbackInterfacePushProgressSink_lift(_ han
 #endif
 nonisolated public func FfiConverterCallbackInterfacePushProgressSink_lower(_ v: PushProgressSink) -> UInt64 {
     return FfiConverterCallbackInterfacePushProgressSink.lower(v)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+nonisolated fileprivate struct FfiConverterOptionUInt16: FfiConverterRustBuffer {
+    typealias SwiftType = UInt16?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterUInt16.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterUInt16.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
 }
 
 #if swift(>=5.8)
@@ -6335,6 +6430,29 @@ nonisolated public func ffiAddExistingLibraryS3(nickname: String, username: Stri
 })
 }
 /**
+ * Add a library that already exists on an SMB 2/3 remote.
+ */
+nonisolated public func ffiAddExistingLibrarySmb(nickname: String, username: String, password: String, newUsername: String?, newPassword: String?, remoteName: String, server: String, port: UInt16, share: String, pathPrefix: String, smbUsername: String, smbPassword: String, domain: String?, appDir: String? = nil)throws  -> FfiLibrary  {
+    return try  FfiConverterTypeFfiLibrary_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_func_ffi_add_existing_library_smb(
+        FfiConverterString.lower(nickname),
+        FfiConverterString.lower(username),
+        FfiConverterString.lower(password),
+        FfiConverterOptionString.lower(newUsername),
+        FfiConverterOptionString.lower(newPassword),
+        FfiConverterString.lower(remoteName),
+        FfiConverterString.lower(server),
+        FfiConverterUInt16.lower(port),
+        FfiConverterString.lower(share),
+        FfiConverterString.lower(pathPrefix),
+        FfiConverterString.lower(smbUsername),
+        FfiConverterString.lower(smbPassword),
+        FfiConverterOptionString.lower(domain),
+        FfiConverterOptionString.lower(appDir),$0
+    )
+})
+}
+/**
  * # Errors
  *
  * Returns an error if the app directory/runtime cannot be created or library state, config, or session key cannot be initialized.
@@ -6415,6 +6533,22 @@ nonisolated public func ffiTestS3Remote(endpoint: String, bucket: String, region
 }
 }
 /**
+ * Test connectivity and read/write access to an SMB 2/3 share without saving
+ * any credentials. The probe is removed before this function returns.
+ */
+nonisolated public func ffiTestSmbRemote(server: String, port: UInt16, share: String, pathPrefix: String, username: String, password: String, domain: String?)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_func_ffi_test_smb_remote(
+        FfiConverterString.lower(server),
+        FfiConverterUInt16.lower(port),
+        FfiConverterString.lower(share),
+        FfiConverterString.lower(pathPrefix),
+        FfiConverterString.lower(username),
+        FfiConverterString.lower(password),
+        FfiConverterOptionString.lower(domain),$0
+    )
+}
+}
+/**
  * # Errors
  *
  * Returns an error if the application configuration cannot be read; per-library load failures are returned in each entry.
@@ -6461,6 +6595,9 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_s3() != 45002) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_smb() != 13877) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_lasco_ffi_checksum_func_ffi_create_library() != 46039) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -6474,6 +6611,9 @@ nonisolated private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_func_ffi_test_s3_remote() != 38987) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_func_ffi_test_smb_remote() != 22096) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_func_list_libraries() != 63304) {
@@ -6501,6 +6641,9 @@ nonisolated private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_s3() != 5472) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_smb() != 51856) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_usb_android() != 31100) {

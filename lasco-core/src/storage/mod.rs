@@ -60,5 +60,8 @@ pub use usb_apple::StorageUsbApple;
 mod s3;
 pub use s3::StorageS3;
 
+mod smb;
+pub use smb::{SmbConnectionConfig, StorageSmb};
+
 mod lasco_cloud_s3;
 pub use lasco_cloud_s3::StorageLascoCloudS3;
