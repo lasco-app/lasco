@@ -4,7 +4,6 @@ import android.os.SystemClock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -69,20 +68,20 @@ class SyncController(
     private val operationMutex = Mutex()
     private val activeOperations = mutableMapOf<UUID, ActiveOperation>()
     private val scheduleCancellationEpoch = AtomicLong(0)
-    private var scheduledAutoPushJob: Job? = null
+    private var scheduledAutoSyncJob: Job? = null
     private var closed = false
 
-    // Edits made while a push is already scheduled ride along with it rather
+    // Edits made while a sync is already scheduled ride along with it rather
     // than pushing the deadline back, so a steady stream of edits still gets
-    // pushed within the window instead of starving.
-    fun schedulePush() {
+    // synchronized within the window instead of starving.
+    fun scheduleSync() {
         val cancellationEpoch = scheduleCancellationEpoch.get()
-        scope.launch { schedulePushIfNeeded(cancellationEpoch) }
+        scope.launch { scheduleSyncIfNeeded(cancellationEpoch) }
     }
 
-    // No effect on a push already running.
-    fun stopScheduledPush() {
-        scope.launch { cancelScheduledPush() }
+    // No effect on a sync already running.
+    fun stopScheduledSync() {
+        scope.launch { cancelScheduledSync() }
     }
 
     fun setIncrementalImportState(state: IncrementalImportState) {
@@ -90,15 +89,25 @@ class SyncController(
     }
 
     /**
-     * Pushes one remote, returning an error message or null on success,
-     * mirroring Swift's LibraryModel.pushRemote. Clears any pending countdown
-     * and immediately asks Rust to start the operation.
+     * Synchronizes one remote by fetching first and pushing only after a successful fetch.
+     * The underlying operations remain distinct because the core owns their admission rules.
      */
+    suspend fun syncRemote(
+        remoteId: FfiRemoteUuid,
+        onUploadProgress: ((Float) -> Unit)? = null,
+    ): PushResult {
+        cancelScheduledSync()
+        fetch(remoteId)?.let { return PushResult.Failed(it) }
+        return push(remoteId, isAutomatic = false, onUploadProgress = onUploadProgress)
+    }
+
+    // Used by the initial import, where the remote must receive each imported chunk before it
+    // can safely be evicted. This is deliberately internal-only UI behavior.
     suspend fun pushRemote(
         remoteId: FfiRemoteUuid,
         onUploadProgress: ((Float) -> Unit)? = null,
     ): PushResult {
-        cancelScheduledPush()
+        cancelScheduledSync()
         return push(remoteId, isAutomatic = false, onUploadProgress = onUploadProgress)
     }
 
@@ -114,6 +123,13 @@ class SyncController(
         return fetch(remoteId)
     }
 
+    suspend fun fetchDefaultRemote() {
+        if (_syncState.value.fetchInProgress) return
+        val remoteId = lib.getDefaultFetchRemote() ?: return
+        if (remoteId in _syncState.value.busyRemoteIds) return
+        fetch(remoteId)
+    }
+
     // Stops the schedule and waits for operations already in flight to finish,
     // since the caller is usually about to delete the library files it is
     // still reading.
@@ -121,8 +137,8 @@ class SyncController(
         val completions = operationMutex.withLock {
             closed = true
             scheduleCancellationEpoch.incrementAndGet()
-            scheduledAutoPushJob?.cancel()
-            scheduledAutoPushJob = null
+            scheduledAutoSyncJob?.cancel()
+            scheduledAutoSyncJob = null
             publishCountdown(null, emptySet())
             activeOperations.values.map { it.completion }
         }
@@ -218,18 +234,18 @@ class SyncController(
         }
     }
 
-    private suspend fun schedulePushIfNeeded(cancellationEpoch: Long) {
+    private suspend fun scheduleSyncIfNeeded(cancellationEpoch: Long) {
         val remoteIds = lib.listRemotes()
             .filter { it.autoPush }
             .map { it.remoteId }
             .toSet()
         if (remoteIds.isEmpty()) return
         operationMutex.withLock {
-            if (closed || cancellationEpoch != scheduleCancellationEpoch.get() || scheduledAutoPushJob != null) return
-            publishCountdown(SystemClock.elapsedRealtime() + PUSH_DELAY_MS, remoteIds)
-            scheduledAutoPushJob = scope.launch {
-                delay(PUSH_DELAY_MS)
-                fireScheduledPushes(remoteIds, cancellationEpoch)
+            if (closed || cancellationEpoch != scheduleCancellationEpoch.get() || scheduledAutoSyncJob != null) return
+            publishCountdown(SystemClock.elapsedRealtime() + SYNC_DELAY_MS, remoteIds)
+            scheduledAutoSyncJob = scope.launch {
+                delay(SYNC_DELAY_MS)
+                fireScheduledSyncs(remoteIds, cancellationEpoch)
             }
         }
     }
@@ -237,25 +253,27 @@ class SyncController(
     private fun isLascoCloudRemote(remoteId: FfiRemoteUuid): Boolean =
         lib.listRemotes().firstOrNull { it.remoteId == remoteId }?.kind == "lasco_cloud_s3"
 
-    private suspend fun cancelScheduledPush() {
+    private suspend fun cancelScheduledSync() {
         scheduleCancellationEpoch.incrementAndGet()
         operationMutex.withLock {
-            scheduledAutoPushJob?.cancel()
-            scheduledAutoPushJob = null
+            scheduledAutoSyncJob?.cancel()
+            scheduledAutoSyncJob = null
             publishCountdown(null, emptySet())
         }
     }
 
-    private suspend fun fireScheduledPushes(candidateRemoteIds: Set<FfiRemoteUuid>, cancellationEpoch: Long) {
+    private suspend fun fireScheduledSyncs(candidateRemoteIds: Set<FfiRemoteUuid>, cancellationEpoch: Long) {
         operationMutex.withLock {
             if (closed || cancellationEpoch != scheduleCancellationEpoch.get()) return
-            scheduledAutoPushJob = null
+            scheduledAutoSyncJob = null
             publishCountdown(null, emptySet())
         }
         val remotes = lib.listRemotes().filter { it.remoteId in candidateRemoteIds && it.autoPush }
-        coroutineScope {
-            for (remote in remotes) {
-                launch { push(remote.remoteId, isAutomatic = true) }
+        // Fetches are globally exclusive in core. Running each whole cycle serially also
+        // prevents a later remote's fetch from racing a prior remote's push preparation.
+        for (remote in remotes) {
+            if (fetch(remote.remoteId) == null) {
+                push(remote.remoteId, isAutomatic = true)
             }
         }
     }
@@ -300,13 +318,13 @@ class SyncController(
     private fun publishCountdown(deadline: Long?, remoteIds: Set<FfiRemoteUuid>) {
         _syncState.update {
             it.copy(
-                pushDeadlineElapsedMs = deadline,
-                scheduledAutoPushRemoteIds = remoteIds,
+                syncDeadlineElapsedMs = deadline,
+                scheduledAutoSyncRemoteIds = remoteIds,
             )
         }
     }
 
     companion object {
-        private const val PUSH_DELAY_MS = 30_000L
+        private const val SYNC_DELAY_MS = 30_000L
     }
 }
