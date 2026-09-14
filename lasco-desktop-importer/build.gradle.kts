@@ -23,6 +23,7 @@ kotlin.sourceSets.main {
 
 dependencies {
     implementation(compose.desktop.currentOs)
+    implementation(compose.components.resources)
     implementation(compose.material3)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
@@ -41,6 +42,8 @@ compose.desktop {
             description = "Import Google Takeout and Apple Photos into a Lasco library"
             vendor = "Lasco"
             macOS {
+                // Used by the Finder and Dock for the packaged macOS application.
+                iconFile.set(project.file("src/main/resources/lasco.icns"))
                 // PhotoKit/TCC registers a macOS app bundle, not a Gradle or JDK process.
                 // This text is required for the system permission prompt and privacy list.
                 bundleID = "app.lasco.desktopimporter"

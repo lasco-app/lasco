@@ -39,6 +39,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import app.lasco.lasco_desktop_importer.generated.resources.Res
+import app.lasco.lasco_desktop_importer.generated.resources.lasco_icon
+import org.jetbrains.compose.resources.painterResource
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isShiftPressed
@@ -154,7 +157,11 @@ private val LascoPixel = TextStyle(fontFamily = VT323, fontSize = 15.sp)
 private val LascoMono = TextStyle(fontFamily = JetBrainsMono, fontSize = 13.sp)
 
 fun main() = application {
-    Window(onCloseRequest = ::exitApplication, title = "Lasco Desktop Importer") {
+    Window(
+        onCloseRequest = ::exitApplication,
+        title = "Lasco Desktop Importer",
+        icon = painterResource(Res.drawable.lasco_icon),
+    ) {
         MaterialTheme(
             colorScheme = lightColorScheme(
                 primary = Accent, onPrimary = Color.White, background = Plaster,
