@@ -21,7 +21,9 @@ import platform.Photos.PHAsset
 import platform.Photos.PHAssetCollection
 import platform.Photos.PHAssetResource
 import platform.Photos.PHAssetResourceManager
+import platform.Photos.PHAssetResourceRequestOptions
 import platform.Photos.PHAuthorizationStatusAuthorized
+import platform.Photos.PHAuthorizationStatusLimited
 import platform.Photos.PHPhotoLibrary
 import platform.Photos.PHAccessLevelReadWrite
 import platform.darwin.NSObject
@@ -62,6 +64,10 @@ private fun resourceForPersistedId(id: String): PHAssetResource? {
     }?.also { resources[id] = it }
 }
 
+private fun photosAccessGranted(): Boolean = authorizationStatus().let { status ->
+    status == PHAuthorizationStatusAuthorized.toInt() || status == PHAuthorizationStatusLimited.toInt()
+}
+
 @CName("lasco_photos_authorization_status")
 fun authorizationStatus(): Int = PHPhotoLibrary.authorizationStatusForAccessLevel(PHAccessLevelReadWrite).toInt()
 
@@ -77,7 +83,7 @@ fun requestAuthorization(): Int {
 /** Enumerates PHAsset/PHAssetResource once. The JVM persists returned resource IDs for resume. */
 @CName("lasco_photos_discover_json")
 fun discoverJson(): CPointer<ByteVar>? = memScoped {
-    check(authorizationStatus() == PHAuthorizationStatusAuthorized.toInt()) { "Photos permission denied" }
+    check(photosAccessGranted()) { "Photos permission denied" }
     val records = mutableListOf<ResourceRecord>()
     val assets = PHAsset.fetchAssetsWithOptions(null)
     assets.enumerateObjectsUsingBlock { asset, _, _ ->
@@ -105,7 +111,10 @@ fun stage(resourceId: CPointer<ByteVar>?, directory: CPointer<ByteVar>?): CPoint
         .URLByAppendingPathComponent("${resourceId!!.toKString().hashCode()}-${resource.originalFilename}")!!
     val semaphore = platform.darwin.dispatch_semaphore_create(0)
     var failure: String? = null
-    PHAssetResourceManager.defaultManager().writeDataForAssetResource(resource, destination, null) { error -> failure = error?.localizedDescription; platform.darwin.dispatch_semaphore_signal(semaphore) }
+    // The default options do not fetch an original that lives only in iCloud. Explicitly permit
+    // network access so the requested resource is downloaded once into the import staging area.
+    val options = PHAssetResourceRequestOptions().apply { networkAccessAllowed = true }
+    PHAssetResourceManager.defaultManager().writeDataForAssetResource(resource, destination, options) { error -> failure = error?.localizedDescription; platform.darwin.dispatch_semaphore_signal(semaphore) }
     platform.darwin.dispatch_semaphore_wait(semaphore, platform.darwin.DISPATCH_TIME_FOREVER)
     check(failure == null) { failure!! }
     retainedUtf8(destination.path!!)

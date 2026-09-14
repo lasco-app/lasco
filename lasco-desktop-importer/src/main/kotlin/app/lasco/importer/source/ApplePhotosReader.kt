@@ -41,12 +41,16 @@ private data class NativePhotoResource(
  * IDs to durable import IDs; resume asks PhotoKit for exactly those IDs and does not re-enumerate
  * the library. iCloud-only originals are downloaded by `PHAssetResourceManager` into staging.
  */
-class ApplePhotosReader(private val bridge: PhotoKitNative = loadBridge()) : ImportSourceReader {
+class ApplePhotosReader private constructor(private val bridge: PhotoKitNative) : ImportSourceReader {
+    constructor() : this(loadBridge())
+
     override val source = ImportSource.APPLE_PHOTOS
     private val json = Json { ignoreUnknownKeys = true }
 
-    fun hasPermission(): Boolean = bridge.lasco_photos_authorization_status() == 3
-    fun requestPermission(): Boolean = bridge.lasco_photos_request_authorization() == 3
+    // macOS may grant a limited Photos selection (status 4). It is still valid access and the
+    // bridge will enumerate exactly that allowed selection.
+    fun hasPermission(): Boolean = bridge.lasco_photos_authorization_status() in setOf(3, 4)
+    fun requestPermission(): Boolean = bridge.lasco_photos_request_authorization() in setOf(3, 4)
 
     override suspend fun discover(): List<ImportAsset> {
         check(hasPermission()) { "Apple Photos permission has not been granted" }

@@ -3,6 +3,8 @@ node_modules/
 /.pnpm-store/
 docs/.docusaurus/
 /target/
+/lasco-desktop-importer/.gradle/
+/lasco-desktop-importer/build/
 
 # Generated FFI artifacts
 lasco-ffi/artifacts/
