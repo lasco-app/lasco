@@ -30,6 +30,8 @@ import platform.Photos.PHAssetCollection
 import platform.Photos.PHAssetResource
 import platform.Photos.PHAssetResourceManager
 import platform.Photos.PHAssetResourceRequestOptions
+import platform.Photos.PHAssetResourceTypeAdjustmentData
+import platform.Photos.PHAssetResourceTypePairedVideo
 import platform.Photos.PHAuthorizationStatusAuthorized
 import platform.Photos.PHAuthorizationStatusLimited
 import platform.Photos.PHPhotoLibrary
@@ -110,12 +112,16 @@ fun discoverJson(): CPointer<ByteVar>? = memScoped {
         val photo = asset as PHAsset
         val assetResources = PHAssetResource.assetResourcesForAsset(photo)
             .filterIsInstance<PHAssetResource>()
-        val aae = assetResources.firstOrNull { it.type.toInt() == 9 }
-        val pairedVideo = assetResources.firstOrNull { it.type.toInt() == 3 }
+        val aae = assetResources.firstOrNull { it.type == PHAssetResourceTypeAdjustmentData }
+        val pairedVideo = assetResources.firstOrNull { it.type == PHAssetResourceTypePairedVideo }
         assetResources.forEach { resource ->
             val id = resourceId(photo, resource)
             resources[id] = resource
-            val type = when (resource.type.toInt()) { 9 -> "aae"; 3 -> "pairedVideo"; else -> "primary" }
+            val type = when (resource.type) {
+                PHAssetResourceTypeAdjustmentData -> "aae"
+                PHAssetResourceTypePairedVideo -> "pairedVideo"
+                else -> "primary"
+            }
             val coordinates = photo.location?.coordinate?.useContents { latitude to longitude }
             // PhotoKit has no public per-resource byte-size API. Avoid using private KVC and do
             // not download iCloud originals during discovery merely to calculate it.
