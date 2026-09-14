@@ -41,9 +41,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
@@ -87,11 +90,44 @@ private enum class Page(val stage: Int) {
     SOURCE(2), TAKEOUT(2), PHOTOS(2), SCANNING(2), REVIEW(3), IMPORT(4),
 }
 
-private enum class RemoteType { CLOUD, S3, SMB }
+internal enum class RemoteType { CLOUD, S3, SMB }
 private enum class SourceType { TAKEOUT, PHOTOS }
 private data class ConnectionFailure(val remoteType: RemoteType, val message: String)
 private data class DiscoveryFailure(val sourceType: SourceType, val message: String)
 private data class DiscoveryProgress(val completed: Int = 0, val total: Int = 0)
+
+internal fun isConnectionFormComplete(
+    type: RemoteType,
+    nickname: String,
+    libraryUser: String,
+    libraryPassword: String,
+    remoteName: String,
+    cloudUrl: String,
+    cloudEmail: String,
+    cloudPassword: String,
+    endpoint: String,
+    bucket: String,
+    region: String,
+    accessKey: String,
+    secretKey: String,
+    server: String,
+    port: String,
+    share: String,
+    smbUser: String,
+    smbPassword: String,
+): Boolean {
+    fun String.isFilled() = isNotBlank()
+    val libraryCredentialsComplete = nickname.isFilled() && libraryUser.isFilled() && libraryPassword.isFilled()
+    if (!libraryCredentialsComplete) return false
+
+    return when (type) {
+        RemoteType.CLOUD -> cloudUrl.isFilled() && cloudEmail.isFilled() && cloudPassword.isFilled()
+        RemoteType.S3 -> remoteName.isFilled() && endpoint.isFilled() && bucket.isFilled() && region.isFilled() &&
+            accessKey.isFilled() && secretKey.isFilled()
+        RemoteType.SMB -> remoteName.isFilled() && server.isFilled() &&
+            (port.toIntOrNull() in 1..65535) && share.isFilled() && smbUser.isFilled() && smbPassword.isFilled()
+    }
+}
 
 // The Plaster theme used by lasco-android.
 private val Plaster = Color(0xFFE6E2D4)
@@ -219,8 +255,33 @@ private fun ImporterWizard() {
         page = to
     }
 
+    fun connectionFormIsComplete(): Boolean {
+        val type = remoteType ?: return false
+        return isConnectionFormComplete(
+            type = type,
+            nickname = nickname,
+            libraryUser = libraryUser,
+            libraryPassword = libraryPassword,
+            remoteName = remoteName,
+            cloudUrl = cloudUrl,
+            cloudEmail = cloudEmail,
+            cloudPassword = cloudPassword,
+            endpoint = endpoint,
+            bucket = bucket,
+            region = region,
+            accessKey = accessKey,
+            secretKey = secretKey,
+            server = server,
+            port = port,
+            share = share,
+            smbUser = smbUser,
+            smbPassword = smbPassword,
+        )
+    }
+
     fun connect() {
         val kind = remoteType ?: return
+        if (!connectionFormIsComplete()) return
         connecting = true
         connectionFailure = null
         scope.launch {
@@ -414,7 +475,7 @@ private fun ImporterWizard() {
         }
         Spacer(Modifier.height(16.dp))
         WizardFooter(
-            page = page, source = sourceType, connecting = connecting, discovering = discovering, archivesReady = archives.isNotEmpty(), photosReady = photosAllowed,
+            page = page, source = sourceType, connecting = connecting, connectEnabled = connectionFormIsComplete(), discovering = discovering, archivesReady = archives.isNotEmpty(), photosReady = photosAllowed,
             onBack = {
                 when (page) {
                     Page.DESTINATION -> go(Page.WELCOME)
@@ -483,7 +544,7 @@ private fun DestinationPicker(onCloud: () -> Unit, onS3: () -> Unit, onSmb: () -
         Column(Modifier.widthIn(max = 460.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             LascoButton("LASCO CLOUD", onCloud)
             LascoButton("S3-COMPATIBLE STORAGE", onS3)
-            LascoButton("SMB NETWORK SHARE", onSmb, primary = false)
+            LascoButton("SMB NETWORK SHARE", onSmb)
         }
     }
 }
@@ -621,7 +682,7 @@ private fun ImportPage(progress: ImportProgress, running: Boolean, error: String
 }
 
 @Composable
-private fun WizardFooter(page: Page, source: SourceType?, connecting: Boolean, discovering: Boolean, archivesReady: Boolean, photosReady: Boolean, onBack: () -> Unit, onConnect: () -> Unit, onContinue: () -> Unit) {
+private fun WizardFooter(page: Page, source: SourceType?, connecting: Boolean, connectEnabled: Boolean, discovering: Boolean, archivesReady: Boolean, photosReady: Boolean, onBack: () -> Unit, onConnect: () -> Unit, onContinue: () -> Unit) {
     val picker = page == Page.DESTINATION || page == Page.SOURCE
     val connectPage = page in setOf(Page.CLOUD, Page.S3, Page.SMB)
     val scanning = page == Page.SCANNING
@@ -629,7 +690,7 @@ private fun WizardFooter(page: Page, source: SourceType?, connecting: Boolean, d
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         if (page != Page.WELCOME && !scanning) LascoButton("BACK", onBack, primary = false, fillWidth = false)
         Spacer(Modifier.weight(1f))
-        if (connectPage) LascoButton(if (connecting) "CONNECTING…" else "CONNECT REMOTE", onConnect, enabled = !connecting, fillWidth = false)
+        if (connectPage) LascoButton(if (connecting) "CONNECTING…" else "CONNECT REMOTE", onConnect, enabled = connectEnabled && !connecting, fillWidth = false)
         if (!picker && !connectPage && !scanning && page != Page.IMPORT) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 LascoButton(if (discovering) "DISCOVERING…" else if (page == Page.REVIEW) "START IMPORT" else "CONTINUE", onContinue, enabled = continueEnabled && !discovering, fillWidth = false)
@@ -647,15 +708,34 @@ private fun WizardFooter(page: Page, source: SourceType?, connecting: Boolean, d
 
 @Composable
 private fun LascoButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, primary: Boolean = true, enabled: Boolean = true, fillWidth: Boolean = true) {
-    Box(modifier.then(if (fillWidth) Modifier.fillMaxWidth() else Modifier).background(if (primary) Accent else PlasterDeep).border(2.dp, Ink).clickable(enabled = enabled, onClick = onClick).padding(horizontal = 20.dp, vertical = 12.dp), contentAlignment = Alignment.Center) {
-        Text(label, color = if (primary) Color.White else Ink, style = LascoBody.copy(fontSize = 14.sp), fontWeight = FontWeight.Bold)
+    val background = if (enabled) {
+        if (primary) Accent else PlasterDeep
+    } else {
+        PlasterDeep
+    }
+    val border = if (enabled) Ink else InkMuted
+    val textColor = if (enabled) {
+        if (primary) Color.White else Ink
+    } else {
+        InkMuted
+    }
+    Box(
+        modifier.then(if (fillWidth) Modifier.fillMaxWidth() else Modifier)
+            .background(background)
+            .border(2.dp, border)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, color = textColor, style = LascoBody.copy(fontSize = 14.sp), fontWeight = FontWeight.Bold)
     }
 }
 
-/** Tab is data in importer fields; it must not move focus to the next field. */
+/** Tab and Shift-Tab move between fields, matching standard desktop form behavior. */
 @Composable
 private fun LascoField(label: String, value: String, onValueChange: (String) -> Unit, placeholder: String = "", secure: Boolean = false) {
     var fieldValue by remember { mutableStateOf(TextFieldValue(value)) }
+    val focusManager = LocalFocusManager.current
     LaunchedEffect(value) { if (value != fieldValue.text) fieldValue = TextFieldValue(value, TextRange(value.length)) }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(label.uppercase(), color = InkSub, style = LascoLabel, fontWeight = FontWeight.Bold)
@@ -663,9 +743,8 @@ private fun LascoField(label: String, value: String, onValueChange: (String) -> 
             value = fieldValue, onValueChange = { fieldValue = it; onValueChange(it.text) }, textStyle = LascoBody.copy(color = Ink), cursorBrush = SolidColor(Pink), visualTransformation = if (secure) PasswordVisualTransformation() else VisualTransformation.None,
             modifier = Modifier.fillMaxWidth().onPreviewKeyEvent { event ->
                 if (event.key == Key.Tab && event.type == KeyEventType.KeyDown) {
-                    val selection = fieldValue.selection
-                    val updated = fieldValue.text.replaceRange(selection.start, selection.end, "\t")
-                    fieldValue = TextFieldValue(updated, TextRange(selection.start + 1)); onValueChange(updated); true
+                    focusManager.moveFocus(if (event.isShiftPressed) FocusDirection.Previous else FocusDirection.Next)
+                    true
                 } else false
             }.background(Color.White).border(2.dp, Ink).padding(horizontal = 10.dp, vertical = 10.dp),
             decorationBox = { inner -> Box { if (fieldValue.text.isEmpty() && placeholder.isNotEmpty()) Text(placeholder, color = InkMuted, style = LascoBody); inner() } },
