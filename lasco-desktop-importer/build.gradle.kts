@@ -1,5 +1,6 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.gradle.api.tasks.JavaExec
+import org.gradle.api.tasks.Exec
 
 plugins {
     kotlin("jvm") version "2.4.10"
@@ -26,7 +27,6 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     implementation("net.java.dev.jna:jna-jpms:5.18.1")
-    implementation("org.xerial:sqlite-jdbc:3.50.3.0")
     testImplementation(kotlin("test"))
 }
 
@@ -40,6 +40,18 @@ compose.desktop {
             packageVersion = "1.0.0"
             description = "Import Google Takeout and Apple Photos into a Lasco library"
             vendor = "Lasco"
+            macOS {
+                // PhotoKit/TCC registers a macOS app bundle, not a Gradle or JDK process.
+                // This text is required for the system permission prompt and privacy list.
+                bundleID = "app.lasco.desktopimporter"
+                entitlementsFile.set(project.file("entitlements.plist"))
+                infoPlist {
+                    extraKeysRawXml = """
+                        <key>NSPhotoLibraryUsageDescription</key>
+                        <string>Lasco needs access to import the photos and videos you select.</string>
+                    """.trimIndent()
+                }
+            }
         }
     }
 }
@@ -48,6 +60,28 @@ tasks.withType<JavaExec>().configureEach {
     // Packaged launchers default to release behavior; only the local development `run` task
     // exposes the endpoint field for staging or local-cloud testing.
     if (name == "run") systemProperty("lasco.importer.release", "false")
+}
+
+val operatingSystem = System.getProperty("os.name").lowercase()
+val architecture = when (System.getProperty("os.arch").lowercase()) {
+    "aarch64", "arm64" -> "aarch64"
+    "x86_64", "amd64" -> "x86-64"
+    else -> error("Unsupported desktop architecture: ${System.getProperty("os.arch")}")
+}
+
+val nativePhotosBridge = if (operatingSystem.contains("mac")) {
+    val nativeTarget = if (architecture == "aarch64") "MacosArm64" else "MacosX64"
+    tasks.register<Exec>("buildNativePhotosBridge") {
+        val bridgeDirectory = layout.projectDirectory.dir("native-photos-bridge").asFile
+        workingDir = rootProject.projectDir.parentFile
+        commandLine(
+            rootProject.projectDir.parentFile.resolve("lasco-android/gradlew").absolutePath,
+            "-p", bridgeDirectory.absolutePath,
+            "linkReleaseShared$nativeTarget",
+        )
+    }
+} else {
+    null
 }
 
 tasks.register<Exec>("generateUniffiKotlin") {
@@ -69,12 +103,6 @@ tasks.processResources {
     // UniFFI loads through JNA, which looks for platform libraries at this exact resource path.
     // This makes both `run` and packaged distributions self-contained rather than depending on
     // a dylib installed beside the JDK or in a system Frameworks directory.
-    val operatingSystem = System.getProperty("os.name").lowercase()
-    val architecture = when (System.getProperty("os.arch").lowercase()) {
-        "aarch64", "arm64" -> "aarch64"
-        "x86_64", "amd64" -> "x86-64"
-        else -> error("Unsupported desktop architecture: ${System.getProperty("os.arch")}")
-    }
     val (resourceDirectory, libraryName) = when {
         operatingSystem.contains("mac") -> "darwin-$architecture" to "liblasco_ffi.dylib"
         operatingSystem.contains("win") -> "win32-$architecture" to "lasco_ffi.dll"
@@ -83,6 +111,17 @@ tasks.processResources {
     val ffiLibrary = rootProject.projectDir.parentFile.resolve("target/release/$libraryName")
     inputs.file(ffiLibrary)
     from(ffiLibrary) { into(resourceDirectory) }
+
+    // Apple Photos is macOS-only. Its Kotlin/Native bridge must be loaded by JNA just like
+    // lasco_ffi, so build it for this host and place it at JNA's platform resource path.
+    if (operatingSystem.contains("mac")) {
+        val photosBridge = layout.projectDirectory.file(
+            "native-photos-bridge/build/bin/macos${if (architecture == "aarch64") "Arm64" else "X64"}/releaseShared/liblasco_photos_bridge.dylib",
+        )
+        nativePhotosBridge?.also { bridgeTask -> dependsOn(bridgeTask) }
+        inputs.file(photosBridge)
+        from(photosBridge) { into(resourceDirectory) }
+    }
     doFirst {
         check(ffiLibrary.isFile) {
             "Missing $libraryName. Build the host FFI first: cargo build -p lasco-ffi --release"

@@ -4,8 +4,13 @@ import kotlinx.serialization.Serializable
 import java.nio.file.Path
 import java.time.Instant
 
+@Serializable
 enum class ImportSource { GOOGLE_TAKEOUT, APPLE_PHOTOS }
+
+@Serializable
 enum class ImportRunState { SCANNING, READY, IMPORTING, PAUSE_REQUESTED, PAUSED, COMPLETE, FAILED }
+
+@Serializable
 enum class ResourceRole { AAE_SIDECAR, LIVE_PHOTO_VIDEO, PRIMARY }
 
 @Serializable

@@ -17,6 +17,8 @@ private interface PhotoKitNative : Library {
     fun lasco_photos_authorization_status(): Int
     fun lasco_photos_request_authorization(): Int
     fun lasco_photos_discover_json(): String
+    fun lasco_photos_discovery_scanned_count(): Int
+    fun lasco_photos_discovery_total_count(): Int
     fun lasco_photos_stage(resourceId: String, destinationDirectory: String): String
 }
 
@@ -51,6 +53,7 @@ class ApplePhotosReader private constructor(private val bridge: PhotoKitNative) 
     // bridge will enumerate exactly that allowed selection.
     fun hasPermission(): Boolean = bridge.lasco_photos_authorization_status() in setOf(3, 4)
     fun requestPermission(): Boolean = bridge.lasco_photos_request_authorization() in setOf(3, 4)
+    fun discoveryProgress(): Pair<Int, Int> = bridge.lasco_photos_discovery_scanned_count() to bridge.lasco_photos_discovery_total_count()
 
     override suspend fun discover(): List<ImportAsset> {
         check(hasPermission()) { "Apple Photos permission has not been granted" }

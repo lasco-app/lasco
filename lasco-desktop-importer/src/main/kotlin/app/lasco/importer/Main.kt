@@ -71,21 +71,27 @@ import app.lasco.importer.source.GoogleTakeoutReader
 import app.lasco.importer.source.ImportSourceReader
 import app.lasco.importer.persistence.ImportManifestStore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.collect
 import java.awt.FileDialog
 import java.awt.Frame
+import java.awt.Desktop
+import java.net.URI
 import java.nio.file.Path
 import uniffi.lasco_ffi.listLibraries
 
 private enum class Page(val stage: Int) {
     WELCOME(0), DESTINATION(1), CLOUD(1), S3(1), SMB(1),
-    SOURCE(2), TAKEOUT(2), PHOTOS(2), REVIEW(3), IMPORT(4),
+    SOURCE(2), TAKEOUT(2), PHOTOS(2), SCANNING(2), REVIEW(3), IMPORT(4),
 }
 
 private enum class RemoteType { CLOUD, S3, SMB }
 private enum class SourceType { TAKEOUT, PHOTOS }
+private data class ConnectionFailure(val remoteType: RemoteType, val message: String)
+private data class DiscoveryFailure(val sourceType: SourceType, val message: String)
+private data class DiscoveryProgress(val completed: Int = 0, val total: Int = 0)
 
 // The Plaster theme used by lasco-android.
 private val Plaster = Color(0xFFE6E2D4)
@@ -189,11 +195,12 @@ private fun ImporterWizard() {
     var remoteNames by remember { mutableStateOf(emptyList<String>()) }
     var gateway by remember { mutableStateOf<LascoGateway?>(null) }
     var connecting by remember { mutableStateOf(false) }
-    var connectionError by remember { mutableStateOf<String?>(null) }
+    var connectionFailure by remember { mutableStateOf<ConnectionFailure?>(null) }
     var archives by remember { mutableStateOf(emptyList<String>()) }
     var photosAllowed by remember { mutableStateOf(false) }
     var requestingPhotos by remember { mutableStateOf(false) }
     var photosError by remember { mutableStateOf<String?>(null) }
+    var photosPermissionDenied by remember { mutableStateOf(false) }
     var coordinator by remember { mutableStateOf<ImportCoordinator?>(null) }
     var sourceReader by remember { mutableStateOf<ImportSourceReader?>(null) }
     var importJobId by remember { mutableStateOf<String?>(null) }
@@ -201,6 +208,8 @@ private fun ImporterWizard() {
     var benchmarks by remember { mutableStateOf(emptyList<RemoteBenchmark>()) }
     var importProgress by remember { mutableStateOf(ImportProgress(ImportRunState.READY, 0, 0, 0, 0)) }
     var discovering by remember { mutableStateOf(false) }
+    var discoveryFailure by remember { mutableStateOf<DiscoveryFailure?>(null) }
+    var discoveryProgress by remember { mutableStateOf(DiscoveryProgress()) }
     var importRunning by remember { mutableStateOf(false) }
     var importError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -213,7 +222,7 @@ private fun ImporterWizard() {
     fun connect() {
         val kind = remoteType ?: return
         connecting = true
-        connectionError = null
+        connectionFailure = null
         scope.launch {
             try {
                 val remote = when (kind) {
@@ -232,7 +241,11 @@ private fun ImporterWizard() {
                 remoteNames = withContext(Dispatchers.IO) { connected.remotes().map { it.name } }
                 go(Page.SOURCE)
             } catch (failure: Throwable) {
-                connectionError = failure.message?.ifBlank { null } ?: "Could not connect to this remote. Check the values and try again."
+                connectionFailure = ConnectionFailure(
+                    remoteType = kind,
+                    message = failure.message?.ifBlank { null }
+                        ?: "Could not connect to this remote. Check the values and try again.",
+                )
             } finally {
                 connecting = false
             }
@@ -243,15 +256,26 @@ private fun ImporterWizard() {
         val connectedGateway = gateway ?: return
         val selectedSource = sourceType ?: return
         discovering = true
-        importError = null
+        discoveryFailure = null
+        discoveryProgress = DiscoveryProgress()
+        go(Page.SCANNING)
         scope.launch {
+            val reader: ImportSourceReader = when (selectedSource) {
+                SourceType.TAKEOUT -> GoogleTakeoutReader(archives.map(Path::of))
+                SourceType.PHOTOS -> ApplePhotosReader()
+            }
+            val progressPolling = (reader as? ApplePhotosReader)?.let { photosReader ->
+                scope.launch {
+                    while (discovering) {
+                        val (completed, total) = photosReader.discoveryProgress()
+                        discoveryProgress = DiscoveryProgress(completed, total)
+                        delay(150)
+                    }
+                }
+            }
             try {
                 val prepared = withContext(Dispatchers.IO) {
                     val appData = Path.of(System.getProperty("user.home"), ".lasco-desktop-importer")
-                    val reader = when (selectedSource) {
-                        SourceType.TAKEOUT -> GoogleTakeoutReader(archives.map(Path::of))
-                        SourceType.PHOTOS -> ApplePhotosReader()
-                    }
                     val newCoordinator = ImportCoordinator(
                         ImportManifestStore(appData.resolve("imports")),
                         connectedGateway,
@@ -267,8 +291,15 @@ private fun ImporterWizard() {
                 benchmarks = prepared.third.third
                 go(Page.REVIEW)
             } catch (failure: Throwable) {
-                importError = failure.message?.ifBlank { null } ?: "Could not scan this source."
-            } finally { discovering = false }
+                discoveryFailure = DiscoveryFailure(
+                    sourceType = selectedSource,
+                    message = failure.message?.ifBlank { null } ?: "Could not scan this source.",
+                )
+                go(if (selectedSource == SourceType.PHOTOS) Page.PHOTOS else Page.TAKEOUT)
+            } finally {
+                progressPolling?.cancel()
+                discovering = false
+            }
         }
     }
 
@@ -309,9 +340,22 @@ private fun ImporterWizard() {
                     when (current) {
                         Page.WELCOME -> WelcomePage()
                         Page.DESTINATION -> DestinationPicker(
-                            onCloud = { remoteType = RemoteType.CLOUD; remoteName = "Lasco Cloud"; go(Page.CLOUD) },
-                            onS3 = { remoteType = RemoteType.S3; go(Page.S3) },
-                            onSmb = { remoteType = RemoteType.SMB; go(Page.SMB) },
+                            onCloud = {
+                                connectionFailure = null
+                                remoteType = RemoteType.CLOUD
+                                remoteName = "Lasco Cloud"
+                                go(Page.CLOUD)
+                            },
+                            onS3 = {
+                                connectionFailure = null
+                                remoteType = RemoteType.S3
+                                go(Page.S3)
+                            },
+                            onSmb = {
+                                connectionFailure = null
+                                remoteType = RemoteType.SMB
+                                go(Page.SMB)
+                            },
                         )
                         Page.CLOUD, Page.S3, Page.SMB -> ConnectionForm(
                             type = remoteType ?: RemoteType.CLOUD,
@@ -319,27 +363,48 @@ private fun ImporterWizard() {
                             nickname = nickname, setNickname = { nickname = it }, libraryUser = libraryUser, setLibraryUser = { libraryUser = it }, libraryPassword = libraryPassword, setLibraryPassword = { libraryPassword = it },
                             remoteName = remoteName, setRemoteName = { remoteName = it }, cloudUrl = cloudUrl, setCloudUrl = { cloudUrl = it }, cloudEmail = cloudEmail, setCloudEmail = { cloudEmail = it }, cloudPassword = cloudPassword, setCloudPassword = { cloudPassword = it },
                             endpoint = endpoint, setEndpoint = { endpoint = it }, bucket = bucket, setBucket = { bucket = it }, region = region, setRegion = { region = it }, prefix = prefix, setPrefix = { prefix = it }, accessKey = accessKey, setAccessKey = { accessKey = it }, secretKey = secretKey, setSecretKey = { secretKey = it },
-                            server = server, setServer = { server = it }, port = port, setPort = { port = it }, share = share, setShare = { share = it }, smbUser = smbUser, setSmbUser = { smbUser = it }, smbPassword = smbPassword, setSmbPassword = { smbPassword = it }, domain = domain, setDomain = { domain = it }, error = connectionError,
+                            server = server, setServer = { server = it }, port = port, setPort = { port = it }, share = share, setShare = { share = it }, smbUser = smbUser, setSmbUser = { smbUser = it }, smbPassword = smbPassword, setSmbPassword = { smbPassword = it }, domain = domain, setDomain = { domain = it },
+                            error = connectionFailure?.takeIf { it.remoteType == (remoteType ?: RemoteType.CLOUD) }?.message,
                         )
                         Page.SOURCE -> SourcePicker(
-                            onTakeout = { sourceType = SourceType.TAKEOUT; go(Page.TAKEOUT) },
-                            onPhotos = { sourceType = SourceType.PHOTOS; go(Page.PHOTOS) },
+                            onTakeout = { discoveryFailure = null; sourceType = SourceType.TAKEOUT; go(Page.TAKEOUT) },
+                            onPhotos = { discoveryFailure = null; sourceType = SourceType.PHOTOS; go(Page.PHOTOS) },
                         )
-                        Page.TAKEOUT -> TakeoutPage(archives) { archives = chooseTakeoutZips() }
-                        Page.PHOTOS -> PhotosPage(photosAllowed, requestingPhotos, photosError) {
-                            photosError = null
-                            requestingPhotos = true
-                            scope.launch {
-                                try {
-                                    photosAllowed = withContext(Dispatchers.IO) {
-                                        ApplePhotosReader().let { if (it.hasPermission()) true else it.requestPermission() }
-                                    }
-                                    if (!photosAllowed) photosError = "Photos access was not granted. Allow Lasco in System Settings, then try again."
-                                } catch (failure: Throwable) {
-                                    photosError = failure.message?.ifBlank { null } ?: "Could not request Photos access."
-                                } finally { requestingPhotos = false }
-                            }
-                        }
+                        Page.TAKEOUT -> TakeoutPage(
+                            archives,
+                            discoveryFailure?.takeIf { it.sourceType == SourceType.TAKEOUT }?.message,
+                        ) { archives = chooseTakeoutZips() }
+                        Page.PHOTOS -> PhotosPage(
+                            granted = photosAllowed,
+                            requesting = requestingPhotos,
+                            error = photosError ?: discoveryFailure?.takeIf { it.sourceType == SourceType.PHOTOS }?.message,
+                            permissionDenied = photosPermissionDenied,
+                            request = {
+                                photosError = null
+                                photosPermissionDenied = false
+                                requestingPhotos = true
+                                scope.launch {
+                                    try {
+                                        photosAllowed = withContext(Dispatchers.IO) {
+                                            ApplePhotosReader().let { if (it.hasPermission()) true else it.requestPermission() }
+                                        }
+                                        if (!photosAllowed) {
+                                            photosPermissionDenied = true
+                                            photosError = "Photos access was not granted. Allow Lasco in System Settings, then try again."
+                                        }
+                                    } catch (failure: Throwable) {
+                                        photosError = failure.message?.ifBlank { null } ?: "Could not request Photos access."
+                                    } finally { requestingPhotos = false }
+                                }
+                            },
+                            openSettings = {
+                                runCatching(::openPhotosPrivacySettings).onFailure { failure ->
+                                    photosError = failure.message?.ifBlank { null }
+                                        ?: "Could not open macOS Photos settings."
+                                }
+                            },
+                        )
+                        Page.SCANNING -> ScanningPage(sourceType, discoveryProgress)
                         Page.REVIEW -> ReviewPage(sourceType, archives, remoteNames, importPlan, benchmarks, importError)
                         Page.IMPORT -> ImportPage(importProgress, importRunning, importError, onStart = ::startImport, onPause = { importJobId?.let { coordinator?.requestPause(it) } })
                     }
@@ -352,10 +417,13 @@ private fun ImporterWizard() {
             onBack = {
                 when (page) {
                     Page.DESTINATION -> go(Page.WELCOME)
-                    Page.CLOUD -> go(Page.DESTINATION)
-                    Page.S3, Page.SMB -> go(Page.DESTINATION)
+                    Page.CLOUD, Page.S3, Page.SMB -> {
+                        connectionFailure = null
+                        go(Page.DESTINATION)
+                    }
                     Page.SOURCE -> go(Page.DESTINATION)
                     Page.TAKEOUT, Page.PHOTOS -> go(Page.SOURCE)
+                    Page.SCANNING -> Unit
                     Page.REVIEW -> go(if (sourceType == SourceType.PHOTOS) Page.PHOTOS else Page.TAKEOUT)
                     Page.IMPORT -> go(Page.REVIEW)
                     Page.WELCOME -> Unit
@@ -465,18 +533,57 @@ private fun ConnectionForm(
 }
 
 @Composable
-private fun TakeoutPage(archives: List<String>, chooseArchives: () -> Unit) {
+private fun TakeoutPage(archives: List<String>, error: String?, chooseArchives: () -> Unit) {
     PageTitle("Import Google Takeout", "Select one or more Takeout ZIP archives. They remain in place and are read lazily in import chunks.")
     Spacer(Modifier.height(24.dp)); LascoButton("CHOOSE ZIP ARCHIVES", chooseArchives, modifier = Modifier.widthIn(max = 320.dp))
     archives.forEach { Text(it, color = InkSub, style = LascoMono, modifier = Modifier.padding(top = 12.dp)) }
+    error?.let { Spacer(Modifier.height(12.dp)); ErrorMessage(it) }
 }
 
 @Composable
-private fun PhotosPage(granted: Boolean, requesting: Boolean, error: String?, request: () -> Unit) {
+private fun PhotosPage(
+    granted: Boolean,
+    requesting: Boolean,
+    error: String?,
+    permissionDenied: Boolean,
+    request: () -> Unit,
+    openSettings: () -> Unit,
+) {
     PageTitle("Import Apple Photos", "Allow Photos access to discover your library. iCloud-only originals download only into the staging directory when their chunk is imported.")
     Spacer(Modifier.height(24.dp))
-    if (granted) Text("PHOTOS ACCESS GRANTED", color = Good, style = LascoPixel, fontWeight = FontWeight.Bold)
-    else { LascoButton(if (requesting) "REQUESTING PHOTOS ACCESS…" else "ALLOW PHOTOS ACCESS", request, enabled = !requesting, modifier = Modifier.widthIn(max = 320.dp)); error?.let { Spacer(Modifier.height(12.dp)); ErrorMessage(it) } }
+    if (granted) {
+        Text("PHOTOS ACCESS GRANTED", color = Good, style = LascoPixel, fontWeight = FontWeight.Bold)
+    } else {
+        LascoButton(if (requesting) "REQUESTING PHOTOS ACCESS…" else "ALLOW PHOTOS ACCESS", request, enabled = !requesting, modifier = Modifier.widthIn(max = 320.dp))
+        if (permissionDenied) {
+            Spacer(Modifier.height(12.dp))
+            LascoButton("OPEN PHOTOS SETTINGS", openSettings, primary = false, modifier = Modifier.widthIn(max = 320.dp))
+            Spacer(Modifier.height(8.dp))
+            Text("Enable Lasco in Photos, then return here and allow access again.", color = InkSub, style = LascoBody)
+        }
+    }
+    error?.let { Spacer(Modifier.height(12.dp)); ErrorMessage(it) }
+}
+
+@Composable
+private fun ScanningPage(source: SourceType?, progress: DiscoveryProgress) {
+    val isPhotos = source == SourceType.PHOTOS
+    PageTitle(
+        if (isPhotos) "Scanning Apple Photos" else "Scanning Google Takeout",
+        if (isPhotos) "Reading your library structure and metadata. iCloud originals are not downloaded until import starts."
+        else "Reading archive contents and metadata. Your ZIP files remain unchanged.",
+    )
+    Spacer(Modifier.height(28.dp))
+    if (isPhotos && progress.total > 0) {
+        val fraction = (progress.completed.toFloat() / progress.total).coerceIn(0f, 1f)
+        Text("${progress.completed} OF ${progress.total} PHOTOS SCANNED", color = Ink, style = LascoPixel)
+        Spacer(Modifier.height(10.dp))
+        Box(Modifier.widthIn(max = 620.dp).fillMaxWidth().height(16.dp).background(PlasterDeep).border(2.dp, Ink)) {
+            Box(Modifier.fillMaxWidth(fraction).height(12.dp).background(Pink))
+        }
+    } else {
+        Text(if (isPhotos) "CONNECTING TO YOUR PHOTOS LIBRARY…" else "READING TAKEOUT ARCHIVES…", color = InkSub, style = LascoPixel)
+    }
 }
 
 @Composable
@@ -515,12 +622,13 @@ private fun ImportPage(progress: ImportProgress, running: Boolean, error: String
 private fun WizardFooter(page: Page, connecting: Boolean, discovering: Boolean, archivesReady: Boolean, photosReady: Boolean, onBack: () -> Unit, onConnect: () -> Unit, onContinue: () -> Unit) {
     val picker = page == Page.DESTINATION || page == Page.SOURCE
     val connectPage = page in setOf(Page.CLOUD, Page.S3, Page.SMB)
+    val scanning = page == Page.SCANNING
     val continueEnabled = page == Page.WELCOME || (page == Page.TAKEOUT && archivesReady) || (page == Page.PHOTOS && photosReady) || page == Page.REVIEW
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        if (page != Page.WELCOME) LascoButton("BACK", onBack, primary = false, fillWidth = false)
+        if (page != Page.WELCOME && !scanning) LascoButton("BACK", onBack, primary = false, fillWidth = false)
         Spacer(Modifier.weight(1f))
         if (connectPage) LascoButton(if (connecting) "CONNECTING…" else "CONNECT REMOTE", onConnect, enabled = !connecting, fillWidth = false)
-        if (!picker && !connectPage && page != Page.IMPORT) LascoButton(if (discovering) "DISCOVERING…" else if (page == Page.REVIEW) "START IMPORT" else "CONTINUE", onContinue, enabled = continueEnabled && !discovering, fillWidth = false)
+        if (!picker && !connectPage && !scanning && page != Page.IMPORT) LascoButton(if (discovering) "DISCOVERING…" else if (page == Page.REVIEW) "START IMPORT" else "CONTINUE", onContinue, enabled = continueEnabled && !discovering, fillWidth = false)
     }
 }
 
@@ -560,6 +668,14 @@ private fun chooseTakeoutZips(): List<String> {
     val dialog = FileDialog(null as Frame?, "Choose Google Takeout ZIP", FileDialog.LOAD)
     dialog.isMultipleMode = true; dialog.isVisible = true
     return dialog.files.map { Path.of(it.toURI()).toString() }
+}
+
+private fun openPhotosPrivacySettings() {
+    check(System.getProperty("os.name").lowercase().contains("mac")) { "Photos settings are available only on macOS." }
+    check(Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+        "This desktop cannot open System Settings."
+    }
+    Desktop.getDesktop().browse(URI("x-apple.systempreferences:com.apple.preference.security?Privacy_Photos"))
 }
 
 private fun formatBytes(value: Long): String = when {

@@ -1,4 +1,7 @@
-@file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
+@file:OptIn(
+    kotlinx.cinterop.ExperimentalForeignApi::class,
+    kotlin.experimental.ExperimentalNativeApi::class,
+)
 
 package app.lasco.photos
 
@@ -6,14 +9,19 @@ import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.CValue
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ByteVar
+import kotlinx.cinterop.allocArray
 import kotlinx.cinterop.cstr
+import kotlinx.cinterop.get
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.nativeHeap
+import kotlinx.cinterop.set
 import kotlinx.cinterop.staticCFunction
 import kotlinx.cinterop.toKString
+import kotlinx.cinterop.useContents
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlin.concurrent.Volatile
 import platform.Foundation.NSDate
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSURL
@@ -38,6 +46,8 @@ private data class ResourceRecord(
 private val json = Json
 private val resources = mutableMapOf<String, PHAssetResource>()
 private const val resourceIdSeparator = '\u001f'
+@Volatile private var discoveredAssetCount = 0
+@Volatile private var totalAssetCount = 0
 
 private fun resourceId(asset: PHAsset, resource: PHAssetResource): String =
     "${asset.localIdentifier}$resourceIdSeparator${resource.type}$resourceIdSeparator${resource.originalFilename}"
@@ -59,7 +69,9 @@ private fun resourceForPersistedId(id: String): PHAssetResource? {
     val assets = PHAsset.fetchAssetsWithLocalIdentifiers(listOf(pieces[0]), null)
     if (assets.count.toInt() != 1) return null
     val asset = assets.objectAtIndex(0u) as PHAsset
-    return PHAssetResource.assetResourcesForAsset(asset).firstOrNull { resource ->
+    return PHAssetResource.assetResourcesForAsset(asset)
+        .filterIsInstance<PHAssetResource>()
+        .firstOrNull { resource ->
         resourceId(asset, resource) == id
     }?.also { resources[id] = it }
 }
@@ -80,25 +92,38 @@ fun requestAuthorization(): Int {
     return result
 }
 
+@CName("lasco_photos_discovery_scanned_count")
+fun discoveryScannedCount(): Int = discoveredAssetCount
+
+@CName("lasco_photos_discovery_total_count")
+fun discoveryTotalCount(): Int = totalAssetCount
+
 /** Enumerates PHAsset/PHAssetResource once. The JVM persists returned resource IDs for resume. */
 @CName("lasco_photos_discover_json")
 fun discoverJson(): CPointer<ByteVar>? = memScoped {
     check(photosAccessGranted()) { "Photos permission denied" }
     val records = mutableListOf<ResourceRecord>()
     val assets = PHAsset.fetchAssetsWithOptions(null)
+    discoveredAssetCount = 0
+    totalAssetCount = assets.count.toInt()
     assets.enumerateObjectsUsingBlock { asset, _, _ ->
         val photo = asset as PHAsset
         val assetResources = PHAssetResource.assetResourcesForAsset(photo)
+            .filterIsInstance<PHAssetResource>()
         val aae = assetResources.firstOrNull { it.type.toInt() == 9 }
         val pairedVideo = assetResources.firstOrNull { it.type.toInt() == 3 }
         assetResources.forEach { resource ->
             val id = resourceId(photo, resource)
             resources[id] = resource
             val type = when (resource.type.toInt()) { 9 -> "aae"; 3 -> "pairedVideo"; else -> "primary" }
-            records += ResourceRecord(id, photo.localIdentifier, type, resource.originalFilename, resource.valueForKey("fileSize") as? Long ?: 0,
-                photo.creationDate?.description, photo.modificationDate?.description, photo.location?.coordinate?.latitude, photo.location?.coordinate?.longitude,
+            val coordinates = photo.location?.coordinate?.useContents { latitude to longitude }
+            // PhotoKit has no public per-resource byte-size API. Avoid using private KVC and do
+            // not download iCloud originals during discovery merely to calculate it.
+            records += ResourceRecord(id, photo.localIdentifier, type, resource.originalFilename, 0,
+                photo.creationDate?.description, photo.modificationDate?.description, coordinates?.first, coordinates?.second,
                 emptyList(), pairedVideo?.let { resourceId(photo, it) }, aae?.let { resourceId(photo, it) })
         }
+        discoveredAssetCount += 1
     }
     retainedUtf8(json.encodeToString(records))
 }

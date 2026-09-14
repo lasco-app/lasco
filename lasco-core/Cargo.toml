@@ -80,7 +80,7 @@ objc2-foundation = "0.3"
 # Keyring's iOS backend uses the protected-data store; enable its required
 # feature explicitly because keyring's default feature set only enables the
 # macOS-compatible keychain backend.
-apple-native-keyring-store = { version = "1", features = ["protected"] }
+apple-native-keyring-store = { version = "1", features = ["keychain", "protected"] }
 
 [dev-dependencies]
 proptest = "1"

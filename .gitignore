@@ -5,6 +5,8 @@ docs/.docusaurus/
 /target/
 /lasco-desktop-importer/.gradle/
 /lasco-desktop-importer/build/
+/lasco-desktop-importer/native-photos-bridge/.gradle/
+/lasco-desktop-importer/native-photos-bridge/build/
 
 # Generated FFI artifacts
 lasco-ffi/artifacts/
