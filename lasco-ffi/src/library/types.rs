@@ -60,6 +60,30 @@ pub struct FfiMediaAddResult {
     pub already_existed: bool,
 }
 
+#[derive(uniffi::Enum, Debug, Clone, Copy)]
+pub enum FfiApplePhotosResourceType {
+    Photo,
+    FullSizePhoto,
+    Video,
+    FullSizeVideo,
+    AdjustmentData,
+    PairedVideo,
+    FullSizePairedVideo,
+}
+
+#[derive(uniffi::Record, Debug)]
+pub struct FfiApplePhotosResourceDescriptor {
+    pub resource_type: FfiApplePhotosResourceType,
+    pub filename: String,
+}
+
+#[derive(uniffi::Record, Debug)]
+pub struct FfiApplePhotosAssetRevision {
+    pub cloud_asset_id: String,
+    pub modification_date: Option<String>,
+    pub resources: Vec<FfiApplePhotosResourceDescriptor>,
+}
+
 /// Immutable provenance for one resource of an Apple Photos asset revision.
 /// `cloud_asset_id` is the serialized `PHCloudIdentifier` archival value.
 #[derive(uniffi::Record, Debug)]
@@ -67,11 +91,8 @@ pub struct FfiApplePhotosResourceOrigin {
     pub media_id: FfiMediaUuid,
     pub cloud_asset_id: String,
     pub modification_date: Option<String>,
-    pub manifest_hash: String,
-    pub resource_count: u32,
-    pub resource_type: String,
+    pub resource_type: FfiApplePhotosResourceType,
     pub filename: String,
-    pub content_type: Option<String>,
 }
 
 /// Optional source metadata supplied by a desktop importer.

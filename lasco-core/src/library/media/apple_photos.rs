@@ -2,7 +2,7 @@
 
 use chrono::{DateTime, Utc};
 
-use crate::crdt::{ApplePhotosResourceOrigin, OperationContent};
+use crate::crdt::{ApplePhotosResourceOrigin, ApplePhotosResourceType, OperationContent};
 use crate::operations::ApplePhotosCloudAssetId;
 use crate::error::LibraryError;
 use crate::library::Library;
@@ -19,26 +19,29 @@ pub fn record_resource_origin(
     library.record_local_operation(Utc::now(), OperationContent::ApplePhotosResourceOriginAdded(origin))
 }
 
-/// Returns true when the library has recorded a complete selected-resource manifest for this
-/// exact iCloud Photos asset revision.
+/// Returns true when the library has recorded exactly the selected resources for this iCloud
+/// Photos asset revision. The manifest is compared directly; it is not persisted as a hash.
 pub fn has_complete_revision(
     library: &Library,
     cloud_asset_id: &ApplePhotosCloudAssetId,
     modification_date: Option<DateTime<Utc>>,
-    manifest_hash: &str,
-    resource_count: u32,
+    expected_resources: &[(ApplePhotosResourceType, String)],
 ) -> bool {
     let state = library.inner.state.read();
-    let matching = state
+    let mut matching: Vec<_> = state
         .apple_photos_resource_origins
         .iter()
         .filter(|entry| {
             let origin = &entry.origin;
             origin.cloud_asset_id == *cloud_asset_id
                 && origin.modification_date == modification_date
-                && origin.manifest_hash == manifest_hash
-                && origin.resource_count == resource_count
         })
-        .count();
-    matching >= usize::try_from(resource_count).unwrap_or(usize::MAX)
+        .map(|entry| (entry.origin.resource_type, entry.origin.filename.clone()))
+        .collect();
+    matching.sort();
+    matching.dedup();
+    let mut expected = expected_resources.to_vec();
+    expected.sort();
+    expected.dedup();
+    matching == expected
 }

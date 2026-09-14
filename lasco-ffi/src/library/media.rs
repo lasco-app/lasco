@@ -3,7 +3,8 @@ use lasco_core::library::media::upload::MediaAddResult;
 use super::native_media_bytes::FfiNativeMediaBytes;
 use super::remotes::media_entry_to_ffi;
 use super::types::{
-    FfiApplePhotosResourceOrigin, FfiLocalStateStats, FfiMediaAddResult, FfiMediaImportMetadata, FfiMediaNeighbors,
+    FfiApplePhotosAssetRevision, FfiApplePhotosResourceOrigin, FfiApplePhotosResourceType,
+    FfiLocalStateStats, FfiMediaAddResult, FfiMediaImportMetadata, FfiMediaNeighbors,
     FfiRemoteMediaShortfall,
 };
 use super::{FfiLibrary, FfiMediaItem, ffi_count};
@@ -13,6 +14,7 @@ use chrono::{DateTime, Utc};
 use lasco_core::identifiers::RemoteUuid;
 use lasco_core::library::media::upload::MediaAddMetadata;
 use lasco_core::operations::{ApplePhotosCloudAssetId, GpsCoords};
+use lasco_core::crdt::ApplePhotosResourceType;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -34,20 +36,16 @@ pub(super) fn inclusive_range(start: u32, end: u32) -> Result<(usize, usize), La
 impl FfiLibrary {
     /// Returns whether every selected resource of this exact Apple Photos asset revision has
     /// already been associated with Lasco media. This performs no resource download.
-    pub fn has_apple_photos_asset_revision(
-        &self,
-        cloud_asset_id: String,
-        modification_date: Option<String>,
-        manifest_hash: String,
-        resource_count: u32,
-    ) -> Result<bool, LascoError> {
-        let modification_date = parse_import_timestamp(modification_date, "modification_date")?;
+    pub fn has_apple_photos_asset_revision(&self, revision: FfiApplePhotosAssetRevision) -> Result<bool, LascoError> {
+        let modification_date = parse_import_timestamp(revision.modification_date, "modification_date")?;
+        let resources = revision.resources.into_iter().map(|resource| {
+            (apple_resource_type(resource.resource_type), resource.filename)
+        }).collect::<Vec<_>>();
         Ok(lasco_core::library::media::apple_photos::has_complete_revision(
             &self.inner,
-            &ApplePhotosCloudAssetId(cloud_asset_id),
+            &ApplePhotosCloudAssetId(revision.cloud_asset_id),
             modification_date,
-            &manifest_hash,
-            resource_count,
+            &resources,
         ))
     }
 
@@ -65,16 +63,25 @@ impl FfiLibrary {
                 media_id,
                 cloud_asset_id: ApplePhotosCloudAssetId(origin.cloud_asset_id),
                 modification_date,
-                manifest_hash: origin.manifest_hash,
-                resource_count: origin.resource_count,
-                resource_type: origin.resource_type,
+                resource_type: apple_resource_type(origin.resource_type),
                 filename: origin.filename,
-                content_type: origin.content_type,
             },
         )
         .map_err(LascoError::from)
     }
 
+}
+
+fn apple_resource_type(value: FfiApplePhotosResourceType) -> ApplePhotosResourceType {
+    match value {
+        FfiApplePhotosResourceType::Photo => ApplePhotosResourceType::Photo,
+        FfiApplePhotosResourceType::FullSizePhoto => ApplePhotosResourceType::FullSizePhoto,
+        FfiApplePhotosResourceType::Video => ApplePhotosResourceType::Video,
+        FfiApplePhotosResourceType::FullSizeVideo => ApplePhotosResourceType::FullSizeVideo,
+        FfiApplePhotosResourceType::AdjustmentData => ApplePhotosResourceType::AdjustmentData,
+        FfiApplePhotosResourceType::PairedVideo => ApplePhotosResourceType::PairedVideo,
+        FfiApplePhotosResourceType::FullSizePairedVideo => ApplePhotosResourceType::FullSizePairedVideo,
+    }
 }
 
 impl FfiLibrary {

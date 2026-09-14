@@ -1392,10 +1392,8 @@ fn operation_to_ffi(op: OperationContent, timestamp: String) -> FfiOperation {
                 kv("media_id", &origin.media_id),
                 kv("cloud_asset_id", &origin.cloud_asset_id),
                 opt_kv("modification_date", origin.modification_date.map(|date| date.to_rfc3339())),
-                kv("manifest_hash", &origin.manifest_hash),
-                kv("resource_type", &origin.resource_type),
+                kv("resource_type", &format!("{:?}", origin.resource_type)),
                 kv("filename", &origin.filename),
-                opt_kv("content_type", origin.content_type),
             ],
         },
         OperationContent::MediaRename { media_id, name } => FfiOperation {

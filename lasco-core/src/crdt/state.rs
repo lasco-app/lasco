@@ -240,12 +240,21 @@ pub struct ApplePhotosResourceOrigin {
     pub media_id: MediaUuid,
     pub cloud_asset_id: ApplePhotosCloudAssetId,
     pub modification_date: Option<DateTime<Utc>>,
-    /// Hash of the canonical selected-resource manifest for this asset revision.
-    pub manifest_hash: String,
-    pub resource_count: u32,
-    pub resource_type: String,
+    pub resource_type: ApplePhotosResourceType,
     pub filename: String,
-    pub content_type: Option<String>,
+}
+
+/// The PhotoKit resource roles Lasco currently imports. Unsupported Photos resources are never
+/// represented as an origin, rather than being persisted as an unstable string value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum ApplePhotosResourceType {
+    Photo,
+    FullSizePhoto,
+    Video,
+    FullSizeVideo,
+    AdjustmentData,
+    PairedVideo,
+    FullSizePairedVideo,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

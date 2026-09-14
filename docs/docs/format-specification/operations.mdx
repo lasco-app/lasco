@@ -114,11 +114,8 @@ entity exist.
   <Field name="media_id" type="MediaUuid" note="The newly created or content-hash-reused Lasco media item." />
   <Field name="cloud_asset_id" type="ApplePhotosCloudAssetId" note="Opaque serialized PHCloudIdentifier archival value for the owning PHAsset; never a PHAsset local identifier." />
   <Field name="modification_date" type="Option&lt;DateTime&lt;Utc&gt;&gt;" note="The owning PHAsset.modificationDate. It is deliberately repeated on every resource origin." />
-  <Field name="manifest_hash" type="String" note="Hash of the canonical selected-resource manifest for this asset revision." />
-  <Field name="resource_count" type="u32" note="Number of resources in that selected manifest." />
-  <Field name="resource_type" type="String" note="PhotoKit role, for example photo, pairedVideo, or adjustmentData." />
+  <Field name="resource_type" type="ApplePhotosResourceType" note="Closed PhotoKit-role enum: photo, full-size photo/video, adjustment data, or paired-video variants." />
   <Field name="filename" type="String" />
-  <Field name="content_type" type="Option&lt;String&gt;" />
 </SchemaCard>
 </CardGrid>
 
@@ -220,7 +217,7 @@ product constraint rather than an implementation accident.
 | `MediaPropsUpdate` | Per-key LWW `String` register. |
 | `MediaTrashSet` | LWW `bool` register. `true` hides the live item in the virtual Trash collection; `false` restores it. |
 | `MediaDeletion` | Permanent per-media tombstone. It prevents all later resolution and retains creation metadata only for local/remote blob cleanup. |
-| `ApplePhotosResourceOriginAdded` | Append-only provenance entries, deduplicated by operation dot. A new Photos revision adds new entries; it never mutates older provenance. |
+| `ApplePhotosResourceOriginAdded` | Append-only provenance entries, deduplicated by operation dot. The exact expected `(resource_type, filename)` set establishes completeness for a revision. A new Photos revision adds new entries; it never mutates older provenance. |
 | `AlbumCreation` | Marks the entity created and writes `name` and desired parent to their LWW registers using the creation dot. |
 | `AlbumMediaAdd` / `AlbumMediaRemove` | Add-wins observed-remove set. An add stores its dot; a remove carries the exact `observed` set of add dots it cancels. |
 | `AlbumDeletion` | Permanent tombstone. It hides the album and its contents without erasing their CRDT metadata. |

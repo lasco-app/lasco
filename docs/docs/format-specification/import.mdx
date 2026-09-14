@@ -16,8 +16,8 @@ Lasco identifies an Apple Photos import at the `PHAsset` level, not at the indiv
 `PHCloudIdentifier`; a device-local `PHAsset.localIdentifier` is never persisted as the
 cross-device identity.
 
-Before staging bytes, an importer builds a selected-resource manifest from the resource type,
-filename, and content type, together with the parent asset's `modificationDate`. An exact matching
+Before staging bytes, an importer builds a selected-resource manifest from the resource type and
+filename, together with the parent asset's `modificationDate`. An exact matching
 complete manifest means the asset is already imported and no iCloud resource is downloaded.
 Otherwise the importer processes the complete asset normally. Existing byte-identical files reuse
 their Lasco media records through content-hash deduplication, while each resulting media receives a
