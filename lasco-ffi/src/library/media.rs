@@ -3,7 +3,7 @@ use lasco_core::library::media::upload::MediaAddResult;
 use super::native_media_bytes::FfiNativeMediaBytes;
 use super::remotes::media_entry_to_ffi;
 use super::types::{
-    FfiLocalStateStats, FfiMediaAddResult, FfiMediaImportMetadata, FfiMediaNeighbors,
+    FfiApplePhotosResourceOrigin, FfiLocalStateStats, FfiMediaAddResult, FfiMediaImportMetadata, FfiMediaNeighbors,
     FfiRemoteMediaShortfall,
 };
 use super::{FfiLibrary, FfiMediaItem, ffi_count};
@@ -12,7 +12,7 @@ use crate::ids::{FfiAlbumUuid, FfiLibraryId, FfiMediaUuid, FfiRemoteUuid};
 use chrono::{DateTime, Utc};
 use lasco_core::identifiers::RemoteUuid;
 use lasco_core::library::media::upload::MediaAddMetadata;
-use lasco_core::operations::GpsCoords;
+use lasco_core::operations::{ApplePhotosCloudAssetId, GpsCoords};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -28,6 +28,53 @@ pub(super) fn inclusive_range(start: u32, end: u32) -> Result<(usize, usize), La
         });
     }
     Ok((start as usize, end as usize))
+}
+
+#[uniffi::export]
+impl FfiLibrary {
+    /// Returns whether every selected resource of this exact Apple Photos asset revision has
+    /// already been associated with Lasco media. This performs no resource download.
+    pub fn has_apple_photos_asset_revision(
+        &self,
+        cloud_asset_id: String,
+        modification_date: Option<String>,
+        manifest_hash: String,
+        resource_count: u32,
+    ) -> Result<bool, LascoError> {
+        let modification_date = parse_import_timestamp(modification_date, "modification_date")?;
+        Ok(lasco_core::library::media::apple_photos::has_complete_revision(
+            &self.inner,
+            &ApplePhotosCloudAssetId(cloud_asset_id),
+            modification_date,
+            &manifest_hash,
+            resource_count,
+        ))
+    }
+
+    /// Records immutable provenance after an Apple Photos resource has been imported or reused
+    /// by content hash. Importers call this once per selected resource.
+    pub fn record_apple_photos_resource_origin(
+        &self,
+        origin: FfiApplePhotosResourceOrigin,
+    ) -> Result<(), LascoError> {
+        let media_id = origin.media_id.try_into()?;
+        let modification_date = parse_import_timestamp(origin.modification_date, "modification_date")?;
+        lasco_core::library::media::apple_photos::record_resource_origin(
+            &self.inner,
+            lasco_core::crdt::ApplePhotosResourceOrigin {
+                media_id,
+                cloud_asset_id: ApplePhotosCloudAssetId(origin.cloud_asset_id),
+                modification_date,
+                manifest_hash: origin.manifest_hash,
+                resource_count: origin.resource_count,
+                resource_type: origin.resource_type,
+                filename: origin.filename,
+                content_type: origin.content_type,
+            },
+        )
+        .map_err(LascoError::from)
+    }
+
 }
 
 impl FfiLibrary {

@@ -60,6 +60,20 @@ pub struct FfiMediaAddResult {
     pub already_existed: bool,
 }
 
+/// Immutable provenance for one resource of an Apple Photos asset revision.
+/// `cloud_asset_id` is the serialized `PHCloudIdentifier` archival value.
+#[derive(uniffi::Record, Debug)]
+pub struct FfiApplePhotosResourceOrigin {
+    pub media_id: FfiMediaUuid,
+    pub cloud_asset_id: String,
+    pub modification_date: Option<String>,
+    pub manifest_hash: String,
+    pub resource_count: u32,
+    pub resource_type: String,
+    pub filename: String,
+    pub content_type: Option<String>,
+}
+
 /// Optional source metadata supplied by a desktop importer.
 ///
 /// Timestamps are RFC 3339 strings. The source file's bytes, including any embedded metadata,

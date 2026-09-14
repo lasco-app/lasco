@@ -78,6 +78,26 @@ impl fmt::Display for MediaFilename {
     }
 }
 
+/// Opaque, cross-device identifier assigned by iCloud Photos to a `PHAsset`.
+///
+/// This is deliberately distinct from `PHAsset.localIdentifier`, which is only
+/// meaningful on the device that produced it.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ApplePhotosCloudAssetId(pub String);
+
+impl From<String> for ApplePhotosCloudAssetId {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl fmt::Display for ApplePhotosCloudAssetId {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{}", self.0)
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct LibraryUsername(pub String);

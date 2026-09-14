@@ -1385,6 +1385,19 @@ fn operation_to_ffi(op: OperationContent, timestamp: String) -> FfiOperation {
                 kv("size_bytes", &creation.size_bytes),
             ],
         },
+        OperationContent::ApplePhotosResourceOriginAdded(origin) => FfiOperation {
+            kind: "ApplePhotosResourceOriginAdded".to_string(),
+            timestamp: timestamp.clone(),
+            args: vec![
+                kv("media_id", &origin.media_id),
+                kv("cloud_asset_id", &origin.cloud_asset_id),
+                opt_kv("modification_date", origin.modification_date.map(|date| date.to_rfc3339())),
+                kv("manifest_hash", &origin.manifest_hash),
+                kv("resource_type", &origin.resource_type),
+                kv("filename", &origin.filename),
+                opt_kv("content_type", origin.content_type),
+            ],
+        },
         OperationContent::MediaRename { media_id, name } => FfiOperation {
             kind: "MediaRename".to_string(),
             timestamp: timestamp.clone(),

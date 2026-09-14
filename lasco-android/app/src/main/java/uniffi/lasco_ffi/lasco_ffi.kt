@@ -990,6 +990,10 @@ internal open class UniffiVTableCallbackInterfacePushProgressSink(
 
 
 
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1119,6 +1123,8 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_group_list_media(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_hard_delete_media(
 ): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_has_apple_photos_asset_revision(
+): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_has_unpushed_changes(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_import_media(
@@ -1200,6 +1206,8 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_from_remote_async(
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_using_configured_media_sources_async(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_using_configured_media_sources_with_options_async(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_record_apple_photos_resource_origin(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_remote_media_shortfall(
 ): Short
@@ -1399,6 +1407,8 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_group_list_media(`ptr`: Pointer,`group
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_hard_delete_media(`ptr`: Pointer,`mediaId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
+fun uniffi_lasco_ffi_fn_method_ffilibrary_has_apple_photos_asset_revision(`ptr`: Pointer,`cloudAssetId`: RustBuffer.ByValue,`modificationDate`: RustBuffer.ByValue,`manifestHash`: RustBuffer.ByValue,`resourceCount`: Int,uniffi_out_err: UniffiRustCallStatus, 
+): Byte
 fun uniffi_lasco_ffi_fn_method_ffilibrary_has_unpushed_changes(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
 fun uniffi_lasco_ffi_fn_method_ffilibrary_import_media(`ptr`: Pointer,`path`: RustBuffer.ByValue,`albumId`: RustBuffer.ByValue,`originalFilename`: RustBuffer.ByValue,`appleAaeMediaId`: RustBuffer.ByValue,`appleLivePhotoMediaId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1481,6 +1491,8 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_using_configured_media_sou
 ): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_using_configured_media_sources_with_options_async(`ptr`: Pointer,`targetRemoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,`progress`: Long,`maxConcurrentMediaUploads`: Byte,
 ): Long
+fun uniffi_lasco_ffi_fn_method_ffilibrary_record_apple_photos_resource_origin(`ptr`: Pointer,`origin`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_remote_media_shortfall(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_remove_media_from_album(`ptr`: Pointer,`albumId`: RustBuffer.ByValue,`mediaId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1856,6 +1868,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_hard_delete_media() != 43537.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_has_apple_photos_asset_revision() != 31697.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_has_unpushed_changes() != 50625.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1977,6 +1992,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_using_configured_media_sources_with_options_async() != 2562.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_record_apple_photos_resource_origin() != 37582.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_remote_media_shortfall() != 52429.toShort()) {
@@ -2927,6 +2945,12 @@ public interface FfiLibraryInterface {
      */
     fun `hardDeleteMedia`(`mediaId`: FfiMediaUuid)
     
+    /**
+     * Returns whether every selected resource of this exact Apple Photos asset revision has
+     * already been associated with Lasco media. This performs no resource download.
+     */
+    fun `hasApplePhotosAssetRevision`(`cloudAssetId`: kotlin.String, `modificationDate`: kotlin.String?, `manifestHash`: kotlin.String, `resourceCount`: kotlin.UInt): kotlin.Boolean
+    
     fun `hasUnpushedChanges`(`remoteId`: FfiRemoteUuid): kotlin.Boolean
     
     /**
@@ -3195,6 +3219,12 @@ public interface FfiLibraryInterface {
      * [`Self::push_remote_using_configured_media_sources_async`].
      */
     suspend fun `pushRemoteUsingConfiguredMediaSourcesWithOptionsAsync`(`targetRemoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?, `progress`: PushProgressSink, `maxConcurrentMediaUploads`: kotlin.UByte): kotlin.ULong
+    
+    /**
+     * Records immutable provenance after an Apple Photos resource has been imported or reused
+     * by content hash. Importers call this once per selected resource.
+     */
+    fun `recordApplePhotosResourceOrigin`(`origin`: FfiApplePhotosResourceOrigin)
     
     /**
      * What `remote_id` is not yet confirmed to hold.
@@ -4331,6 +4361,23 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
     
 
+    
+    /**
+     * Returns whether every selected resource of this exact Apple Photos asset revision has
+     * already been associated with Lasco media. This performs no resource download.
+     */
+    @Throws(LascoException::class)override fun `hasApplePhotosAssetRevision`(`cloudAssetId`: kotlin.String, `modificationDate`: kotlin.String?, `manifestHash`: kotlin.String, `resourceCount`: kotlin.UInt): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_has_apple_photos_asset_revision(
+        it, FfiConverterString.lower(`cloudAssetId`),FfiConverterOptionalString.lower(`modificationDate`),FfiConverterString.lower(`manifestHash`),FfiConverterUInt.lower(`resourceCount`),_status)
+}
+    }
+    )
+    }
+    
+
     override fun `hasUnpushedChanges`(`remoteId`: FfiRemoteUuid): kotlin.Boolean {
             return FfiConverterBoolean.lift(
     callWithPointer {
@@ -5140,6 +5187,22 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
         LascoException.ErrorHandler,
     )
     }
+
+    
+    /**
+     * Records immutable provenance after an Apple Photos resource has been imported or reused
+     * by content hash. Importers call this once per selected resource.
+     */
+    @Throws(LascoException::class)override fun `recordApplePhotosResourceOrigin`(`origin`: FfiApplePhotosResourceOrigin)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_record_apple_photos_resource_origin(
+        it, FfiConverterTypeFfiApplePhotosResourceOrigin.lower(`origin`),_status)
+}
+    }
+    
+    
 
     
     /**
@@ -5982,6 +6045,66 @@ public object FfiConverterTypeFfiAlbumUuid: FfiConverterRustBuffer<FfiAlbumUuid>
 
     override fun write(value: FfiAlbumUuid, buf: ByteBuffer) {
             FfiConverterString.write(value.`value`, buf)
+    }
+}
+
+
+
+/**
+ * Immutable provenance for one resource of an Apple Photos asset revision.
+ * `cloud_asset_id` is the serialized `PHCloudIdentifier` archival value.
+ */
+data class FfiApplePhotosResourceOrigin (
+    var `mediaId`: FfiMediaUuid, 
+    var `cloudAssetId`: kotlin.String, 
+    var `modificationDate`: kotlin.String?, 
+    var `manifestHash`: kotlin.String, 
+    var `resourceCount`: kotlin.UInt, 
+    var `resourceType`: kotlin.String, 
+    var `filename`: kotlin.String, 
+    var `contentType`: kotlin.String?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFfiApplePhotosResourceOrigin: FfiConverterRustBuffer<FfiApplePhotosResourceOrigin> {
+    override fun read(buf: ByteBuffer): FfiApplePhotosResourceOrigin {
+        return FfiApplePhotosResourceOrigin(
+            FfiConverterTypeFfiMediaUuid.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FfiApplePhotosResourceOrigin) = (
+            FfiConverterTypeFfiMediaUuid.allocationSize(value.`mediaId`) +
+            FfiConverterString.allocationSize(value.`cloudAssetId`) +
+            FfiConverterOptionalString.allocationSize(value.`modificationDate`) +
+            FfiConverterString.allocationSize(value.`manifestHash`) +
+            FfiConverterUInt.allocationSize(value.`resourceCount`) +
+            FfiConverterString.allocationSize(value.`resourceType`) +
+            FfiConverterString.allocationSize(value.`filename`) +
+            FfiConverterOptionalString.allocationSize(value.`contentType`)
+    )
+
+    override fun write(value: FfiApplePhotosResourceOrigin, buf: ByteBuffer) {
+            FfiConverterTypeFfiMediaUuid.write(value.`mediaId`, buf)
+            FfiConverterString.write(value.`cloudAssetId`, buf)
+            FfiConverterOptionalString.write(value.`modificationDate`, buf)
+            FfiConverterString.write(value.`manifestHash`, buf)
+            FfiConverterUInt.write(value.`resourceCount`, buf)
+            FfiConverterString.write(value.`resourceType`, buf)
+            FfiConverterString.write(value.`filename`, buf)
+            FfiConverterOptionalString.write(value.`contentType`, buf)
     }
 }
 
