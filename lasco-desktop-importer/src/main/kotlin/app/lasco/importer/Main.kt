@@ -304,6 +304,7 @@ private fun ImporterWizard() {
     }
 
     fun startImport() {
+        if (importProgress.state == ImportRunState.COMPLETE) return
         val activeCoordinator = coordinator ?: return
         val jobId = importJobId ?: return
         val reader = sourceReader ?: return
@@ -413,7 +414,7 @@ private fun ImporterWizard() {
         }
         Spacer(Modifier.height(16.dp))
         WizardFooter(
-            page = page, connecting = connecting, discovering = discovering, archivesReady = archives.isNotEmpty(), photosReady = photosAllowed,
+            page = page, source = sourceType, connecting = connecting, discovering = discovering, archivesReady = archives.isNotEmpty(), photosReady = photosAllowed,
             onBack = {
                 when (page) {
                     Page.DESTINATION -> go(Page.WELCOME)
@@ -588,38 +589,39 @@ private fun ScanningPage(source: SourceType?, progress: DiscoveryProgress) {
 
 @Composable
 private fun ReviewPage(source: SourceType?, archives: List<String>, remotes: List<String>, plan: ImportPlan?, benchmarks: List<RemoteBenchmark>, error: String?) {
-    PageTitle("Ready to review", "The importer will scan once, preserve source metadata and albums, then fan each chunk out to every connected remote.")
+    PageTitle("Library summary", "Review the media and destinations before importing.")
     Spacer(Modifier.height(20.dp))
     Detail("DESTINATION", remotes.joinToString().ifBlank { "No remote connected" })
     Detail("SOURCE", if (source == SourceType.PHOTOS) "Apple Photos / iCloud" else "Google Takeout")
     if (source == SourceType.TAKEOUT) Detail("ARCHIVES", archives.size.toString())
     plan?.let {
-        Detail("CANDIDATES", "${it.candidates} · ${formatBytes(it.candidatesBytes)}")
-        Detail("CHUNK SIZE", "${it.chunkSize} items")
+        Detail("MEDIA TO UPLOAD", "${it.candidates} · ${formatBytes(it.candidatesBytes)}")
     }
     benchmarks.forEach { benchmark ->
         Detail("${benchmark.remoteName.uppercase()} UPLOAD", "${formatRate(benchmark.isolatedBytesPerSecond)} at ${benchmark.selectedParallelism} parallel uploads")
     }
-    Text("Exact duplicates are determined by the Lasco core after staging and hashing, never by filename. The import manifest records completed source IDs, so closing and resuming does not rescan Apple Photos.", color = InkSub, style = LascoBody, modifier = Modifier.padding(top = 20.dp))
     error?.let { Spacer(Modifier.height(12.dp)); ErrorMessage(it) }
 }
 
 @Composable
 private fun ImportPage(progress: ImportProgress, running: Boolean, error: String?, onStart: () -> Unit, onPause: () -> Unit) {
-    PageTitle("Import", "The importer runs in durable 32-item chunks. Pause finishes the active chunk and its fan-out, writes a checkpoint, and lets you close the app safely.")
+    PageTitle("Import", "Your selected media will be imported. You can pause after the current batch and close the app safely.")
     Spacer(Modifier.height(24.dp))
     Detail("STATUS", progress.detail.ifBlank { progress.state.name.lowercase().replaceFirstChar(Char::uppercase) })
     Detail("PROGRESS", "${progress.completedAssets} / ${progress.totalAssets} items")
-    progress.activeChunk?.let { Detail("ACTIVE CHUNK", it.toString()) }
-    Row(Modifier.padding(top = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        LascoButton(if (running) "IMPORTING…" else "START OR RESUME IMPORT", onStart, enabled = !running, fillWidth = false)
-        LascoButton("PAUSE AFTER THIS CHUNK", onPause, primary = false, enabled = running, fillWidth = false)
+    if (progress.state == ImportRunState.COMPLETE) {
+        Text("IMPORT COMPLETE", color = Good, style = LascoPixel, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 20.dp))
+    } else {
+        Row(Modifier.padding(top = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            LascoButton(if (running) "IMPORTING…" else "START OR RESUME IMPORT", onStart, enabled = !running, fillWidth = false)
+            LascoButton("PAUSE AFTER CURRENT BATCH", onPause, primary = false, enabled = running, fillWidth = false)
+        }
     }
     error?.let { Spacer(Modifier.height(12.dp)); ErrorMessage(it) }
 }
 
 @Composable
-private fun WizardFooter(page: Page, connecting: Boolean, discovering: Boolean, archivesReady: Boolean, photosReady: Boolean, onBack: () -> Unit, onConnect: () -> Unit, onContinue: () -> Unit) {
+private fun WizardFooter(page: Page, source: SourceType?, connecting: Boolean, discovering: Boolean, archivesReady: Boolean, photosReady: Boolean, onBack: () -> Unit, onConnect: () -> Unit, onContinue: () -> Unit) {
     val picker = page == Page.DESTINATION || page == Page.SOURCE
     val connectPage = page in setOf(Page.CLOUD, Page.S3, Page.SMB)
     val scanning = page == Page.SCANNING
@@ -628,7 +630,14 @@ private fun WizardFooter(page: Page, connecting: Boolean, discovering: Boolean, 
         if (page != Page.WELCOME && !scanning) LascoButton("BACK", onBack, primary = false, fillWidth = false)
         Spacer(Modifier.weight(1f))
         if (connectPage) LascoButton(if (connecting) "CONNECTING…" else "CONNECT REMOTE", onConnect, enabled = !connecting, fillWidth = false)
-        if (!picker && !connectPage && !scanning && page != Page.IMPORT) LascoButton(if (discovering) "DISCOVERING…" else if (page == Page.REVIEW) "START IMPORT" else "CONTINUE", onContinue, enabled = continueEnabled && !discovering, fillWidth = false)
+        if (!picker && !connectPage && !scanning && page != Page.IMPORT) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                LascoButton(if (discovering) "DISCOVERING…" else if (page == Page.REVIEW) "START IMPORT" else "CONTINUE", onContinue, enabled = continueEnabled && !discovering, fillWidth = false)
+                if (page == Page.REVIEW && source == SourceType.PHOTOS) {
+                    Text("(It will not delete your iCloud files.)", color = InkSub, style = LascoBody.copy(fontSize = 12.sp), modifier = Modifier.padding(top = 6.dp))
+                }
+            }
+        }
     }
 }
 
