@@ -3,6 +3,9 @@ package app.lasco.importer.source
 import app.lasco.importer.model.ImportAsset
 import app.lasco.importer.model.ImportSource
 import app.lasco.importer.model.ResourceRole
+import app.lasco.importer.model.ApplePhotosAssetRevision
+import app.lasco.importer.model.ApplePhotosResourceDescriptor
+import app.lasco.importer.model.ApplePhotosResourceType
 import app.lasco.importer.model.SourceMetadata
 import app.lasco.importer.model.StagedAsset
 import com.sun.jna.Library
@@ -36,6 +39,8 @@ private data class NativePhotoResource(
     val albumNames: List<String> = emptyList(),
     val pairedVideoResourceId: String? = null,
     val aaeResourceId: String? = null,
+    val cloudAssetId: String? = null,
+    val resourceType: String,
 )
 
 /**
@@ -58,7 +63,16 @@ class ApplePhotosReader private constructor(private val bridge: PhotoKitNative) 
     override suspend fun discover(): List<ImportAsset> {
         check(hasPermission()) { "Apple Photos permission has not been granted" }
         val resources = json.decodeFromString<List<NativePhotoResource>>(bridge.lasco_photos_discover_json())
+        val revisionsByAssetId = resources.groupBy { it.assetId }.mapValues { (_, resourcesForAsset) ->
+            val cloudAssetId = resourcesForAsset.firstNotNullOfOrNull { it.cloudAssetId } ?: return@mapValues null
+            ApplePhotosAssetRevision(
+                cloudAssetId = cloudAssetId,
+                modificationDate = resourcesForAsset.first().modifiedAt,
+                resources = resourcesForAsset.map { ApplePhotosResourceDescriptor(ApplePhotosResourceType.valueOf(it.resourceType), it.filename) },
+            )
+        }
         return resources.map { resource ->
+            val resourceType = ApplePhotosResourceType.valueOf(resource.resourceType)
             ImportAsset(
                 sourceId = "photos:${resource.resourceId}", source = source,
                 resourceRole = when (resource.type) { "aae" -> ResourceRole.AAE_SIDECAR; "pairedVideo" -> ResourceRole.LIVE_PHOTO_VIDEO; else -> ResourceRole.PRIMARY },
@@ -66,6 +80,8 @@ class ApplePhotosReader private constructor(private val bridge: PhotoKitNative) 
                 metadata = SourceMetadata(resource.filename, resource.capturedAt, resource.modifiedAt, resource.latitude, resource.longitude),
                 sourceLocator = resource.resourceId, albumNames = resource.albumNames,
                 aaeSourceId = resource.aaeResourceId?.let { "photos:$it" }, liveVideoSourceId = resource.pairedVideoResourceId?.let { "photos:$it" },
+                applePhotosRevision = revisionsByAssetId.getValue(resource.assetId),
+                applePhotosResourceType = resourceType,
             )
         }
     }

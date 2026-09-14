@@ -11,10 +11,10 @@ use super::{FfiLibrary, FfiMediaItem, ffi_count};
 use crate::error::LascoError;
 use crate::ids::{FfiAlbumUuid, FfiLibraryId, FfiMediaUuid, FfiRemoteUuid};
 use chrono::{DateTime, Utc};
+use lasco_core::crdt::ApplePhotosResourceType;
 use lasco_core::identifiers::RemoteUuid;
 use lasco_core::library::media::upload::MediaAddMetadata;
 use lasco_core::operations::{ApplePhotosCloudAssetId, GpsCoords};
-use lasco_core::crdt::ApplePhotosResourceType;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -34,19 +34,33 @@ pub(super) fn inclusive_range(start: u32, end: u32) -> Result<(usize, usize), La
 
 #[uniffi::export]
 impl FfiLibrary {
-    /// Returns whether every selected resource of this exact Apple Photos asset revision has
-    /// already been associated with Lasco media. This performs no resource download.
-    pub fn has_apple_photos_asset_revision(&self, revision: FfiApplePhotosAssetRevision) -> Result<bool, LascoError> {
-        let modification_date = parse_import_timestamp(revision.modification_date, "modification_date")?;
-        let resources = revision.resources.into_iter().map(|resource| {
-            (apple_resource_type(resource.resource_type), resource.filename)
-        }).collect::<Vec<_>>();
-        Ok(lasco_core::library::media::apple_photos::has_complete_revision(
-            &self.inner,
-            &ApplePhotosCloudAssetId(revision.cloud_asset_id),
-            modification_date,
-            &resources,
-        ))
+    /// Returns the selected media IDs when this exact Apple Photos asset revision has already
+    /// been associated with Lasco media. This performs no resource download.
+    pub fn apple_photos_asset_revision_media_ids(
+        &self,
+        revision: FfiApplePhotosAssetRevision,
+    ) -> Result<Option<Vec<FfiMediaUuid>>, LascoError> {
+        let modification_date =
+            parse_import_timestamp(revision.modification_date, "modification_date")?;
+        let resources = revision
+            .resources
+            .into_iter()
+            .map(|resource| {
+                (
+                    apple_resource_type(resource.resource_type),
+                    resource.filename,
+                )
+            })
+            .collect::<Vec<_>>();
+        Ok(
+            lasco_core::library::media::apple_photos::complete_revision_media_ids(
+                &self.inner,
+                &ApplePhotosCloudAssetId(revision.cloud_asset_id),
+                modification_date,
+                &resources,
+            )
+            .map(|ids| ids.into_iter().map(Into::into).collect()),
+        )
     }
 
     /// Records immutable provenance after an Apple Photos resource has been imported or reused
@@ -56,7 +70,8 @@ impl FfiLibrary {
         origin: FfiApplePhotosResourceOrigin,
     ) -> Result<(), LascoError> {
         let media_id = origin.media_id.try_into()?;
-        let modification_date = parse_import_timestamp(origin.modification_date, "modification_date")?;
+        let modification_date =
+            parse_import_timestamp(origin.modification_date, "modification_date")?;
         lasco_core::library::media::apple_photos::record_resource_origin(
             &self.inner,
             lasco_core::crdt::ApplePhotosResourceOrigin {
@@ -69,7 +84,6 @@ impl FfiLibrary {
         )
         .map_err(LascoError::from)
     }
-
 }
 
 fn apple_resource_type(value: FfiApplePhotosResourceType) -> ApplePhotosResourceType {
@@ -80,7 +94,9 @@ fn apple_resource_type(value: FfiApplePhotosResourceType) -> ApplePhotosResource
         FfiApplePhotosResourceType::FullSizeVideo => ApplePhotosResourceType::FullSizeVideo,
         FfiApplePhotosResourceType::AdjustmentData => ApplePhotosResourceType::AdjustmentData,
         FfiApplePhotosResourceType::PairedVideo => ApplePhotosResourceType::PairedVideo,
-        FfiApplePhotosResourceType::FullSizePairedVideo => ApplePhotosResourceType::FullSizePairedVideo,
+        FfiApplePhotosResourceType::FullSizePairedVideo => {
+            ApplePhotosResourceType::FullSizePairedVideo
+        }
     }
 }
 

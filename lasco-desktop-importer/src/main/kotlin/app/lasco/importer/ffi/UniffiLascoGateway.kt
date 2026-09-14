@@ -1,6 +1,9 @@
 package app.lasco.importer.ffi
 
 import app.lasco.importer.model.ImportedMedia
+import app.lasco.importer.model.ApplePhotosAssetRevision
+import app.lasco.importer.model.ApplePhotosResourceDescriptor
+import app.lasco.importer.model.ApplePhotosResourceType
 import app.lasco.importer.model.RemoteBenchmark
 import app.lasco.importer.model.SourceMetadata
 import java.nio.file.Path
@@ -8,6 +11,10 @@ import uniffi.lasco_ffi.FfiLibrary
 import uniffi.lasco_ffi.FfiAlbumUuid
 import uniffi.lasco_ffi.FfiMediaImportMetadata
 import uniffi.lasco_ffi.FfiMediaUuid
+import uniffi.lasco_ffi.FfiApplePhotosAssetRevision
+import uniffi.lasco_ffi.FfiApplePhotosResourceDescriptor
+import uniffi.lasco_ffi.FfiApplePhotosResourceOrigin
+import uniffi.lasco_ffi.FfiApplePhotosResourceType
 import uniffi.lasco_ffi.FfiRemoteUuid
 import uniffi.lasco_ffi.PushProgressSink
 
@@ -33,6 +40,20 @@ class UniffiLascoGateway(
         return ImportedMedia(result.mediaId.value, result.alreadyExisted)
     }
 
+    override fun applePhotosAssetRevisionMediaIds(revision: ApplePhotosAssetRevision): Map<ApplePhotosResourceDescriptor, String>? {
+        val resources = revision.resources.map { FfiApplePhotosResourceDescriptor(it.type.toFfi(), it.filename) }
+        val mediaIds = library.applePhotosAssetRevisionMediaIds(
+            FfiApplePhotosAssetRevision(revision.cloudAssetId, revision.modificationDate, resources),
+        ) ?: return null
+        return revision.resources.zip(mediaIds).associate { (descriptor, mediaId) -> descriptor to mediaId.value }
+    }
+
+    override fun recordApplePhotosResourceOrigin(mediaId: String, revision: ApplePhotosAssetRevision, resourceType: ApplePhotosResourceType, filename: String) {
+        library.recordApplePhotosResourceOrigin(
+            FfiApplePhotosResourceOrigin(FfiMediaUuid(mediaId), revision.cloudAssetId, revision.modificationDate, resourceType.toFfi(), filename),
+        )
+    }
+
     override suspend fun benchmark(remote: LascoRemote, bytesPerUpload: Long): RemoteBenchmark {
         val samples = library.benchmarkRemoteUploadAsync(FfiRemoteUuid(remote.id), appSupportDirectory, bytesPerUpload.toULong(), 5u)
         val best = samples.maxBy { it.bytesPerSecond }
@@ -49,4 +70,14 @@ class UniffiLascoGateway(
 
     override fun evict(mediaIds: List<String>) = library.evictLocalData(mediaIds.map(::FfiMediaUuid))
     override fun close() = library.close()
+}
+
+private fun ApplePhotosResourceType.toFfi(): FfiApplePhotosResourceType = when (this) {
+    ApplePhotosResourceType.PHOTO -> FfiApplePhotosResourceType.PHOTO
+    ApplePhotosResourceType.FULL_SIZE_PHOTO -> FfiApplePhotosResourceType.FULL_SIZE_PHOTO
+    ApplePhotosResourceType.VIDEO -> FfiApplePhotosResourceType.VIDEO
+    ApplePhotosResourceType.FULL_SIZE_VIDEO -> FfiApplePhotosResourceType.FULL_SIZE_VIDEO
+    ApplePhotosResourceType.ADJUSTMENT_DATA -> FfiApplePhotosResourceType.ADJUSTMENT_DATA
+    ApplePhotosResourceType.PAIRED_VIDEO -> FfiApplePhotosResourceType.PAIRED_VIDEO
+    ApplePhotosResourceType.FULL_SIZE_PAIRED_VIDEO -> FfiApplePhotosResourceType.FULL_SIZE_PAIRED_VIDEO
 }

@@ -14,6 +14,19 @@ enum class ImportRunState { SCANNING, READY, IMPORTING, PAUSE_REQUESTED, PAUSED,
 enum class ResourceRole { AAE_SIDECAR, LIVE_PHOTO_VIDEO, PRIMARY }
 
 @Serializable
+enum class ApplePhotosResourceType { PHOTO, FULL_SIZE_PHOTO, VIDEO, FULL_SIZE_VIDEO, ADJUSTMENT_DATA, PAIRED_VIDEO, FULL_SIZE_PAIRED_VIDEO }
+
+@Serializable
+data class ApplePhotosResourceDescriptor(val type: ApplePhotosResourceType, val filename: String)
+
+@Serializable
+data class ApplePhotosAssetRevision(
+    val cloudAssetId: String,
+    val modificationDate: String?,
+    val resources: List<ApplePhotosResourceDescriptor>,
+)
+
+@Serializable
 data class SourceMetadata(
     val originalFilename: String,
     val capturedAt: String? = null,
@@ -35,6 +48,8 @@ data class ImportAsset(
     val albumNames: List<String> = emptyList(),
     val aaeSourceId: String? = null,
     val liveVideoSourceId: String? = null,
+    val applePhotosRevision: ApplePhotosAssetRevision? = null,
+    val applePhotosResourceType: ApplePhotosResourceType? = null,
 )
 
 data class StagedAsset(val asset: ImportAsset, val path: Path)

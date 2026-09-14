@@ -24,6 +24,7 @@ import kotlinx.serialization.json.Json
 import kotlin.concurrent.Volatile
 import platform.Foundation.NSDate
 import platform.Foundation.NSFileManager
+import platform.Foundation.NSISO8601DateFormatter
 import platform.Foundation.NSURL
 import platform.Photos.PHAsset
 import platform.Photos.PHAssetCollection
@@ -31,7 +32,14 @@ import platform.Photos.PHAssetResource
 import platform.Photos.PHAssetResourceManager
 import platform.Photos.PHAssetResourceRequestOptions
 import platform.Photos.PHAssetResourceTypeAdjustmentData
+import platform.Photos.PHAssetResourceTypeFullSizePairedVideo
+import platform.Photos.PHAssetResourceTypeFullSizePhoto
+import platform.Photos.PHAssetResourceTypeFullSizeVideo
 import platform.Photos.PHAssetResourceTypePairedVideo
+import platform.Photos.PHAssetResourceTypePhoto
+import platform.Photos.PHAssetResourceTypeVideo
+import platform.Photos.PHCloudIdentifierMapping
+import platform.Photos.cloudIdentifierMappingsForLocalIdentifiers
 import platform.Photos.PHAuthorizationStatusAuthorized
 import platform.Photos.PHAuthorizationStatusLimited
 import platform.Photos.PHPhotoLibrary
@@ -43,11 +51,13 @@ private data class ResourceRecord(
     val resourceId: String, val assetId: String, val type: String, val filename: String, val byteCount: Long,
     val capturedAt: String?, val modifiedAt: String?, val latitude: Double?, val longitude: Double?, val albumNames: List<String>,
     val pairedVideoResourceId: String?, val aaeResourceId: String?,
+    val cloudAssetId: String?, val resourceType: String,
 )
 
 private val json = Json
 private val resources = mutableMapOf<String, PHAssetResource>()
 private const val resourceIdSeparator = '\u001f'
+private val iso8601 = NSISO8601DateFormatter()
 @Volatile private var discoveredAssetCount = 0
 @Volatile private var totalAssetCount = 0
 
@@ -114,20 +124,49 @@ fun discoverJson(): CPointer<ByteVar>? = memScoped {
             .filterIsInstance<PHAssetResource>()
         val aae = assetResources.firstOrNull { it.type == PHAssetResourceTypeAdjustmentData }
         val pairedVideo = assetResources.firstOrNull { it.type == PHAssetResourceTypePairedVideo }
-        assetResources.forEach { resource ->
+            ?: assetResources.firstOrNull { it.type == PHAssetResourceTypeFullSizePairedVideo }
+        val primaryPhoto = assetResources.firstOrNull { it.type == PHAssetResourceTypePhoto }
+            ?: assetResources.firstOrNull { it.type == PHAssetResourceTypeFullSizePhoto }
+        val isEditedPhoto = assetResources.any { it.type == PHAssetResourceTypePhoto }
+            && assetResources.any { it.type == PHAssetResourceTypeFullSizePhoto }
+        val primaryVideo = assetResources.firstOrNull { it.type == PHAssetResourceTypeVideo }
+            ?: assetResources.firstOrNull { it.type == PHAssetResourceTypeFullSizeVideo }
+        val selected = mutableListOf<PHAssetResource>()
+        if (isEditedPhoto && aae != null) selected += aae
+        if (primaryPhoto != null && pairedVideo != null) selected += pairedVideo
+        when {
+            primaryPhoto != null -> selected += primaryPhoto
+            pairedVideo != null -> selected += pairedVideo
+            primaryVideo != null -> selected += primaryVideo
+        }
+        val cloudAssetId = (PHPhotoLibrary.sharedPhotoLibrary()
+            .cloudIdentifierMappingsForLocalIdentifiers(listOf(photo.localIdentifier))[photo.localIdentifier] as? PHCloudIdentifierMapping)
+            ?.cloudIdentifier?.stringValue
+        selected.forEach { resource ->
             val id = resourceId(photo, resource)
             resources[id] = resource
             val type = when (resource.type) {
                 PHAssetResourceTypeAdjustmentData -> "aae"
-                PHAssetResourceTypePairedVideo -> "pairedVideo"
+                PHAssetResourceTypePairedVideo, PHAssetResourceTypeFullSizePairedVideo -> "pairedVideo"
                 else -> "primary"
+            }
+            val resourceType = when (resource.type) {
+                PHAssetResourceTypePhoto -> "PHOTO"
+                PHAssetResourceTypeFullSizePhoto -> "FULL_SIZE_PHOTO"
+                PHAssetResourceTypeVideo -> "VIDEO"
+                PHAssetResourceTypeFullSizeVideo -> "FULL_SIZE_VIDEO"
+                PHAssetResourceTypeAdjustmentData -> "ADJUSTMENT_DATA"
+                PHAssetResourceTypePairedVideo -> "PAIRED_VIDEO"
+                PHAssetResourceTypeFullSizePairedVideo -> "FULL_SIZE_PAIRED_VIDEO"
+                else -> error("unexpected selected PhotoKit resource type")
             }
             val coordinates = photo.location?.coordinate?.useContents { latitude to longitude }
             // PhotoKit has no public per-resource byte-size API. Avoid using private KVC and do
             // not download iCloud originals during discovery merely to calculate it.
             records += ResourceRecord(id, photo.localIdentifier, type, resource.originalFilename, 0,
-                photo.creationDate?.description, photo.modificationDate?.description, coordinates?.first, coordinates?.second,
-                emptyList(), pairedVideo?.let { resourceId(photo, it) }, aae?.let { resourceId(photo, it) })
+                photo.creationDate?.let(iso8601::stringFromDate), photo.modificationDate?.let(iso8601::stringFromDate), coordinates?.first, coordinates?.second,
+                emptyList(), pairedVideo?.let { resourceId(photo, it) }, aae?.let { resourceId(photo, it) },
+                cloudAssetId, resourceType)
         }
         discoveredAssetCount += 1
     }

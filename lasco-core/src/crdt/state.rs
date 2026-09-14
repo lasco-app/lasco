@@ -324,6 +324,7 @@ pub struct CrdtState {
     pub(super) album_memberships: HashMap<(AlbumUuid, MediaUuid), ObservedRemoveSet>,
     pub(super) group_memberships: HashMap<(GroupUuid, MediaUuid), ObservedRemoveSet>,
     /// Immutable Apple Photos provenance entries, deduplicated by their CRDT dot.
+    #[serde(default)]
     pub(crate) apple_photos_resource_origins: Vec<ApplePhotosResourceOriginEntry>,
     /// Derived, in-memory query indexes. This cache is never serialized.
     #[serde(skip)]

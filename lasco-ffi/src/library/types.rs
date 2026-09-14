@@ -85,7 +85,7 @@ pub struct FfiApplePhotosAssetRevision {
 }
 
 /// Immutable provenance for one resource of an Apple Photos asset revision.
-/// `cloud_asset_id` is the serialized `PHCloudIdentifier` archival value.
+/// `cloud_asset_id` is the serialized `PHCloudIdentifier.stringValue`.
 #[derive(uniffi::Record, Debug)]
 pub struct FfiApplePhotosResourceOrigin {
     pub media_id: FfiMediaUuid,

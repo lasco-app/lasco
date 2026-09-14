@@ -88,6 +88,8 @@ protocol LibraryRepositoryProtocol: Sendable {
 
     func importMedia(source: MediaImportSource, albumID: FfiAlbumUuid?) async throws -> FfiMediaUuid
     func importMediaWithoutNotification(source: MediaImportSource, albumID: FfiAlbumUuid?) async throws -> FfiMediaUuid
+    func applePhotosAssetRevisionMediaIDs(_ revision: FfiApplePhotosAssetRevision) async throws -> [FfiMediaUuid]?
+    func recordApplePhotosResourceOrigin(_ origin: FfiApplePhotosResourceOrigin) async throws
     func importMediaBatch(_ sources: [MediaImportSource], albumID: FfiAlbumUuid?) async throws -> [FfiMediaUuid]
     func setMediaThumbnail(mediaID: FfiMediaUuid, data: Data) async throws
     func evictLocalData(mediaIDs: [FfiMediaUuid]) async throws
@@ -586,6 +588,16 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         try library.addMediaToAlbum(albumId: albumID, mediaId: mediaID)
     }
 
+    func applePhotosAssetRevisionMediaIDs(_ revision: FfiApplePhotosAssetRevision) async throws -> [FfiMediaUuid]? {
+        try ensureOpen()
+        return try library.applePhotosAssetRevisionMediaIds(revision: revision)
+    }
+
+    func recordApplePhotosResourceOrigin(_ origin: FfiApplePhotosResourceOrigin) async throws {
+        try ensureOpen()
+        try library.recordApplePhotosResourceOrigin(origin: origin)
+    }
+
     func removeMediaFromAlbum(albumID: FfiAlbumUuid, mediaID: FfiMediaUuid) async throws {
         try ensureOpen()
         try library.removeMediaFromAlbum(albumId: albumID, mediaId: mediaID)
@@ -1047,6 +1059,8 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     func createGroupFromSelectedMedia(mediaIDs: [FfiMediaUuid], albumID: FfiAlbumUuid) async throws { try await storage.createGroupFromSelectedMedia(mediaIDs: mediaIDs, albumID: albumID) }
     func importMedia(source: MediaImportSource, albumID: FfiAlbumUuid?) async throws -> FfiMediaUuid { try await storage.importMedia(source: source, albumID: albumID) }
     func importMediaWithoutNotification(source: MediaImportSource, albumID: FfiAlbumUuid?) async throws -> FfiMediaUuid { try await storage.importMediaWithoutNotification(source: source, albumID: albumID) }
+    func applePhotosAssetRevisionMediaIDs(_ revision: FfiApplePhotosAssetRevision) async throws -> [FfiMediaUuid]? { try await storage.applePhotosAssetRevisionMediaIDs(revision) }
+    func recordApplePhotosResourceOrigin(_ origin: FfiApplePhotosResourceOrigin) async throws { try await storage.recordApplePhotosResourceOrigin(origin) }
     func importMediaBatch(_ sources: [MediaImportSource], albumID: FfiAlbumUuid?) async throws -> [FfiMediaUuid] { try await storage.importMediaBatch(sources, albumID: albumID) }
     func setMediaThumbnail(mediaID: FfiMediaUuid, data: Data) async throws { try await storage.setMediaThumbnail(mediaID: mediaID, data: data) }
     func evictLocalData(mediaIDs: [FfiMediaUuid]) async throws { try await storage.evictLocalData(mediaIDs: mediaIDs) }

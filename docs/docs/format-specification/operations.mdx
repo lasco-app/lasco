@@ -112,7 +112,7 @@ entity exist.
 </SchemaCard>
 <SchemaCard title="ApplePhotosResourceOriginAdded" description="Records immutable provenance for one imported or hash-reused resource of an Apple Photos asset revision.">
   <Field name="media_id" type="MediaUuid" note="The newly created or content-hash-reused Lasco media item." />
-  <Field name="cloud_asset_id" type="ApplePhotosCloudAssetId" note="Opaque serialized PHCloudIdentifier archival value for the owning PHAsset; never a PHAsset local identifier." />
+  <Field name="cloud_asset_id" type="ApplePhotosCloudAssetId" note="Opaque serialized PHCloudIdentifier stringValue for the owning PHAsset; never a PHAsset local identifier." />
   <Field name="modification_date" type="Option&lt;DateTime&lt;Utc&gt;&gt;" note="The owning PHAsset.modificationDate. It is deliberately repeated on every resource origin." />
   <Field name="resource_type" type="ApplePhotosResourceType" note="Closed PhotoKit-role enum: photo, full-size photo/video, adjustment data, or paired-video variants." />
   <Field name="filename" type="String" />

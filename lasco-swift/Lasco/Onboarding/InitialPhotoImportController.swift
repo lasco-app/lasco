@@ -48,7 +48,7 @@ final class InitialPhotoImportController {
     func scanPhotoLibrary() async {
         guard !isScanning else { return }
         isScanning = true
-        scan = await photoImporter.scanLibrary()
+        scan = await photoImporter.scanLibrary(repository: repository)
         isScanning = false
     }
 

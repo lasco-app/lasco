@@ -6,6 +6,7 @@ import app.lasco.importer.model.ImportAsset
 import app.lasco.importer.model.ImportPlan
 import app.lasco.importer.model.ImportProgress
 import app.lasco.importer.model.ImportRunState
+import app.lasco.importer.model.ApplePhotosResourceDescriptor
 import app.lasco.importer.model.RemoteBenchmark
 import app.lasco.importer.persistence.ImportManifestStore
 import app.lasco.importer.source.ImportSourceReader
@@ -35,7 +36,10 @@ class ImportCoordinator(
         val jobId = UUID.randomUUID().toString()
         manifest.createJob(jobId, reader.source, chunkSize)
         _progress.value = ImportProgress(ImportRunState.SCANNING, 0, 0, 0, 0, detail = "Discovering ${reader.source}")
-        val assets = reader.discover()
+        val assets = reader.discover().let { discovered ->
+            val alreadyImported = alreadyImportedMedia(discovered)
+            discovered.filterNot { alreadyImported.containsKey(it) }
+        }
         manifest.recordDiscovery(jobId, assets)
         manifest.markReady(jobId)
         val completed = manifest.completedCount(jobId)
@@ -92,12 +96,17 @@ class ImportCoordinator(
     fun requestPause(jobId: String) = manifest.requestPause(jobId)
 
     private suspend fun importChunk(jobId: String, reader: ImportSourceReader, assets: List<ImportAsset>, chunk: Int) {
+        val alreadyImported = alreadyImportedMedia(assets)
+        for ((asset, mediaId) in alreadyImported) {
+            manifest.markImported(jobId, asset.sourceId, mediaId, true, chunk)
+            addAlbumMembership(jobId, asset, mediaId)
+        }
         val ordered = assets.sortedBy { when (it.resourceRole) {
             app.lasco.importer.model.ResourceRole.AAE_SIDECAR -> 0
             app.lasco.importer.model.ResourceRole.LIVE_PHOTO_VIDEO -> 1
             app.lasco.importer.model.ResourceRole.PRIMARY -> 2
         } }
-        ordered.forEach { asset ->
+        ordered.filterNot { it in alreadyImported }.forEach { asset ->
             val staged = reader.stage(asset, stagingRoot.resolve(jobId).resolve(chunk.toString()))
             manifest.markStaged(jobId, asset.sourceId, staged.path)
             val aaeId = asset.aaeSourceId?.let { manifest.mediaIdFor(jobId, it) }
@@ -109,14 +118,36 @@ class ImportCoordinator(
                 asset.liveVideoSourceId?.let { require(videoId != null) { "missing staged Live Photo video: $it" } }
             }
             val imported = gateway.importMedia(staged.path, asset.metadata, aaeId, videoId)
-            manifest.markImported(jobId, asset.sourceId, imported.mediaId, imported.alreadyExisted, chunk)
-            asset.albumNames.forEach { albumName ->
-                val albumId = manifest.albumId(jobId, albumName) ?: gateway.createAlbum(albumName).also {
-                    manifest.recordAlbum(jobId, albumName, it)
-                }
-                gateway.addMediaToAlbum(albumId, imported.mediaId)
+            val revision = asset.applePhotosRevision
+            val resourceType = asset.applePhotosResourceType
+            if (revision != null && resourceType != null) {
+                gateway.recordApplePhotosResourceOrigin(imported.mediaId, revision, resourceType, asset.displayName)
             }
+            manifest.markImported(jobId, asset.sourceId, imported.mediaId, imported.alreadyExisted, chunk)
+            addAlbumMembership(jobId, asset, imported.mediaId)
             Files.deleteIfExists(staged.path)
+        }
+    }
+
+    /** Resolves a complete parent asset in one metadata-only lookup, never per resource. */
+    private fun alreadyImportedMedia(assets: List<ImportAsset>): Map<ImportAsset, String> = buildMap {
+        assets.groupBy { it.applePhotosRevision }.forEach { (revision, members) ->
+            if (revision == null) return@forEach
+            val mediaIds = gateway.applePhotosAssetRevisionMediaIds(revision) ?: return@forEach
+            members.forEach { asset ->
+                val type = asset.applePhotosResourceType ?: return@forEach
+                val descriptor = ApplePhotosResourceDescriptor(type, asset.displayName)
+                mediaIds[descriptor]?.let { put(asset, it) }
+            }
+        }
+    }
+
+    private fun addAlbumMembership(jobId: String, asset: ImportAsset, mediaId: String) {
+        asset.albumNames.forEach { albumName ->
+            val albumId = manifest.albumId(jobId, albumName) ?: gateway.createAlbum(albumName).also {
+                manifest.recordAlbum(jobId, albumName, it)
+            }
+            gateway.addMediaToAlbum(albumId, mediaId)
         }
     }
 
