@@ -46,10 +46,12 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.platform.Font
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -78,11 +80,11 @@ import java.nio.file.Path
 import uniffi.lasco_ffi.listLibraries
 
 private enum class Page(val stage: Int) {
-    DESTINATION(0), CLOUD(0), REMOTE_TYPE(0), S3(0), SMB(0), LOCAL(0),
-    SOURCE(1), TAKEOUT(1), PHOTOS(1), REVIEW(2), IMPORT(3),
+    WELCOME(0), DESTINATION(1), CLOUD(1), S3(1), SMB(1),
+    SOURCE(2), TAKEOUT(2), PHOTOS(2), REVIEW(3), IMPORT(4),
 }
 
-private enum class RemoteType { CLOUD, S3, SMB, LOCAL }
+private enum class RemoteType { CLOUD, S3, SMB }
 private enum class SourceType { TAKEOUT, PHOTOS }
 
 // The Plaster theme used by lasco-android.
@@ -103,11 +105,11 @@ private val SpaceGrotesk = FontFamily(
     Font("space_grotesk_bold.ttf", FontWeight.Bold),
 )
 private val JetBrainsMono = FontFamily(Font("jetbrains_mono_regular.ttf"))
-private val LascoHeading = TextStyle(fontFamily = Jersey10, fontSize = 21.sp)
-private val LascoBody = TextStyle(fontFamily = SpaceGrotesk, fontSize = 13.sp)
-private val LascoLabel = TextStyle(fontFamily = Jersey10, fontSize = 10.sp, letterSpacing = 1.sp)
-private val LascoPixel = TextStyle(fontFamily = VT323, fontSize = 12.sp)
-private val LascoMono = TextStyle(fontFamily = JetBrainsMono, fontSize = 11.sp)
+private val LascoHeading = TextStyle(fontFamily = Jersey10, fontSize = 26.sp)
+private val LascoBody = TextStyle(fontFamily = SpaceGrotesk, fontSize = 15.sp)
+private val LascoLabel = TextStyle(fontFamily = Jersey10, fontSize = 12.sp, letterSpacing = 1.sp)
+private val LascoPixel = TextStyle(fontFamily = VT323, fontSize = 15.sp)
+private val LascoMono = TextStyle(fontFamily = JetBrainsMono, fontSize = 13.sp)
 
 fun main() = application {
     Window(onCloseRequest = ::exitApplication, title = "Lasco Desktop Importer") {
@@ -161,7 +163,7 @@ private fun FfiReadinessGate(content: @Composable () -> Unit) {
 
 @Composable
 private fun ImporterWizard() {
-    var page by remember { mutableStateOf(Page.DESTINATION) }
+    var page by remember { mutableStateOf(Page.WELCOME) }
     var forward by remember { mutableStateOf(true) }
     var remoteType by remember { mutableStateOf<RemoteType?>(null) }
     var sourceType by remember { mutableStateOf<SourceType?>(null) }
@@ -169,7 +171,7 @@ private fun ImporterWizard() {
     var libraryUser by remember { mutableStateOf("") }
     var libraryPassword by remember { mutableStateOf("") }
     var remoteName by remember { mutableStateOf("") }
-    var cloudUrl by remember { mutableStateOf("https://api.lasco.app") }
+    var cloudUrl by remember { mutableStateOf("https://cloud.getlasco.app") }
     var cloudEmail by remember { mutableStateOf("") }
     var cloudPassword by remember { mutableStateOf("") }
     var endpoint by remember { mutableStateOf("") }
@@ -184,7 +186,6 @@ private fun ImporterWizard() {
     var smbUser by remember { mutableStateOf("") }
     var smbPassword by remember { mutableStateOf("") }
     var domain by remember { mutableStateOf("") }
-    var localPath by remember { mutableStateOf("") }
     var remoteNames by remember { mutableStateOf(emptyList<String>()) }
     var gateway by remember { mutableStateOf<LascoGateway?>(null) }
     var connecting by remember { mutableStateOf(false) }
@@ -205,7 +206,7 @@ private fun ImporterWizard() {
     val scope = rememberCoroutineScope()
 
     fun go(to: Page) {
-        forward = to.stage >= page.stage
+        forward = to.ordinal > page.ordinal
         page = to
     }
 
@@ -219,7 +220,6 @@ private fun ImporterWizard() {
                     RemoteType.CLOUD -> ExistingRemote.LascoCloud(remoteName.ifBlank { "Lasco Cloud" }, cloudUrl, cloudEmail, cloudPassword)
                     RemoteType.S3 -> ExistingRemote.S3(remoteName, endpoint, bucket, region, prefix, accessKey, secretKey)
                     RemoteType.SMB -> ExistingRemote.Smb(remoteName, server, port.toIntOrNull() ?: 0, share, prefix, smbUser, smbPassword, domain.ifBlank { null })
-                    RemoteType.LOCAL -> ExistingRemote.FixedPath(remoteName, localPath)
                 }
                 val connected = withContext(Dispatchers.IO) {
                     ExistingLibraryConnector.connect(
@@ -307,21 +307,19 @@ private fun ImporterWizard() {
             ) { current ->
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(28.dp)) {
                     when (current) {
+                        Page.WELCOME -> WelcomePage()
                         Page.DESTINATION -> DestinationPicker(
                             onCloud = { remoteType = RemoteType.CLOUD; remoteName = "Lasco Cloud"; go(Page.CLOUD) },
-                            onStorage = { go(Page.REMOTE_TYPE) },
-                        )
-                        Page.REMOTE_TYPE -> RemotePicker(
                             onS3 = { remoteType = RemoteType.S3; go(Page.S3) },
                             onSmb = { remoteType = RemoteType.SMB; go(Page.SMB) },
-                            onLocal = { remoteType = RemoteType.LOCAL; go(Page.LOCAL) },
                         )
-                        Page.CLOUD, Page.S3, Page.SMB, Page.LOCAL -> ConnectionForm(
+                        Page.CLOUD, Page.S3, Page.SMB -> ConnectionForm(
                             type = remoteType ?: RemoteType.CLOUD,
+                            showCloudUrl = System.getProperty("lasco.importer.release") == "false",
                             nickname = nickname, setNickname = { nickname = it }, libraryUser = libraryUser, setLibraryUser = { libraryUser = it }, libraryPassword = libraryPassword, setLibraryPassword = { libraryPassword = it },
                             remoteName = remoteName, setRemoteName = { remoteName = it }, cloudUrl = cloudUrl, setCloudUrl = { cloudUrl = it }, cloudEmail = cloudEmail, setCloudEmail = { cloudEmail = it }, cloudPassword = cloudPassword, setCloudPassword = { cloudPassword = it },
                             endpoint = endpoint, setEndpoint = { endpoint = it }, bucket = bucket, setBucket = { bucket = it }, region = region, setRegion = { region = it }, prefix = prefix, setPrefix = { prefix = it }, accessKey = accessKey, setAccessKey = { accessKey = it }, secretKey = secretKey, setSecretKey = { secretKey = it },
-                            server = server, setServer = { server = it }, port = port, setPort = { port = it }, share = share, setShare = { share = it }, smbUser = smbUser, setSmbUser = { smbUser = it }, smbPassword = smbPassword, setSmbPassword = { smbPassword = it }, domain = domain, setDomain = { domain = it }, localPath = localPath, setLocalPath = { localPath = it }, error = connectionError,
+                            server = server, setServer = { server = it }, port = port, setPort = { port = it }, share = share, setShare = { share = it }, smbUser = smbUser, setSmbUser = { smbUser = it }, smbPassword = smbPassword, setSmbPassword = { smbPassword = it }, domain = domain, setDomain = { domain = it }, error = connectionError,
                         )
                         Page.SOURCE -> SourcePicker(
                             onTakeout = { sourceType = SourceType.TAKEOUT; go(Page.TAKEOUT) },
@@ -353,51 +351,71 @@ private fun ImporterWizard() {
             page = page, connecting = connecting, discovering = discovering, archivesReady = archives.isNotEmpty(), photosReady = photosAllowed,
             onBack = {
                 when (page) {
+                    Page.DESTINATION -> go(Page.WELCOME)
                     Page.CLOUD -> go(Page.DESTINATION)
-                    Page.REMOTE_TYPE -> go(Page.DESTINATION)
-                    Page.S3, Page.SMB, Page.LOCAL -> go(Page.REMOTE_TYPE)
+                    Page.S3, Page.SMB -> go(Page.DESTINATION)
                     Page.SOURCE -> go(Page.DESTINATION)
                     Page.TAKEOUT, Page.PHOTOS -> go(Page.SOURCE)
                     Page.REVIEW -> go(if (sourceType == SourceType.PHOTOS) Page.PHOTOS else Page.TAKEOUT)
                     Page.IMPORT -> go(Page.REVIEW)
-                    Page.DESTINATION -> Unit
+                    Page.WELCOME -> Unit
                 }
             },
             onConnect = ::connect,
-            onContinue = { if (page == Page.REVIEW) startImport() else discover() },
+            onContinue = { when (page) {
+                Page.WELCOME -> go(Page.DESTINATION)
+                Page.REVIEW -> startImport()
+                else -> discover()
+            } },
         )
     }
 }
 
 @Composable
 private fun ProgressHeader(stage: Int, remotes: List<String>) {
-    Text("LASCO", color = Ink, style = LascoHeading, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+    Text("LASCO", color = Ink, style = LascoHeading.copy(fontSize = 30.sp), fontWeight = FontWeight.Black, letterSpacing = 2.sp)
     Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        listOf("1. DESTINATION", "2. SOURCE", "3. REVIEW", "4. IMPORT").forEachIndexed { index, label ->
-            Text(label, color = if (index == stage) Accent else InkMuted, style = LascoLabel, fontWeight = FontWeight.Bold)
+        listOf("1. HOW IT WORKS", "2. DESTINATION", "3. SOURCE", "4. REVIEW", "5. IMPORT").forEachIndexed { index, label ->
+            Text(label, color = if (index == stage) Pink else InkMuted, style = LascoLabel.copy(fontSize = 16.sp), fontWeight = FontWeight.Bold)
         }
     }
-    Text(if (remotes.isEmpty()) "NO REMOTE CONNECTED" else "CONNECTED: ${remotes.joinToString()}", color = if (remotes.isEmpty()) InkMuted else Good, style = LascoLabel, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 7.dp))
-}
-
-@Composable
-private fun DestinationPicker(onCloud: () -> Unit, onStorage: () -> Unit) {
-    PageTitle("Where should your photos go?", "Connect the destination first. There is no default remote: the importer connects one explicitly before it reads a source.")
-    Spacer(Modifier.height(24.dp))
-    Column(Modifier.widthIn(max = 460.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        LascoButton("LASCO CLOUD", onCloud)
-        LascoButton("S3, SMB, OR LOCAL STORAGE", onStorage, primary = false)
+    if (remotes.isNotEmpty()) {
+        Text("CONNECTED: ${remotes.joinToString()}", color = Good, style = LascoLabel.copy(fontSize = 12.sp), fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 7.dp))
     }
 }
 
 @Composable
-private fun RemotePicker(onS3: () -> Unit, onSmb: () -> Unit, onLocal: () -> Unit) {
-    PageTitle("Add a storage remote", "Choose the type of remote that contains the existing Lasco library.")
+private fun WelcomePage() {
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("How importing works", color = Ink, style = LascoHeading, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(24.dp))
+        Column(Modifier.widthIn(max = 620.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            HowItWorksItem("1", "You need an existing Lasco library.")
+            HowItWorksItem("2", "Set up the remote or remotes used to connect to it.")
+            HowItWorksItem("3", "Choose Apple Photos / iCloud, or Google Takeout with its ZIP archives.")
+            HowItWorksItem("4", "Review the import, then start. You can safely pause and resume it.")
+        }
+    }
+}
+
+@Composable
+private fun HowItWorksItem(number: String, text: String) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start, verticalAlignment = Alignment.Top) {
+        Text(number, color = Color.White, style = LascoLabel.copy(fontSize = 13.sp), fontWeight = FontWeight.Bold, modifier = Modifier.background(Accent).border(1.dp, Ink).padding(horizontal = 8.dp, vertical = 4.dp))
+        Text(text, color = InkSub, style = LascoBody.copy(fontSize = 16.sp), textAlign = TextAlign.Start, modifier = Modifier.padding(start = 12.dp, top = 3.dp).widthIn(max = 500.dp))
+    }
+}
+
+@Composable
+private fun DestinationPicker(onCloud: () -> Unit, onS3: () -> Unit, onSmb: () -> Unit) {
+    PageTitle("Import photos into Lasco", "Connect an existing Lasco library. Imports run in resumable chunks and send each chunk to every connected remote.")
     Spacer(Modifier.height(24.dp))
-    Column(Modifier.widthIn(max = 460.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        LascoButton("S3-COMPATIBLE STORAGE", onS3)
-        LascoButton("SMB NETWORK SHARE", onSmb, primary = false)
-        LascoButton("LOCAL FOLDER", onLocal, primary = false)
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.widthIn(max = 460.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            LascoButton("LASCO CLOUD", onCloud)
+            LascoButton("S3-COMPATIBLE STORAGE", onS3)
+            LascoButton("SMB NETWORK SHARE", onSmb, primary = false)
+        }
     }
 }
 
@@ -405,32 +423,42 @@ private fun RemotePicker(onS3: () -> Unit, onSmb: () -> Unit, onLocal: () -> Uni
 private fun SourcePicker(onTakeout: () -> Unit, onPhotos: () -> Unit) {
     PageTitle("Where are your photos now?", "Choose a source to open its dedicated setup. This selection continues immediately, with no Continue button on this screen.")
     Spacer(Modifier.height(24.dp))
-    Column(Modifier.widthIn(max = 460.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        LascoButton("GOOGLE TAKEOUT", onTakeout)
-        if (System.getProperty("os.name").lowercase().contains("mac")) LascoButton("APPLE PHOTOS / ICLOUD", onPhotos, primary = false)
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.widthIn(max = 460.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            LascoButton("GOOGLE TAKEOUT", onTakeout)
+            if (System.getProperty("os.name").lowercase().contains("mac")) LascoButton("APPLE PHOTOS / ICLOUD", onPhotos, primary = false)
+        }
     }
 }
 
 @Composable
 private fun ConnectionForm(
     type: RemoteType,
+    showCloudUrl: Boolean,
     nickname: String, setNickname: (String) -> Unit, libraryUser: String, setLibraryUser: (String) -> Unit, libraryPassword: String, setLibraryPassword: (String) -> Unit,
     remoteName: String, setRemoteName: (String) -> Unit, cloudUrl: String, setCloudUrl: (String) -> Unit, cloudEmail: String, setCloudEmail: (String) -> Unit, cloudPassword: String, setCloudPassword: (String) -> Unit,
     endpoint: String, setEndpoint: (String) -> Unit, bucket: String, setBucket: (String) -> Unit, region: String, setRegion: (String) -> Unit, prefix: String, setPrefix: (String) -> Unit, accessKey: String, setAccessKey: (String) -> Unit, secretKey: String, setSecretKey: (String) -> Unit,
-    server: String, setServer: (String) -> Unit, port: String, setPort: (String) -> Unit, share: String, setShare: (String) -> Unit, smbUser: String, setSmbUser: (String) -> Unit, smbPassword: String, setSmbPassword: (String) -> Unit, domain: String, setDomain: (String) -> Unit,
-    localPath: String, setLocalPath: (String) -> Unit, error: String?,
+    server: String, setServer: (String) -> Unit, port: String, setPort: (String) -> Unit, share: String, setShare: (String) -> Unit, smbUser: String, setSmbUser: (String) -> Unit, smbPassword: String, setSmbPassword: (String) -> Unit, domain: String, setDomain: (String) -> Unit, error: String?,
 ) {
-    PageTitle("Connect ${if (type == RemoteType.CLOUD) "Lasco Cloud" else "an existing library"}", "All passwords use the standard text field, as requested. Connect adds the remote through the existing Lasco FFI.")
+    val title = when (type) {
+        RemoteType.CLOUD -> "Connect Lasco Cloud"
+        RemoteType.S3 -> "Connect an S3 remote"
+        RemoteType.SMB -> "Connect an SMB remote"
+    }
+    PageTitle(title, "Password and secret-key fields are protected while typing. Connect adds the remote through the existing Lasco FFI.")
     Spacer(Modifier.height(20.dp))
     Column(Modifier.widthIn(max = 620.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         LascoField("Library nickname", nickname, setNickname, "family-library")
         LascoField("Library username", libraryUser, setLibraryUser)
-        LascoField("Library password", libraryPassword, setLibraryPassword)
+        LascoField("Library password", libraryPassword, setLibraryPassword, secure = true)
         when (type) {
-            RemoteType.CLOUD -> { LascoField("Cloud URL", cloudUrl, setCloudUrl); LascoField("Cloud email", cloudEmail, setCloudEmail); LascoField("Cloud password", cloudPassword, setCloudPassword) }
-            RemoteType.S3 -> { LascoField("Remote name", remoteName, setRemoteName); LascoField("Endpoint URL", endpoint, setEndpoint); LascoField("Bucket", bucket, setBucket); LascoField("Region", region, setRegion); LascoField("Path prefix", prefix, setPrefix); LascoField("Access key", accessKey, setAccessKey); LascoField("Secret key", secretKey, setSecretKey) }
-            RemoteType.SMB -> { LascoField("Remote name", remoteName, setRemoteName); LascoField("Server address", server, setServer); LascoField("Port", port, setPort); LascoField("Shared folder", share, setShare); LascoField("Path prefix", prefix, setPrefix); LascoField("SMB username", smbUser, setSmbUser); LascoField("SMB password", smbPassword, setSmbPassword); LascoField("Domain or workgroup", domain, setDomain) }
-            RemoteType.LOCAL -> { LascoField("Remote name", remoteName, setRemoteName); LascoField("Library folder", localPath, setLocalPath, "/Volumes/Archive/Lasco") }
+            RemoteType.CLOUD -> {
+                if (showCloudUrl) LascoField("Cloud URL", cloudUrl, setCloudUrl)
+                LascoField("Cloud email", cloudEmail, setCloudEmail)
+                LascoField("Cloud password", cloudPassword, setCloudPassword, secure = true)
+            }
+            RemoteType.S3 -> { LascoField("Remote name", remoteName, setRemoteName); LascoField("Endpoint URL", endpoint, setEndpoint); LascoField("Bucket", bucket, setBucket); LascoField("Region", region, setRegion); LascoField("Path prefix", prefix, setPrefix); LascoField("Access key", accessKey, setAccessKey); LascoField("Secret key", secretKey, setSecretKey, secure = true) }
+            RemoteType.SMB -> { LascoField("Remote name", remoteName, setRemoteName); LascoField("Server address", server, setServer); LascoField("Port", port, setPort); LascoField("Shared folder", share, setShare); LascoField("Path prefix", prefix, setPrefix); LascoField("SMB username", smbUser, setSmbUser); LascoField("SMB password", smbPassword, setSmbPassword, secure = true); LascoField("Domain or workgroup", domain, setDomain) }
         }
         error?.let { ErrorMessage(it) }
     }
@@ -485,20 +513,20 @@ private fun ImportPage(progress: ImportProgress, running: Boolean, error: String
 
 @Composable
 private fun WizardFooter(page: Page, connecting: Boolean, discovering: Boolean, archivesReady: Boolean, photosReady: Boolean, onBack: () -> Unit, onConnect: () -> Unit, onContinue: () -> Unit) {
-    val picker = page == Page.DESTINATION || page == Page.REMOTE_TYPE || page == Page.SOURCE
-    val connectPage = page in setOf(Page.CLOUD, Page.S3, Page.SMB, Page.LOCAL)
-    val continueEnabled = (page == Page.TAKEOUT && archivesReady) || (page == Page.PHOTOS && photosReady) || page == Page.REVIEW
+    val picker = page == Page.DESTINATION || page == Page.SOURCE
+    val connectPage = page in setOf(Page.CLOUD, Page.S3, Page.SMB)
+    val continueEnabled = page == Page.WELCOME || (page == Page.TAKEOUT && archivesReady) || (page == Page.PHOTOS && photosReady) || page == Page.REVIEW
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        if (page != Page.DESTINATION) LascoButton("BACK", onBack, primary = false, fillWidth = false)
+        if (page != Page.WELCOME) LascoButton("BACK", onBack, primary = false, fillWidth = false)
         Spacer(Modifier.weight(1f))
         if (connectPage) LascoButton(if (connecting) "CONNECTING…" else "CONNECT REMOTE", onConnect, enabled = !connecting, fillWidth = false)
         if (!picker && !connectPage && page != Page.IMPORT) LascoButton(if (discovering) "DISCOVERING…" else if (page == Page.REVIEW) "START IMPORT" else "CONTINUE", onContinue, enabled = continueEnabled && !discovering, fillWidth = false)
     }
 }
 
-@Composable private fun PageTitle(title: String, text: String) { Text(title, color = Ink, style = LascoHeading, fontWeight = FontWeight.Bold); Spacer(Modifier.height(8.dp)); Text(text, color = InkSub, style = LascoBody.copy(fontSize = 14.sp, lineHeight = 20.sp), modifier = Modifier.widthIn(max = 680.dp)) }
-@Composable private fun Detail(label: String, value: String) { Row(Modifier.padding(vertical = 5.dp)) { Text(label, color = InkMuted, style = LascoLabel, fontWeight = FontWeight.Bold, modifier = Modifier.widthIn(min = 120.dp)); Text(value, color = Ink, style = LascoBody.copy(fontSize = 12.sp)) } }
-@Composable private fun ErrorMessage(text: String) { Text(text, color = Error, style = LascoBody.copy(fontSize = 12.sp), modifier = Modifier.fillMaxWidth().background(Error.copy(alpha = .08f)).border(1.dp, Error).padding(10.dp)) }
+@Composable private fun PageTitle(title: String, text: String) { Text(title, color = Ink, style = LascoHeading, fontWeight = FontWeight.Bold); Spacer(Modifier.height(8.dp)); Text(text, color = InkSub, style = LascoBody.copy(fontSize = 16.sp, lineHeight = 23.sp), modifier = Modifier.widthIn(max = 680.dp)) }
+@Composable private fun Detail(label: String, value: String) { Row(Modifier.padding(vertical = 5.dp)) { Text(label, color = InkMuted, style = LascoLabel, fontWeight = FontWeight.Bold, modifier = Modifier.widthIn(min = 120.dp)); Text(value, color = Ink, style = LascoBody.copy(fontSize = 14.sp)) } }
+@Composable private fun ErrorMessage(text: String) { Text(text, color = Error, style = LascoBody.copy(fontSize = 14.sp), modifier = Modifier.fillMaxWidth().background(Error.copy(alpha = .08f)).border(1.dp, Error).padding(10.dp)) }
 
 @Composable
 private fun LascoButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, primary: Boolean = true, enabled: Boolean = true, fillWidth: Boolean = true) {
@@ -509,13 +537,13 @@ private fun LascoButton(label: String, onClick: () -> Unit, modifier: Modifier =
 
 /** Tab is data in importer fields; it must not move focus to the next field. */
 @Composable
-private fun LascoField(label: String, value: String, onValueChange: (String) -> Unit, placeholder: String = "") {
+private fun LascoField(label: String, value: String, onValueChange: (String) -> Unit, placeholder: String = "", secure: Boolean = false) {
     var fieldValue by remember { mutableStateOf(TextFieldValue(value)) }
     LaunchedEffect(value) { if (value != fieldValue.text) fieldValue = TextFieldValue(value, TextRange(value.length)) }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(label.uppercase(), color = InkSub, style = LascoLabel, fontWeight = FontWeight.Bold)
         BasicTextField(
-            value = fieldValue, onValueChange = { fieldValue = it; onValueChange(it.text) }, textStyle = LascoBody.copy(color = Ink), cursorBrush = SolidColor(Pink), visualTransformation = VisualTransformation.None,
+            value = fieldValue, onValueChange = { fieldValue = it; onValueChange(it.text) }, textStyle = LascoBody.copy(color = Ink), cursorBrush = SolidColor(Pink), visualTransformation = if (secure) PasswordVisualTransformation() else VisualTransformation.None,
             modifier = Modifier.fillMaxWidth().onPreviewKeyEvent { event ->
                 if (event.key == Key.Tab && event.type == KeyEventType.KeyDown) {
                     val selection = fieldValue.selection

@@ -1,4 +1,5 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import org.gradle.api.tasks.JavaExec
 
 plugins {
     kotlin("jvm") version "2.4.10"
@@ -41,6 +42,12 @@ compose.desktop {
             vendor = "Lasco"
         }
     }
+}
+
+tasks.withType<JavaExec>().configureEach {
+    // Packaged launchers default to release behavior; only the local development `run` task
+    // exposes the endpoint field for staging or local-cloud testing.
+    if (name == "run") systemProperty("lasco.importer.release", "false")
 }
 
 tasks.register<Exec>("generateUniffiKotlin") {
