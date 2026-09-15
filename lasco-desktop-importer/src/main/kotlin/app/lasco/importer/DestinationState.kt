@@ -6,6 +6,7 @@ import app.lasco.importer.ffi.ImporterLibrarySummary
 internal data class DestinationUiState(
     val libraries: List<ImporterLibrarySummary> = emptyList(),
     val loading: Boolean = true,
+    val selectedLibraryId: String? = null,
     val dialog: DestinationDialog? = null,
     val errorByLibraryId: Map<String, String> = emptyMap(),
     val listError: String? = null,
@@ -20,6 +21,7 @@ internal sealed interface DestinationDialog {
 internal fun DestinationUiState.loaded(libraries: List<ImporterLibrarySummary>) = copy(
     libraries = libraries,
     loading = false,
+    selectedLibraryId = selectedLibraryId?.takeIf { selected -> libraries.any { it.libraryId == selected } },
     listError = null,
 )
 

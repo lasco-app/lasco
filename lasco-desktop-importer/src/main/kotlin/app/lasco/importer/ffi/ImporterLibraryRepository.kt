@@ -60,6 +60,19 @@ interface ImporterLibraryRepository : AutoCloseable {
     suspend fun closeAll()
 }
 
+/** Keeps the rollback guarantee independently testable from UniFFI handles. */
+internal suspend fun initializeRemoteOrRollback(
+    initialize: suspend () -> Unit,
+    remove: suspend () -> Unit,
+) {
+    try {
+        initialize()
+    } catch (failure: Throwable) {
+        runCatching { remove() }
+        throw failure
+    }
+}
+
 /** Owns every FFI handle. Composables only dispatch events and render summaries/results. */
 class UniffiImporterLibraryRepository(private val appSupport: Path) : ImporterLibraryRepository {
     private val openGateways = mutableMapOf<String, UniffiLascoGateway>()
@@ -120,12 +133,10 @@ class UniffiImporterLibraryRepository(private val appSupport: Path) : ImporterLi
             is RemoteConfig.S3 -> library.addRemoteS3(remote.name, remote.endpoint, remote.bucket, remote.region, remote.prefix, remote.accessKey, remote.secretKey)
             is RemoteConfig.Smb -> library.addRemoteSmb(remote.name, remote.server, remote.port.toUShort(), remote.share, remote.prefix, remote.username, remote.password, remote.domain)
         }
-        try {
-            library.initializeRemote(remoteId, appDir)
-        } catch (failure: Throwable) {
-            runCatching { library.removeRemote(remoteId) }
-            throw failure
-        }
+        initializeRemoteOrRollback(
+            initialize = { library.initializeRemote(remoteId, appDir) },
+            remove = { library.removeRemote(remoteId) },
+        )
     }
 
     override suspend fun deleteLocalSetup(libraryId: String) {

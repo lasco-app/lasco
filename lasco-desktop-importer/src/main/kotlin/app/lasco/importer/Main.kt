@@ -443,7 +443,7 @@ private fun ImporterWizard() {
                             state = destinations,
                             onRefresh = ::refreshDestinations,
                             onUse = { summary ->
-                                destinations = destinations.clearLibraryError(summary.libraryId)
+                                destinations = destinations.copy(selectedLibraryId = summary.libraryId).clearLibraryError(summary.libraryId)
                                 scope.launch {
                                     when (val opened = withContext(Dispatchers.IO) { libraryRepository.openCached(summary.libraryId) }) {
                                         is OpenResult.Open -> {

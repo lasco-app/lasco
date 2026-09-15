@@ -5,6 +5,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertIs
 
 class DestinationStateTest {
     private val library = ImporterLibrarySummary("library-id", "Family", null, emptyList(), null)
@@ -33,5 +34,23 @@ class DestinationStateTest {
 
         assertNull(state.errorByLibraryId[library.libraryId])
         assertEquals("remote failed", state.errorByLibraryId[second.libraryId])
+    }
+
+    @Test
+    fun `locked setup targets only that library's unlock dialog`() {
+        val state = DestinationUiState(libraries = listOf(library)).copy(
+            dialog = DestinationDialog.Unlock(library),
+        )
+
+        assertEquals(library.libraryId, assertIs<DestinationDialog.Unlock>(state.dialog).library.libraryId)
+    }
+
+    @Test
+    fun `removal confirmation retains the requested setup identity`() {
+        val state = DestinationUiState(libraries = listOf(library)).copy(
+            dialog = DestinationDialog.RemoveSetup(library),
+        )
+
+        assertEquals(library.libraryId, assertIs<DestinationDialog.RemoveSetup>(state.dialog).library.libraryId)
     }
 }
