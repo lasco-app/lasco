@@ -1514,3 +1514,29 @@ fn operation_to_ffi(op: OperationContent, timestamp: String) -> FfiOperation {
         },
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::operation_to_ffi;
+    use lasco_core::crdt::{ApplePhotosCollectionKind, ApplePhotosCollectionLink, OperationContent};
+    use lasco_core::identifiers::AlbumUuid;
+    use lasco_core::operations::ApplePhotosCloudCollectionId;
+
+    #[test]
+    fn collection_link_operations_are_visible_in_ffi_operation_output() {
+        let operation = operation_to_ffi(
+            OperationContent::ApplePhotosCollectionLinkAdded(ApplePhotosCollectionLink {
+                album_id: AlbumUuid::from_uuid(uuid::Uuid::new_v4()),
+                cloud_collection_id: ApplePhotosCloudCollectionId("icloud-trip".into()),
+                kind: ApplePhotosCollectionKind::Album,
+            }),
+            "2026-09-15T00:00:00Z".into(),
+        );
+
+        assert_eq!(operation.kind, "ApplePhotosCollectionLinkAdded");
+        assert_eq!(operation.args[1].key, "cloud_collection_id");
+        assert_eq!(operation.args[1].value, "icloud-trip");
+        assert_eq!(operation.args[2].key, "kind");
+        assert_eq!(operation.args[2].value, "Album");
+    }
+}
