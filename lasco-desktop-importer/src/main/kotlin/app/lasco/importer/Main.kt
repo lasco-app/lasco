@@ -441,7 +441,6 @@ private fun ImporterWizard() {
                         Page.WELCOME -> WelcomePage()
                         Page.DESTINATION -> DestinationPicker(
                             state = destinations,
-                            onRefresh = ::refreshDestinations,
                             onUse = { summary ->
                                 destinations = destinations.copy(selectedLibraryId = summary.libraryId).clearLibraryError(summary.libraryId)
                                 scope.launch {
@@ -507,7 +506,9 @@ private fun ImporterWizard() {
                                         photosAllowed = withContext(Dispatchers.IO) {
                                             ApplePhotosReader().let { if (it.hasPermission()) true else it.requestPermission() }
                                         }
-                                        if (!photosAllowed) {
+                                        if (photosAllowed) {
+                                            discover()
+                                        } else {
                                             photosPermissionDenied = true
                                             photosError = "Photos access was not granted. Allow Lasco in System Settings, then try again."
                                         }
@@ -644,7 +645,6 @@ private fun HowItWorksItem(number: String, text: String) {
 @Composable
 private fun DestinationPicker(
     state: DestinationUiState,
-    onRefresh: () -> Unit,
     onUse: (app.lasco.importer.ffi.ImporterLibrarySummary) -> Unit,
     onUnlock: (app.lasco.importer.ffi.ImporterLibrarySummary) -> Unit,
     onAddRemote: (app.lasco.importer.ffi.ImporterLibrarySummary) -> Unit,
@@ -653,7 +653,9 @@ private fun DestinationPicker(
     onS3: () -> Unit,
     onSmb: () -> Unit,
 ) {
-    PageTitle("Import photos into Lasco", "Connect an existing Lasco library. Imports run in resumable chunks and send each chunk to every connected remote.")
+    var addingAnotherLibrary by remember { mutableStateOf(false) }
+
+    PageTitle("Import photos into Lasco")
     Spacer(Modifier.height(24.dp))
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (state.loading) Text("LOADING LOCAL LIBRARIES…", color = InkSub, style = LascoPixel)
@@ -668,13 +670,38 @@ private fun DestinationPicker(
                 onRemove = { onRemove(summary) },
             )
         }
-        if (state.libraries.isNotEmpty()) LascoButton("REFRESH LOCAL SETUPS", onRefresh, primary = false, modifier = Modifier.widthIn(max = 460.dp))
-        Column(Modifier.widthIn(max = 460.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("ADD A LOCAL IMPORTER SETUP", color = InkSub, style = LascoLabel, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
-            LascoButton("LASCO CLOUD", onCloud)
-            LascoButton("S3-COMPATIBLE STORAGE", onS3)
-            LascoButton("SMB NETWORK SHARE", onSmb)
+        if (!state.loading) {
+            if (state.libraries.isEmpty()) {
+                NewLibrarySetupPanel("ADD NEW LIBRARY", onCloud, onS3, onSmb)
+            } else if (addingAnotherLibrary) {
+                NewLibrarySetupPanel("ADD ANOTHER LIBRARY", onCloud, onS3, onSmb)
+            } else {
+                LascoButton(
+                    "ADD ANOTHER LIBRARY",
+                    { addingAnotherLibrary = true },
+                    primary = false,
+                    modifier = Modifier.widthIn(max = 460.dp),
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun NewLibrarySetupPanel(
+    title: String,
+    onCloud: () -> Unit,
+    onS3: () -> Unit,
+    onSmb: () -> Unit,
+) {
+    Column(
+        Modifier.widthIn(max = 460.dp).fillMaxWidth().background(Color.White).border(2.dp, Ink).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(title, color = Ink, style = LascoLabel, fontWeight = FontWeight.Bold)
+        LascoButton("LASCO CLOUD", onCloud)
+        LascoButton("S3-COMPATIBLE STORAGE", onS3)
+        LascoButton("SMB NETWORK SHARE", onSmb)
     }
 }
 
@@ -699,7 +726,8 @@ private fun DestinationCard(
             fontWeight = FontWeight.Bold,
         )
         Text(
-            if (summary.remotes.isEmpty()) "No remotes configured" else "REMOTES: ${summary.remotes.joinToString { it.name }}",
+            if (summary.remotes.isEmpty()) "No remotes configured"
+            else "REMOTES: ${summary.remotes.joinToString { "${it.name} (${it.kind.uppercase()})" }}",
             color = InkSub,
             style = LascoBody.copy(fontSize = 13.sp),
         )
@@ -809,7 +837,7 @@ private fun SourcePicker(onTakeout: () -> Unit, onPhotos: () -> Unit) {
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Column(Modifier.widthIn(max = 460.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             LascoButton("GOOGLE TAKEOUT", onTakeout)
-            if (System.getProperty("os.name").lowercase().contains("mac")) LascoButton("APPLE PHOTOS / ICLOUD", onPhotos, primary = false)
+            if (System.getProperty("os.name").lowercase().contains("mac")) LascoButton("APPLE PHOTOS / ICLOUD", onPhotos)
         }
     }
 }
@@ -957,7 +985,14 @@ private fun WizardFooter(page: Page, source: SourceType?, connecting: Boolean, c
     }
 }
 
-@Composable private fun PageTitle(title: String, text: String) { Text(title, color = Ink, style = LascoHeading, fontWeight = FontWeight.Bold); Spacer(Modifier.height(8.dp)); Text(text, color = InkSub, style = LascoBody.copy(fontSize = 16.sp, lineHeight = 23.sp), modifier = Modifier.widthIn(max = 680.dp)) }
+@Composable
+private fun PageTitle(title: String, text: String? = null) {
+    Text(title, color = Ink, style = LascoHeading, fontWeight = FontWeight.Bold)
+    text?.let {
+        Spacer(Modifier.height(8.dp))
+        Text(it, color = InkSub, style = LascoBody.copy(fontSize = 16.sp, lineHeight = 23.sp), modifier = Modifier.widthIn(max = 680.dp))
+    }
+}
 @Composable private fun Detail(label: String, value: String) { Row(Modifier.padding(vertical = 5.dp)) { Text(label, color = InkMuted, style = LascoLabel, fontWeight = FontWeight.Bold, modifier = Modifier.widthIn(min = 120.dp)); Text(value, color = Ink, style = LascoBody.copy(fontSize = 14.sp)) } }
 @Composable private fun ErrorMessage(text: String) { Text(text, color = Error, style = LascoBody.copy(fontSize = 14.sp), modifier = Modifier.fillMaxWidth().background(Error.copy(alpha = .08f)).border(1.dp, Error).padding(10.dp)) }
 
