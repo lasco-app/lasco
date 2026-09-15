@@ -112,7 +112,7 @@ class ImportCoordinator(
                     asset.liveVideoSourceId?.let { require(videoId != null) { "missing staged Live Photo video: $it" } }
                 }
                 val imported = gateway.importMedia(staged.path, asset.metadata, aaeId, videoId)
-                if (asset.applePhotosRevision != null && asset.applePhotosResourceType != null) {
+                if (asset.applePhotosRevision?.cloudAssetId != null && asset.applePhotosResourceType != null) {
                     gateway.recordApplePhotosResourceOrigin(
                         imported.mediaId,
                         asset.applePhotosRevision,
@@ -131,7 +131,7 @@ class ImportCoordinator(
     /** Resolves a complete parent asset in one metadata-only lookup, never per resource. */
     private fun alreadyImportedMedia(assets: List<ImportAsset>): Map<ImportAsset, String> = buildMap {
         assets.groupBy { it.applePhotosRevision }.forEach { (revision, members) ->
-            if (revision == null) return@forEach
+            if (revision?.cloudAssetId == null) return@forEach
             val mediaIds = gateway.applePhotosAssetRevisionMediaIds(revision) ?: return@forEach
             members.forEach { asset ->
                 val type = asset.applePhotosResourceType ?: return@forEach

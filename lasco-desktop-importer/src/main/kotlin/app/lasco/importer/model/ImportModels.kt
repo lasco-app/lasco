@@ -14,9 +14,19 @@ enum class ApplePhotosResourceType { PHOTO, FULL_SIZE_PHOTO, VIDEO, FULL_SIZE_VI
 data class ApplePhotosResourceDescriptor(val type: ApplePhotosResourceType, val filename: String)
 
 data class ApplePhotosAssetRevision(
-    val cloudAssetId: String,
+    val cloudAssetId: String?,
     val modificationDate: String?,
     val resources: List<ApplePhotosResourceDescriptor>,
+)
+enum class ApplePhotosCollectionKind { FOLDER, ALBUM }
+data class ApplePhotosCollectionDescriptor(
+    val cloudCollectionId: String,
+    val kind: ApplePhotosCollectionKind,
+    val name: String,
+    val parentCloudCollectionId: String?,
+    val memberCloudAssetIds: List<String>,
+    /** Current-process-only handles for unmapped members. Never persist these values. */
+    val memberSessionHandles: List<String>,
 )
 
 data class SourceMetadata(
@@ -39,6 +49,8 @@ data class ImportAsset(
     val byteCount: Long,
     val metadata: SourceMetadata,
     val sourceLocator: String,
+    /** Opaque PhotoKit handle for this run only; absent for non-PhotoKit readers. */
+    val assetSessionHandle: String? = null,
     val albumNames: List<String> = emptyList(),
     val aaeSourceId: String? = null,
     val liveVideoSourceId: String? = null,

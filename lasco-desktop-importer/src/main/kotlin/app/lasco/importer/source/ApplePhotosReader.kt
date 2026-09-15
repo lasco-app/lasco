@@ -4,6 +4,8 @@ import app.lasco.importer.model.ImportAsset
 import app.lasco.importer.model.ImportSource
 import app.lasco.importer.model.ResourceRole
 import app.lasco.importer.model.ApplePhotosAssetRevision
+import app.lasco.importer.model.ApplePhotosCollectionDescriptor
+import app.lasco.importer.model.ApplePhotosCollectionKind
 import app.lasco.importer.model.ApplePhotosResourceDescriptor
 import app.lasco.importer.model.ApplePhotosResourceType
 import app.lasco.importer.model.SourceMetadata
@@ -27,8 +29,8 @@ private interface PhotoKitNative : Library {
 
 @Serializable
 private data class NativePhotoResource(
-    val resourceId: String,
-    val assetId: String,
+    val sessionHandle: String,
+    val assetSessionHandle: String,
     val type: String,
     val filename: String,
     val byteCount: Long,
@@ -37,22 +39,41 @@ private data class NativePhotoResource(
     val latitude: Double? = null,
     val longitude: Double? = null,
     val albumNames: List<String> = emptyList(),
-    val pairedVideoResourceId: String? = null,
-    val aaeResourceId: String? = null,
+    val pairedVideoSessionHandle: String? = null,
+    val aaeSessionHandle: String? = null,
     val cloudAssetId: String? = null,
     val resourceType: String,
 )
 
+@Serializable
+private data class NativePhotoCollection(
+    val cloudCollectionId: String,
+    val kind: String,
+    val name: String,
+    val parentCloudCollectionId: String? = null,
+    val memberCloudAssetIds: List<String> = emptyList(),
+    val memberSessionHandles: List<String> = emptyList(),
+)
+
+@Serializable
+private data class NativePhotoDiscovery(
+    val resources: List<NativePhotoResource>,
+    val collections: List<NativePhotoCollection> = emptyList(),
+)
+
 /**
  * Uses PhotoKit directly through the bundled Kotlin/Native bridge. Discovery maps Photos resource
- * IDs to durable import IDs; resume asks PhotoKit for exactly those IDs and does not re-enumerate
- * the library. iCloud-only originals are downloaded by `PHAssetResourceManager` into staging.
+ * IDs to opaque process-only staging handles. A restart requires a rescan; iCloud-only originals
+ * are downloaded by `PHAssetResourceManager` into staging.
  */
 class ApplePhotosReader private constructor(private val bridge: PhotoKitNative) : ImportSourceReader {
     constructor() : this(loadBridge())
 
     override val source = ImportSource.APPLE_PHOTOS
     private val json = Json { ignoreUnknownKeys = true }
+    private var collections: List<ApplePhotosCollectionDescriptor> = emptyList()
+
+    fun collectionDescriptors(): List<ApplePhotosCollectionDescriptor> = collections
 
     // macOS may grant a limited Photos selection (status 4). It is still valid access and the
     // bridge will enumerate exactly that allowed selection.
@@ -62,9 +83,20 @@ class ApplePhotosReader private constructor(private val bridge: PhotoKitNative) 
 
     override suspend fun discover(): List<ImportAsset> {
         check(hasPermission()) { "Apple Photos permission has not been granted" }
-        val resources = json.decodeFromString<List<NativePhotoResource>>(bridge.lasco_photos_discover_json())
-        val revisionsByAssetId = resources.groupBy { it.assetId }.mapValues { (_, resourcesForAsset) ->
-            val cloudAssetId = resourcesForAsset.firstNotNullOfOrNull { it.cloudAssetId } ?: return@mapValues null
+        val discovery = json.decodeFromString<NativePhotoDiscovery>(bridge.lasco_photos_discover_json())
+        val resources = discovery.resources
+        collections = discovery.collections.map { collection ->
+            ApplePhotosCollectionDescriptor(
+                cloudCollectionId = collection.cloudCollectionId,
+                kind = ApplePhotosCollectionKind.valueOf(collection.kind),
+                name = collection.name,
+                parentCloudCollectionId = collection.parentCloudCollectionId,
+                memberCloudAssetIds = collection.memberCloudAssetIds,
+                memberSessionHandles = collection.memberSessionHandles,
+            )
+        }
+        val revisionsByAssetHandle = resources.groupBy { it.assetSessionHandle }.mapValues { (_, resourcesForAsset) ->
+            val cloudAssetId = resourcesForAsset.firstNotNullOfOrNull { it.cloudAssetId }
             ApplePhotosAssetRevision(
                 cloudAssetId = cloudAssetId,
                 modificationDate = resourcesForAsset.first().modifiedAt,
@@ -74,13 +106,13 @@ class ApplePhotosReader private constructor(private val bridge: PhotoKitNative) 
         return resources.map { resource ->
             val resourceType = ApplePhotosResourceType.valueOf(resource.resourceType)
             ImportAsset(
-                sourceId = "photos:${resource.resourceId}", source = source,
+                sourceId = "photos:${resource.sessionHandle}", source = source,
                 resourceRole = when (resource.type) { "aae" -> ResourceRole.AAE_SIDECAR; "pairedVideo" -> ResourceRole.LIVE_PHOTO_VIDEO; else -> ResourceRole.PRIMARY },
                 displayName = resource.filename, byteCount = resource.byteCount,
                 metadata = SourceMetadata(resource.filename, resource.capturedAt, resource.modifiedAt, resource.latitude, resource.longitude),
-                sourceLocator = resource.resourceId, albumNames = resource.albumNames,
-                aaeSourceId = resource.aaeResourceId?.let { "photos:$it" }, liveVideoSourceId = resource.pairedVideoResourceId?.let { "photos:$it" },
-                applePhotosRevision = revisionsByAssetId.getValue(resource.assetId),
+                sourceLocator = resource.sessionHandle, assetSessionHandle = resource.assetSessionHandle, albumNames = resource.albumNames,
+                aaeSourceId = resource.aaeSessionHandle?.let { "photos:$it" }, liveVideoSourceId = resource.pairedVideoSessionHandle?.let { "photos:$it" },
+                applePhotosRevision = revisionsByAssetHandle.getValue(resource.assetSessionHandle),
                 applePhotosResourceType = resourceType,
             )
         }

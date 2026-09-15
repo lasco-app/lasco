@@ -26,8 +26,11 @@ import platform.Foundation.NSDate
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSISO8601DateFormatter
 import platform.Foundation.NSURL
+import platform.Foundation.NSUUID
 import platform.Photos.PHAsset
 import platform.Photos.PHAssetCollection
+import platform.Photos.PHCollection
+import platform.Photos.PHCollectionList
 import platform.Photos.PHAssetResource
 import platform.Photos.PHAssetResourceManager
 import platform.Photos.PHAssetResourceRequestOptions
@@ -48,21 +51,43 @@ import platform.darwin.NSObject
 
 @Serializable
 private data class ResourceRecord(
-    val resourceId: String, val assetId: String, val type: String, val filename: String, val byteCount: Long,
+    val sessionHandle: String, val assetSessionHandle: String, val type: String, val filename: String, val byteCount: Long,
     val capturedAt: String?, val modifiedAt: String?, val latitude: Double?, val longitude: Double?, val albumNames: List<String>,
-    val pairedVideoResourceId: String?, val aaeResourceId: String?,
+    val pairedVideoSessionHandle: String?, val aaeSessionHandle: String?,
     val cloudAssetId: String?, val resourceType: String,
+)
+
+@Serializable
+private data class CollectionRecord(
+    val cloudCollectionId: String,
+    val kind: String,
+    val name: String,
+    val parentCloudCollectionId: String?,
+    val memberCloudAssetIds: List<String>,
+    val memberSessionHandles: List<String>,
+)
+
+@Serializable
+private data class DiscoveryResult(
+    val resources: List<ResourceRecord>,
+    val collections: List<CollectionRecord>,
 )
 
 private val json = Json
 private val resources = mutableMapOf<String, PHAssetResource>()
-private const val resourceIdSeparator = '\u001f'
 private val iso8601 = NSISO8601DateFormatter()
 @Volatile private var discoveredAssetCount = 0
 @Volatile private var totalAssetCount = 0
 
-private fun resourceId(asset: PHAsset, resource: PHAssetResource): String =
-    "${asset.localIdentifier}$resourceIdSeparator${resource.type}$resourceIdSeparator${resource.originalFilename}"
+private fun sessionHandle(): String = NSUUID().UUIDString
+
+/**
+ * This is the one native compatibility seam for PhotoKit's archival cloud form. The current
+ * Kotlin/Native Photos stubs expose its Objective-C representation as `stringValue`; it is never
+ * surfaced outside this adapter, where it is named and treated as the archival cloud ID.
+ */
+private fun archivalCloudId(mapping: PHCloudIdentifierMapping?): String? =
+    mapping?.cloudIdentifier?.stringValue
 
 private fun retainedUtf8(value: String): CPointer<ByteVar> {
     val bytes = value.encodeToByteArray()
@@ -70,22 +95,6 @@ private fun retainedUtf8(value: String): CPointer<ByteVar> {
         bytes.forEachIndexed { index, byte -> pointer[index] = byte }
         pointer[bytes.size] = 0
     }
-}
-
-private fun resourceForPersistedId(id: String): PHAssetResource? {
-    resources[id]?.let { return it }
-    // A process restart clears the in-memory map. The identifier is intentionally sufficient to
-    // resolve one known resource directly, so resume never repeats the expensive library scan.
-    val pieces = id.split(resourceIdSeparator, limit = 3)
-    if (pieces.size != 3) return null
-    val assets = PHAsset.fetchAssetsWithLocalIdentifiers(listOf(pieces[0]), null)
-    if (assets.count.toInt() != 1) return null
-    val asset = assets.objectAtIndex(0u) as PHAsset
-    return PHAssetResource.assetResourcesForAsset(asset)
-        .filterIsInstance<PHAssetResource>()
-        .firstOrNull { resource ->
-        resourceId(asset, resource) == id
-    }?.also { resources[id] = it }
 }
 
 private fun photosAccessGranted(): Boolean = authorizationStatus().let { status ->
@@ -110,7 +119,10 @@ fun discoveryScannedCount(): Int = discoveredAssetCount
 @CName("lasco_photos_discovery_total_count")
 fun discoveryTotalCount(): Int = totalAssetCount
 
-/** Enumerates PHAsset/PHAssetResource once. The JVM persists returned resource IDs for resume. */
+/**
+ * Enumerates PhotoKit once and returns only durable cloud IDs plus random, process-local staging
+ * handles.  PhotoKit local identifiers never leave this native adapter.
+ */
 @CName("lasco_photos_discover_json")
 fun discoverJson(): CPointer<ByteVar>? = memScoped {
     check(photosAccessGranted()) { "Photos permission denied" }
@@ -118,8 +130,19 @@ fun discoverJson(): CPointer<ByteVar>? = memScoped {
     val assets = PHAsset.fetchAssetsWithOptions(null)
     discoveredAssetCount = 0
     totalAssetCount = assets.count.toInt()
-    assets.enumerateObjectsUsingBlock { asset, _, _ ->
-        val photo = asset as PHAsset
+    val photos = buildList {
+        assets.enumerateObjectsUsingBlock { asset, _, _ -> add(asset as PHAsset) }
+    }
+    val cloudMappings = PHPhotoLibrary.sharedPhotoLibrary()
+        .cloudIdentifierMappingsForLocalIdentifiers(photos.map { it.localIdentifier })
+    val assetSessionHandles = mutableMapOf<String, String>()
+    val cloudAssetIds = mutableMapOf<String, String>()
+    photos.forEach { photo ->
+        assetSessionHandles[photo.localIdentifier] = sessionHandle()
+        archivalCloudId(cloudMappings[photo.localIdentifier] as? PHCloudIdentifierMapping)
+            ?.let { cloudAssetIds[photo.localIdentifier] = it }
+    }
+    photos.forEach { photo ->
         val assetResources = PHAssetResource.assetResourcesForAsset(photo)
             .filterIsInstance<PHAssetResource>()
         val aae = assetResources.firstOrNull { it.type == PHAssetResourceTypeAdjustmentData }
@@ -139,12 +162,10 @@ fun discoverJson(): CPointer<ByteVar>? = memScoped {
             pairedVideo != null -> selected += pairedVideo
             primaryVideo != null -> selected += primaryVideo
         }
-        val cloudAssetId = (PHPhotoLibrary.sharedPhotoLibrary()
-            .cloudIdentifierMappingsForLocalIdentifiers(listOf(photo.localIdentifier))[photo.localIdentifier] as? PHCloudIdentifierMapping)
-            ?.cloudIdentifier?.stringValue
+        val resourceHandles = assetResources.associateWith { sessionHandle() }
         selected.forEach { resource ->
-            val id = resourceId(photo, resource)
-            resources[id] = resource
+            val handle = resourceHandles.getValue(resource)
+            resources[handle] = resource
             val type = when (resource.type) {
                 PHAssetResourceTypeAdjustmentData -> "aae"
                 PHAssetResourceTypePairedVideo, PHAssetResourceTypeFullSizePairedVideo -> "pairedVideo"
@@ -163,22 +184,63 @@ fun discoverJson(): CPointer<ByteVar>? = memScoped {
             val coordinates = photo.location?.coordinate?.useContents { latitude to longitude }
             // PhotoKit has no public per-resource byte-size API. Avoid using private KVC and do
             // not download iCloud originals during discovery merely to calculate it.
-            records += ResourceRecord(id, photo.localIdentifier, type, resource.originalFilename, 0,
+            records += ResourceRecord(handle, assetSessionHandles.getValue(photo.localIdentifier), type, resource.originalFilename, 0,
                 photo.creationDate?.let(iso8601::stringFromDate), photo.modificationDate?.let(iso8601::stringFromDate), coordinates?.first, coordinates?.second,
-                emptyList(), pairedVideo?.let { resourceId(photo, it) }, aae?.let { resourceId(photo, it) },
-                cloudAssetId, resourceType)
+                emptyList(), pairedVideo?.let(resourceHandles::get), aae?.let(resourceHandles::get),
+                cloudAssetIds[photo.localIdentifier], resourceType)
         }
         discoveredAssetCount += 1
     }
-    retainedUtf8(json.encodeToString(records))
+    // Collection traversal and mapping stays entirely native too. V1 deliberately omits
+    // collections without a cloud mapping; names/local IDs are never used as durable identity.
+    val collectionLocals = mutableListOf<Pair<PHCollection, String?>>()
+    fun collectCollections(result: platform.Photos.PHFetchResult, parent: String?) {
+        for (index in 0 until result.count().toInt()) {
+            when (val collection = result.objectAtIndex(index.toULong())) {
+                is PHCollectionList -> {
+                    collectionLocals += collection to parent
+                    collectCollections(PHCollection.fetchCollectionsInCollectionList(collection, null), collection.localIdentifier)
+                }
+                is PHAssetCollection -> if (collection.assetCollectionType == 1L && collection.assetCollectionSubtype == 2L) {
+                    collectionLocals += collection to parent
+                }
+            }
+        }
+    }
+    collectCollections(PHCollectionList.fetchTopLevelUserCollectionsWithOptions(null), null)
+    val collectionMappings = PHPhotoLibrary.sharedPhotoLibrary()
+        .cloudIdentifierMappingsForLocalIdentifiers(collectionLocals.map { it.first.localIdentifier })
+    val collections = collectionLocals.mapNotNull { (collection, parentLocal) ->
+        val cloudId = archivalCloudId(collectionMappings[collection.localIdentifier] as? PHCloudIdentifierMapping)
+            ?: return@mapNotNull null
+        val parentCloudId = parentLocal?.let { local ->
+            archivalCloudId(collectionMappings[local] as? PHCloudIdentifierMapping)
+        }
+        when (collection) {
+            is PHCollectionList -> CollectionRecord(cloudId, "FOLDER", collection.localizedTitle ?: "", parentCloudId, emptyList(), emptyList())
+            is PHAssetCollection -> {
+                val members = PHAsset.fetchAssetsInAssetCollection(collection, null)
+                val memberCloudIds = mutableListOf<String>()
+                val memberHandles = mutableListOf<String>()
+                for (index in 0 until members.count().toInt()) {
+                    val local = (members.objectAtIndex(index.toULong()) as PHAsset).localIdentifier
+                    cloudAssetIds[local]?.let(memberCloudIds::add) ?: assetSessionHandles[local]?.let(memberHandles::add)
+                }
+                CollectionRecord(cloudId, "ALBUM", collection.localizedTitle ?: "", parentCloudId, memberCloudIds, memberHandles)
+            }
+            else -> null
+        }
+    }
+    retainedUtf8(json.encodeToString(DiscoveryResult(records, collections)))
 }
 
 /** Downloads an iCloud resource using PHAssetResourceManager into the caller's staging directory. */
 @CName("lasco_photos_stage")
 fun stage(resourceId: CPointer<ByteVar>?, directory: CPointer<ByteVar>?): CPointer<ByteVar>? = memScoped {
-    val resource = resourceForPersistedId(resourceId!!.toKString()) ?: error("unknown persisted Photos resource id")
+    val handle = resourceId!!.toKString()
+    val resource = resources[handle] ?: error("unknown or expired Photos session handle")
     val destination = NSURL.fileURLWithPath(directory!!.toKString())
-        .URLByAppendingPathComponent("${resourceId!!.toKString().hashCode()}-${resource.originalFilename}")!!
+        .URLByAppendingPathComponent("${handle.hashCode()}-${resource.originalFilename}")!!
     val semaphore = platform.darwin.dispatch_semaphore_create(0)
     var failure: String? = null
     // The default options do not fetch an original that lives only in iCloud. Explicitly permit

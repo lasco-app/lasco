@@ -43,16 +43,18 @@ class UniffiLascoGateway(
     }
 
     override fun applePhotosAssetRevisionMediaIds(revision: ApplePhotosAssetRevision): Map<ApplePhotosResourceDescriptor, String>? {
+        val cloudAssetId = revision.cloudAssetId ?: return null
         val resources = revision.resources.map { FfiApplePhotosResourceDescriptor(it.type.toFfi(), it.filename) }
         val mediaIds = library.applePhotosAssetRevisionMediaIds(
-            FfiApplePhotosAssetRevision(revision.cloudAssetId, revision.modificationDate, resources),
+            FfiApplePhotosAssetRevision(cloudAssetId, revision.modificationDate, resources),
         ) ?: return null
         return revision.resources.zip(mediaIds).associate { (descriptor, mediaId) -> descriptor to mediaId.value }
     }
 
     override fun recordApplePhotosResourceOrigin(mediaId: String, revision: ApplePhotosAssetRevision, resourceType: ApplePhotosResourceType, filename: String) {
+        val cloudAssetId = revision.cloudAssetId ?: return
         library.recordApplePhotosResourceOrigin(
-            FfiApplePhotosResourceOrigin(FfiMediaUuid(mediaId), revision.cloudAssetId, revision.modificationDate, resourceType.toFfi(), filename),
+            FfiApplePhotosResourceOrigin(FfiMediaUuid(mediaId), cloudAssetId, revision.modificationDate, resourceType.toFfi(), filename),
         )
     }
 
