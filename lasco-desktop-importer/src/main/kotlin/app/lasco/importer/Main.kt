@@ -856,7 +856,7 @@ private fun ConnectionForm(
         RemoteType.S3 -> "Connect an S3 remote"
         RemoteType.SMB -> "Connect an SMB remote"
     }
-    PageTitle(title, "Password and secret-key fields are protected while typing. Connect adds the remote through the existing Lasco FFI.")
+    PageTitle(title)
     Spacer(Modifier.height(20.dp))
     Column(Modifier.widthIn(max = 620.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         LascoField("Library nickname", nickname, setNickname, "family-library")
