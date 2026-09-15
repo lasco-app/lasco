@@ -135,6 +135,9 @@ fun discoveryTotalCount(): Int = totalAssetCount
 @CName("lasco_photos_discover_json")
 fun discoverJson(): CPointer<ByteVar>? = memScoped {
     check(photosAccessGranted()) { "Photos permission denied" }
+    // A new discovery is a new in-memory import session. Expire all previous opaque handles so
+    // an old scan cannot be replayed after the user chooses the source again.
+    resources.clear()
     val records = mutableListOf<ResourceRecord>()
     val assets = PHAsset.fetchAssetsWithOptions(null)
     discoveredAssetCount = 0
