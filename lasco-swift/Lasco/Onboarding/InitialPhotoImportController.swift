@@ -52,9 +52,9 @@ final class InitialPhotoImportController {
         isScanning = false
     }
 
-    func start(remoteID: FfiRemoteUuid?) async {
+    func start(remoteIDs: [FfiRemoteUuid]) async {
         guard importTask == nil, let scan else { return }
-        guard let remoteID else {
+        guard !remoteIDs.isEmpty else {
             error = "Add a remote before importing your photo library."
             return
         }
@@ -65,7 +65,7 @@ final class InitialPhotoImportController {
         let idleTimerWasDisabled = UIApplication.shared.isIdleTimerDisabled
         UIApplication.shared.isIdleTimerDisabled = true
         defer { UIApplication.shared.isIdleTimerDisabled = idleTimerWasDisabled }
-        let task = Task { await self.performImport(scan: scan, remoteID: remoteID) }
+        let task = Task { await self.performImport(scan: scan, remoteIDs: remoteIDs) }
         importTask = task
         await task.value
         importTask = nil
@@ -81,7 +81,7 @@ final class InitialPhotoImportController {
         progress = nil
     }
 
-    private func performImport(scan: PhotoLibraryImporter.LibraryScan, remoteID: FfiRemoteUuid) async {
+    private func performImport(scan: PhotoLibraryImporter.LibraryScan, remoteIDs: [FfiRemoteUuid]) async {
         let nodes = await photoImporter.scanAlbumTree()
         guard !Task.isCancelled else {
             await repository.notifyPhotoImportChanged(initialImport: true)
@@ -139,22 +139,7 @@ final class InitialPhotoImportController {
                 phase: .uploading(range: range, progress: 0)
             )
             let backedUpBeforeChunk = backedUp
-            if let error = await pushChunk(remoteID, { [weak self] fraction in
-                guard let self else { return }
-                let phase: ImportPhase
-                if fraction < 1 {
-                    phase = .uploading(range: range, progress: min(max(fraction, 0), 1))
-                } else {
-                    // The upload callback covers originals only. Thumbnails, operations,
-                    // and compaction still need to finish before the push returns.
-                    phase = .finalizing(range: range)
-                }
-                self.progress = ImportProgress(
-                    backedUp: backedUpBeforeChunk,
-                    total: scan.assets.count,
-                    phase: phase
-                )
-            }) {
+            if let error = await pushAll(remoteIDs, range: range, backedUp: backedUpBeforeChunk) {
                 self.error = error
                 await repository.notifyPhotoImportChanged(initialImport: true)
                 return // The failed chunk remains local for recovery.
@@ -180,7 +165,7 @@ final class InitialPhotoImportController {
             await repository.notifyPhotoImportChanged(initialImport: true)
             return
         }
-        if let error = await pushChunk(remoteID, { _ in }) {
+        if let error = await pushAll(remoteIDs, range: 1...max(scan.assets.count, 1), backedUp: backedUp) {
             self.error = error
             await repository.notifyPhotoImportChanged(initialImport: true)
             return
@@ -191,6 +176,23 @@ final class InitialPhotoImportController {
         }
         await repository.notifyPhotoImportChanged(initialImport: true)
         result = (photos: scan.photoCount, videos: scan.videoCount)
+    }
+
+    /// Completion is only declared after every configured destination accepts the final state.
+    private func pushAll(_ remoteIDs: [FfiRemoteUuid], range: ClosedRange<Int>, backedUp: Int) async -> String? {
+        for remoteID in remoteIDs {
+            guard !Task.isCancelled else { return "Import cancelled." }
+            if let error = await pushChunk(remoteID, { [weak self] fraction in
+                guard let self else { return }
+                let phase: ImportPhase = fraction < 1
+                    ? .uploading(range: range, progress: min(max(fraction, 0), 1))
+                    : .finalizing(range: range)
+                self.progress = ImportProgress(backedUp: backedUp, total: self.scan?.assets.count ?? 0, phase: phase)
+            }) {
+                return error
+            }
+        }
+        return nil
     }
 
     private func createAlbumStructure(_ nodes: [PhotoLibraryImporter.AlbumNode]) async -> [String: FfiAlbumUuid] {

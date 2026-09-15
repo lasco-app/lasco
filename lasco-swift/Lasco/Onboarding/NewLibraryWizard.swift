@@ -670,7 +670,7 @@ struct NewLibraryWizard: View {
                 Button("Import Now") {
                     if let controller = initialImportController {
                         Task {
-                            await controller.start(remoteID: directory.activeSession?.state.remotes.first?.remoteId)
+                            await controller.start(remoteIDs: directory.activeSession?.state.remotes.map(\.remoteId) ?? [])
                         }
                     }
                 }
