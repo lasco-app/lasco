@@ -267,7 +267,6 @@ private fun ImporterWizard() {
     var smbUser by remember { mutableStateOf("") }
     var smbPassword by remember { mutableStateOf("") }
     var domain by remember { mutableStateOf("") }
-    var remoteNames by remember { mutableStateOf(emptyList<String>()) }
     var gateway by remember { mutableStateOf<LascoGateway?>(null) }
     var connecting by remember { mutableStateOf(false) }
     var connectionFailure by remember { mutableStateOf<ConnectionFailure?>(null) }
@@ -387,7 +386,6 @@ private fun ImporterWizard() {
             try {
                 val remotes = withContext(Dispatchers.IO) { connectedGateway.remotes() }
                 require(remotes.isNotEmpty()) { "This library has no remote to synchronize." }
-                remoteNames = remotes.map { it.name }
                 remoteSyncProgress = RemoteSyncProgress(totalRemotes = remotes.size)
                 remotes.forEach { remote ->
                     remoteSyncProgress = remoteSyncProgress.copy(currentRemoteName = remote.name)
@@ -508,7 +506,7 @@ private fun ImporterWizard() {
     }
 
     Column(Modifier.fillMaxSize().background(Plaster).padding(horizontal = 32.dp, vertical = 24.dp)) {
-        ProgressHeader(page.stage, remoteNames)
+        ProgressHeader(page.stage)
         Spacer(Modifier.height(18.dp))
         Surface(Modifier.fillMaxWidth().weight(1f), color = Panel) {
             AnimatedContent(
@@ -722,15 +720,12 @@ private fun ImporterWizard() {
 }
 
 @Composable
-private fun ProgressHeader(stage: Int, remotes: List<String>) {
+private fun ProgressHeader(stage: Int) {
     Text("LASCO", color = Ink, style = LascoHeading.copy(fontSize = 30.sp), fontWeight = FontWeight.Black, letterSpacing = 2.sp)
     Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         listOf("1. HOW IT WORKS", "2. DESTINATION", "3. SOURCE", "4. LIBRARY SUMMARY", "5. EXPECTED TIME", "6. IMPORT").forEachIndexed { index, label ->
             Text(label, color = if (index == stage) Pink else InkMuted, style = LascoLabel.copy(fontSize = 16.sp), fontWeight = FontWeight.Bold)
         }
-    }
-    if (remotes.isNotEmpty()) {
-        Text("CONNECTED: ${remotes.joinToString()}", color = Good, style = LascoLabel.copy(fontSize = 12.sp), fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 7.dp))
     }
 }
 
