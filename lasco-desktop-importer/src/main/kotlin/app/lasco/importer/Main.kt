@@ -63,11 +63,13 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.application
 import app.lasco.importer.ffi.ExistingRemote
 import app.lasco.importer.ffi.LascoGateway
 import app.lasco.importer.ffi.LibraryCredentials
 import app.lasco.importer.ffi.OpenResult
+import app.lasco.importer.ffi.RemoteConfig
 import app.lasco.importer.ffi.UniffiImporterLibraryRepository
 import app.lasco.importer.engine.ImportCoordinator
 import app.lasco.importer.model.ImportPlan
@@ -89,9 +91,6 @@ import java.net.URI
 import java.nio.file.Path
 import java.nio.file.Files
 import java.util.Comparator
-import uniffi.lasco_ffi.listLibraries
-import uniffi.lasco_ffi.FfiLibraryId
-import uniffi.lasco_ffi.ffiDeleteLibrary
 
 private enum class Page(val stage: Int) {
     WELCOME(0), DESTINATION(1), CLOUD(1), S3(1), SMB(1),
@@ -198,7 +197,9 @@ private fun FfiReadinessGate(content: @Composable () -> Unit) {
             error = withContext(Dispatchers.IO) {
                 runCatching {
                     clearTransientStaging()
-                    listLibraries(Path.of(System.getProperty("user.home"), ".lasco-desktop-importer").toString())
+                    UniffiImporterLibraryRepository(
+                        Path.of(System.getProperty("user.home"), ".lasco-desktop-importer"),
+                    ).use { it.list() }
                 }.exceptionOrNull()?.message?.ifBlank { "The Lasco native library could not be loaded." }
             }
             checking = false
@@ -267,12 +268,28 @@ private fun ImporterWizard() {
     var discoveryProgress by remember { mutableStateOf(DiscoveryProgress()) }
     var importRunning by remember { mutableStateOf(false) }
     var importError by remember { mutableStateOf<String?>(null) }
+    var destinations by remember { mutableStateOf(DestinationUiState()) }
     val scope = rememberCoroutineScope()
     val libraryRepository = remember { UniffiImporterLibraryRepository(Path.of(System.getProperty("user.home"), ".lasco-desktop-importer")) }
 
     DisposableEffect(libraryRepository) {
         onDispose { libraryRepository.close() }
     }
+
+    fun refreshDestinations() {
+        destinations = destinations.copy(loading = true, listError = null)
+        scope.launch {
+            try {
+                destinations = destinations.loaded(withContext(Dispatchers.IO) { libraryRepository.list() })
+            } catch (failure: Throwable) {
+                destinations = destinations.listFailed(
+                    failure.message?.ifBlank { null } ?: "Could not load local importer setups.",
+                )
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) { refreshDestinations() }
 
     fun go(to: Page) {
         forward = to.ordinal > page.ordinal
@@ -368,8 +385,7 @@ private fun ImporterWizard() {
                     ) {
                         val libraryId = connectedGateway.libraryId
                         runCatching {
-                            connectedGateway.close()
-                            ffiDeleteLibrary(FfiLibraryId(libraryId), appData.toString())
+                            libraryRepository.deleteLocalSetup(libraryId)
                         }.exceptionOrNull()?.let { failure ->
                             failure.message?.ifBlank { null }
                                 ?: "Import completed, but this temporary local setup could not be removed."
@@ -430,6 +446,25 @@ private fun ImporterWizard() {
                     when (current) {
                         Page.WELCOME -> WelcomePage()
                         Page.DESTINATION -> DestinationPicker(
+                            state = destinations,
+                            onRefresh = ::refreshDestinations,
+                            onUse = { summary ->
+                                destinations = destinations.clearLibraryError(summary.libraryId)
+                                scope.launch {
+                                    when (val opened = withContext(Dispatchers.IO) { libraryRepository.openCached(summary.libraryId) }) {
+                                        is OpenResult.Open -> {
+                                            gateway = opened.gateway
+                                            remoteNames = withContext(Dispatchers.IO) { opened.gateway.remotes().map { it.name } }
+                                            go(Page.SOURCE)
+                                        }
+                                        OpenResult.CredentialsRequired -> destinations = destinations.copy(dialog = DestinationDialog.Unlock(summary))
+                                        is OpenResult.Failed -> destinations = destinations.withLibraryError(summary.libraryId, opened.message)
+                                    }
+                                }
+                            },
+                            onUnlock = { summary -> destinations = destinations.copy(dialog = DestinationDialog.Unlock(summary)) },
+                            onAddRemote = { summary -> destinations = destinations.copy(dialog = DestinationDialog.AddRemote(summary)) },
+                            onRemove = { summary -> destinations = destinations.copy(dialog = DestinationDialog.RemoveSetup(summary)) },
                             onCloud = {
                                 connectionFailure = null
                                 remoteType = RemoteType.CLOUD
@@ -527,6 +562,54 @@ private fun ImporterWizard() {
             } },
         )
     }
+    DestinationDialogHost(
+        dialog = destinations.dialog,
+        onDismiss = { destinations = destinations.copy(dialog = null) },
+        onUnlock = { summary, username, password ->
+            scope.launch {
+                when (val opened = withContext(Dispatchers.IO) {
+                    libraryRepository.openWithCredentials(LibraryCredentials(summary.nickname, username, password))
+                }) {
+                    is OpenResult.Open -> {
+                        destinations = destinations.copy(dialog = null).clearLibraryError(summary.libraryId)
+                        gateway = opened.gateway
+                        remoteNames = withContext(Dispatchers.IO) { opened.gateway.remotes().map { it.name } }
+                        go(Page.SOURCE)
+                    }
+                    OpenResult.CredentialsRequired -> destinations = destinations.withLibraryError(summary.libraryId, "Credentials are required to unlock this library.")
+                    is OpenResult.Failed -> destinations = destinations.withLibraryError(summary.libraryId, opened.message)
+                }
+            }
+        },
+        onAddRemote = { summary, remote ->
+            scope.launch {
+                try {
+                    withContext(Dispatchers.IO) { libraryRepository.addRemote(summary.libraryId, remote) }
+                    destinations = destinations.copy(dialog = null).clearLibraryError(summary.libraryId)
+                    refreshDestinations()
+                } catch (failure: Throwable) {
+                    destinations = destinations.withLibraryError(
+                        summary.libraryId,
+                        failure.message?.ifBlank { null } ?: "Could not add this remote. The incomplete remote was removed.",
+                    )
+                }
+            }
+        },
+        onRemove = { summary ->
+            scope.launch {
+                try {
+                    withContext(Dispatchers.IO) { libraryRepository.deleteLocalSetup(summary.libraryId) }
+                    destinations = destinations.copy(dialog = null)
+                    refreshDestinations()
+                } catch (failure: Throwable) {
+                    destinations = destinations.withLibraryError(
+                        summary.libraryId,
+                        failure.message?.ifBlank { null } ?: "Could not remove this local importer setup.",
+                    )
+                }
+            }
+        },
+    )
 }
 
 @Composable
@@ -565,14 +648,162 @@ private fun HowItWorksItem(number: String, text: String) {
 }
 
 @Composable
-private fun DestinationPicker(onCloud: () -> Unit, onS3: () -> Unit, onSmb: () -> Unit) {
+private fun DestinationPicker(
+    state: DestinationUiState,
+    onRefresh: () -> Unit,
+    onUse: (app.lasco.importer.ffi.ImporterLibrarySummary) -> Unit,
+    onUnlock: (app.lasco.importer.ffi.ImporterLibrarySummary) -> Unit,
+    onAddRemote: (app.lasco.importer.ffi.ImporterLibrarySummary) -> Unit,
+    onRemove: (app.lasco.importer.ffi.ImporterLibrarySummary) -> Unit,
+    onCloud: () -> Unit,
+    onS3: () -> Unit,
+    onSmb: () -> Unit,
+) {
     PageTitle("Import photos into Lasco", "Connect an existing Lasco library. Imports run in resumable chunks and send each chunk to every connected remote.")
     Spacer(Modifier.height(24.dp))
-    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (state.loading) Text("LOADING LOCAL LIBRARIES…", color = InkSub, style = LascoPixel)
+        state.listError?.let { ErrorMessage(it) }
+        state.libraries.forEach { summary ->
+            DestinationCard(
+                summary = summary,
+                error = state.errorByLibraryId[summary.libraryId],
+                onUse = { onUse(summary) },
+                onUnlock = { onUnlock(summary) },
+                onAddRemote = { onAddRemote(summary) },
+                onRemove = { onRemove(summary) },
+            )
+        }
+        if (state.libraries.isNotEmpty()) LascoButton("REFRESH LOCAL SETUPS", onRefresh, primary = false, modifier = Modifier.widthIn(max = 460.dp))
         Column(Modifier.widthIn(max = 460.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("ADD A LOCAL IMPORTER SETUP", color = InkSub, style = LascoLabel, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
             LascoButton("LASCO CLOUD", onCloud)
             LascoButton("S3-COMPATIBLE STORAGE", onS3)
             LascoButton("SMB NETWORK SHARE", onSmb)
+        }
+    }
+}
+
+@Composable
+private fun DestinationCard(
+    summary: app.lasco.importer.ffi.ImporterLibrarySummary,
+    error: String?,
+    onUse: () -> Unit,
+    onUnlock: () -> Unit,
+    onAddRemote: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    Column(
+        Modifier.widthIn(max = 620.dp).fillMaxWidth().background(Color.White).border(2.dp, Ink).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(summary.nickname, color = Ink, style = LascoHeading.copy(fontSize = 20.sp), fontWeight = FontWeight.Bold)
+        Text(
+            if (summary.username == null) "LOCKED · unlock with this library's credentials" else "READY · ${summary.username}",
+            color = if (summary.username == null) InkMuted else Good,
+            style = LascoLabel,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            if (summary.remotes.isEmpty()) "No remotes configured" else "REMOTES: ${summary.remotes.joinToString { it.name }}",
+            color = InkSub,
+            style = LascoBody.copy(fontSize = 13.sp),
+        )
+        summary.loadError?.let { ErrorMessage(it) }
+        error?.let { ErrorMessage(it) }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            LascoButton("USE THIS LIBRARY", onUse, fillWidth = false)
+            if (summary.username == null) LascoButton("UNLOCK", onUnlock, primary = false, fillWidth = false)
+            LascoButton("ADD REMOTE", onAddRemote, primary = false, fillWidth = false)
+            LascoButton("REMOVE LOCAL SETUP", onRemove, primary = false, fillWidth = false)
+        }
+    }
+}
+
+@Composable
+private fun DestinationDialogHost(
+    dialog: DestinationDialog?,
+    onDismiss: () -> Unit,
+    onUnlock: (app.lasco.importer.ffi.ImporterLibrarySummary, String, String) -> Unit,
+    onAddRemote: (app.lasco.importer.ffi.ImporterLibrarySummary, RemoteConfig) -> Unit,
+    onRemove: (app.lasco.importer.ffi.ImporterLibrarySummary) -> Unit,
+) {
+    when (dialog) {
+        null -> Unit
+        is DestinationDialog.Unlock -> Dialog(onDismissRequest = onDismiss) {
+            var username by remember(dialog.library.libraryId) { mutableStateOf(dialog.library.username.orEmpty()) }
+            var password by remember(dialog.library.libraryId) { mutableStateOf("") }
+            Surface(Modifier.widthIn(min = 420.dp, max = 620.dp), color = Panel) {
+                Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    PageTitle("Unlock ${dialog.library.nickname}", "Enter the library credentials. They are used only to open the local importer setup.")
+                    LascoField("Library username", username, { username = it })
+                    LascoField("Library password", password, { password = it }, secure = true)
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        LascoButton("UNLOCK", { onUnlock(dialog.library, username, password) }, enabled = username.isNotBlank() && password.isNotBlank(), fillWidth = false)
+                        LascoButton("CANCEL", onDismiss, primary = false, fillWidth = false)
+                    }
+                }
+            }
+        }
+        is DestinationDialog.AddRemote -> Dialog(onDismissRequest = onDismiss) {
+            var kind by remember(dialog.library.libraryId) { mutableStateOf(RemoteType.S3) }
+            var name by remember(dialog.library.libraryId) { mutableStateOf("") }
+            var endpoint by remember(dialog.library.libraryId) { mutableStateOf("") }
+            var bucket by remember(dialog.library.libraryId) { mutableStateOf("") }
+            var region by remember(dialog.library.libraryId) { mutableStateOf("") }
+            var prefix by remember(dialog.library.libraryId) { mutableStateOf("") }
+            var accessKey by remember(dialog.library.libraryId) { mutableStateOf("") }
+            var secretKey by remember(dialog.library.libraryId) { mutableStateOf("") }
+            var server by remember(dialog.library.libraryId) { mutableStateOf("") }
+            var port by remember(dialog.library.libraryId) { mutableStateOf("445") }
+            var share by remember(dialog.library.libraryId) { mutableStateOf("") }
+            var username by remember(dialog.library.libraryId) { mutableStateOf("") }
+            var password by remember(dialog.library.libraryId) { mutableStateOf("") }
+            var domain by remember(dialog.library.libraryId) { mutableStateOf("") }
+            val remote = when (kind) {
+                RemoteType.S3 -> RemoteConfig.S3(name, endpoint, bucket, region, prefix, accessKey, secretKey)
+                RemoteType.SMB -> RemoteConfig.Smb(name, server, port.toIntOrNull() ?: 0, share, prefix, username, password, domain.ifBlank { null })
+                RemoteType.CLOUD -> error("Lasco Cloud remotes are configured when adding a library.")
+            }
+            val ready = when (kind) {
+                RemoteType.S3 -> name.isNotBlank() && endpoint.isNotBlank() && bucket.isNotBlank() && region.isNotBlank() && accessKey.isNotBlank() && secretKey.isNotBlank()
+                RemoteType.SMB -> name.isNotBlank() && server.isNotBlank() && port.toIntOrNull() in 1..65535 && share.isNotBlank() && username.isNotBlank() && password.isNotBlank()
+                RemoteType.CLOUD -> false
+            }
+            Surface(Modifier.widthIn(min = 420.dp, max = 620.dp), color = Panel) {
+                Column(Modifier.verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    PageTitle("Add remote", "This remote is initialized immediately. If initialization fails, Lasco removes the incomplete remote.")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        LascoButton("S3", { kind = RemoteType.S3 }, primary = kind == RemoteType.S3, fillWidth = false)
+                        LascoButton("SMB", { kind = RemoteType.SMB }, primary = kind == RemoteType.SMB, fillWidth = false)
+                    }
+                    LascoField("Remote name", name, { name = it })
+                    when (kind) {
+                        RemoteType.S3 -> {
+                            LascoField("Endpoint URL", endpoint, { endpoint = it }); LascoField("Bucket", bucket, { bucket = it }); LascoField("Region", region, { region = it }); LascoField("Path prefix", prefix, { prefix = it }); LascoField("Access key", accessKey, { accessKey = it }); LascoField("Secret key", secretKey, { secretKey = it }, secure = true)
+                        }
+                        RemoteType.SMB -> {
+                            LascoField("Server address", server, { server = it }); LascoField("Port", port, { port = it }); LascoField("Shared folder", share, { share = it }); LascoField("Path prefix", prefix, { prefix = it }); LascoField("SMB username", username, { username = it }); LascoField("SMB password", password, { password = it }, secure = true); LascoField("Domain or workgroup", domain, { domain = it })
+                        }
+                        RemoteType.CLOUD -> Unit
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        LascoButton("ADD REMOTE", { onAddRemote(dialog.library, remote) }, enabled = ready, fillWidth = false)
+                        LascoButton("CANCEL", onDismiss, primary = false, fillWidth = false)
+                    }
+                }
+            }
+        }
+        is DestinationDialog.RemoveSetup -> Dialog(onDismissRequest = onDismiss) {
+            Surface(Modifier.widthIn(min = 420.dp, max = 620.dp), color = Panel) {
+                Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    PageTitle("Remove local importer setup?", "This removes only this computer's saved setup for ${dialog.library.nickname}. It does not delete the Lasco library or any remote data.")
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        LascoButton("REMOVE LOCAL SETUP", { onRemove(dialog.library) }, fillWidth = false)
+                        LascoButton("CANCEL", onDismiss, primary = false, fillWidth = false)
+                    }
+                }
+            }
         }
     }
 }
