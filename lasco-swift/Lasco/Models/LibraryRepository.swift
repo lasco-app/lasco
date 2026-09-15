@@ -98,6 +98,7 @@ protocol LibraryRepositoryProtocol: Sendable {
     func setAutoImportDeviceMedia(enabled: Bool) async throws
     func addUser(username: String, password: String) async throws
     func addRemoteFixedPath(name: String, path: String) async throws -> FfiRemoteUuid
+    func addRemoteUsbApple(name: String, bookmarkBase64: String) async throws -> FfiRemoteUuid
     func addRemoteDebugLocalApple(name: String) async throws -> FfiRemoteUuid
     func addRemoteS3(id: String, endpoint: String, bucket: String, region: String, pathPrefix: String, accessKey: String, secretKey: String) async throws -> FfiRemoteUuid
     func removeRemote(id: FfiRemoteUuid) async throws
@@ -116,6 +117,8 @@ protocol LibraryRepositoryProtocol: Sendable {
 enum LibraryRepositoryError: LocalizedError {
     case closed
     case invalidNativeMediaBuffer
+    case invalidUsbFolder
+    case usbAccessDenied
     case cloudRemoteAlreadyAssociated
     case cloudSignOutRequiresRemoteRemoval
     case cloudAlreadyConnected
@@ -126,6 +129,10 @@ enum LibraryRepositoryError: LocalizedError {
             "The library session is closed."
         case .invalidNativeMediaBuffer:
             "The native media buffer is invalid."
+        case .invalidUsbFolder:
+            "Choose a folder on the USB drive."
+        case .usbAccessDenied:
+            "Lasco could not access the selected USB folder."
         case .cloudRemoteAlreadyAssociated:
             "Lasco Cloud storage is already associated with another library"
         case .cloudSignOutRequiresRemoteRemoval:
@@ -733,6 +740,13 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         return id
     }
 
+    func addRemoteUsbApple(name: String, bookmarkBase64: String) async throws -> FfiRemoteUuid {
+        try ensureOpen()
+        let id = try library.addRemoteUsbApple(name: name, bookmarkBase64: bookmarkBase64)
+        await notify(.session)
+        return id
+    }
+
     func addRemoteDebugLocalApple(name: String) async throws -> FfiRemoteUuid {
         try ensureOpen()
         let id = try library.addRemoteDebugLocalApple(name: name)
@@ -1004,6 +1018,7 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     func setAutoImportDeviceMedia(enabled: Bool) async throws { try await storage.setAutoImportDeviceMedia(enabled: enabled) }
     func addUser(username: String, password: String) async throws { try await storage.addUser(username: username, password: password) }
     func addRemoteFixedPath(name: String, path: String) async throws -> FfiRemoteUuid { try await storage.addRemoteFixedPath(name: name, path: path) }
+    func addRemoteUsbApple(name: String, bookmarkBase64: String) async throws -> FfiRemoteUuid { try await storage.addRemoteUsbApple(name: name, bookmarkBase64: bookmarkBase64) }
     func addRemoteDebugLocalApple(name: String) async throws -> FfiRemoteUuid { try await storage.addRemoteDebugLocalApple(name: name) }
     func addRemoteS3(id: String, endpoint: String, bucket: String, region: String, pathPrefix: String, accessKey: String, secretKey: String) async throws -> FfiRemoteUuid { try await storage.addRemoteS3(id: id, endpoint: endpoint, bucket: bucket, region: region, pathPrefix: pathPrefix, accessKey: accessKey, secretKey: secretKey) }
     func removeRemote(id: FfiRemoteUuid) async throws { try await storage.removeRemote(id: id) }

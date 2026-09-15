@@ -18,6 +18,7 @@ struct NewLibraryWizard: View {
     @State private var confirmPassword = ""
     @State private var showCloudLoginSheet = false
     @State private var showAddS3Sheet = false
+    @State private var showAddUsbSheet = false
     @State private var showAddLocalFSSheet = false
     @State private var masterKeyCopied = false
     @State private var masterKey: String?
@@ -143,6 +144,9 @@ struct NewLibraryWizard: View {
                 Button("Add S3-compatible remote") { showAddS3Sheet = true }
                     .buttonStyle(LascoPrimaryButtonStyle())
                     .frame(maxWidth: .infinity)
+                Button("Add USB drive") { showAddUsbSheet = true }
+                    .buttonStyle(LascoPrimaryButtonStyle())
+                    .frame(maxWidth: .infinity)
                 if expertMode {
                     Button("Add local filesystem remote") { showAddLocalFSSheet = true }
                         .buttonStyle(LascoDevButtonStyle())
@@ -189,6 +193,20 @@ struct NewLibraryWizard: View {
                         advanceFromRemote()
                     }
                     .environment(activeSession.repository)
+                }
+            }
+            .sheet(isPresented: $showAddUsbSheet) {
+                if let activeSession = directory.activeSession {
+                    AddUsbRemoteView {
+                        try await activeSession.refresh()
+                        guard !activeSession.state.remotes.isEmpty else {
+                            throw LibraryDirectoryModelError.remoteUnavailableAfterRefresh
+                        }
+                        advanceFromRemote()
+                    }
+                    .environment(activeSession.repository)
+                    .environment(\.lascoTheme, .dark)
+                    .preferredColorScheme(.dark)
                 }
             }
         } else {

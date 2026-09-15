@@ -1,5 +1,8 @@
 package com.lasco.lasco.ui.manage
 
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -21,6 +24,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,6 +71,7 @@ fun RemoteTypePickerDialog(
     showCloud: Boolean,
     onCloud: () -> Unit,
     onS3: () -> Unit,
+    onUsb: () -> Unit,
     onLocalFS: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -85,12 +90,41 @@ fun RemoteTypePickerDialog(
                 Spacer(modifier = Modifier.height(12.dp))
             }
             LascoPrimaryButton(text = "Add S3-compatible remote", onClick = onS3)
+            Spacer(modifier = Modifier.height(12.dp))
+            LascoPrimaryButton(text = "Add USB drive", onClick = onUsb)
             if (expertMode) {
                 Spacer(modifier = Modifier.height(12.dp))
                 LascoPrimaryButton(text = "Add local filesystem remote", onClick = onLocalFS)
             }
         }
     }
+}
+
+/**
+ * Opens Android's system folder picker and persists the scoped read/write
+ * grant before exposing the opaque tree URI to the caller.
+ */
+@Composable
+fun rememberUsbTreePicker(
+    onSelected: (String) -> Unit,
+    onFailure: (String) -> Unit,
+): () -> Unit {
+    val context = LocalContext.current
+    val currentOnSelected by rememberUpdatedState(onSelected)
+    val currentOnFailure by rememberUpdatedState(onFailure)
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        try {
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+            )
+            currentOnSelected(uri.toString())
+        } catch (error: SecurityException) {
+            currentOnFailure(error.message?.ifBlank { null } ?: "Could not keep access to this USB folder")
+        }
+    }
+    return { picker.launch(null) }
 }
 
 @Composable
@@ -341,6 +375,73 @@ fun AddLocalFSRemoteDialog(
                                 runCatching { repo.removeRemote(remoteId) }
                             }
                             addError = e.message?.ifBlank { null } ?: "Failed to add remote"
+                        }
+                        submitting = false
+                    }
+                },
+            )
+        }
+    }
+}
+
+@Composable
+fun AddUsbRemoteDialog(
+    treeUri: String,
+    onDismiss: () -> Unit,
+    onResult: (name: String, error: String?) -> Unit,
+) {
+    val colors = LascoTheme.colors
+    val context = LocalContext.current
+    val repo = remember { LibraryRepository.from(context) }
+    val scope = rememberCoroutineScope()
+
+    var name by remember { mutableStateOf("USB drive") }
+    var submitting by remember { mutableStateOf(false) }
+    var addError by remember { mutableStateOf<String?>(null) }
+    val isValid = name.isNotBlank() && !submitting
+
+    FullSheet(onDismiss = onDismiss) {
+        Column(
+            modifier = Modifier.fillMaxWidth().weight(1f, fill = false).padding(horizontal = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(text = "Add USB drive", style = LascoTheme.type.title(26), color = colors.ink)
+            Text(
+                text = "Lasco will store data only in the folder you selected on the connected drive.",
+                style = LascoTheme.type.body(13),
+                color = colors.inkMuted,
+            )
+            LascoField(
+                label = "Remote name",
+                value = name,
+                onValueChange = { name = it },
+                placeholder = "USB drive",
+                autoFocus = true,
+            )
+            addError?.let { message ->
+                Text(text = message, style = LascoTheme.type.body(13), color = colors.error)
+            }
+        }
+        Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 20.dp)) {
+            LascoPrimaryButton(
+                text = if (submitting) "Adding…" else "Add Remote",
+                enabled = isValid,
+                onClick = {
+                    submitting = true
+                    addError = null
+                    scope.launch {
+                        var addedRemoteId: FfiRemoteUuid? = null
+                        try {
+                            val remoteId = repo.addRemoteUsbAndroid(name.trim(), treeUri)
+                            addedRemoteId = remoteId
+                            repo.initializeRemote(remoteId, null)
+                            onDismiss()
+                            onResult(name, null)
+                        } catch (error: Exception) {
+                            addedRemoteId?.let { remoteId ->
+                                runCatching { repo.removeRemote(remoteId) }
+                            }
+                            addError = error.message?.ifBlank { null } ?: "Failed to add USB drive"
                         }
                         submitting = false
                     }

@@ -8,6 +8,7 @@ struct StatusView: View {
 
     @State private var showRemotePicker = false
     @State private var showAddS3 = false
+    @State private var showAddUsb = false
     @State private var showAddLocalFS = false
     @State private var showCloudLogin = false
     @State private var cloudConnected = false
@@ -79,6 +80,7 @@ struct StatusView: View {
                 showCloud: !cloudConnected,
                 onCloud: { showRemotePicker = false; showCloudLogin = true },
                 onS3: { showRemotePicker = false; showAddS3 = true },
+                onUsb: { showRemotePicker = false; showAddUsb = true },
                 onLocalFS: { showRemotePicker = false; showAddLocalFS = true },
                 onDismiss: { showRemotePicker = false }
             )
@@ -96,6 +98,12 @@ struct StatusView: View {
         }
         .sheet(isPresented: $showAddS3) {
             AddS3RemoteView()
+                .environment(repository)
+                .environment(\.lascoTheme, .dark)
+                .preferredColorScheme(.dark)
+        }
+        .sheet(isPresented: $showAddUsb) {
+            AddUsbRemoteView()
                 .environment(repository)
                 .environment(\.lascoTheme, .dark)
                 .preferredColorScheme(.dark)

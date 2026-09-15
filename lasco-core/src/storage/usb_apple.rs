@@ -9,17 +9,23 @@
     reason = "Objective-C security-scope selectors are unsafe in objc2."
 )]
 
+use std::cell::RefCell;
+use std::ptr::NonNull;
+
 use async_trait::async_trait;
 use base64::Engine;
+use block2::RcBlock;
 use objc2::rc::Retained;
 use objc2::runtime::Bool;
-use objc2_foundation::{NSData, NSURL, NSURLBookmarkResolutionOptions};
+use objc2_foundation::{
+    NSData, NSError, NSFileCoordinator, NSFileCoordinatorReadingOptions,
+    NSFileCoordinatorWritingOptions, NSURL, NSURLBookmarkResolutionOptions,
+};
 
 use super::{AtomicWriteMode, Result, Storage, StorageError, StorageLocalFs};
 
 #[derive(Debug)]
 pub struct StorageUsbApple {
-    storage: StorageLocalFs,
     /// Retaining the URL is required until its security scope is relinquished.
     security_scoped_url: Retained<NSURL>,
 }
@@ -37,7 +43,10 @@ impl StorageUsbApple {
         let url = unsafe {
             NSURL::URLByResolvingBookmarkData_options_relativeToURL_bookmarkDataIsStale_error(
                 &bookmark,
-                NSURLBookmarkResolutionOptions::WithSecurityScope,
+                // iOS document-picker bookmarks resolve to security-scoped
+                // URLs implicitly. The explicit `WithSecurityScope` option is
+                // a macOS-only API and must not be used on iOS.
+                NSURLBookmarkResolutionOptions::empty(),
                 None,
                 &raw mut is_stale,
             )
@@ -58,15 +67,76 @@ impl StorageUsbApple {
             ));
         }
 
-        let path = url.path().ok_or_else(|| {
+        url.path().ok_or_else(|| {
             StorageError::Unavailable(
                 "USB bookmark did not resolve to a filesystem path".to_string(),
             )
         })?;
 
         Ok(Self {
-            storage: StorageLocalFs::new(path.to_string()),
             security_scoped_url: url,
+        })
+    }
+
+    /// Coordinates a synchronous filesystem operation against the selected
+    /// folder. NSFileCoordinator invokes its accessor before another File
+    /// Provider modifies the directory, and gives us the URL valid for the
+    /// duration of that accessor.
+    fn coordinate<T>(
+        &self,
+        writing: bool,
+        operation: impl FnOnce(&StorageLocalFs) -> Result<T>,
+    ) -> Result<T> {
+        let operation = RefCell::new(Some(operation));
+        let result = RefCell::new(None);
+        let accessor = RcBlock::new(|coordinated_url: NonNull<NSURL>| {
+            let operation = operation
+                .borrow_mut()
+                .take()
+                .expect("file coordinator accessor invoked more than once");
+            // SAFETY: NSFileCoordinator passes a non-null URL that stays
+            // valid through this synchronous accessor invocation.
+            let storage = unsafe { coordinated_url.as_ref() }
+                .path()
+                .map(|path| StorageLocalFs::new(path.to_string()))
+                .ok_or_else(|| {
+                    StorageError::Unavailable(
+                        "USB drive did not yield a coordinated filesystem path".to_string(),
+                    )
+                });
+            *result.borrow_mut() = Some(storage.and_then(|storage| operation(&storage)));
+        });
+        let coordinator = NSFileCoordinator::new();
+        let mut coordination_error: Option<Retained<NSError>> = None;
+
+        if writing {
+            coordinator.coordinateWritingItemAtURL_options_error_byAccessor(
+                &self.security_scoped_url,
+                NSFileCoordinatorWritingOptions::empty(),
+                Some(&mut coordination_error),
+                &accessor,
+            );
+        } else {
+            coordinator.coordinateReadingItemAtURL_options_error_byAccessor(
+                &self.security_scoped_url,
+                NSFileCoordinatorReadingOptions::empty(),
+                Some(&mut coordination_error),
+                &accessor,
+            );
+        }
+        // The accessor holds the only borrow of `result`; file coordination is
+        // synchronous, so it is safe to release the block before consuming it.
+        drop(accessor);
+
+        if let Some(error) = coordination_error {
+            return Err(StorageError::Unavailable(format!(
+                "USB drive file coordination failed: {error}"
+            )));
+        }
+        result.into_inner().unwrap_or_else(|| {
+            Err(StorageError::Unavailable(
+                "USB drive did not grant coordinated file access".to_string(),
+            ))
         })
     }
 }
@@ -85,29 +155,26 @@ impl Drop for StorageUsbApple {
 #[async_trait]
 impl Storage for StorageUsbApple {
     async fn put(&self, key: &str, data: &[u8]) -> Result<()> {
-        self.storage
-            .put_atomic(key, data, AtomicWriteMode::Replace)
-            .await?;
-        Ok(())
+        self.coordinate(true, |storage| storage.put_sync(key, data))
     }
 
     async fn put_atomic(&self, key: &str, data: &[u8], mode: AtomicWriteMode) -> Result<bool> {
-        self.storage.put_atomic(key, data, mode).await
+        self.coordinate(true, |storage| storage.put_atomic_sync(key, data, mode))
     }
 
     async fn get(&self, key: &str) -> Result<Vec<u8>> {
-        self.storage.get(key).await
+        self.coordinate(false, |storage| storage.get_sync(key))
     }
 
     async fn delete(&self, key: &str) -> Result<()> {
-        self.storage.delete(key).await
+        self.coordinate(true, |storage| storage.delete_sync(key))
     }
 
     async fn list(&self, prefix: &str) -> Result<Vec<String>> {
-        self.storage.list(prefix).await
+        self.coordinate(false, |storage| storage.list_sync(prefix))
     }
 
     async fn exists(&self, key: &str) -> Result<bool> {
-        self.storage.exists(key).await
+        self.coordinate(false, |storage| storage.exists_sync(key))
     }
 }

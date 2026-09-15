@@ -1549,6 +1549,7 @@ dependencies = [
  "async-trait",
  "base64",
  "blake3",
+ "block2",
  "chacha20poly1305",
  "chrono",
  "ciborium",

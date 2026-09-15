@@ -49,8 +49,10 @@ import com.lasco.lasco.ui.components.LascoInfoDialog
 import com.lasco.lasco.ui.components.LascoPrimaryButton
 import com.lasco.lasco.ui.manage.AddLocalFSRemoteDialog
 import com.lasco.lasco.ui.manage.AddS3RemoteDialog
+import com.lasco.lasco.ui.manage.AddUsbRemoteDialog
 import com.lasco.lasco.ui.manage.LascoCloudLoginDialog
 import com.lasco.lasco.ui.manage.RemoteTypePickerDialog
+import com.lasco.lasco.ui.manage.rememberUsbTreePicker
 import com.lasco.lasco.ui.theme.LascoTheme
 import com.lasco.lasco.ui.theme.lascoPanel
 import kotlinx.coroutines.delay
@@ -88,6 +90,8 @@ fun StatusScreen(modifier: Modifier = Modifier) {
 
     var showRemotePicker by remember { mutableStateOf(false) }
     var showAddS3 by remember { mutableStateOf(false) }
+    var showAddUsb by remember { mutableStateOf(false) }
+    var usbTreeUri by remember { mutableStateOf<String?>(null) }
     var showAddLocalFS by remember { mutableStateOf(false) }
     var showCloudLogin by remember { mutableStateOf(false) }
     var showCleanConfirm by remember { mutableStateOf(false) }
@@ -116,6 +120,13 @@ fun StatusScreen(modifier: Modifier = Modifier) {
         }
     }
     val scope = rememberCoroutineScope()
+    val openUsbTreePicker = rememberUsbTreePicker(
+        onSelected = { uri ->
+            usbTreeUri = uri
+            showAddUsb = true
+        },
+        onFailure = { message -> feedback = message },
+    )
 
     LaunchedEffect(Unit) { statusViewModel.refreshLocalStateStats() }
 
@@ -276,6 +287,7 @@ fun StatusScreen(modifier: Modifier = Modifier) {
             showCloud = !cloudConnected,
             onCloud = { showRemotePicker = false; showCloudLogin = true },
             onS3 = { showRemotePicker = false; showAddS3 = true },
+            onUsb = { showRemotePicker = false; openUsbTreePicker() },
             onLocalFS = { showRemotePicker = false; showAddLocalFS = true },
             onDismiss = { showRemotePicker = false },
         )
@@ -289,6 +301,16 @@ fun StatusScreen(modifier: Modifier = Modifier) {
     if (showAddS3) {
         AddS3RemoteDialog(
             onDismiss = { showAddS3 = false },
+            onResult = { name, error -> feedback = error ?: "$name: initialized" },
+        )
+    }
+    usbTreeUri?.takeIf { showAddUsb }?.let { treeUri ->
+        AddUsbRemoteDialog(
+            treeUri = treeUri,
+            onDismiss = {
+                showAddUsb = false
+                usbTreeUri = null
+            },
             onResult = { name, error -> feedback = error ?: "$name: initialized" },
         )
     }

@@ -63,6 +63,8 @@ fun RemotesScreen(
 
     var showRemotePicker by remember { mutableStateOf(false) }
     var showAddS3 by remember { mutableStateOf(false) }
+    var showAddUsb by remember { mutableStateOf(false) }
+    var usbTreeUri by remember { mutableStateOf<String?>(null) }
     var showAddLocalFS by remember { mutableStateOf(false) }
     var showCloudLogin by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<FfiRemote?>(null) }
@@ -73,6 +75,13 @@ fun RemotesScreen(
     var feedback by remember { mutableStateOf<String?>(null) }
     var isUpdatingMediaSourceOrder by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val openUsbTreePicker = rememberUsbTreePicker(
+        onSelected = { uri ->
+            usbTreeUri = uri
+            showAddUsb = true
+        },
+        onFailure = { message -> feedback = message },
+    )
     val remotesById = session.remotes.associateBy { it.remoteId }
     val orderedMediaSources = session.mediaSourceOrder.mapNotNull(remotesById::get)
 
@@ -207,6 +216,7 @@ fun RemotesScreen(
             showCloud = !cloudConnected,
             onCloud = { showRemotePicker = false; showCloudLogin = true },
             onS3 = { showRemotePicker = false; showAddS3 = true },
+            onUsb = { showRemotePicker = false; openUsbTreePicker() },
             onLocalFS = { showRemotePicker = false; showAddLocalFS = true },
             onDismiss = { showRemotePicker = false },
         )
@@ -220,6 +230,16 @@ fun RemotesScreen(
     if (showAddS3) {
         AddS3RemoteDialog(
             onDismiss = { showAddS3 = false },
+            onResult = { name, error -> feedback = error ?: "$name: initialized" },
+        )
+    }
+    usbTreeUri?.takeIf { showAddUsb }?.let { treeUri ->
+        AddUsbRemoteDialog(
+            treeUri = treeUri,
+            onDismiss = {
+                showAddUsb = false
+                usbTreeUri = null
+            },
             onResult = { name, error -> feedback = error ?: "$name: initialized" },
         )
     }
