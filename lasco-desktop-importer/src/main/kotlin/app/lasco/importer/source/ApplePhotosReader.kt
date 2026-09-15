@@ -66,14 +66,14 @@ private data class NativePhotoDiscovery(
  * IDs to opaque process-only staging handles. A restart requires a rescan; iCloud-only originals
  * are downloaded by `PHAssetResourceManager` into staging.
  */
-class ApplePhotosReader private constructor(private val bridge: PhotoKitNative) : ImportSourceReader {
+class ApplePhotosReader private constructor(private val bridge: PhotoKitNative) : ApplePhotosCollectionSourceReader {
     constructor() : this(loadBridge())
 
     override val source = ImportSource.APPLE_PHOTOS
     private val json = Json { ignoreUnknownKeys = true }
     private var collections: List<ApplePhotosCollectionDescriptor> = emptyList()
 
-    fun collectionDescriptors(): List<ApplePhotosCollectionDescriptor> = collections
+    override fun collectionDescriptors(): List<ApplePhotosCollectionDescriptor> = collections
 
     // macOS may grant a limited Photos selection (status 4). It is still valid access and the
     // bridge will enumerate exactly that allowed selection.

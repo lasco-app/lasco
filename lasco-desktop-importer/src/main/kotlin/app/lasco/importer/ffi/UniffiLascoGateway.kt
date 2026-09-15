@@ -2,6 +2,8 @@ package app.lasco.importer.ffi
 
 import app.lasco.importer.model.ImportedMedia
 import app.lasco.importer.model.ApplePhotosAssetRevision
+import app.lasco.importer.model.ApplePhotosCollectionDescriptor
+import app.lasco.importer.model.ApplePhotosCollectionKind
 import app.lasco.importer.model.ApplePhotosResourceDescriptor
 import app.lasco.importer.model.ApplePhotosResourceType
 import app.lasco.importer.model.RemoteBenchmark
@@ -15,6 +17,9 @@ import uniffi.lasco_ffi.FfiApplePhotosAssetRevision
 import uniffi.lasco_ffi.FfiApplePhotosResourceDescriptor
 import uniffi.lasco_ffi.FfiApplePhotosResourceOrigin
 import uniffi.lasco_ffi.FfiApplePhotosResourceType
+import uniffi.lasco_ffi.FfiApplePhotosCollectionIdentity
+import uniffi.lasco_ffi.FfiApplePhotosCollectionLink
+import uniffi.lasco_ffi.FfiApplePhotosCollectionKind
 import uniffi.lasco_ffi.FfiRemoteUuid
 import uniffi.lasco_ffi.PushProgressSink
 
@@ -30,7 +35,7 @@ class UniffiLascoGateway(
 
     override fun remotes() = library.listRemotes().map { LascoRemote(it.remoteId.value, it.name, it.kind) }
 
-    override fun createAlbum(name: String): String = library.createAlbum(name, null).value
+    override fun createAlbum(name: String, parentAlbumId: String?): String = library.createAlbum(name, parentAlbumId?.let(::FfiAlbumUuid)).value
     override fun addMediaToAlbum(albumId: String, mediaId: String) = library.addMediaToAlbum(FfiAlbumUuid(albumId), FfiMediaUuid(mediaId))
 
     override fun importMedia(path: Path, metadata: SourceMetadata, aaeMediaId: String?, liveVideoMediaId: String?): ImportedMedia {
@@ -55,6 +60,17 @@ class UniffiLascoGateway(
         val cloudAssetId = revision.cloudAssetId ?: return
         library.recordApplePhotosResourceOrigin(
             FfiApplePhotosResourceOrigin(FfiMediaUuid(mediaId), cloudAssetId, revision.modificationDate, resourceType.toFfi(), filename),
+        )
+    }
+
+    override fun applePhotosCollectionLinks(collections: List<ApplePhotosCollectionDescriptor>): List<String?> =
+        library.applePhotosCollectionLinks(collections.map {
+            FfiApplePhotosCollectionIdentity(it.cloudCollectionId, it.kind.toFfiCollectionKind())
+        }).map { it?.value }
+
+    override fun recordApplePhotosCollectionLink(albumId: String, collection: ApplePhotosCollectionDescriptor) {
+        library.recordApplePhotosCollectionLink(
+            FfiApplePhotosCollectionLink(FfiAlbumUuid(albumId), collection.cloudCollectionId, collection.kind.toFfiCollectionKind()),
         )
     }
 
@@ -83,4 +99,9 @@ private fun ApplePhotosResourceType.toFfi(): FfiApplePhotosResourceType = when (
     ApplePhotosResourceType.ADJUSTMENT_DATA -> FfiApplePhotosResourceType.ADJUSTMENT_DATA
     ApplePhotosResourceType.PAIRED_VIDEO -> FfiApplePhotosResourceType.PAIRED_VIDEO
     ApplePhotosResourceType.FULL_SIZE_PAIRED_VIDEO -> FfiApplePhotosResourceType.FULL_SIZE_PAIRED_VIDEO
+}
+
+private fun ApplePhotosCollectionKind.toFfiCollectionKind(): FfiApplePhotosCollectionKind = when (this) {
+    ApplePhotosCollectionKind.FOLDER -> FfiApplePhotosCollectionKind.FOLDER
+    ApplePhotosCollectionKind.ALBUM -> FfiApplePhotosCollectionKind.ALBUM
 }

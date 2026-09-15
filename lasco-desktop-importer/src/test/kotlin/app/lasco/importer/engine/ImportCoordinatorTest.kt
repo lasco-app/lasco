@@ -3,6 +3,8 @@ package app.lasco.importer.engine
 import app.lasco.importer.ffi.LascoGateway
 import app.lasco.importer.ffi.LascoRemote
 import app.lasco.importer.model.ApplePhotosAssetRevision
+import app.lasco.importer.model.ApplePhotosCollectionDescriptor
+import app.lasco.importer.model.ApplePhotosCollectionKind
 import app.lasco.importer.model.ApplePhotosResourceDescriptor
 import app.lasco.importer.model.ApplePhotosResourceType
 import app.lasco.importer.model.ImportAsset
@@ -14,6 +16,7 @@ import app.lasco.importer.model.ResourceRole
 import app.lasco.importer.model.SourceMetadata
 import app.lasco.importer.model.StagedAsset
 import app.lasco.importer.source.ImportSourceReader
+import app.lasco.importer.source.ApplePhotosCollectionSourceReader
 import kotlinx.coroutines.runBlocking
 import java.nio.file.Files
 import java.nio.file.Path
@@ -59,6 +62,28 @@ class ImportCoordinatorTest {
         assertEquals("Could not remove the temporary setup", coordinator.progress.value.detail)
     }
 
+    @Test
+    fun `cloud linked collections reuse canonical albums and add primary media only`() = runBlocking {
+        val gateway = FakeGateway().apply { collectionLinks["album-cloud"] = "existing-album" }
+        val primary = asset("still").copy(
+            source = ImportSource.APPLE_PHOTOS,
+            assetSessionHandle = "asset-session",
+            applePhotosRevision = ApplePhotosAssetRevision("asset-cloud", null, emptyList()),
+        )
+        val companion = asset("sidecar").copy(source = ImportSource.APPLE_PHOTOS, resourceRole = ResourceRole.AAE_SIDECAR)
+        val reader = AppleReader(
+            listOf(companion, primary),
+            listOf(ApplePhotosCollectionDescriptor("album-cloud", ApplePhotosCollectionKind.ALBUM, "Do not rename", null, listOf("asset-cloud"), emptyList())),
+        )
+        val coordinator = ImportCoordinator(gateway, Files.createTempDirectory("lasco-stage")) { null }
+
+        coordinator.discover(reader, chunkSize = 2)
+        coordinator.startOrResume(emptyList())
+
+        assertEquals(emptyList<String>(), gateway.createdAlbums)
+        assertEquals(listOf("existing-album" to "media-still"), gateway.memberships)
+    }
+
     private fun asset(id: String) = ImportAsset(
         sourceId = id,
         source = ImportSource.GOOGLE_TAKEOUT,
@@ -88,19 +113,42 @@ class ImportCoordinatorTest {
         var pushes = 0
 
         override fun remotes() = listOf(LascoRemote("remote", "Remote", "s3"))
-        override fun createAlbum(name: String) = name
-        override fun addMediaToAlbum(albumId: String, mediaId: String) = Unit
+        val createdAlbums = mutableListOf<String>()
+        val memberships = mutableListOf<Pair<String, String>>()
+        val collectionLinks = mutableMapOf<String, String>()
+        override fun createAlbum(name: String, parentAlbumId: String?): String {
+            createdAlbums += name
+            return "created-$name"
+        }
+        override fun addMediaToAlbum(albumId: String, mediaId: String) { memberships += albumId to mediaId }
         override fun importMedia(path: Path, metadata: SourceMetadata, aaeMediaId: String?, liveVideoMediaId: String?): ImportedMedia {
             imported += path.fileName.toString().substringBeforeLast('.')
             return ImportedMedia("media-${imported.last()}", false)
         }
         override fun applePhotosAssetRevisionMediaIds(revision: ApplePhotosAssetRevision): Map<ApplePhotosResourceDescriptor, String>? = null
         override fun recordApplePhotosResourceOrigin(mediaId: String, revision: ApplePhotosAssetRevision, resourceType: ApplePhotosResourceType, filename: String) = Unit
+        override fun applePhotosCollectionLinks(collections: List<ApplePhotosCollectionDescriptor>) = collections.map { collectionLinks[it.cloudCollectionId] }
+        override fun recordApplePhotosCollectionLink(albumId: String, collection: ApplePhotosCollectionDescriptor) { collectionLinks[collection.cloudCollectionId] = albumId }
         override suspend fun benchmark(remote: LascoRemote, bytesPerUpload: Long) = RemoteBenchmark(remote.id, remote.name, 1, bytesPerUpload)
         override suspend fun push(remote: LascoRemote, maxConcurrentMediaUploads: Int, onProgress: (Double) -> Unit) {
             pushes += 1
             onProgress(1.0)
         }
         override fun close() = Unit
+    }
+
+    private class AppleReader(
+        private val assets: List<ImportAsset>,
+        private val collections: List<ApplePhotosCollectionDescriptor>,
+    ) : ApplePhotosCollectionSourceReader {
+        override val source = ImportSource.APPLE_PHOTOS
+        override suspend fun discover() = assets
+        override fun collectionDescriptors() = collections
+        override suspend fun stage(asset: ImportAsset, stagingDirectory: Path): StagedAsset {
+            Files.createDirectories(stagingDirectory)
+            val path = stagingDirectory.resolve(asset.displayName)
+            Files.writeString(path, asset.sourceId)
+            return StagedAsset(asset, path)
+        }
     }
 }

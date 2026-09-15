@@ -3,6 +3,7 @@ package app.lasco.importer.engine
 import app.lasco.importer.ffi.LascoGateway
 import app.lasco.importer.ffi.LascoRemote
 import app.lasco.importer.model.ApplePhotosResourceDescriptor
+import app.lasco.importer.model.ApplePhotosCollectionDescriptor
 import app.lasco.importer.model.ImportAsset
 import app.lasco.importer.model.ImportPlan
 import app.lasco.importer.model.ImportProgress
@@ -10,6 +11,7 @@ import app.lasco.importer.model.ImportRunState
 import app.lasco.importer.model.RemoteBenchmark
 import app.lasco.importer.model.ResourceRole
 import app.lasco.importer.source.ImportSourceReader
+import app.lasco.importer.source.ApplePhotosCollectionSourceReader
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -35,6 +37,10 @@ class ImportCoordinator(
         val totalBytes: Long,
         val importedMediaBySourceId: MutableMap<String, String> = mutableMapOf(),
         val albumIdsByName: MutableMap<String, String> = mutableMapOf(),
+        val albumIdsByCloudCollectionId: MutableMap<String, String> = mutableMapOf(),
+        val linkableMediaByCloudAssetId: MutableMap<String, String> = mutableMapOf(),
+        val linkableMediaBySessionHandle: MutableMap<String, String> = mutableMapOf(),
+        val appleCollections: List<ApplePhotosCollectionDescriptor> = emptyList(),
         var nextAssetIndex: Int = 0,
         var pauseRequested: Boolean = false,
     )
@@ -47,7 +53,8 @@ class ImportCoordinator(
         _progress.value = ImportProgress(ImportRunState.SCANNING, 0, 0, 0, 0, detail = "Discovering ${reader.source}")
         val assets = dependencyOrder(reader.discover())
         val totalBytes = assets.sumOf(ImportAsset::byteCount)
-        session = ImportSession(reader, assets, chunkSize, totalBytes)
+        val collections = (reader as? ApplePhotosCollectionSourceReader)?.collectionDescriptors().orEmpty()
+        session = ImportSession(reader, assets, chunkSize, totalBytes, appleCollections = collections)
         val plan = ImportPlan(reader.source, assets.size, totalBytes, 0, chunkSize, gateway.remotes().map { it.name }, null)
         _progress.value = ImportProgress(ImportRunState.READY, 0, assets.size, 0, totalBytes, detail = "Ready to import")
         return plan
@@ -64,6 +71,7 @@ class ImportCoordinator(
         val activeSession = requireNotNull(session) { "Scan a source before starting the import" }
         val remotes = gateway.remotes()
         require(remotes.isNotEmpty()) { "Select at least one non-USB remote" }
+        ensureApplePhotosCollections(activeSession)
 
         while (activeSession.nextAssetIndex < activeSession.assets.size) {
             val chunkStart = activeSession.nextAssetIndex
@@ -141,9 +149,39 @@ class ImportCoordinator(
     }
 
     private fun addAlbumMembership(session: ImportSession, asset: ImportAsset, mediaId: String) {
+        if (asset.resourceRole != ResourceRole.PRIMARY) return
+        asset.applePhotosRevision?.cloudAssetId?.let { session.linkableMediaByCloudAssetId[it] = mediaId }
+        asset.assetSessionHandle?.let { session.linkableMediaBySessionHandle[it] = mediaId }
+        session.appleCollections.forEach { collection ->
+            val isMember = asset.applePhotosRevision?.cloudAssetId in collection.memberCloudAssetIds ||
+                asset.assetSessionHandle in collection.memberSessionHandles
+            if (isMember) session.albumIdsByCloudCollectionId[collection.cloudCollectionId]?.let { albumId ->
+                gateway.addMediaToAlbum(albumId, mediaId)
+            }
+        }
         asset.albumNames.forEach { albumName ->
             val albumId = session.albumIdsByName.getOrPut(albumName) { gateway.createAlbum(albumName) }
             gateway.addMediaToAlbum(albumId, mediaId)
+        }
+    }
+
+    /**
+     * Links are looked up once per scan, then created in native parent-first order. Reused albums
+     * are intentionally left untouched: reimport may add members but never rename or reparent.
+     */
+    private fun ensureApplePhotosCollections(session: ImportSession) {
+        if (session.appleCollections.isEmpty() || session.albumIdsByCloudCollectionId.isNotEmpty()) return
+        val existing = gateway.applePhotosCollectionLinks(session.appleCollections)
+        session.appleCollections.zip(existing).forEach { (collection, albumId) ->
+            albumId?.let { session.albumIdsByCloudCollectionId[collection.cloudCollectionId] = it }
+        }
+        session.appleCollections.forEach { collection ->
+            if (collection.cloudCollectionId in session.albumIdsByCloudCollectionId) return@forEach
+            val parentId = collection.parentCloudCollectionId
+                ?.let(session.albumIdsByCloudCollectionId::get)
+            val albumId = gateway.createAlbum(collection.name, parentId)
+            gateway.recordApplePhotosCollectionLink(albumId, collection)
+            session.albumIdsByCloudCollectionId[collection.cloudCollectionId] = albumId
         }
     }
 
