@@ -29,6 +29,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -75,7 +76,6 @@ import app.lasco.importer.model.RemoteBenchmark
 import app.lasco.importer.source.ApplePhotosReader
 import app.lasco.importer.source.GoogleTakeoutReader
 import app.lasco.importer.source.ImportSourceReader
-import app.lasco.importer.persistence.ImportManifestStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -86,7 +86,11 @@ import java.awt.Frame
 import java.awt.Desktop
 import java.net.URI
 import java.nio.file.Path
+import java.nio.file.Files
+import java.util.Comparator
 import uniffi.lasco_ffi.listLibraries
+import uniffi.lasco_ffi.FfiLibraryId
+import uniffi.lasco_ffi.ffiDeleteLibrary
 
 private enum class Page(val stage: Int) {
     WELCOME(0), DESTINATION(1), CLOUD(1), S3(1), SMB(1),
@@ -156,6 +160,14 @@ private val LascoLabel = TextStyle(fontFamily = Jersey10, fontSize = 12.sp, lett
 private val LascoPixel = TextStyle(fontFamily = VT323, fontSize = 15.sp)
 private val LascoMono = TextStyle(fontFamily = JetBrainsMono, fontSize = 13.sp)
 
+private fun clearTransientStaging() {
+    val staging = Path.of(System.getProperty("user.home"), ".lasco-desktop-importer", "staging")
+    if (!Files.exists(staging)) return
+    Files.walk(staging).use { paths ->
+        paths.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists)
+    }
+}
+
 fun main() = application {
     Window(
         onCloseRequest = ::exitApplication,
@@ -184,6 +196,7 @@ private fun FfiReadinessGate(content: @Composable () -> Unit) {
         scope.launch {
             error = withContext(Dispatchers.IO) {
                 runCatching {
+                    clearTransientStaging()
                     listLibraries(Path.of(System.getProperty("user.home"), ".lasco-desktop-importer").toString())
                 }.exceptionOrNull()?.message?.ifBlank { "The Lasco native library could not be loaded." }
             }
@@ -245,8 +258,6 @@ private fun ImporterWizard() {
     var photosError by remember { mutableStateOf<String?>(null) }
     var photosPermissionDenied by remember { mutableStateOf(false) }
     var coordinator by remember { mutableStateOf<ImportCoordinator?>(null) }
-    var sourceReader by remember { mutableStateOf<ImportSourceReader?>(null) }
-    var importJobId by remember { mutableStateOf<String?>(null) }
     var importPlan by remember { mutableStateOf<ImportPlan?>(null) }
     var benchmarks by remember { mutableStateOf(emptyList<RemoteBenchmark>()) }
     var importProgress by remember { mutableStateOf(ImportProgress(ImportRunState.READY, 0, 0, 0, 0)) }
@@ -256,6 +267,10 @@ private fun ImporterWizard() {
     var importRunning by remember { mutableStateOf(false) }
     var importError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+
+    DisposableEffect(gateway) {
+        onDispose { gateway?.close() }
+    }
 
     fun go(to: Page) {
         forward = to.ordinal > page.ordinal
@@ -345,18 +360,23 @@ private fun ImporterWizard() {
                 val prepared = withContext(Dispatchers.IO) {
                     val appData = Path.of(System.getProperty("user.home"), ".lasco-desktop-importer")
                     val newCoordinator = ImportCoordinator(
-                        ImportManifestStore(appData.resolve("imports")),
                         connectedGateway,
                         appData.resolve("staging"),
-                    )
-                    val (jobId, plan) = newCoordinator.discover(reader)
-                    Triple(reader, newCoordinator, Triple(jobId, plan, newCoordinator.benchmark(connectedGateway.remotes())))
+                    ) {
+                        val libraryId = connectedGateway.libraryId
+                        runCatching {
+                            connectedGateway.close()
+                            ffiDeleteLibrary(FfiLibraryId(libraryId), appData.toString())
+                        }.exceptionOrNull()?.let { failure ->
+                            failure.message?.ifBlank { null }
+                                ?: "Import completed, but Lasco could not remove its temporary local setup."
+                        }
+                    }
+                    Triple(newCoordinator, newCoordinator.discover(reader), newCoordinator.benchmark(connectedGateway.remotes()))
                 }
-                sourceReader = prepared.first
-                coordinator = prepared.second
-                importJobId = prepared.third.first
-                importPlan = prepared.third.second
-                benchmarks = prepared.third.third
+                coordinator = prepared.first
+                importPlan = prepared.second
+                benchmarks = prepared.third
                 go(Page.REVIEW)
             } catch (failure: Throwable) {
                 discoveryFailure = DiscoveryFailure(
@@ -372,16 +392,14 @@ private fun ImporterWizard() {
     }
 
     fun startImport() {
-        if (importProgress.state == ImportRunState.COMPLETE) return
+        if (importProgress.state in setOf(ImportRunState.COMPLETE, ImportRunState.COMPLETE_WITH_CLEANUP_WARNING)) return
         val activeCoordinator = coordinator ?: return
-        val jobId = importJobId ?: return
-        val reader = sourceReader ?: return
         importRunning = true
         importError = null
         go(Page.IMPORT)
         scope.launch {
             try {
-                withContext(Dispatchers.IO) { activeCoordinator.startOrResume(jobId, reader, benchmarks) }
+                withContext(Dispatchers.IO) { activeCoordinator.startOrResume(benchmarks) }
             } catch (failure: Throwable) {
                 importError = failure.message?.ifBlank { null } ?: "The import stopped unexpectedly. You can fix the issue and resume."
             } finally { importRunning = false }
@@ -475,7 +493,7 @@ private fun ImporterWizard() {
                         )
                         Page.SCANNING -> ScanningPage(sourceType, discoveryProgress)
                         Page.REVIEW -> ReviewPage(sourceType, archives, remoteNames, importPlan, benchmarks, importError)
-                        Page.IMPORT -> ImportPage(importProgress, importRunning, importError, onStart = ::startImport, onPause = { importJobId?.let { coordinator?.requestPause(it) } })
+                        Page.IMPORT -> ImportPage(importProgress, importRunning, importError, onStart = ::startImport, onPause = { coordinator?.requestPause() })
                     }
                 }
             }

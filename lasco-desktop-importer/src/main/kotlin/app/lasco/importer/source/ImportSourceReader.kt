@@ -8,6 +8,6 @@ import java.nio.file.Path
 interface ImportSourceReader {
     val source: ImportSource
     suspend fun discover(): List<ImportAsset>
-    /** Reconstructs a stage from the persisted source locator; it never requires a fresh scan. */
+    /** Resolves a source locator belonging to the current in-memory scan. */
     suspend fun stage(asset: ImportAsset, stagingDirectory: Path): StagedAsset
 }

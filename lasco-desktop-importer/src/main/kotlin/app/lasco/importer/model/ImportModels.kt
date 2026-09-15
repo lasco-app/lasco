@@ -1,32 +1,24 @@
 package app.lasco.importer.model
 
-import kotlinx.serialization.Serializable
 import java.nio.file.Path
 import java.time.Instant
 
-@Serializable
 enum class ImportSource { GOOGLE_TAKEOUT, APPLE_PHOTOS }
 
-@Serializable
-enum class ImportRunState { SCANNING, READY, IMPORTING, PAUSE_REQUESTED, PAUSED, COMPLETE, FAILED }
+enum class ImportRunState { SCANNING, READY, IMPORTING, PAUSE_REQUESTED, PAUSED, COMPLETE, COMPLETE_WITH_CLEANUP_WARNING, FAILED }
 
-@Serializable
 enum class ResourceRole { AAE_SIDECAR, LIVE_PHOTO_VIDEO, PRIMARY }
 
-@Serializable
 enum class ApplePhotosResourceType { PHOTO, FULL_SIZE_PHOTO, VIDEO, FULL_SIZE_VIDEO, ADJUSTMENT_DATA, PAIRED_VIDEO, FULL_SIZE_PAIRED_VIDEO }
 
-@Serializable
 data class ApplePhotosResourceDescriptor(val type: ApplePhotosResourceType, val filename: String)
 
-@Serializable
 data class ApplePhotosAssetRevision(
     val cloudAssetId: String,
     val modificationDate: String?,
     val resources: List<ApplePhotosResourceDescriptor>,
 )
 
-@Serializable
 data class SourceMetadata(
     val originalFilename: String,
     val capturedAt: String? = null,
@@ -35,8 +27,10 @@ data class SourceMetadata(
     val longitude: Double? = null,
 )
 
-/** A persisted source reference. It deliberately contains no Photos entitlement or remote secret. */
-@Serializable
+/**
+ * A source item for the current import process only. `sourceLocator` may be an opaque PhotoKit
+ * staging handle; it is deliberately never serialized or retained across application restarts.
+ */
 data class ImportAsset(
     val sourceId: String,
     val source: ImportSource,

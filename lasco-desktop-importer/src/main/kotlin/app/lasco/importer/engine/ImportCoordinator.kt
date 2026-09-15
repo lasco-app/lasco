@@ -2,13 +2,13 @@ package app.lasco.importer.engine
 
 import app.lasco.importer.ffi.LascoGateway
 import app.lasco.importer.ffi.LascoRemote
+import app.lasco.importer.model.ApplePhotosResourceDescriptor
 import app.lasco.importer.model.ImportAsset
 import app.lasco.importer.model.ImportPlan
 import app.lasco.importer.model.ImportProgress
 import app.lasco.importer.model.ImportRunState
-import app.lasco.importer.model.ApplePhotosResourceDescriptor
 import app.lasco.importer.model.RemoteBenchmark
-import app.lasco.importer.persistence.ImportManifestStore
+import app.lasco.importer.model.ResourceRole
 import app.lasco.importer.source.ImportSourceReader
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -17,115 +17,114 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.UUID
 
 /**
- * Chunked, resumable importer. Staging is source-specific; Lasco import/push is source-agnostic.
- * The selected remotes are pushed in parallel after every completed chunk, so no source file is
- * reread or redownloaded once per destination.
+ * An importer session lives only for the lifetime of this process. An interrupted import is
+ * recovered by reopening its normal Lasco library and rescanning the source, never by replaying
+ * a separate importer checkpoint.
  */
 class ImportCoordinator(
-    private val manifest: ImportManifestStore,
     private val gateway: LascoGateway,
     private val stagingRoot: Path,
+    private val finalize: suspend () -> String?,
 ) {
+    private data class ImportSession(
+        val reader: ImportSourceReader,
+        val assets: List<ImportAsset>,
+        val chunkSize: Int,
+        val totalBytes: Long,
+        val importedMediaBySourceId: MutableMap<String, String> = mutableMapOf(),
+        val albumIdsByName: MutableMap<String, String> = mutableMapOf(),
+        var nextAssetIndex: Int = 0,
+        var pauseRequested: Boolean = false,
+    )
+
     private val _progress = MutableStateFlow(ImportProgress(ImportRunState.READY, 0, 0, 0, 0))
     val progress: StateFlow<ImportProgress> = _progress
+    private var session: ImportSession? = null
 
-    suspend fun discover(reader: ImportSourceReader, chunkSize: Int = 32): Pair<String, ImportPlan> {
-        val jobId = UUID.randomUUID().toString()
-        manifest.createJob(jobId, reader.source, chunkSize)
+    suspend fun discover(reader: ImportSourceReader, chunkSize: Int = 32): ImportPlan {
         _progress.value = ImportProgress(ImportRunState.SCANNING, 0, 0, 0, 0, detail = "Discovering ${reader.source}")
-        val assets = reader.discover().let { discovered ->
-            val alreadyImported = alreadyImportedMedia(discovered)
-            discovered.filterNot { alreadyImported.containsKey(it) }
-        }
-        manifest.recordDiscovery(jobId, assets)
-        manifest.markReady(jobId)
-        val completed = manifest.completedCount(jobId)
-        val bytes = manifest.totalBytes(jobId)
-        val plan = ImportPlan(reader.source, assets.size - completed, bytes, completed, chunkSize, gateway.remotes().map { it.name }, null)
-        _progress.value = ImportProgress(ImportRunState.READY, completed, assets.size, 0, bytes, detail = "Ready to import")
-        return jobId to plan
+        val assets = dependencyOrder(reader.discover())
+        val totalBytes = assets.sumOf(ImportAsset::byteCount)
+        session = ImportSession(reader, assets, chunkSize, totalBytes)
+        val plan = ImportPlan(reader.source, assets.size, totalBytes, 0, chunkSize, gateway.remotes().map { it.name }, null)
+        _progress.value = ImportProgress(ImportRunState.READY, 0, assets.size, 0, totalBytes, detail = "Ready to import")
+        return plan
     }
 
     /** Runs isolated and simultaneous remote benchmarks. A low simultaneous ratio warns the UI. */
     suspend fun benchmark(remotes: List<LascoRemote>): List<RemoteBenchmark> = coroutineScope {
-        // First establish each target's uncongested best rate. The second pass below deliberately
-        // overlaps all remote benchmarks to measure whether the user's uplink is the bottleneck.
         val isolated = remotes.map { remote -> gateway.benchmark(remote) }
         val combined = remotes.map { remote -> async { gateway.benchmark(remote) } }.awaitAll().associateBy { it.remoteId }
         isolated.map { result -> result.copy(simultaneousBytesPerSecond = combined.getValue(result.remoteId).isolatedBytesPerSecond) }
     }
 
-    suspend fun startOrResume(jobId: String, reader: ImportSourceReader, benchmarks: List<RemoteBenchmark>) {
+    suspend fun startOrResume(benchmarks: List<RemoteBenchmark>) {
+        val activeSession = requireNotNull(session) { "Scan a source before starting the import" }
         val remotes = gateway.remotes()
         require(remotes.isNotEmpty()) { "Select at least one non-USB remote" }
-        manifest.markImporting(jobId)
-        val pending = manifest.incompleteAssets(jobId)
-        val total = manifest.totalCount(jobId)
-        val totalBytes = manifest.totalBytes(jobId)
-        val chunkSize = 32 // persisted job chunk size is intentionally stable for paused jobs.
-        // Repair an interruption after import but before every remote acknowledged a chunk. The
-        // local cache is intentionally not evicted until this fan-out completed, so no source
-        // restage or Photos rescan is needed.
-        manifest.importedChunks(jobId).forEach { chunkNumber ->
-            if (remotes.any { !manifest.remoteChunkCompleted(jobId, chunkNumber, it.id) }) {
-                pushChunk(jobId, chunkNumber, remotes, benchmarks)
-                gateway.evict(manifest.mediaIdsForChunk(jobId, chunkNumber))
-            }
-        }
-        val firstNewChunk = manifest.nextChunkNumber(jobId)
-        dependencyOrder(pending.map { it.asset }).chunked(chunkSize).forEachIndexed { index, assets ->
-            val chunkNumber = firstNewChunk + index
-            _progress.value = progressFor(jobId, total, totalBytes, chunkNumber, "Staging and importing chunk $chunkNumber")
-            importChunk(jobId, reader, assets, chunkNumber)
-            pushChunk(jobId, chunkNumber, remotes, benchmarks)
-            if (manifest.consumePauseRequest(jobId)) {
-                _progress.value = progressFor(jobId, total, totalBytes, null, "Paused after chunk $chunkNumber")
+
+        while (activeSession.nextAssetIndex < activeSession.assets.size) {
+            val chunkStart = activeSession.nextAssetIndex
+            val chunk = activeSession.assets.drop(chunkStart).take(activeSession.chunkSize)
+            val chunkNumber = (chunkStart / activeSession.chunkSize) + 1
+            _progress.value = progressFor(activeSession, ImportRunState.IMPORTING, chunkNumber, "Staging and importing chunk $chunkNumber")
+            importChunk(activeSession, chunk, chunkNumber)
+            pushAll(remotes, benchmarks)
+            activeSession.nextAssetIndex += chunk.size
+            if (activeSession.pauseRequested) {
+                activeSession.pauseRequested = false
+                _progress.value = progressFor(activeSession, ImportRunState.PAUSED, null, "Paused after chunk $chunkNumber")
                 return
             }
-            // Evict only after every remote acknowledged the chunk; source stays in its original
-            // Takeout archive or Photos library and can be staged again if a later repair needs it.
-            gateway.evict(manifest.mediaIdsForChunk(jobId, chunkNumber))
         }
-        manifest.markComplete(jobId)
-        _progress.value = progressFor(jobId, total, totalBytes, null, "Import complete").copy(state = ImportRunState.COMPLETE)
+
+        _progress.value = progressFor(activeSession, ImportRunState.IMPORTING, null, "Finishing every destination")
+        pushAll(remotes, benchmarks)
+        val cleanupWarning = finalize()
+        _progress.value = progressFor(
+            activeSession,
+            if (cleanupWarning == null) ImportRunState.COMPLETE else ImportRunState.COMPLETE_WITH_CLEANUP_WARNING,
+            null,
+            cleanupWarning ?: "Import complete",
+        )
     }
 
-    fun requestPause(jobId: String) = manifest.requestPause(jobId)
+    fun requestPause() {
+        session?.pauseRequested = true
+        _progress.value = _progress.value.copy(state = ImportRunState.PAUSE_REQUESTED, detail = "Pausing after this chunk")
+    }
 
-    private suspend fun importChunk(jobId: String, reader: ImportSourceReader, assets: List<ImportAsset>, chunk: Int) {
+    private suspend fun importChunk(session: ImportSession, assets: List<ImportAsset>, chunkNumber: Int) {
         val alreadyImported = alreadyImportedMedia(assets)
-        for ((asset, mediaId) in alreadyImported) {
-            manifest.markImported(jobId, asset.sourceId, mediaId, true, chunk)
-            addAlbumMembership(jobId, asset, mediaId)
+        alreadyImported.forEach { (asset, mediaId) ->
+            session.importedMediaBySourceId[asset.sourceId] = mediaId
+            addAlbumMembership(session, asset, mediaId)
         }
-        val ordered = assets.sortedBy { when (it.resourceRole) {
-            app.lasco.importer.model.ResourceRole.AAE_SIDECAR -> 0
-            app.lasco.importer.model.ResourceRole.LIVE_PHOTO_VIDEO -> 1
-            app.lasco.importer.model.ResourceRole.PRIMARY -> 2
-        } }
-        ordered.filterNot { it in alreadyImported }.forEach { asset ->
-            val staged = reader.stage(asset, stagingRoot.resolve(jobId).resolve(chunk.toString()))
-            manifest.markStaged(jobId, asset.sourceId, staged.path)
-            val aaeId = asset.aaeSourceId?.let { manifest.mediaIdFor(jobId, it) }
-            val videoId = asset.liveVideoSourceId?.let { manifest.mediaIdFor(jobId, it) }
-            // A primary Live Photo must never be imported until both companions were present in
-            // this or an earlier durable chunk. This makes the relationship recoverable on resume.
-            if (asset.resourceRole == app.lasco.importer.model.ResourceRole.PRIMARY) {
-                asset.aaeSourceId?.let { require(aaeId != null) { "missing staged AAE companion: $it" } }
-                asset.liveVideoSourceId?.let { require(videoId != null) { "missing staged Live Photo video: $it" } }
+        assets.filterNot(alreadyImported::containsKey).forEach { asset ->
+            val staged = session.reader.stage(asset, stagingRoot.resolve(chunkNumber.toString()))
+            try {
+                val aaeId = asset.aaeSourceId?.let(session.importedMediaBySourceId::get)
+                val videoId = asset.liveVideoSourceId?.let(session.importedMediaBySourceId::get)
+                if (asset.resourceRole == ResourceRole.PRIMARY) {
+                    asset.aaeSourceId?.let { require(aaeId != null) { "missing staged AAE companion: $it" } }
+                    asset.liveVideoSourceId?.let { require(videoId != null) { "missing staged Live Photo video: $it" } }
+                }
+                val imported = gateway.importMedia(staged.path, asset.metadata, aaeId, videoId)
+                if (asset.applePhotosRevision != null && asset.applePhotosResourceType != null) {
+                    gateway.recordApplePhotosResourceOrigin(
+                        imported.mediaId,
+                        asset.applePhotosRevision,
+                        asset.applePhotosResourceType,
+                        asset.displayName,
+                    )
+                }
+                session.importedMediaBySourceId[asset.sourceId] = imported.mediaId
+                addAlbumMembership(session, asset, imported.mediaId)
+            } finally {
+                Files.deleteIfExists(staged.path)
             }
-            val imported = gateway.importMedia(staged.path, asset.metadata, aaeId, videoId)
-            val revision = asset.applePhotosRevision
-            val resourceType = asset.applePhotosResourceType
-            if (revision != null && resourceType != null) {
-                gateway.recordApplePhotosResourceOrigin(imported.mediaId, revision, resourceType, asset.displayName)
-            }
-            manifest.markImported(jobId, asset.sourceId, imported.mediaId, imported.alreadyExisted, chunk)
-            addAlbumMembership(jobId, asset, imported.mediaId)
-            Files.deleteIfExists(staged.path)
         }
     }
 
@@ -136,17 +135,14 @@ class ImportCoordinator(
             val mediaIds = gateway.applePhotosAssetRevisionMediaIds(revision) ?: return@forEach
             members.forEach { asset ->
                 val type = asset.applePhotosResourceType ?: return@forEach
-                val descriptor = ApplePhotosResourceDescriptor(type, asset.displayName)
-                mediaIds[descriptor]?.let { put(asset, it) }
+                mediaIds[ApplePhotosResourceDescriptor(type, asset.displayName)]?.let { put(asset, it) }
             }
         }
     }
 
-    private fun addAlbumMembership(jobId: String, asset: ImportAsset, mediaId: String) {
+    private fun addAlbumMembership(session: ImportSession, asset: ImportAsset, mediaId: String) {
         asset.albumNames.forEach { albumName ->
-            val albumId = manifest.albumId(jobId, albumName) ?: gateway.createAlbum(albumName).also {
-                manifest.recordAlbum(jobId, albumName, it)
-            }
+            val albumId = session.albumIdsByName.getOrPut(albumName) { gateway.createAlbum(albumName) }
             gateway.addMediaToAlbum(albumId, mediaId)
         }
     }
@@ -170,19 +166,22 @@ class ImportCoordinator(
         return ordered
     }
 
-    private suspend fun pushChunk(jobId: String, chunk: Int, remotes: List<LascoRemote>, benchmarks: List<RemoteBenchmark>) = coroutineScope {
+    private suspend fun pushAll(remotes: List<LascoRemote>, benchmarks: List<RemoteBenchmark>) = coroutineScope {
         remotes.map { remote -> async {
-            if (manifest.remoteChunkCompleted(jobId, chunk, remote.id)) return@async
             val parallelism = benchmarks.firstOrNull { it.remoteId == remote.id }?.selectedParallelism ?: 2
             gateway.push(remote, parallelism) { fraction ->
                 _progress.value = _progress.value.copy(detail = "Pushing ${remote.name}: ${(fraction * 100).toInt()}%")
             }
-            manifest.markRemoteChunkComplete(jobId, chunk, remote.id)
         } }.awaitAll()
     }
 
-    private fun progressFor(jobId: String, total: Int, totalBytes: Long, chunk: Int?, detail: String): ImportProgress {
-        val completed = manifest.completedCount(jobId)
-        return ImportProgress(ImportRunState.IMPORTING, completed, total, 0, totalBytes, chunk, detail)
-    }
+    private fun progressFor(session: ImportSession, state: ImportRunState, chunk: Int?, detail: String) = ImportProgress(
+        state = state,
+        completedAssets = session.nextAssetIndex,
+        totalAssets = session.assets.size,
+        completedBytes = 0,
+        totalBytes = session.totalBytes,
+        activeChunk = chunk,
+        detail = detail,
+    )
 }

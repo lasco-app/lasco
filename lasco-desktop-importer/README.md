@@ -3,10 +3,10 @@
 A Compose Desktop/JVM importer for an existing Lasco library. It supports Google Takeout on macOS,
 Windows, and Linux, and the local Apple Photos/iCloud Photos library on macOS.
 
-The importer has its own app-support directory and SQLite manifest. It never shares a local Lasco
-cache with another client process. The manifest stores discovered source identifiers, staged paths,
-dependency order, imported media IDs, per-remote push completion, and the current chunk. Closing
-the app is therefore safe: resume continues from the manifest without re-enumerating Photos.
+The importer has its own app-support directory and never shares a local Lasco cache with another
+client process. It does not maintain a second manifest or job engine: closing keeps the temporary
+Lasco library, then the next run reopens it, rescans the source, and converges through Lasco's
+normal content and Apple Photos provenance deduplication.
 
 ## Build prerequisites
 
@@ -39,7 +39,10 @@ Kotlin/Native dynamic library in `native-photos-bridge` and loaded only on macOS
   with both resulting media IDs supplied as metadata.
 - Source filenames and timestamps are retained. Google JSON sidecars contribute captured time and
   GPS when present.
-- A pause request finishes the current chunk, pushes it, records the checkpoint, and then stops.
+- A pause request finishes the current chunk and pushes it, then resumes in memory. Closing the
+  app requires a fresh source scan; already imported content is recognized by Lasco.
+- Imported media remains in the temporary local library until every final destination push
+  succeeds. Only then does the importer close and remove that temporary library.
 - Exact duplicate detection remains authoritative in Rust: content hashes are known only after the
   source bytes are staged. The recap excludes already-completed manifest records and labels other
   items as candidates until the core reports its exact hash result.
