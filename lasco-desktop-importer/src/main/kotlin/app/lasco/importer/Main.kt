@@ -332,17 +332,11 @@ private fun ImporterWizard() {
                     RemoteType.S3 -> ExistingRemote.S3(remoteName, endpoint, bucket, region, prefix, accessKey, secretKey)
                     RemoteType.SMB -> ExistingRemote.Smb(remoteName, server, port.toIntOrNull() ?: 0, share, prefix, smbUser, smbPassword, domain.ifBlank { null })
                 }
-                val connected = withContext(Dispatchers.IO) {
-                    val summary = libraryRepository.addInitialLibrary(LibraryCredentials(nickname, libraryUser, libraryPassword), remote)
-                    when (val opened = libraryRepository.openCached(summary.libraryId)) {
-                        is OpenResult.Open -> opened.gateway
-                        OpenResult.CredentialsRequired -> error("Lasco did not save a session for this library. Unlock it from the destination list.")
-                        is OpenResult.Failed -> error(opened.message)
-                    }
+                withContext(Dispatchers.IO) {
+                    libraryRepository.addInitialLibrary(LibraryCredentials(nickname, libraryUser, libraryPassword), remote)
                 }
-                gateway = connected
-                remoteNames = withContext(Dispatchers.IO) { connected.remotes().map { it.name } }
-                go(Page.SOURCE)
+                refreshDestinations()
+                go(Page.DESTINATION)
             } catch (failure: Throwable) {
                 connectionFailure = ConnectionFailure(
                     remoteType = kind,

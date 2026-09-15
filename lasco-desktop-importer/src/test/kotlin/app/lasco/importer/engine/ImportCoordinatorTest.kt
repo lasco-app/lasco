@@ -22,6 +22,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFails
 
 class ImportCoordinatorTest {
     @Test
@@ -60,6 +61,22 @@ class ImportCoordinatorTest {
 
         assertEquals(ImportRunState.COMPLETE_WITH_CLEANUP_WARNING, coordinator.progress.value.state)
         assertEquals("Could not remove the temporary setup", coordinator.progress.value.detail)
+    }
+
+    @Test
+    fun `a failed final remote push retains the temporary library`() = runBlocking {
+        val gateway = FakeGateway().apply { failPushForRemoteId = "remote" }
+        var finalizations = 0
+        val coordinator = ImportCoordinator(gateway, Files.createTempDirectory("lasco-stage")) {
+            finalizations += 1
+            null
+        }
+
+        coordinator.discover(Reader(listOf(asset("one"))), chunkSize = 1)
+
+        assertFails { coordinator.startOrResume(emptyList()) }
+        assertEquals(listOf("one"), gateway.imported)
+        assertEquals(0, finalizations)
     }
 
     @Test
@@ -137,6 +154,7 @@ class ImportCoordinatorTest {
         override val libraryId = "library"
         val imported = mutableListOf<String>()
         var pushes = 0
+        var failPushForRemoteId: String? = null
 
         override fun remotes() = listOf(LascoRemote("remote", "Remote", "s3"))
         val createdAlbums = mutableListOf<String>()
@@ -159,6 +177,7 @@ class ImportCoordinatorTest {
         override fun recordApplePhotosCollectionLink(albumId: String, collection: ApplePhotosCollectionDescriptor) { collectionLinks[collection.cloudCollectionId] = albumId }
         override suspend fun benchmark(remote: LascoRemote, bytesPerUpload: Long) = RemoteBenchmark(remote.id, remote.name, 1, bytesPerUpload)
         override suspend fun push(remote: LascoRemote, maxConcurrentMediaUploads: Int, onProgress: (Double) -> Unit) {
+            if (remote.id == failPushForRemoteId) error("Remote ${remote.name} is unavailable")
             pushes += 1
             onProgress(1.0)
         }

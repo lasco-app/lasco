@@ -78,6 +78,7 @@ private val resources = mutableMapOf<String, PHAssetResource>()
 private val iso8601 = NSISO8601DateFormatter()
 @Volatile private var discoveredAssetCount = 0
 @Volatile private var totalAssetCount = 0
+private const val cloudMappingBatchSize = 250
 
 private fun sessionHandle(): String = NSUUID().UUIDString
 
@@ -88,6 +89,14 @@ private fun sessionHandle(): String = NSUUID().UUIDString
  */
 private fun archivalCloudId(mapping: PHCloudIdentifierMapping?): String? =
     mapping?.cloudIdentifier?.stringValue
+
+/** PhotoKit accepts an array, but keeping requests bounded avoids a giant bridge call on large libraries. */
+private fun cloudMappingsFor(localIdentifiers: List<String>): Map<String, Any?> = buildMap {
+    localIdentifiers.distinct().chunked(cloudMappingBatchSize).forEach { batch ->
+        val mappings = PHPhotoLibrary.sharedPhotoLibrary().cloudIdentifierMappingsForLocalIdentifiers(batch)
+        batch.forEach { localIdentifier -> mappings[localIdentifier]?.let { put(localIdentifier, it) } }
+    }
+}
 
 private fun retainedUtf8(value: String): CPointer<ByteVar> {
     val bytes = value.encodeToByteArray()
@@ -133,8 +142,7 @@ fun discoverJson(): CPointer<ByteVar>? = memScoped {
     val photos = buildList {
         assets.enumerateObjectsUsingBlock { asset, _, _ -> add(asset as PHAsset) }
     }
-    val cloudMappings = PHPhotoLibrary.sharedPhotoLibrary()
-        .cloudIdentifierMappingsForLocalIdentifiers(photos.map { it.localIdentifier })
+    val cloudMappings = cloudMappingsFor(photos.map { it.localIdentifier })
     val assetSessionHandles = mutableMapOf<String, String>()
     val cloudAssetIds = mutableMapOf<String, String>()
     photos.forEach { photo ->
@@ -208,8 +216,7 @@ fun discoverJson(): CPointer<ByteVar>? = memScoped {
         }
     }
     collectCollections(PHCollectionList.fetchTopLevelUserCollectionsWithOptions(null), null)
-    val collectionMappings = PHPhotoLibrary.sharedPhotoLibrary()
-        .cloudIdentifierMappingsForLocalIdentifiers(collectionLocals.map { it.first.localIdentifier })
+    val collectionMappings = cloudMappingsFor(collectionLocals.map { it.first.localIdentifier })
     val collections = collectionLocals.mapNotNull { (collection, parentLocal) ->
         val cloudId = archivalCloudId(collectionMappings[collection.localIdentifier] as? PHCloudIdentifierMapping)
             ?: return@mapNotNull null
