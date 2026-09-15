@@ -22,7 +22,14 @@ actor PhotoLibraryImporter {
         let editMetadataCount: Int
         let ignoredAssets: [IgnoredAsset]
         let estimatedBytes: Int64
-        let assets: [PHAsset]
+        let assets: [PreparedAsset]
+    }
+
+    /// A prepared, current-process-only PhotoKit reference. The durable identity, when present,
+    /// is the cloud ID; no local identifier crosses into album/provenance state.
+    struct PreparedAsset {
+        let asset: PHAsset
+        let cloudAssetId: String?
     }
 
     struct IgnoredAsset {
@@ -112,10 +119,8 @@ actor PhotoLibraryImporter {
 
     /// Builds the exact resource list without touching resource bytes. A missing cloud mapping is
     /// deliberately not an error: the caller imports normally but cannot use iCloud deduplication.
-    private static func applePhotosImportPlan(_ asset: PHAsset, analysis: AssetAnalysis) -> ApplePhotosImportPlan? {
-        guard case .success(let cloudIdentifier)? = PHPhotoLibrary.shared()
-            .cloudIdentifierMappings(forLocalIdentifiers: [asset.localIdentifier])[asset.localIdentifier]
-        else { return nil }
+    private static func applePhotosImportPlan(_ asset: PHAsset, analysis: AssetAnalysis, cloudAssetId: String?) -> ApplePhotosImportPlan? {
+        guard let cloudAssetId else { return nil }
 
         var resources: [PlannedResource] = []
         if analysis.isEdited, let resource = analysis.adjustmentDataResource {
@@ -141,7 +146,7 @@ actor PhotoLibraryImporter {
         let modificationDate = asset.modificationDate.map { ISO8601DateFormatter().string(from: $0) }
         return ApplePhotosImportPlan(
             revision: FfiApplePhotosAssetRevision(
-                cloudAssetId: cloudIdentifier.stringValue,
+                cloudAssetId: cloudAssetId,
                 modificationDate: modificationDate,
                 resources: resources.map { FfiApplePhotosResourceDescriptor(resourceType: $0.type, filename: $0.resource.originalFilename) }
             ),
@@ -150,28 +155,53 @@ actor PhotoLibraryImporter {
     }
 
     struct AlbumNode {
-        let iosId: String
+        let cloudCollectionId: String
+        let kind: FfiApplePhotosCollectionKind
         let name: String
-        let parentIosId: String?
-        let memberAssetIds: [String]
+        let parentCloudCollectionId: String?
+        let memberCloudAssetIds: [String]
+    }
+
+    private struct RawAlbumNode {
+        let localID: String
+        let name: String
+        let parentLocalID: String?
+        let memberLocalAssetIDs: [String]
+        let kind: FfiApplePhotosCollectionKind
     }
 
     /// Walks the iOS album/folder tree and returns a flat, parent-before-child list.
     /// Folders become nodes with no direct members, real user albums carry their asset identifiers.
     func scanAlbumTree() async -> [AlbumNode] {
-        var nodes: [AlbumNode] = []
+        var nodes: [RawAlbumNode] = []
         let topLevel = PHCollectionList.fetchTopLevelUserCollections(with: nil)
-        walkCollections(topLevel, parentIosId: nil, into: &nodes)
-        return nodes
+        walkCollections(topLevel, parentLocalID: nil, into: &nodes)
+        let collectionIDs = nodes.map(\.localID)
+        let assetIDs = nodes.flatMap(\.memberLocalAssetIDs)
+        let mappings = PHPhotoLibrary.shared().cloudIdentifierMappings(forLocalIdentifiers: collectionIDs + assetIDs)
+        func cloudID(_ localID: String) -> String? {
+            guard case .success(let identifier)? = mappings[localID] else { return nil }
+            return identifier.stringValue
+        }
+        return nodes.compactMap { node in
+            guard let cloudCollectionId = cloudID(node.localID) else { return nil }
+            return AlbumNode(
+                cloudCollectionId: cloudCollectionId,
+                kind: node.kind,
+                name: node.name,
+                parentCloudCollectionId: node.parentLocalID.flatMap(cloudID),
+                memberCloudAssetIds: node.memberLocalAssetIDs.compactMap(cloudID)
+            )
+        }
     }
 
-    private func walkCollections(_ result: PHFetchResult<PHCollection>, parentIosId: String?, into nodes: inout [AlbumNode]) {
+    private func walkCollections(_ result: PHFetchResult<PHCollection>, parentLocalID: String?, into nodes: inout [RawAlbumNode]) {
         for i in 0..<result.count {
             let collection = result.object(at: i)
             if let folder = collection as? PHCollectionList {
-                nodes.append(AlbumNode(iosId: folder.localIdentifier, name: folder.localizedTitle ?? "", parentIosId: parentIosId, memberAssetIds: []))
+                nodes.append(RawAlbumNode(localID: folder.localIdentifier, name: folder.localizedTitle ?? "", parentLocalID: parentLocalID, memberLocalAssetIDs: [], kind: .folder))
                 let children = PHCollection.fetchCollections(in: folder, options: nil)
-                walkCollections(children, parentIosId: folder.localIdentifier, into: &nodes)
+                walkCollections(children, parentLocalID: folder.localIdentifier, into: &nodes)
             } else if let album = collection as? PHAssetCollection,
                       album.assetCollectionType == .album, album.assetCollectionSubtype == .albumRegular {
                 let assets = PHAsset.fetchAssets(in: album, options: nil)
@@ -180,7 +210,7 @@ actor PhotoLibraryImporter {
                 for j in 0..<assets.count {
                     memberAssetIds.append(assets.object(at: j).localIdentifier)
                 }
-                nodes.append(AlbumNode(iosId: album.localIdentifier, name: album.localizedTitle ?? "", parentIosId: parentIosId, memberAssetIds: memberAssetIds))
+                nodes.append(RawAlbumNode(localID: album.localIdentifier, name: album.localizedTitle ?? "", parentLocalID: parentLocalID, memberLocalAssetIDs: memberAssetIds, kind: .album))
             }
         }
     }
@@ -197,16 +227,21 @@ actor PhotoLibraryImporter {
         var editMetadataCount = 0
         var ignoredAssets: [IgnoredAsset] = []
         var totalBytes: Int64 = 0
-        var assets: [PHAsset] = []
+        let cloudMappings = PHPhotoLibrary.shared().cloudIdentifierMappings(forLocalIdentifiers: (0..<allAssets.count).map { allAssets.object(at: $0).localIdentifier })
+        var assets: [PreparedAsset] = []
         assets.reserveCapacity(allAssets.count)
 
         for i in 0..<allAssets.count {
             let asset = allAssets.object(at: i)
             let analysis = Self.analyzeAsset(asset)
 
-            // This is the same metadata-only revision lookup performed again immediately before
-            // staging. It keeps already-imported iCloud assets out of the initial queue.
-            if let plan = Self.applePhotosImportPlan(asset, analysis: analysis) {
+            let cloudAssetId: String?
+            if case .success(let cloudIdentifier)? = cloudMappings[asset.localIdentifier] {
+                cloudAssetId = cloudIdentifier.stringValue
+            } else {
+                cloudAssetId = nil
+            }
+            if let plan = Self.applePhotosImportPlan(asset, analysis: analysis, cloudAssetId: cloudAssetId) {
                 do {
                     if try await repository.applePhotosAssetRevisionMediaIDs(plan.revision) != nil {
                         continue
@@ -219,10 +254,10 @@ actor PhotoLibraryImporter {
             switch analysis.kind {
             case .photo:
                 photoCount += 1
-                assets.append(asset)
+                assets.append(PreparedAsset(asset: asset, cloudAssetId: cloudAssetId))
             case .video:
                 videoCount += 1
-                assets.append(asset)
+                assets.append(PreparedAsset(asset: asset, cloudAssetId: cloudAssetId))
             case nil:
                 ignoredAssets.append(IgnoredAsset(localIdentifier: asset.localIdentifier, mediaType: asset.mediaType, creationDate: asset.creationDate))
                 continue
@@ -300,7 +335,7 @@ actor PhotoLibraryImporter {
     }
 
     @discardableResult
-    func importPHAssetResources(_ asset: PHAsset, into albumId: FfiAlbumUuid?, repository: any LibraryRepositoryProtocol) async throws -> ImportedAsset {
+    func importPHAssetResources(_ asset: PHAsset, cloudAssetId: String? = nil, into albumId: FfiAlbumUuid?, repository: any LibraryRepositoryProtocol) async throws -> ImportedAsset {
         let analysis = Self.analyzeAsset(asset)
         guard analysis.isImportable else {
             return ImportedAsset(linkableMediaIDs: [], allMediaIDs: [])
@@ -313,7 +348,7 @@ actor PhotoLibraryImporter {
         // the same moment) surfaces its video half as .pairedVideo/.fullSizePairedVideo.
         let livePhotoVideoResource = analysis.livePhotoVideoResource
         let videoResource = analysis.videoResource ?? analysis.fullSizeVideoResource
-        let importPlan = Self.applePhotosImportPlan(asset, analysis: analysis)
+        let importPlan = Self.applePhotosImportPlan(asset, analysis: analysis, cloudAssetId: cloudAssetId)
 
         if let importPlan,
            let existingMediaIDs = try await repository.applePhotosAssetRevisionMediaIDs(importPlan.revision) {

@@ -104,7 +104,6 @@ final class InitialPhotoImportController {
             let chunkEnd = min(chunkStart + Self.chunkSize, scan.assets.count)
             let chunk = Array(scan.assets[chunkStart..<chunkEnd])
             let range = (chunkStart + 1)...chunkEnd
-            var chunkMediaIDs: [FfiMediaUuid] = []
             var importedInChunk = 0
 
             for (offset, asset) in chunk.enumerated() {
@@ -113,16 +112,15 @@ final class InitialPhotoImportController {
                     return
                 }
                 do {
-                    let imported = try await photoImporter.importPHAssetResources(asset, into: nil, repository: repository)
-                    if !imported.linkableMediaIDs.isEmpty {
-                        assetMediaMap[asset.localIdentifier] = imported.linkableMediaIDs
+                    let imported = try await photoImporter.importPHAssetResources(asset.asset, cloudAssetId: asset.cloudAssetId, into: nil, repository: repository)
+                    if let cloudAssetId = asset.cloudAssetId, !imported.linkableMediaIDs.isEmpty {
+                        assetMediaMap[cloudAssetId] = imported.linkableMediaIDs
                     }
-                    chunkMediaIDs.append(contentsOf: imported.allMediaIDs)
                     if !imported.allMediaIDs.isEmpty {
                         importedInChunk += 1
                     }
                 } catch {
-                    AppLogger.log(.error, "initial photo import failed for \(asset.localIdentifier): \(error)")
+                    AppLogger.log(.error, "initial photo import item \(offset + 1) failed: \(error)")
                 }
                 progress = ImportProgress(
                     backedUp: backedUp,
@@ -167,17 +165,9 @@ final class InitialPhotoImportController {
                 total: scan.assets.count,
                 phase: .finalizing(range: range)
             )
-            guard !Task.isCancelled else {
-                await repository.notifyPhotoImportChanged(initialImport: true)
-                return
-            }
-            do {
-                try await repository.evictLocalData(mediaIDs: chunkMediaIDs)
-                await repository.notifyPhotoImportChanged(initialImport: true)
-            } catch {
-                self.error = error.localizedDescription
-                return
-            }
+            // This is the user's normal Lasco library. Retain imported media locally after every
+            // successful push; a later destination repair must not require another Photos download.
+            await repository.notifyPhotoImportChanged(initialImport: true)
         }
 
         guard !Task.isCancelled else {
@@ -205,13 +195,25 @@ final class InitialPhotoImportController {
 
     private func createAlbumStructure(_ nodes: [PhotoLibraryImporter.AlbumNode]) async -> [String: FfiAlbumUuid] {
         var albumIDMap: [String: FfiAlbumUuid] = [:]
-        for node in nodes {
+        let identities = nodes.map {
+            FfiApplePhotosCollectionIdentity(cloudCollectionId: $0.cloudCollectionId, kind: $0.kind)
+        }
+        let existing = (try? await repository.applePhotosCollectionLinks(identities)) ?? Array(repeating: nil, count: nodes.count)
+        for (node, linkedAlbumID) in zip(nodes, existing) {
             guard !Task.isCancelled else { return albumIDMap }
+            if let linkedAlbumID {
+                albumIDMap[node.cloudCollectionId] = linkedAlbumID
+                continue
+            }
             do {
-                albumIDMap[node.iosId] = try await repository.createAlbumWithoutNotification(
+                let albumID = try await repository.createAlbumWithoutNotification(
                     name: node.name,
-                    parentID: node.parentIosId.flatMap { albumIDMap[$0] }
+                    parentID: node.parentCloudCollectionId.flatMap { albumIDMap[$0] }
                 )
+                try await repository.recordApplePhotosCollectionLink(
+                    FfiApplePhotosCollectionLink(albumId: albumID, cloudCollectionId: node.cloudCollectionId, kind: node.kind)
+                )
+                albumIDMap[node.cloudCollectionId] = albumID
             } catch {
                 AppLogger.log(.error, "initial photo import: create album '\(node.name)' failed: \(error)")
             }
@@ -226,8 +228,8 @@ final class InitialPhotoImportController {
     ) async {
         var assetAlbumIDs: [String: [FfiAlbumUuid]] = [:]
         for node in nodes {
-            guard let albumID = albumIDMap[node.iosId] else { continue }
-            for assetID in node.memberAssetIds {
+            guard let albumID = albumIDMap[node.cloudCollectionId] else { continue }
+            for assetID in node.memberCloudAssetIds {
                 assetAlbumIDs[assetID, default: []].append(albumID)
             }
         }
