@@ -737,7 +737,7 @@ private fun DestinationCard(
         )
         Text(
             if (summary.remotes.isEmpty()) "No remotes configured"
-            else "REMOTES: ${summary.remotes.joinToString { "${it.name} (${it.kind.uppercase()})" }}",
+            else "REMOTES: ${summary.remotes.joinToString { "${it.name} (${importerRemoteTypeLabel(it.kind)})" }}",
             color = InkSub,
             style = LascoBody.copy(fontSize = 13.sp),
         )
@@ -750,6 +750,18 @@ private fun DestinationCard(
             LascoButton("REMOVE LOCAL SETUP", onRemove, primary = false, fillWidth = false)
         }
     }
+}
+
+private fun importerRemoteTypeLabel(kind: String): String = when (kind) {
+    "lasco_cloud_s3" -> "Lasco Cloud"
+    "s3" -> "S3"
+    "smb" -> "SMB"
+    "fixed_path" -> "Local folder"
+    "usb_android" -> "Android USB"
+    "usb_apple" -> "Apple USB"
+    "debug_local_apple" -> "Local Apple (debug)"
+    "debug_local_android" -> "Local Android (debug)"
+    else -> kind.ifBlank { "Unknown" }
 }
 
 @Composable
