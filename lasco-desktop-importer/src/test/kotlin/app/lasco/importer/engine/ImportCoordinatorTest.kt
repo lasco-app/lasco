@@ -238,6 +238,8 @@ class ImportCoordinatorTest {
         override fun recordApplePhotosResourceOrigin(mediaId: String, revision: ApplePhotosAssetRevision, resourceType: ApplePhotosResourceType, filename: String) = Unit
         override fun applePhotosCollectionLinks(collections: List<ApplePhotosCollectionDescriptor>) = collections.map { collectionLinks[it.cloudCollectionId] }
         override fun recordApplePhotosCollectionLink(albumId: String, collection: ApplePhotosCollectionDescriptor) { collectionLinks[collection.cloudCollectionId] = albumId }
+        override suspend fun fetchRemoteOperations(remote: LascoRemote) = Unit
+        override fun hasUnpushedOperations(remote: LascoRemote) = false
         override suspend fun confirmRemoteMedia(remote: LascoRemote) = Unit
         override fun confirmedRemoteMediaIds(remote: LascoRemote, mediaIds: Set<String>) = confirmedMedia.intersect(mediaIds)
         override suspend fun benchmark(remote: LascoRemote, bytesPerUpload: Long) = RemoteBenchmark(remote.id, remote.name, 1, bytesPerUpload)

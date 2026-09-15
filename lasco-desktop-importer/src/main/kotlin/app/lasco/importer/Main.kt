@@ -99,7 +99,7 @@ import java.util.Comparator
 
 private enum class Page(val stage: Int) {
     CLOUD_SERVER(0), WELCOME(0), DESTINATION(1), CLOUD(1), S3(1), SMB(1),
-    SOURCE(2), TAKEOUT(2), PHOTOS(2), SCANNING(2), LIBRARY_SUMMARY(3), UPLOAD_ESTIMATE(4), IMPORT(5),
+    REMOTE_SYNC(1), SOURCE(2), TAKEOUT(2), PHOTOS(2), SCANNING(2), LIBRARY_SUMMARY(3), UPLOAD_ESTIMATE(4), IMPORT(5),
 }
 
 internal enum class RemoteType { CLOUD, S3, SMB }
@@ -107,6 +107,11 @@ private enum class SourceType { TAKEOUT, PHOTOS }
 private data class ConnectionFailure(val remoteType: RemoteType, val message: String)
 private data class DiscoveryFailure(val sourceType: SourceType, val message: String)
 private data class DiscoveryProgress(val completed: Int = 0, val total: Int = 0)
+private data class RemoteSyncProgress(
+    val fetchedRemoteNames: List<String> = emptyList(),
+    val currentRemoteName: String? = null,
+    val totalRemotes: Int = 0,
+)
 
 internal fun isConnectionFormComplete(
     type: RemoteType,
@@ -280,6 +285,10 @@ private fun ImporterWizard() {
     var discovering by remember { mutableStateOf(false) }
     var discoveryFailure by remember { mutableStateOf<DiscoveryFailure?>(null) }
     var discoveryProgress by remember { mutableStateOf(DiscoveryProgress()) }
+    var syncingRemotes by remember { mutableStateOf(false) }
+    var remoteSyncProgress by remember { mutableStateOf(RemoteSyncProgress()) }
+    var remoteSyncError by remember { mutableStateOf<String?>(null) }
+    var remoteSyncReady by remember { mutableStateOf(false) }
     var importRunning by remember { mutableStateOf(false) }
     var importError by remember { mutableStateOf<String?>(null) }
     var destinations by remember { mutableStateOf(DestinationUiState()) }
@@ -363,6 +372,44 @@ private fun ImporterWizard() {
                 )
             } finally {
                 connecting = false
+            }
+        }
+    }
+
+    fun syncRemotesBeforeChoosingSource(connectedGateway: LascoGateway) {
+        gateway = connectedGateway
+        syncingRemotes = true
+        remoteSyncError = null
+        remoteSyncReady = false
+        remoteSyncProgress = RemoteSyncProgress()
+        go(Page.REMOTE_SYNC)
+        scope.launch {
+            try {
+                val remotes = withContext(Dispatchers.IO) { connectedGateway.remotes() }
+                require(remotes.isNotEmpty()) { "This library has no remote to synchronize." }
+                remoteNames = remotes.map { it.name }
+                remoteSyncProgress = RemoteSyncProgress(totalRemotes = remotes.size)
+                remotes.forEach { remote ->
+                    remoteSyncProgress = remoteSyncProgress.copy(currentRemoteName = remote.name)
+                    withContext(Dispatchers.IO) { connectedGateway.fetchRemoteOperations(remote) }
+                    remoteSyncProgress = remoteSyncProgress.copy(
+                        fetchedRemoteNames = remoteSyncProgress.fetchedRemoteNames + remote.name,
+                        currentRemoteName = null,
+                    )
+                }
+                val remotesMissingOperations = withContext(Dispatchers.IO) {
+                    remotes.filter(connectedGateway::hasUnpushedOperations)
+                }
+                if (remotesMissingOperations.isNotEmpty()) {
+                    remoteSyncError = "Remotes do not contain the same state. Please sync so that they do."
+                } else {
+                    remoteSyncReady = true
+                }
+            } catch (failure: Throwable) {
+                remoteSyncError = failure.message?.ifBlank { null }
+                    ?: "Could not synchronize the configured remotes."
+            } finally {
+                syncingRemotes = false
             }
         }
     }
@@ -490,9 +537,7 @@ private fun ImporterWizard() {
                                 scope.launch {
                                     when (val opened = withContext(Dispatchers.IO) { libraryRepository.openCached(summary.libraryId) }) {
                                         is OpenResult.Open -> {
-                                            gateway = opened.gateway
-                                            remoteNames = withContext(Dispatchers.IO) { opened.gateway.remotes().map { it.name } }
-                                            go(Page.SOURCE)
+                                            syncRemotesBeforeChoosingSource(opened.gateway)
                                         }
                                         OpenResult.CredentialsRequired -> destinations = destinations.copy(dialog = DestinationDialog.Unlock(summary))
                                         is OpenResult.Failed -> destinations = destinations.withLibraryError(summary.libraryId, opened.message)
@@ -526,6 +571,14 @@ private fun ImporterWizard() {
                             endpoint = endpoint, setEndpoint = { endpoint = it }, bucket = bucket, setBucket = { bucket = it }, region = region, setRegion = { region = it }, prefix = prefix, setPrefix = { prefix = it }, accessKey = accessKey, setAccessKey = { accessKey = it }, secretKey = secretKey, setSecretKey = { secretKey = it },
                             server = server, setServer = { server = it }, port = port, setPort = { port = it }, share = share, setShare = { share = it }, smbUser = smbUser, setSmbUser = { smbUser = it }, smbPassword = smbPassword, setSmbPassword = { smbPassword = it }, domain = domain, setDomain = { domain = it },
                             error = connectionFailure?.takeIf { it.remoteType == (remoteType ?: RemoteType.CLOUD) }?.message,
+                        )
+                        Page.REMOTE_SYNC -> RemoteSyncPage(
+                            progress = remoteSyncProgress,
+                            syncing = syncingRemotes,
+                            error = remoteSyncError,
+                            ready = remoteSyncReady,
+                            onRetry = { gateway?.let(::syncRemotesBeforeChoosingSource) },
+                            onChooseAnotherLibrary = { go(Page.DESTINATION) },
                         )
                         Page.SOURCE -> SourcePicker(
                             onTakeout = { discoveryFailure = null; sourceType = SourceType.TAKEOUT; go(Page.TAKEOUT) },
@@ -589,7 +642,7 @@ private fun ImporterWizard() {
         Spacer(Modifier.height(16.dp))
         WizardFooter(
             page = page, source = sourceType, connecting = connecting, connectEnabled = connectionFormIsComplete(), discovering = discovering, archivesReady = archives.isNotEmpty(), photosReady = photosAllowed,
-            benchmarking = benchmarking, benchmarkReady = benchmarks.isNotEmpty(),
+            benchmarking = benchmarking, benchmarkReady = benchmarks.isNotEmpty(), remoteSyncReady = remoteSyncReady,
             onBack = {
                 when (page) {
                     Page.CLOUD_SERVER -> Unit
@@ -598,6 +651,7 @@ private fun ImporterWizard() {
                         connectionFailure = null
                         go(Page.DESTINATION)
                     }
+                    Page.REMOTE_SYNC -> go(Page.DESTINATION)
                     Page.SOURCE -> go(Page.DESTINATION)
                     Page.TAKEOUT, Page.PHOTOS -> go(Page.SOURCE)
                     Page.SCANNING -> Unit
@@ -610,6 +664,7 @@ private fun ImporterWizard() {
             onConnect = ::connect,
             onContinue = { when (page) {
                 Page.WELCOME -> go(Page.DESTINATION)
+                Page.REMOTE_SYNC -> if (remoteSyncReady) go(Page.SOURCE)
                 Page.LIBRARY_SUMMARY -> benchmarkUploadSpeed()
                 Page.UPLOAD_ESTIMATE -> if (benchmarks.isEmpty()) benchmarkUploadSpeed() else startImport()
                 else -> discover()
@@ -626,9 +681,7 @@ private fun ImporterWizard() {
                 }) {
                     is OpenResult.Open -> {
                         destinations = destinations.copy(dialog = null).clearLibraryError(summary.libraryId)
-                        gateway = opened.gateway
-                        remoteNames = withContext(Dispatchers.IO) { opened.gateway.remotes().map { it.name } }
-                        go(Page.SOURCE)
+                        syncRemotesBeforeChoosingSource(opened.gateway)
                     }
                     OpenResult.CredentialsRequired -> destinations = destinations.withLibraryError(summary.libraryId, "Credentials are required to unlock this library.")
                     is OpenResult.Failed -> destinations = destinations.withLibraryError(summary.libraryId, opened.message)
@@ -1037,8 +1090,59 @@ private fun ScanningPage(
 }
 
 @Composable
+private fun RemoteSyncPage(
+    progress: RemoteSyncProgress,
+    syncing: Boolean,
+    error: String?,
+    ready: Boolean,
+    onRetry: () -> Unit,
+    onChooseAnotherLibrary: () -> Unit,
+) {
+    PageTitle("Syncing remotes")
+    Spacer(Modifier.height(24.dp))
+    progress.fetchedRemoteNames.forEach { name ->
+        Text("Fetched remote $name", color = Good, style = LascoBody)
+        Spacer(Modifier.height(8.dp))
+    }
+    when {
+        syncing -> {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                CircularProgressIndicator(modifier = Modifier.widthIn(max = 22.dp), color = Pink, strokeWidth = 2.dp)
+                Text(
+                    progress.currentRemoteName?.let { "Fetching remote $it…" } ?: "Preparing remotes…",
+                    color = InkSub,
+                    style = LascoBody,
+                )
+            }
+            if (progress.totalRemotes > 0) {
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    "${progress.fetchedRemoteNames.size} of ${progress.totalRemotes} remotes fetched",
+                    color = InkMuted,
+                    style = LascoLabel,
+                )
+            }
+        }
+        error != null -> {
+            ErrorMessage(error)
+            Spacer(Modifier.height(16.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                LascoButton("TRY AGAIN", onRetry, fillWidth = false)
+                LascoButton("CHOOSE ANOTHER LIBRARY", onChooseAnotherLibrary, primary = false, fillWidth = false)
+            }
+        }
+        ready -> Text(
+            "All remotes contain the same state!",
+            color = Good,
+            style = LascoBody,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+@Composable
 private fun LibrarySummaryPage(source: SourceType?, archives: List<String>, plan: ImportPlan?) {
-    PageTitle("Library summary", "Review what Apple Photos found and what each destination already has.")
+    PageTitle("Library summary")
     Spacer(Modifier.height(20.dp))
     Detail("SOURCE", if (source == SourceType.PHOTOS) "Apple Photos / iCloud" else "Google Takeout")
     if (source == SourceType.TAKEOUT) Detail("ARCHIVES", archives.size.toString())
@@ -1127,13 +1231,13 @@ private fun ImportPage(progress: ImportProgress, running: Boolean, error: String
 }
 
 @Composable
-private fun WizardFooter(page: Page, source: SourceType?, connecting: Boolean, connectEnabled: Boolean, discovering: Boolean, archivesReady: Boolean, photosReady: Boolean, benchmarking: Boolean, benchmarkReady: Boolean, onBack: () -> Unit, onConnect: () -> Unit, onContinue: () -> Unit) {
+private fun WizardFooter(page: Page, source: SourceType?, connecting: Boolean, connectEnabled: Boolean, discovering: Boolean, archivesReady: Boolean, photosReady: Boolean, benchmarking: Boolean, benchmarkReady: Boolean, remoteSyncReady: Boolean, onBack: () -> Unit, onConnect: () -> Unit, onContinue: () -> Unit) {
     val picker = page == Page.DESTINATION || page == Page.SOURCE
     val connectPage = page in setOf(Page.CLOUD, Page.S3, Page.SMB)
-    val scanning = page == Page.SCANNING
-    val continueEnabled = page == Page.WELCOME || (page == Page.TAKEOUT && archivesReady) || (page == Page.PHOTOS && photosReady) || page == Page.LIBRARY_SUMMARY || (page == Page.UPLOAD_ESTIMATE && !benchmarking)
+    val scanning = page == Page.SCANNING || (page == Page.REMOTE_SYNC && !remoteSyncReady)
+    val continueEnabled = page == Page.WELCOME || (page == Page.TAKEOUT && archivesReady) || (page == Page.PHOTOS && photosReady) || page == Page.LIBRARY_SUMMARY || (page == Page.UPLOAD_ESTIMATE && !benchmarking) || (page == Page.REMOTE_SYNC && remoteSyncReady)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        if (page != Page.WELCOME && page != Page.CLOUD_SERVER && !scanning) LascoButton("BACK", onBack, primary = false, fillWidth = false)
+        if (page != Page.WELCOME && page != Page.CLOUD_SERVER && page != Page.IMPORT && !scanning) LascoButton("BACK", onBack, primary = false, fillWidth = false)
         Spacer(Modifier.weight(1f))
         if (connectPage) LascoButton(if (connecting) "CONNECTING…" else "CONNECT REMOTE", onConnect, enabled = connectEnabled && !connecting, fillWidth = false)
         if (!picker && !connectPage && !scanning && page != Page.IMPORT) {

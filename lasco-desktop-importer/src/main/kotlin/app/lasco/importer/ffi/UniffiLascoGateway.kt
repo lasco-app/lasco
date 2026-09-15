@@ -75,6 +75,13 @@ class UniffiLascoGateway(
         )
     }
 
+    override suspend fun fetchRemoteOperations(remote: LascoRemote) {
+        library.fetchRemoteAsync(FfiRemoteUuid(remote.id), appSupportDirectory)
+    }
+
+    override fun hasUnpushedOperations(remote: LascoRemote): Boolean =
+        library.hasUnpushedChanges(FfiRemoteUuid(remote.id))
+
     override suspend fun confirmRemoteMedia(remote: LascoRemote) {
         library.confirmRemoteMediaAsync(FfiRemoteUuid(remote.id), appSupportDirectory)
     }
