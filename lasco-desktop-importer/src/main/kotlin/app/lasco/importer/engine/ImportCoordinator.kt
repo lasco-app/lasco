@@ -70,6 +70,7 @@ class ImportCoordinator(
                 toUpload = mediaCounts(assets.filterNot { knownMediaByAsset[it] in confirmedMediaIds }),
             )
         }
+        val hasMediaToUpload = remoteSummaries.any { it.toUpload.resourceCount() > 0 }
         val plan = ImportPlan(
             source = reader.source,
             candidates = assets.size,
@@ -80,6 +81,8 @@ class ImportCoordinator(
             estimatedSeconds = null,
             library = mediaCounts(assets),
             remotes = remoteSummaries,
+            metadataToAdd = !hasMediaToUpload && hasApplePhotosMetadataToAdd(assets, knownMediaByAsset, collections),
+            hasMediaToUpload = hasMediaToUpload,
         )
         _progress.value = ImportProgress(ImportRunState.READY, 0, assets.size, 0, totalBytes, detail = "Ready to import")
         return plan
@@ -187,6 +190,30 @@ class ImportCoordinator(
             }
         }
     }
+
+    /** This is needed only when every source resource is already present on every remote. */
+    private fun hasApplePhotosMetadataToAdd(
+        assets: List<ImportAsset>,
+        knownMediaByAsset: Map<ImportAsset, String>,
+        collections: List<ApplePhotosCollectionDescriptor>,
+    ): Boolean {
+        if (collections.isEmpty()) return false
+        val albumsByCollection = collections.zip(gateway.applePhotosCollectionLinks(collections)).toMap()
+        if (albumsByCollection.values.any { it == null }) return true
+        return assets.asSequence()
+            .filter { it.resourceRole == ResourceRole.PRIMARY }
+            .any { asset ->
+                val mediaId = knownMediaByAsset[asset] ?: return@any false
+                val currentAlbumIds = gateway.mediaAlbumIds(mediaId)
+                collections.any { collection ->
+                    val belongsToCollection = asset.applePhotosRevision?.cloudAssetId in collection.memberCloudAssetIds ||
+                        asset.assetSessionHandle in collection.memberSessionHandles
+                    belongsToCollection && albumsByCollection.getValue(collection) !in currentAlbumIds
+                }
+            }
+    }
+
+    private fun MediaCounts.resourceCount(): Int = photos + videos + livePhotoVideos + aaeFiles
 
     private fun addAlbumMembership(session: ImportSession, asset: ImportAsset, mediaId: String) {
         if (asset.resourceRole != ResourceRole.PRIMARY) return

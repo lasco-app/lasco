@@ -141,6 +141,37 @@ class ImportCoordinatorTest {
     }
 
     @Test
+    fun `fully present Apple Photos resources need no import when collection metadata matches`() = runBlocking {
+        val gateway = FakeGateway()
+        val revision = ApplePhotosAssetRevision(
+            "cloud-asset",
+            null,
+            listOf(ApplePhotosResourceDescriptor(ApplePhotosResourceType.PHOTO, "still.heic")),
+        )
+        gateway.revisionMedia[revision] = mapOf(
+            ApplePhotosResourceDescriptor(ApplePhotosResourceType.PHOTO, "still.heic") to "still",
+        )
+        gateway.confirmedMedia += "still"
+        gateway.collectionLinks["album-cloud"] = "existing-album"
+        gateway.mediaAlbums["still"] = setOf("existing-album")
+        val asset = asset("still").copy(
+            source = ImportSource.APPLE_PHOTOS,
+            displayName = "still.heic",
+            applePhotosRevision = revision,
+            applePhotosResourceType = ApplePhotosResourceType.PHOTO,
+        )
+        val reader = AppleReader(
+            listOf(asset),
+            listOf(ApplePhotosCollectionDescriptor("album-cloud", ApplePhotosCollectionKind.ALBUM, "Trip", null, listOf("cloud-asset"), emptyList())),
+        )
+
+        val plan = ImportCoordinator(gateway, Files.createTempDirectory("lasco-stage")) { null }.discover(reader)
+
+        assertEquals(false, plan.hasMediaToUpload)
+        assertEquals(false, plan.metadataToAdd)
+    }
+
+    @Test
     fun `cloud linked collections reuse canonical albums and add primary media only`() = runBlocking {
         val gateway = FakeGateway().apply { collectionLinks["album-cloud"] = "existing-album" }
         val primary = asset("still").copy(
@@ -222,6 +253,7 @@ class ImportCoordinatorTest {
         val createdAlbumParents = mutableListOf<Pair<String, String?>>()
         val memberships = mutableListOf<Pair<String, String>>()
         val collectionLinks = mutableMapOf<String, String>()
+        val mediaAlbums = mutableMapOf<String, Set<String>>()
         val revisionMedia = mutableMapOf<ApplePhotosAssetRevision, Map<ApplePhotosResourceDescriptor, String>>()
         val confirmedMedia = mutableSetOf<String>()
         override fun createAlbum(name: String, parentAlbumId: String?): String {
@@ -237,6 +269,7 @@ class ImportCoordinatorTest {
         override fun applePhotosAssetRevisionMediaIds(revision: ApplePhotosAssetRevision): Map<ApplePhotosResourceDescriptor, String>? = revisionMedia[revision]
         override fun recordApplePhotosResourceOrigin(mediaId: String, revision: ApplePhotosAssetRevision, resourceType: ApplePhotosResourceType, filename: String) = Unit
         override fun applePhotosCollectionLinks(collections: List<ApplePhotosCollectionDescriptor>) = collections.map { collectionLinks[it.cloudCollectionId] }
+        override fun mediaAlbumIds(mediaId: String) = mediaAlbums[mediaId].orEmpty()
         override fun recordApplePhotosCollectionLink(albumId: String, collection: ApplePhotosCollectionDescriptor) { collectionLinks[collection.cloudCollectionId] = albumId }
         override suspend fun fetchRemoteOperations(remote: LascoRemote) = Unit
         override fun hasUnpushedOperations(remote: LascoRemote) = false

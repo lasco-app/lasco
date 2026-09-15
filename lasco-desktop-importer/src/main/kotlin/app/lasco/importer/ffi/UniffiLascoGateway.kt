@@ -69,6 +69,9 @@ class UniffiLascoGateway(
             FfiApplePhotosCollectionIdentity(it.cloudCollectionId, it.kind.toFfiCollectionKind())
         }).map { it?.value }
 
+    override fun mediaAlbumIds(mediaId: String): Set<String> =
+        library.mediaAlbumIds(FfiMediaUuid(mediaId)).mapTo(mutableSetOf()) { it.value }
+
     override fun recordApplePhotosCollectionLink(albumId: String, collection: ApplePhotosCollectionDescriptor) {
         library.recordApplePhotosCollectionLink(
             FfiApplePhotosCollectionLink(FfiAlbumUuid(albumId), collection.cloudCollectionId, collection.kind.toFfiCollectionKind()),

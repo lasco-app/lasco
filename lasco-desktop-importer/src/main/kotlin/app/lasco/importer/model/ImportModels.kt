@@ -70,6 +70,10 @@ data class ImportPlan(
     val estimatedSeconds: Long?,
     val library: MediaCounts,
     val remotes: List<RemoteImportSummary>,
+    /** Metadata work such as missing Apple Photos collection links or memberships. */
+    val metadataToAdd: Boolean,
+    /** True when at least one remote needs one or more source resources. */
+    val hasMediaToUpload: Boolean,
 )
 
 /** Counts source resources rather than gallery entries, so Photos companions remain visible. */

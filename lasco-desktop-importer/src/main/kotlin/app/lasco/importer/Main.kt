@@ -643,6 +643,8 @@ private fun ImporterWizard() {
         WizardFooter(
             page = page, source = sourceType, connecting = connecting, connectEnabled = connectionFormIsComplete(), discovering = discovering, archivesReady = archives.isNotEmpty(), photosReady = photosAllowed,
             benchmarking = benchmarking, benchmarkReady = benchmarks.isNotEmpty(), remoteSyncReady = remoteSyncReady,
+            librarySummaryHasWork = importPlan?.let { it.hasMediaToUpload || it.metadataToAdd } == true,
+            librarySummaryHasMediaToUpload = importPlan?.hasMediaToUpload == true,
             onBack = {
                 when (page) {
                     Page.CLOUD_SERVER -> Unit
@@ -665,7 +667,7 @@ private fun ImporterWizard() {
             onContinue = { when (page) {
                 Page.WELCOME -> go(Page.DESTINATION)
                 Page.REMOTE_SYNC -> if (remoteSyncReady) go(Page.SOURCE)
-                Page.LIBRARY_SUMMARY -> benchmarkUploadSpeed()
+                Page.LIBRARY_SUMMARY -> if (importPlan?.hasMediaToUpload == true) benchmarkUploadSpeed() else startImport()
                 Page.UPLOAD_ESTIMATE -> if (benchmarks.isEmpty()) benchmarkUploadSpeed() else startImport()
                 else -> discover()
             } },
@@ -1064,11 +1066,7 @@ private fun ScanningPage(
     onChooseAnotherSource: () -> Unit,
 ) {
     val isPhotos = source == SourceType.PHOTOS
-    PageTitle(
-        if (isPhotos) "Scanning Apple Photos" else "Scanning Google Takeout",
-        if (isPhotos) "Reading your library structure and metadata. iCloud originals are not downloaded until import starts."
-        else "Reading archive contents and metadata. Your ZIP files remain unchanged.",
-    )
+    PageTitle(if (isPhotos) "Scanning Apple Photos" else "Scanning Google Takeout")
     Spacer(Modifier.height(28.dp))
     if (error != null) {
         ErrorMessage(error)
@@ -1150,18 +1148,27 @@ private fun LibrarySummaryPage(source: SourceType?, archives: List<String>, plan
         MediaCountSummary("APPLE PHOTOS LIBRARY", it.library)
         it.remotes.forEach { remote ->
             Spacer(Modifier.height(18.dp))
-            Text(
-                "${remote.remoteName} ${importerRemoteTypeLabel(remote.remoteType)}",
-                color = Ink,
-                style = LascoLabel.copy(fontSize = 15.sp),
-                fontWeight = FontWeight.Bold,
-            )
-            Spacer(Modifier.height(8.dp))
-            if (remote.alreadyThere.resourceCount > 0) {
-                MediaCountSummary("ALREADY THERE", remote.alreadyThere)
+            Column(
+                Modifier.widthIn(max = 680.dp).fillMaxWidth().background(Color.White).border(2.dp, Ink).padding(16.dp),
+            ) {
+                Text(
+                    "${remote.remoteName} ${importerRemoteTypeLabel(remote.remoteType)}",
+                    color = Ink,
+                    style = LascoLabel.copy(fontSize = 15.sp),
+                    fontWeight = FontWeight.Bold,
+                )
                 Spacer(Modifier.height(8.dp))
+                if (remote.alreadyThere.resourceCount > 0) {
+                    MediaCountSummary("ALREADY THERE", remote.alreadyThere)
+                    Spacer(Modifier.height(8.dp))
+                }
+                MediaCountSummary("TO BE UPLOADED", remote.toUpload, includeTotal = true)
             }
-            MediaCountSummary("TO BE UPLOADED", remote.toUpload, includeTotal = true)
+        }
+        Spacer(Modifier.height(18.dp))
+        when {
+            !it.hasMediaToUpload && it.metadataToAdd ->
+                Text("No media to upload, but some metadata to add.", color = InkSub, style = LascoBody)
         }
     }
 }
@@ -1231,20 +1238,23 @@ private fun ImportPage(progress: ImportProgress, running: Boolean, error: String
 }
 
 @Composable
-private fun WizardFooter(page: Page, source: SourceType?, connecting: Boolean, connectEnabled: Boolean, discovering: Boolean, archivesReady: Boolean, photosReady: Boolean, benchmarking: Boolean, benchmarkReady: Boolean, remoteSyncReady: Boolean, onBack: () -> Unit, onConnect: () -> Unit, onContinue: () -> Unit) {
+private fun WizardFooter(page: Page, source: SourceType?, connecting: Boolean, connectEnabled: Boolean, discovering: Boolean, archivesReady: Boolean, photosReady: Boolean, benchmarking: Boolean, benchmarkReady: Boolean, remoteSyncReady: Boolean, librarySummaryHasWork: Boolean, librarySummaryHasMediaToUpload: Boolean, onBack: () -> Unit, onConnect: () -> Unit, onContinue: () -> Unit) {
     val picker = page == Page.DESTINATION || page == Page.SOURCE
     val connectPage = page in setOf(Page.CLOUD, Page.S3, Page.SMB)
     val scanning = page == Page.SCANNING || (page == Page.REMOTE_SYNC && !remoteSyncReady)
-    val continueEnabled = page == Page.WELCOME || (page == Page.TAKEOUT && archivesReady) || (page == Page.PHOTOS && photosReady) || page == Page.LIBRARY_SUMMARY || (page == Page.UPLOAD_ESTIMATE && !benchmarking) || (page == Page.REMOTE_SYNC && remoteSyncReady)
+    val continueEnabled = page == Page.WELCOME || (page == Page.TAKEOUT && archivesReady) || (page == Page.PHOTOS && photosReady) || (page == Page.LIBRARY_SUMMARY && librarySummaryHasWork) || (page == Page.UPLOAD_ESTIMATE && !benchmarking) || (page == Page.REMOTE_SYNC && remoteSyncReady)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         if (page != Page.WELCOME && page != Page.CLOUD_SERVER && page != Page.IMPORT && !scanning) LascoButton("BACK", onBack, primary = false, fillWidth = false)
         Spacer(Modifier.weight(1f))
         if (connectPage) LascoButton(if (connecting) "CONNECTING…" else "CONNECT REMOTE", onConnect, enabled = connectEnabled && !connecting, fillWidth = false)
-        if (!picker && !connectPage && !scanning && page != Page.IMPORT) {
+        if (page == Page.LIBRARY_SUMMARY && !librarySummaryHasWork) {
+            Text("Nothing at all to import.", color = InkSub, style = LascoBody)
+        } else if (!picker && !connectPage && !scanning && page != Page.IMPORT) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 val label = when {
                     discovering -> "DISCOVERING…"
-                    page == Page.LIBRARY_SUMMARY -> "BENCHMARK UPLOAD SPEED"
+                    page == Page.LIBRARY_SUMMARY && librarySummaryHasMediaToUpload -> "BENCHMARK UPLOAD SPEED"
+                    page == Page.LIBRARY_SUMMARY -> "START IMPORT"
                     page == Page.UPLOAD_ESTIMATE && benchmarkReady -> "START IMPORT"
                     page == Page.UPLOAD_ESTIMATE -> "TRY BENCHMARK AGAIN"
                     else -> "CONTINUE"

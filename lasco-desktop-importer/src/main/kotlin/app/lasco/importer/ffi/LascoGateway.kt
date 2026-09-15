@@ -21,6 +21,7 @@ interface LascoGateway : AutoCloseable {
     fun applePhotosAssetRevisionMediaIds(revision: ApplePhotosAssetRevision): Map<ApplePhotosResourceDescriptor, String>?
     fun recordApplePhotosResourceOrigin(mediaId: String, revision: ApplePhotosAssetRevision, resourceType: ApplePhotosResourceType, filename: String)
     fun applePhotosCollectionLinks(collections: List<ApplePhotosCollectionDescriptor>): List<String?>
+    fun mediaAlbumIds(mediaId: String): Set<String>
     fun recordApplePhotosCollectionLink(albumId: String, collection: ApplePhotosCollectionDescriptor)
     /** Downloads one remote's metadata operations and merges them into the local library state. */
     suspend fun fetchRemoteOperations(remote: LascoRemote)
