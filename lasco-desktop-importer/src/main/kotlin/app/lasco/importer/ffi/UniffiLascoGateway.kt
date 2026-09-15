@@ -31,6 +31,7 @@ class UniffiLascoGateway(
     private val library: FfiLibrary,
     private val appSupportDirectory: String,
 ) : LascoGateway {
+    internal fun ffiLibrary(): FfiLibrary = library
     override val libraryId: String get() = library.libraryId().value
 
     override fun remotes() = library.listRemotes().map { LascoRemote(it.remoteId.value, it.name, it.kind) }

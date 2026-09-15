@@ -64,10 +64,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
-import app.lasco.importer.ffi.ExistingLibraryConnector
 import app.lasco.importer.ffi.ExistingRemote
 import app.lasco.importer.ffi.LascoGateway
 import app.lasco.importer.ffi.LibraryCredentials
+import app.lasco.importer.ffi.OpenResult
+import app.lasco.importer.ffi.UniffiImporterLibraryRepository
 import app.lasco.importer.engine.ImportCoordinator
 import app.lasco.importer.model.ImportPlan
 import app.lasco.importer.model.ImportProgress
@@ -267,9 +268,10 @@ private fun ImporterWizard() {
     var importRunning by remember { mutableStateOf(false) }
     var importError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val libraryRepository = remember { UniffiImporterLibraryRepository(Path.of(System.getProperty("user.home"), ".lasco-desktop-importer")) }
 
-    DisposableEffect(gateway) {
-        onDispose { gateway?.close() }
+    DisposableEffect(libraryRepository) {
+        onDispose { libraryRepository.close() }
     }
 
     fun go(to: Page) {
@@ -314,12 +316,13 @@ private fun ImporterWizard() {
                     RemoteType.SMB -> ExistingRemote.Smb(remoteName, server, port.toIntOrNull() ?: 0, share, prefix, smbUser, smbPassword, domain.ifBlank { null })
                 }
                 val connected = withContext(Dispatchers.IO) {
-                    ExistingLibraryConnector.connect(
-                        LibraryCredentials(nickname, libraryUser, libraryPassword), remote,
-                        Path.of(System.getProperty("user.home"), ".lasco-desktop-importer"),
-                    )
+                    val summary = libraryRepository.addInitialLibrary(LibraryCredentials(nickname, libraryUser, libraryPassword), remote)
+                    when (val opened = libraryRepository.openCached(summary.libraryId)) {
+                        is OpenResult.Open -> opened.gateway
+                        OpenResult.CredentialsRequired -> error("Lasco did not save a session for this library. Unlock it from the destination list.")
+                        is OpenResult.Failed -> error(opened.message)
+                    }
                 }
-                gateway?.close()
                 gateway = connected
                 remoteNames = withContext(Dispatchers.IO) { connected.remotes().map { it.name } }
                 go(Page.SOURCE)
