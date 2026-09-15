@@ -73,7 +73,7 @@ struct IgnoredAssetsView: View {
                                     .padding(.top, 12)
                                     .padding(.bottom, 8)
 
-                                ForEach(group.assets, id: \.localIdentifier) { asset in
+                                ForEach(group.assets, id: \.sessionID) { asset in
                                     HStack {
                                         Text(dateLabel(for: asset.creationDate))
                                             .font(LascoFont.mono(13))

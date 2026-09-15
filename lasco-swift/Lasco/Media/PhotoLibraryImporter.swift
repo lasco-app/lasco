@@ -33,7 +33,8 @@ actor PhotoLibraryImporter {
     }
 
     struct IgnoredAsset {
-        let localIdentifier: String
+        /// A display-only, current-process key. Never expose PhotoKit's local identifier.
+        let sessionID = UUID()
         let mediaType: PHAssetMediaType
         let creationDate: Date?
     }
@@ -154,6 +155,17 @@ actor PhotoLibraryImporter {
         )
     }
 
+    /// Resolves a complete PhotoKit batch before import planning. `stringValue` is the only
+    /// serializable cloud value exposed by the current Photos SDK; keeping that compatibility
+    /// seam here prevents local identifiers from escaping the native adapter.
+    private static func cloudIDs(for localIdentifiers: [String]) -> [String: String] {
+        let mappings = PHPhotoLibrary.shared().cloudIdentifierMappings(forLocalIdentifiers: localIdentifiers)
+        return mappings.reduce(into: [:]) { result, entry in
+            guard case .success(let cloudIdentifier) = entry.value else { return }
+            result[entry.key] = cloudIdentifier.stringValue
+        }
+    }
+
     struct AlbumNode {
         let cloudCollectionId: String
         let kind: FfiApplePhotosCollectionKind
@@ -178,10 +190,9 @@ actor PhotoLibraryImporter {
         walkCollections(topLevel, parentLocalID: nil, into: &nodes)
         let collectionIDs = nodes.map(\.localID)
         let assetIDs = nodes.flatMap(\.memberLocalAssetIDs)
-        let mappings = PHPhotoLibrary.shared().cloudIdentifierMappings(forLocalIdentifiers: collectionIDs + assetIDs)
+        let cloudIDs = Self.cloudIDs(for: collectionIDs + assetIDs)
         func cloudID(_ localID: String) -> String? {
-            guard case .success(let identifier)? = mappings[localID] else { return nil }
-            return identifier.stringValue
+            cloudIDs[localID]
         }
         return nodes.compactMap { node in
             guard let cloudCollectionId = cloudID(node.localID) else { return nil }
@@ -227,7 +238,7 @@ actor PhotoLibraryImporter {
         var editMetadataCount = 0
         var ignoredAssets: [IgnoredAsset] = []
         var totalBytes: Int64 = 0
-        let cloudMappings = PHPhotoLibrary.shared().cloudIdentifierMappings(forLocalIdentifiers: (0..<allAssets.count).map { allAssets.object(at: $0).localIdentifier })
+        let cloudIDs = Self.cloudIDs(for: (0..<allAssets.count).map { allAssets.object(at: $0).localIdentifier })
         var assets: [PreparedAsset] = []
         assets.reserveCapacity(allAssets.count)
 
@@ -235,19 +246,14 @@ actor PhotoLibraryImporter {
             let asset = allAssets.object(at: i)
             let analysis = Self.analyzeAsset(asset)
 
-            let cloudAssetId: String?
-            if case .success(let cloudIdentifier)? = cloudMappings[asset.localIdentifier] {
-                cloudAssetId = cloudIdentifier.stringValue
-            } else {
-                cloudAssetId = nil
-            }
+            let cloudAssetId = cloudIDs[asset.localIdentifier]
             if let plan = Self.applePhotosImportPlan(asset, analysis: analysis, cloudAssetId: cloudAssetId) {
                 do {
                     if try await repository.applePhotosAssetRevisionMediaIDs(plan.revision) != nil {
                         continue
                     }
                 } catch {
-                    AppLogger.log(.error, "Apple Photos revision lookup failed for \(asset.localIdentifier): \(error)")
+                    AppLogger.log(.error, "Apple Photos revision lookup failed: \(error)")
                 }
             }
 
@@ -259,7 +265,7 @@ actor PhotoLibraryImporter {
                 videoCount += 1
                 assets.append(PreparedAsset(asset: asset, cloudAssetId: cloudAssetId))
             case nil:
-                ignoredAssets.append(IgnoredAsset(localIdentifier: asset.localIdentifier, mediaType: asset.mediaType, creationDate: asset.creationDate))
+                ignoredAssets.append(IgnoredAsset(mediaType: asset.mediaType, creationDate: asset.creationDate))
                 continue
             }
 
@@ -311,14 +317,20 @@ actor PhotoLibraryImporter {
         }
 
         var imported = 0
+        let cloudIDs = Self.cloudIDs(for: (0..<result.count).map { result.object(at: $0).localIdentifier })
         for i in 0..<result.count {
             guard !Task.isCancelled else { return imported }
             let asset = result.object(at: i)
             do {
-                let ids = try await importPHAsset(asset, into: albumId, repository: repository)
+                let ids = try await importPHAssetResources(
+                    asset,
+                    cloudAssetId: cloudIDs[asset.localIdentifier],
+                    into: albumId,
+                    repository: repository
+                ).linkableMediaIDs
                 if !ids.isEmpty { imported += 1 }
             } catch {
-                AppLogger.log(.error, "auto-import asset \(asset.localIdentifier) failed: \(error)")
+                AppLogger.log(.error, "auto-import asset failed: \(error)")
             }
         }
 
@@ -366,7 +378,7 @@ actor PhotoLibraryImporter {
         // edits baked in. We only want the original on disk plus a link to its AAE sidecar.
         let isEdited = analysis.isEdited
         if isEdited && adjustmentDataResource == nil {
-            AppLogger.log(.error, "asset \(asset.localIdentifier) is edited but has no adjustment data resource, importing original photo without an AAE link")
+            AppLogger.log(.error, "An edited Apple Photos asset has no adjustment-data resource; importing the original photo without an AAE link")
         }
 
         let hasStill = analysis.hasStill
