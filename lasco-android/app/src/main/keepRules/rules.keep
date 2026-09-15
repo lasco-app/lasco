@@ -1,12 +1,27 @@
-# Add project specific R8 rules here.
-# AGP will combine all keep rule files in src/main/keepRules to pass to R8
+# R8 rules for the Android/Rust FFI boundary.
 #
-# For more details, see
-#   https://d.android.com/r/tools/r8/keep-rules
+# RustRuntime.nativeInitialize is registered through JNI. AGP's optimized
+# default rules already protect native methods; retaining this narrow rule makes
+# that contract explicit and protects it if the default configuration changes.
+-keepclasseswithmembernames,includedescriptorclasses class com.lasco.lasco.RustRuntime {
+    native <methods>;
+}
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# UniFFI generates Kotlin declarations that use JNA's dynamic proxy and
+# Structure/Callback reflection APIs. R8 cannot infer the native symbol lookup
+# or reflective field access performed by JNA, so retain this generated bridge
+# and the JNA runtime as a single compatibility boundary for the first R8 rollout.
+#
+# Do not extend these rules to the rest of the app. Once the optimized release
+# has passed device testing, use R8's reports to narrow the UniFFI rules further.
+-keep class uniffi.lasco_ffi.** { *; }
+-keep class com.sun.jna.** { *; }
+-keep class * extends com.sun.jna.** { *; }
+-keepclassmembers class * extends com.sun.jna.** {
+    public *;
+}
+
+# JNA contains optional desktop AWT helpers. They are unreachable on Android,
+# where java.awt is not provided, but retaining the JNA runtime makes R8 see
+# their references.
+-dontwarn java.awt.**
