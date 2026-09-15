@@ -189,6 +189,9 @@ fun discoverJson(): CPointer<ByteVar>? = memScoped {
                 PHAssetResourceTypePairedVideo, PHAssetResourceTypeFullSizePairedVideo -> "pairedVideo"
                 else -> "primary"
             }
+            // Companion links belong on the primary resource only. Attaching the AAE or paired
+            // video handle to its own record creates a self-referential import dependency.
+            val isPrimary = type == "primary"
             val resourceType = when (resource.type) {
                 PHAssetResourceTypePhoto -> "PHOTO"
                 PHAssetResourceTypeFullSizePhoto -> "FULL_SIZE_PHOTO"
@@ -204,7 +207,7 @@ fun discoverJson(): CPointer<ByteVar>? = memScoped {
             // not download iCloud originals during discovery merely to calculate it.
             records += ResourceRecord(handle, assetSessionHandles.getValue(photo.localIdentifier), type, resource.originalFilename, 0,
                 photo.creationDate?.let(iso8601::stringFromDate), photo.modificationDate?.let(iso8601::stringFromDate), coordinates?.first, coordinates?.second,
-                emptyList(), pairedVideo?.let(resourceHandles::get), aae?.let(resourceHandles::get),
+                emptyList(), if (isPrimary) pairedVideo?.let(resourceHandles::get) else null, if (isPrimary) aae?.let(resourceHandles::get) else null,
                 cloudAssetIds[photo.localIdentifier], resourceType)
         }
         discoveredAssetCount += 1

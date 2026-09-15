@@ -35,7 +35,6 @@ class ConnectionFormValidationTest {
         libraryUser = "library-user",
         libraryPassword = "library-password",
         remoteName = "remote",
-        cloudUrl = "https://cloud.example.com",
         cloudEmail = "person@example.com",
         cloudPassword = cloudPassword,
         endpoint = "https://s3.example.com",

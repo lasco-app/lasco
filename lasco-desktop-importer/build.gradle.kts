@@ -61,7 +61,7 @@ compose.desktop {
 
 tasks.withType<JavaExec>().configureEach {
     // Packaged launchers default to release behavior; only the local development `run` task
-    // exposes the endpoint field for staging or local-cloud testing.
+    // asks for a session-only server address for staging or local-cloud testing.
     if (name == "run") systemProperty("lasco.importer.release", "false")
 }
 

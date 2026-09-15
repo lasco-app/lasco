@@ -13,6 +13,8 @@ import uniffi.lasco_ffi.ffiOpenCached
 import uniffi.lasco_ffi.listLibraries
 import java.nio.file.Path
 
+internal const val DEFAULT_LASCO_CLOUD_BASE_URL = "https://cloud.getlasco.app"
+
 data class LibraryCredentials(
     val nickname: String,
     val username: String,
@@ -74,7 +76,10 @@ internal suspend fun initializeRemoteOrRollback(
 }
 
 /** Owns every FFI handle. Composables only dispatch events and render summaries/results. */
-class UniffiImporterLibraryRepository(private val appSupport: Path) : ImporterLibraryRepository {
+class UniffiImporterLibraryRepository(
+    private val appSupport: Path,
+    private val cloudBaseUrl: () -> String = { DEFAULT_LASCO_CLOUD_BASE_URL },
+) : ImporterLibraryRepository {
     private val openGateways = mutableMapOf<String, UniffiLascoGateway>()
     private val appDir get() = appSupport.toString()
 
@@ -92,11 +97,24 @@ class UniffiImporterLibraryRepository(private val appSupport: Path) : ImporterLi
         val library = try { ffiOpenCached(entry.nickname, username, appDir) }
             catch (failure: Throwable) { return OpenResult.Failed(failure.message ?: "Could not open this library.") }
             ?: return OpenResult.CredentialsRequired
+        try {
+            library.configureLascoCloudAuth(cloudBaseUrl())
+        } catch (failure: Throwable) {
+            library.close()
+            return OpenResult.Failed(failure.message ?: "Could not configure Lasco Cloud for this import.")
+        }
         return OpenResult.Open(UniffiLascoGateway(library, appDir).also { openGateways[libraryId] = it })
     }
 
     override suspend fun openWithCredentials(credentials: LibraryCredentials): OpenResult = try {
-        val gateway = UniffiLascoGateway(FfiLibrary.open(credentials.nickname, credentials.username, credentials.password, appDir), appDir)
+        val library = FfiLibrary.open(credentials.nickname, credentials.username, credentials.password, appDir)
+        try {
+            library.configureLascoCloudAuth(cloudBaseUrl())
+        } catch (failure: Throwable) {
+            library.close()
+            throw failure
+        }
+        val gateway = UniffiLascoGateway(library, appDir)
         openGateways[gateway.libraryId] = gateway
         OpenResult.Open(gateway)
     } catch (failure: Throwable) {

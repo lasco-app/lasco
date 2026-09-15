@@ -105,13 +105,17 @@ class ApplePhotosReader private constructor(private val bridge: PhotoKitNative) 
         }
         return resources.map { resource ->
             val resourceType = ApplePhotosResourceType.valueOf(resource.resourceType)
+            val isPrimary = resource.type == "primary"
             ImportAsset(
                 sourceId = "photos:${resource.sessionHandle}", source = source,
                 resourceRole = when (resource.type) { "aae" -> ResourceRole.AAE_SIDECAR; "pairedVideo" -> ResourceRole.LIVE_PHOTO_VIDEO; else -> ResourceRole.PRIMARY },
                 displayName = resource.filename, byteCount = resource.byteCount,
                 metadata = SourceMetadata(resource.filename, resource.capturedAt, resource.modifiedAt, resource.latitude, resource.longitude),
                 sourceLocator = resource.sessionHandle, assetSessionHandle = resource.assetSessionHandle, albumNames = resource.albumNames,
-                aaeSourceId = resource.aaeSessionHandle?.let { "photos:$it" }, liveVideoSourceId = resource.pairedVideoSessionHandle?.let { "photos:$it" },
+                // A native bridge bug must not make an AAE or paired video depend on itself.
+                // Only the primary resource needs its two companions to be imported first.
+                aaeSourceId = resource.aaeSessionHandle?.takeIf { isPrimary }?.let { "photos:$it" },
+                liveVideoSourceId = resource.pairedVideoSessionHandle?.takeIf { isPrimary }?.let { "photos:$it" },
                 applePhotosRevision = revisionsByAssetHandle.getValue(resource.assetSessionHandle),
                 applePhotosResourceType = resourceType,
             )

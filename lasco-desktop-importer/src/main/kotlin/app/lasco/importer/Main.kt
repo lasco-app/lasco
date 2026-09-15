@@ -69,6 +69,7 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.application
 import app.lasco.importer.ffi.ExistingRemote
+import app.lasco.importer.ffi.DEFAULT_LASCO_CLOUD_BASE_URL
 import app.lasco.importer.ffi.LascoGateway
 import app.lasco.importer.ffi.LibraryCredentials
 import app.lasco.importer.ffi.OpenResult
@@ -96,7 +97,7 @@ import java.nio.file.Files
 import java.util.Comparator
 
 private enum class Page(val stage: Int) {
-    WELCOME(0), DESTINATION(1), CLOUD(1), S3(1), SMB(1),
+    CLOUD_SERVER(0), WELCOME(0), DESTINATION(1), CLOUD(1), S3(1), SMB(1),
     SOURCE(2), TAKEOUT(2), PHOTOS(2), SCANNING(2), REVIEW(3), IMPORT(4),
 }
 
@@ -112,7 +113,6 @@ internal fun isConnectionFormComplete(
     libraryUser: String,
     libraryPassword: String,
     remoteName: String,
-    cloudUrl: String,
     cloudEmail: String,
     cloudPassword: String,
     endpoint: String,
@@ -131,13 +131,16 @@ internal fun isConnectionFormComplete(
     if (!libraryCredentialsComplete) return false
 
     return when (type) {
-        RemoteType.CLOUD -> cloudUrl.isFilled() && cloudEmail.isFilled() && cloudPassword.isFilled()
+        RemoteType.CLOUD -> cloudEmail.isFilled() && cloudPassword.isFilled()
         RemoteType.S3 -> remoteName.isFilled() && endpoint.isFilled() && bucket.isFilled() && region.isFilled() &&
             accessKey.isFilled() && secretKey.isFilled()
         RemoteType.SMB -> remoteName.isFilled() && server.isFilled() &&
             (port.toIntOrNull() in 1..65535) && share.isFilled() && smbUser.isFilled() && smbPassword.isFilled()
     }
 }
+
+internal fun isDevelopmentImporterBuild(): Boolean =
+    System.getProperty("lasco.importer.release") == "false"
 
 // The Plaster theme used by lasco-android.
 private val Plaster = Color(0xFFE6E2D4)
@@ -230,7 +233,10 @@ private fun FfiReadinessGate(content: @Composable () -> Unit) {
 
 @Composable
 private fun ImporterWizard() {
-    var page by remember { mutableStateOf(Page.WELCOME) }
+    val isDevelopmentBuild = remember { isDevelopmentImporterBuild() }
+    var page by remember {
+        mutableStateOf(if (isDevelopmentBuild) Page.CLOUD_SERVER else Page.WELCOME)
+    }
     var forward by remember { mutableStateOf(true) }
     var remoteType by remember { mutableStateOf<RemoteType?>(null) }
     var sourceType by remember { mutableStateOf<SourceType?>(null) }
@@ -238,7 +244,9 @@ private fun ImporterWizard() {
     var libraryUser by remember { mutableStateOf("") }
     var libraryPassword by remember { mutableStateOf("") }
     var remoteName by remember { mutableStateOf("") }
-    var cloudUrl by remember { mutableStateOf("https://cloud.getlasco.app") }
+    var cloudUrl by remember {
+        mutableStateOf(if (isDevelopmentBuild) "" else DEFAULT_LASCO_CLOUD_BASE_URL)
+    }
     var cloudEmail by remember { mutableStateOf("") }
     var cloudPassword by remember { mutableStateOf("") }
     var endpoint by remember { mutableStateOf("") }
@@ -273,7 +281,12 @@ private fun ImporterWizard() {
     var importError by remember { mutableStateOf<String?>(null) }
     var destinations by remember { mutableStateOf(DestinationUiState()) }
     val scope = rememberCoroutineScope()
-    val libraryRepository = remember { UniffiImporterLibraryRepository(Path.of(System.getProperty("user.home"), ".lasco-desktop-importer")) }
+    val libraryRepository = remember {
+        UniffiImporterLibraryRepository(
+            Path.of(System.getProperty("user.home"), ".lasco-desktop-importer"),
+            cloudBaseUrl = { cloudUrl },
+        )
+    }
 
     DisposableEffect(libraryRepository) {
         onDispose { libraryRepository.close() }
@@ -307,7 +320,6 @@ private fun ImporterWizard() {
             libraryUser = libraryUser,
             libraryPassword = libraryPassword,
             remoteName = remoteName,
-            cloudUrl = cloudUrl,
             cloudEmail = cloudEmail,
             cloudPassword = cloudPassword,
             endpoint = endpoint,
@@ -399,7 +411,6 @@ private fun ImporterWizard() {
                     sourceType = selectedSource,
                     message = failure.message?.ifBlank { null } ?: "Could not scan this source.",
                 )
-                go(if (selectedSource == SourceType.PHOTOS) Page.PHOTOS else Page.TAKEOUT)
             } finally {
                 progressPolling?.cancel()
                 discovering = false
@@ -443,6 +454,11 @@ private fun ImporterWizard() {
                 Box(Modifier.fillMaxSize()) {
                     Column(Modifier.fillMaxSize().verticalScroll(pageScrollState).padding(28.dp)) {
                         when (current) {
+                        Page.CLOUD_SERVER -> CloudServerPage(
+                            cloudUrl = cloudUrl,
+                            setCloudUrl = { cloudUrl = it },
+                            onContinue = { go(Page.WELCOME) },
+                        )
                         Page.WELCOME -> WelcomePage()
                         Page.DESTINATION -> DestinationPicker(
                             state = destinations,
@@ -482,9 +498,8 @@ private fun ImporterWizard() {
                         )
                         Page.CLOUD, Page.S3, Page.SMB -> ConnectionForm(
                             type = remoteType ?: RemoteType.CLOUD,
-                            showCloudUrl = System.getProperty("lasco.importer.release") == "false",
                             nickname = nickname, setNickname = { nickname = it }, libraryUser = libraryUser, setLibraryUser = { libraryUser = it }, libraryPassword = libraryPassword, setLibraryPassword = { libraryPassword = it },
-                            remoteName = remoteName, setRemoteName = { remoteName = it }, cloudUrl = cloudUrl, setCloudUrl = { cloudUrl = it }, cloudEmail = cloudEmail, setCloudEmail = { cloudEmail = it }, cloudPassword = cloudPassword, setCloudPassword = { cloudPassword = it },
+                            remoteName = remoteName, setRemoteName = { remoteName = it }, cloudEmail = cloudEmail, setCloudEmail = { cloudEmail = it }, cloudPassword = cloudPassword, setCloudPassword = { cloudPassword = it },
                             endpoint = endpoint, setEndpoint = { endpoint = it }, bucket = bucket, setBucket = { bucket = it }, region = region, setRegion = { region = it }, prefix = prefix, setPrefix = { prefix = it }, accessKey = accessKey, setAccessKey = { accessKey = it }, secretKey = secretKey, setSecretKey = { secretKey = it },
                             server = server, setServer = { server = it }, port = port, setPort = { port = it }, share = share, setShare = { share = it }, smbUser = smbUser, setSmbUser = { smbUser = it }, smbPassword = smbPassword, setSmbPassword = { smbPassword = it }, domain = domain, setDomain = { domain = it },
                             error = connectionFailure?.takeIf { it.remoteType == (remoteType ?: RemoteType.CLOUD) }?.message,
@@ -529,7 +544,13 @@ private fun ImporterWizard() {
                                 }
                             },
                         )
-                        Page.SCANNING -> ScanningPage(sourceType, discoveryProgress)
+                        Page.SCANNING -> ScanningPage(
+                            source = sourceType,
+                            progress = discoveryProgress,
+                            error = discoveryFailure?.takeIf { it.sourceType == sourceType }?.message,
+                            onRetry = ::discover,
+                            onChooseAnotherSource = { go(Page.SOURCE) },
+                        )
                         Page.REVIEW -> ReviewPage(sourceType, archives, remoteNames, importPlan, benchmarks, importError)
                         Page.IMPORT -> ImportPage(importProgress, importRunning, importError, onStart = ::startImport, onPause = { coordinator?.requestPause() })
                         }
@@ -546,6 +567,7 @@ private fun ImporterWizard() {
             page = page, source = sourceType, connecting = connecting, connectEnabled = connectionFormIsComplete(), discovering = discovering, archivesReady = archives.isNotEmpty(), photosReady = photosAllowed,
             onBack = {
                 when (page) {
+                    Page.CLOUD_SERVER -> Unit
                     Page.DESTINATION -> go(Page.WELCOME)
                     Page.CLOUD, Page.S3, Page.SMB -> {
                         connectionFailure = null
@@ -641,6 +663,23 @@ private fun WelcomePage() {
             HowItWorksItem("3", "Choose Apple Photos / iCloud, or Google Takeout with its ZIP archives.")
             HowItWorksItem("4", "Review the import, then start. You can safely pause and resume it.")
         }
+    }
+}
+
+@Composable
+private fun CloudServerPage(
+    cloudUrl: String,
+    setCloudUrl: (String) -> Unit,
+    onContinue: () -> Unit,
+) {
+    PageTitle(
+        "Lasco Cloud server",
+        "Choose the Lasco Cloud server for this session. This address is not saved.",
+    )
+    Spacer(Modifier.height(20.dp))
+    Column(Modifier.widthIn(max = 620.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        LascoField("Cloud server", cloudUrl, setCloudUrl, DEFAULT_LASCO_CLOUD_BASE_URL)
+        LascoButton("CONTINUE", onContinue, enabled = cloudUrl.isNotBlank(), fillWidth = false)
     }
 }
 
@@ -874,9 +913,8 @@ private fun SourcePicker(onTakeout: () -> Unit, onPhotos: () -> Unit) {
 @Composable
 private fun ConnectionForm(
     type: RemoteType,
-    showCloudUrl: Boolean,
     nickname: String, setNickname: (String) -> Unit, libraryUser: String, setLibraryUser: (String) -> Unit, libraryPassword: String, setLibraryPassword: (String) -> Unit,
-    remoteName: String, setRemoteName: (String) -> Unit, cloudUrl: String, setCloudUrl: (String) -> Unit, cloudEmail: String, setCloudEmail: (String) -> Unit, cloudPassword: String, setCloudPassword: (String) -> Unit,
+    remoteName: String, setRemoteName: (String) -> Unit, cloudEmail: String, setCloudEmail: (String) -> Unit, cloudPassword: String, setCloudPassword: (String) -> Unit,
     endpoint: String, setEndpoint: (String) -> Unit, bucket: String, setBucket: (String) -> Unit, region: String, setRegion: (String) -> Unit, prefix: String, setPrefix: (String) -> Unit, accessKey: String, setAccessKey: (String) -> Unit, secretKey: String, setSecretKey: (String) -> Unit,
     server: String, setServer: (String) -> Unit, port: String, setPort: (String) -> Unit, share: String, setShare: (String) -> Unit, smbUser: String, setSmbUser: (String) -> Unit, smbPassword: String, setSmbPassword: (String) -> Unit, domain: String, setDomain: (String) -> Unit, error: String?,
 ) {
@@ -893,7 +931,6 @@ private fun ConnectionForm(
         LascoField("Library password", libraryPassword, setLibraryPassword, secure = true)
         when (type) {
             RemoteType.CLOUD -> {
-                if (showCloudUrl) LascoField("Cloud URL", cloudUrl, setCloudUrl)
                 LascoField("Cloud email", cloudEmail, setCloudEmail)
                 LascoField("Cloud password", cloudPassword, setCloudPassword, secure = true)
             }
@@ -938,7 +975,13 @@ private fun PhotosPage(
 }
 
 @Composable
-private fun ScanningPage(source: SourceType?, progress: DiscoveryProgress) {
+private fun ScanningPage(
+    source: SourceType?,
+    progress: DiscoveryProgress,
+    error: String?,
+    onRetry: () -> Unit,
+    onChooseAnotherSource: () -> Unit,
+) {
     val isPhotos = source == SourceType.PHOTOS
     PageTitle(
         if (isPhotos) "Scanning Apple Photos" else "Scanning Google Takeout",
@@ -946,7 +989,14 @@ private fun ScanningPage(source: SourceType?, progress: DiscoveryProgress) {
         else "Reading archive contents and metadata. Your ZIP files remain unchanged.",
     )
     Spacer(Modifier.height(28.dp))
-    if (isPhotos && progress.total > 0) {
+    if (error != null) {
+        ErrorMessage(error)
+        Spacer(Modifier.height(16.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            LascoButton("TRY SCAN AGAIN", onRetry, fillWidth = false)
+            LascoButton("CHOOSE ANOTHER SOURCE", onChooseAnotherSource, primary = false, fillWidth = false)
+        }
+    } else if (isPhotos && progress.total > 0) {
         val fraction = (progress.completed.toFloat() / progress.total).coerceIn(0f, 1f)
         Text("${progress.completed} OF ${progress.total} PHOTOS SCANNED", color = Ink, style = LascoPixel)
         Spacer(Modifier.height(10.dp))
@@ -1000,7 +1050,7 @@ private fun WizardFooter(page: Page, source: SourceType?, connecting: Boolean, c
     val scanning = page == Page.SCANNING
     val continueEnabled = page == Page.WELCOME || (page == Page.TAKEOUT && archivesReady) || (page == Page.PHOTOS && photosReady) || page == Page.REVIEW
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        if (page != Page.WELCOME && !scanning) LascoButton("BACK", onBack, primary = false, fillWidth = false)
+        if (page != Page.WELCOME && page != Page.CLOUD_SERVER && !scanning) LascoButton("BACK", onBack, primary = false, fillWidth = false)
         Spacer(Modifier.weight(1f))
         if (connectPage) LascoButton(if (connecting) "CONNECTING…" else "CONNECT REMOTE", onConnect, enabled = connectEnabled && !connecting, fillWidth = false)
         if (!picker && !connectPage && !scanning && page != Page.IMPORT) {

@@ -194,8 +194,10 @@ class ImportCoordinator(
         fun visit(asset: ImportAsset) {
             if (asset.sourceId in emitted) return
             check(visiting.add(asset.sourceId)) { "cyclic Photos companion relationship at ${asset.sourceId}" }
-            asset.aaeSourceId?.let(byId::get)?.let(::visit)
-            asset.liveVideoSourceId?.let(byId::get)?.let(::visit)
+            // A companion can never be its own prerequisite. Ignore malformed legacy bridge
+            // metadata here so a rescan can proceed; real multi-asset cycles still fail loudly.
+            asset.aaeSourceId?.takeUnless { it == asset.sourceId }?.let(byId::get)?.let(::visit)
+            asset.liveVideoSourceId?.takeUnless { it == asset.sourceId }?.let(byId::get)?.let(::visit)
             visiting.remove(asset.sourceId)
             emitted += asset.sourceId
             ordered += asset

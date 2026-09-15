@@ -80,6 +80,26 @@ class ImportCoordinatorTest {
     }
 
     @Test
+    fun `self-referential companion metadata does not block a Photos scan`() = runBlocking {
+        val gateway = FakeGateway()
+        val sidecar = asset("sidecar").copy(
+            source = ImportSource.APPLE_PHOTOS,
+            resourceRole = ResourceRole.AAE_SIDECAR,
+            aaeSourceId = "sidecar",
+        )
+        val primary = asset("primary").copy(
+            source = ImportSource.APPLE_PHOTOS,
+            aaeSourceId = "sidecar",
+        )
+        val coordinator = ImportCoordinator(gateway, Files.createTempDirectory("lasco-stage")) { null }
+
+        coordinator.discover(Reader(listOf(primary, sidecar)), chunkSize = 2)
+        coordinator.startOrResume(emptyList())
+
+        assertEquals(listOf("sidecar", "primary"), gateway.imported)
+    }
+
+    @Test
     fun `cloud linked collections reuse canonical albums and add primary media only`() = runBlocking {
         val gateway = FakeGateway().apply { collectionLinks["album-cloud"] = "existing-album" }
         val primary = asset("still").copy(
