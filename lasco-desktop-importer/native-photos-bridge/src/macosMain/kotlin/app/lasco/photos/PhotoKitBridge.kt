@@ -25,6 +25,7 @@ import kotlin.concurrent.Volatile
 import platform.Foundation.NSDate
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSISO8601DateFormatter
+import platform.Foundation.NSSelectorFromString
 import platform.Foundation.NSURL
 import platform.Foundation.NSUUID
 import platform.Photos.PHAsset
@@ -83,12 +84,18 @@ private const val cloudMappingBatchSize = 250
 private fun sessionHandle(): String = NSUUID().UUIDString
 
 /**
- * This is the one native compatibility seam for PhotoKit's archival cloud form. The current
- * Kotlin/Native Photos stubs expose its Objective-C representation as `stringValue`; it is never
- * surfaced outside this adapter, where it is named and treated as the archival cloud ID.
+ * This is the native compatibility seam for PhotoKit's archival cloud form. Older macOS versions
+ * retain the legacy property only as a runtime fallback; its serialized form is compatible with
+ * `archivalStringValue`.
  */
-private fun archivalCloudId(mapping: PHCloudIdentifierMapping?): String? =
-    mapping?.cloudIdentifier?.stringValue
+private fun archivalCloudId(mapping: PHCloudIdentifierMapping?): String? = mapping?.cloudIdentifier?.let { identifier ->
+    val archivalSelector = NSSelectorFromString("archivalStringValue")
+    if (identifier.respondsToSelector(archivalSelector)) {
+        identifier.performSelector(archivalSelector) as? String
+    } else {
+        identifier.stringValue
+    }
+}
 
 /** PhotoKit accepts an array, but keeping requests bounded avoids a giant bridge call on large libraries. */
 private fun cloudMappingsFor(localIdentifiers: List<String>): Map<String, Any?> = buildMap {

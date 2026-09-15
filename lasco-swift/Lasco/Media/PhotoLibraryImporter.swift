@@ -157,9 +157,9 @@ actor PhotoLibraryImporter {
         )
     }
 
-    /// Resolves a complete PhotoKit batch before import planning. `stringValue` is the only
-    /// serializable cloud value exposed by the current Photos SDK; keeping that compatibility
-    /// seam here prevents local identifiers from escaping the native adapter.
+    /// Resolves a complete PhotoKit batch before import planning. The archival cloud value keeps
+    /// local identifiers from escaping this native adapter; older supported OS versions retain
+    /// the compatible legacy value as a runtime fallback.
     private static func cloudIDs(for localIdentifiers: [String]) -> [String: String] {
         var seen = Set<String>()
         let uniqueIdentifiers = localIdentifiers.filter { seen.insert($0).inserted }
@@ -170,7 +170,11 @@ actor PhotoLibraryImporter {
             let mappings = PHPhotoLibrary.shared().cloudIdentifierMappings(forLocalIdentifiers: batch)
             for localIdentifier in batch {
                 guard case .success(let cloudIdentifier)? = mappings[localIdentifier] else { continue }
-                cloudIDs[localIdentifier] = cloudIdentifier.stringValue
+                if #available(iOS 18.2, macOS 15.2, *) {
+                    cloudIDs[localIdentifier] = cloudIdentifier.archivalStringValue
+                } else {
+                    cloudIDs[localIdentifier] = cloudIdentifier.stringValue
+                }
             }
         }
         return cloudIDs
