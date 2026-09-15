@@ -60,6 +60,20 @@ fn collection_links_round_trip_with_their_explicit_operation_kind() {
 }
 
 #[test]
+fn an_older_state_without_collection_links_deserializes_to_no_links() {
+    let state = CrdtState::new(DeviceId(1));
+    let mut encoded = serde_json::to_value(state).unwrap();
+    encoded
+        .as_object_mut()
+        .unwrap()
+        .remove("apple_photos_collection_links");
+
+    let decoded: CrdtState = serde_json::from_value(encoded).unwrap();
+
+    assert!(decoded.apple_photos_collection_links.is_empty());
+}
+
+#[test]
 fn a_photo_added_to_an_album_and_group_converges_for_every_delivery_order() {
     let album_id = album(1);
     let group_id = group(2);
