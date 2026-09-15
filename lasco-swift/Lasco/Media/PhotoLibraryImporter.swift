@@ -3,6 +3,7 @@ import Photos
 import UIKit
 
 actor PhotoLibraryImporter {
+    private static let cloudMappingBatchSize = 250
     private static func lastImportDateKey(libraryId: FfiLibraryId) -> String {
         "lasco.lastPhotoImport.\(libraryId.value)"
     }
@@ -23,6 +24,7 @@ actor PhotoLibraryImporter {
         let ignoredAssets: [IgnoredAsset]
         let estimatedBytes: Int64
         let assets: [PreparedAsset]
+        let albums: [AlbumNode]
     }
 
     /// A prepared, current-process-only PhotoKit reference. The durable identity, when present,
@@ -159,11 +161,19 @@ actor PhotoLibraryImporter {
     /// serializable cloud value exposed by the current Photos SDK; keeping that compatibility
     /// seam here prevents local identifiers from escaping the native adapter.
     private static func cloudIDs(for localIdentifiers: [String]) -> [String: String] {
-        let mappings = PHPhotoLibrary.shared().cloudIdentifierMappings(forLocalIdentifiers: localIdentifiers)
-        return mappings.reduce(into: [:]) { result, entry in
-            guard case .success(let cloudIdentifier) = entry.value else { return }
-            result[entry.key] = cloudIdentifier.stringValue
+        var seen = Set<String>()
+        let uniqueIdentifiers = localIdentifiers.filter { seen.insert($0).inserted }
+        var cloudIDs: [String: String] = [:]
+        for start in stride(from: 0, to: uniqueIdentifiers.count, by: cloudMappingBatchSize) {
+            let end = min(start + cloudMappingBatchSize, uniqueIdentifiers.count)
+            let batch = Array(uniqueIdentifiers[start..<end])
+            let mappings = PHPhotoLibrary.shared().cloudIdentifierMappings(forLocalIdentifiers: batch)
+            for localIdentifier in batch {
+                guard case .success(let cloudIdentifier)? = mappings[localIdentifier] else { continue }
+                cloudIDs[localIdentifier] = cloudIdentifier.stringValue
+            }
         }
+        return cloudIDs
     }
 
     struct AlbumNode {
@@ -185,12 +195,19 @@ actor PhotoLibraryImporter {
     /// Walks the iOS album/folder tree and returns a flat, parent-before-child list.
     /// Folders become nodes with no direct members, real user albums carry their asset identifiers.
     func scanAlbumTree() async -> [AlbumNode] {
+        let nodes = rawAlbumTree()
+        let cloudIDs = Self.cloudIDs(for: nodes.map(\.localID) + nodes.flatMap(\.memberLocalAssetIDs))
+        return albumNodes(from: nodes, cloudIDs: cloudIDs)
+    }
+
+    private func rawAlbumTree() -> [RawAlbumNode] {
         var nodes: [RawAlbumNode] = []
         let topLevel = PHCollectionList.fetchTopLevelUserCollections(with: nil)
         walkCollections(topLevel, parentLocalID: nil, into: &nodes)
-        let collectionIDs = nodes.map(\.localID)
-        let assetIDs = nodes.flatMap(\.memberLocalAssetIDs)
-        let cloudIDs = Self.cloudIDs(for: collectionIDs + assetIDs)
+        return nodes
+    }
+
+    private func albumNodes(from nodes: [RawAlbumNode], cloudIDs: [String: String]) -> [AlbumNode] {
         func cloudID(_ localID: String) -> String? {
             cloudIDs[localID]
         }
@@ -238,7 +255,13 @@ actor PhotoLibraryImporter {
         var editMetadataCount = 0
         var ignoredAssets: [IgnoredAsset] = []
         var totalBytes: Int64 = 0
-        let cloudIDs = Self.cloudIDs(for: (0..<allAssets.count).map { allAssets.object(at: $0).localIdentifier })
+        let rawAlbums = rawAlbumTree()
+        let cloudIDs = Self.cloudIDs(for:
+            (0..<allAssets.count).map { allAssets.object(at: $0).localIdentifier }
+                + rawAlbums.map(\.localID)
+                + rawAlbums.flatMap(\.memberLocalAssetIDs)
+        )
+        let albums = albumNodes(from: rawAlbums, cloudIDs: cloudIDs)
         var assets: [PreparedAsset] = []
         assets.reserveCapacity(allAssets.count)
 
@@ -288,7 +311,8 @@ actor PhotoLibraryImporter {
             editMetadataCount: editMetadataCount,
             ignoredAssets: ignoredAssets,
             estimatedBytes: totalBytes,
-            assets: assets
+            assets: assets,
+            albums: albums
         )
     }
 

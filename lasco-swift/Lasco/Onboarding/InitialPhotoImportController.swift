@@ -82,7 +82,7 @@ final class InitialPhotoImportController {
     }
 
     private func performImport(scan: PhotoLibraryImporter.LibraryScan, remoteIDs: [FfiRemoteUuid]) async {
-        let nodes = await photoImporter.scanAlbumTree()
+        let nodes = scan.albums
         guard !Task.isCancelled else {
             await repository.notifyPhotoImportChanged(initialImport: true)
             return
