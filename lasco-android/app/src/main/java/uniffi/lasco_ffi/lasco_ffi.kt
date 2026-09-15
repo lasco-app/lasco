@@ -1085,6 +1085,8 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_configure_lasco_cloud_auth(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_confirm_remote_media_async(
 ): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_confirmed_remote_media_ids(
+): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_connect_remote(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_create_album(
@@ -1373,6 +1375,8 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_configure_lasco_cloud_auth(`ptr`: Poin
 ): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_confirm_remote_media_async(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,
 ): Long
+fun uniffi_lasco_ffi_fn_method_ffilibrary_confirmed_remote_media_ids(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`mediaIds`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_connect_remote(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_create_album(`ptr`: Pointer,`name`: RustBuffer.ByValue,`parentAlbumId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1815,6 +1819,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_confirm_remote_media_async() != 59085.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_confirmed_remote_media_ids() != 41075.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_connect_remote() != 33397.toShort()) {
@@ -2814,6 +2821,14 @@ public interface FfiLibraryInterface {
      * running for this remote, or the remote does not belong to this library.
      */
     suspend fun `confirmRemoteMediaAsync`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): kotlin.ULong
+    /**
+     * Returns which supplied media IDs are confirmed to have a full original on this remote.
+     *
+     * Callers should refresh the remote inventory with `confirm_remote_media_async` first.
+     * The result reflects this client's cached positive-only inventory and never performs a
+     * network request itself.
+     */
+    fun `confirmedRemoteMediaIds`(`remoteId`: FfiRemoteUuid, `mediaIds`: List<FfiMediaUuid>): List<FfiMediaUuid>
     
     /**
      * # Errors
@@ -3985,6 +4000,24 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
         { FfiConverterULong.lift(it) },
         // Error FFI converter
         LascoException.ErrorHandler,
+    )
+    }
+
+    /**
+     * Returns which supplied media IDs are confirmed to have a full original on this remote.
+     *
+     * Callers should refresh the remote inventory with `confirm_remote_media_async` first.
+     * The result reflects this client's cached positive-only inventory and never performs a
+     * network request itself.
+     */
+    @Throws(LascoException::class)override fun `confirmedRemoteMediaIds`(`remoteId`: FfiRemoteUuid, `mediaIds`: List<FfiMediaUuid>): List<FfiMediaUuid> {
+            return FfiConverterSequenceTypeFfiMediaUuid.lift(
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_confirmed_remote_media_ids(
+        it, FfiConverterTypeFfiRemoteUuid.lower(`remoteId`),FfiConverterSequenceTypeFfiMediaUuid.lower(`mediaIds`),_status)
+}
+    }
     )
     }
 
@@ -8852,5 +8885,4 @@ public object FfiConverterSequenceOptionalTypeFfiAlbumUuid: FfiConverterRustBuff
 }
     
     
-
 

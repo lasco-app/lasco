@@ -28,6 +28,7 @@ import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.lightColorScheme
@@ -98,7 +99,7 @@ import java.util.Comparator
 
 private enum class Page(val stage: Int) {
     CLOUD_SERVER(0), WELCOME(0), DESTINATION(1), CLOUD(1), S3(1), SMB(1),
-    SOURCE(2), TAKEOUT(2), PHOTOS(2), SCANNING(2), REVIEW(3), IMPORT(4),
+    SOURCE(2), TAKEOUT(2), PHOTOS(2), SCANNING(2), LIBRARY_SUMMARY(3), UPLOAD_ESTIMATE(4), IMPORT(5),
 }
 
 internal enum class RemoteType { CLOUD, S3, SMB }
@@ -273,6 +274,8 @@ private fun ImporterWizard() {
     var coordinator by remember { mutableStateOf<ImportCoordinator?>(null) }
     var importPlan by remember { mutableStateOf<ImportPlan?>(null) }
     var benchmarks by remember { mutableStateOf(emptyList<RemoteBenchmark>()) }
+    var benchmarking by remember { mutableStateOf(false) }
+    var benchmarkError by remember { mutableStateOf<String?>(null) }
     var importProgress by remember { mutableStateOf(ImportProgress(ImportRunState.READY, 0, 0, 0, 0)) }
     var discovering by remember { mutableStateOf(false) }
     var discoveryFailure by remember { mutableStateOf<DiscoveryFailure?>(null) }
@@ -400,12 +403,13 @@ private fun ImporterWizard() {
                                 ?: "Import completed, but this temporary local setup could not be removed."
                         }
                     }
-                    Triple(newCoordinator, newCoordinator.discover(reader), newCoordinator.benchmark(connectedGateway.remotes()))
+                    newCoordinator to newCoordinator.discover(reader)
                 }
                 coordinator = prepared.first
                 importPlan = prepared.second
-                benchmarks = prepared.third
-                go(Page.REVIEW)
+                benchmarks = emptyList()
+                benchmarkError = null
+                go(Page.LIBRARY_SUMMARY)
             } catch (failure: Throwable) {
                 discoveryFailure = DiscoveryFailure(
                     sourceType = selectedSource,
@@ -414,6 +418,25 @@ private fun ImporterWizard() {
             } finally {
                 progressPolling?.cancel()
                 discovering = false
+            }
+        }
+    }
+
+    fun benchmarkUploadSpeed() {
+        val activeCoordinator = coordinator ?: return
+        val connectedGateway = gateway ?: return
+        benchmarking = true
+        benchmarkError = null
+        go(Page.UPLOAD_ESTIMATE)
+        scope.launch {
+            try {
+                benchmarks = withContext(Dispatchers.IO) {
+                    activeCoordinator.benchmark(connectedGateway.remotes())
+                }
+            } catch (failure: Throwable) {
+                benchmarkError = failure.message?.ifBlank { null } ?: "Could not benchmark upload speed."
+            } finally {
+                benchmarking = false
             }
         }
     }
@@ -551,7 +574,8 @@ private fun ImporterWizard() {
                             onRetry = ::discover,
                             onChooseAnotherSource = { go(Page.SOURCE) },
                         )
-                        Page.REVIEW -> ReviewPage(sourceType, archives, remoteNames, importPlan, benchmarks, importError)
+                        Page.LIBRARY_SUMMARY -> LibrarySummaryPage(sourceType, archives, importPlan)
+                        Page.UPLOAD_ESTIMATE -> UploadEstimatePage(importPlan, benchmarks, benchmarking, benchmarkError)
                         Page.IMPORT -> ImportPage(importProgress, importRunning, importError, onStart = ::startImport, onPause = { coordinator?.requestPause() })
                         }
                     }
@@ -565,6 +589,7 @@ private fun ImporterWizard() {
         Spacer(Modifier.height(16.dp))
         WizardFooter(
             page = page, source = sourceType, connecting = connecting, connectEnabled = connectionFormIsComplete(), discovering = discovering, archivesReady = archives.isNotEmpty(), photosReady = photosAllowed,
+            benchmarking = benchmarking, benchmarkReady = benchmarks.isNotEmpty(),
             onBack = {
                 when (page) {
                     Page.CLOUD_SERVER -> Unit
@@ -576,15 +601,17 @@ private fun ImporterWizard() {
                     Page.SOURCE -> go(Page.DESTINATION)
                     Page.TAKEOUT, Page.PHOTOS -> go(Page.SOURCE)
                     Page.SCANNING -> Unit
-                    Page.REVIEW -> go(if (sourceType == SourceType.PHOTOS) Page.PHOTOS else Page.TAKEOUT)
-                    Page.IMPORT -> go(Page.REVIEW)
+                    Page.LIBRARY_SUMMARY -> go(if (sourceType == SourceType.PHOTOS) Page.PHOTOS else Page.TAKEOUT)
+                    Page.UPLOAD_ESTIMATE -> go(Page.LIBRARY_SUMMARY)
+                    Page.IMPORT -> go(Page.UPLOAD_ESTIMATE)
                     Page.WELCOME -> Unit
                 }
             },
             onConnect = ::connect,
             onContinue = { when (page) {
                 Page.WELCOME -> go(Page.DESTINATION)
-                Page.REVIEW -> startImport()
+                Page.LIBRARY_SUMMARY -> benchmarkUploadSpeed()
+                Page.UPLOAD_ESTIMATE -> if (benchmarks.isEmpty()) benchmarkUploadSpeed() else startImport()
                 else -> discover()
             } },
         )
@@ -643,7 +670,7 @@ private fun ImporterWizard() {
 private fun ProgressHeader(stage: Int, remotes: List<String>) {
     Text("LASCO", color = Ink, style = LascoHeading.copy(fontSize = 30.sp), fontWeight = FontWeight.Black, letterSpacing = 2.sp)
     Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        listOf("1. HOW IT WORKS", "2. DESTINATION", "3. SOURCE", "4. REVIEW", "5. IMPORT").forEachIndexed { index, label ->
+        listOf("1. HOW IT WORKS", "2. DESTINATION", "3. SOURCE", "4. LIBRARY SUMMARY", "5. EXPECTED TIME", "6. IMPORT").forEachIndexed { index, label ->
             Text(label, color = if (index == stage) Pink else InkMuted, style = LascoLabel.copy(fontSize = 16.sp), fontWeight = FontWeight.Bold)
         }
     }
@@ -661,7 +688,8 @@ private fun WelcomePage() {
             HowItWorksItem("1", "You need an existing Lasco library.")
             HowItWorksItem("2", "Set up the remote or remotes used to connect to it.")
             HowItWorksItem("3", "Choose Apple Photos / iCloud, or Google Takeout with its ZIP archives.")
-            HowItWorksItem("4", "Review the import, then start. You can safely pause and resume it.")
+            HowItWorksItem("4", "Review your library and what each remote already contains.")
+            HowItWorksItem("5", "Benchmark each remote, review the expected upload time, then start. You can safely pause and resume it.")
         }
     }
 }
@@ -1009,24 +1037,79 @@ private fun ScanningPage(
 }
 
 @Composable
-private fun ReviewPage(source: SourceType?, archives: List<String>, remotes: List<String>, plan: ImportPlan?, benchmarks: List<RemoteBenchmark>, error: String?) {
-    PageTitle("Library summary", "Review the media and destinations before importing.")
+private fun LibrarySummaryPage(source: SourceType?, archives: List<String>, plan: ImportPlan?) {
+    PageTitle("Library summary", "Review what Apple Photos found and what each destination already has.")
     Spacer(Modifier.height(20.dp))
-    Detail("DESTINATION", remotes.joinToString().ifBlank { "No remote connected" })
     Detail("SOURCE", if (source == SourceType.PHOTOS) "Apple Photos / iCloud" else "Google Takeout")
     if (source == SourceType.TAKEOUT) Detail("ARCHIVES", archives.size.toString())
     plan?.let {
-        Detail("MEDIA TO UPLOAD", "${it.candidates} · ${formatBytes(it.candidatesBytes)}")
+        MediaCountSummary("APPLE PHOTOS LIBRARY", it.library)
+        it.remotes.forEach { remote ->
+            Spacer(Modifier.height(18.dp))
+            Text(
+                "${remote.remoteName} ${importerRemoteTypeLabel(remote.remoteType)}",
+                color = Ink,
+                style = LascoLabel.copy(fontSize = 15.sp),
+                fontWeight = FontWeight.Bold,
+            )
+            Spacer(Modifier.height(8.dp))
+            if (remote.alreadyThere.resourceCount > 0) {
+                MediaCountSummary("ALREADY THERE", remote.alreadyThere)
+                Spacer(Modifier.height(8.dp))
+            }
+            MediaCountSummary("TO BE UPLOADED", remote.toUpload, includeTotal = true)
+        }
     }
-    benchmarks.forEach { benchmark ->
-        Detail("${benchmark.remoteName.uppercase()} UPLOAD", "${formatRate(benchmark.isolatedBytesPerSecond)} at ${benchmark.selectedParallelism} parallel uploads")
+}
+
+@Composable
+private fun MediaCountSummary(label: String, counts: app.lasco.importer.model.MediaCounts, includeTotal: Boolean = false) {
+    Text(label, color = InkMuted, style = LascoLabel, fontWeight = FontWeight.Bold)
+    Detail("PHOTOS", "${counts.photos} (+ ${counts.livePhotoVideos} Live Photos attached, + ${counts.aaeFiles} AAE files attached)")
+    Detail("VIDEOS", counts.videos.toString())
+    if (includeTotal) Detail("TOTAL", formatBytes(counts.bytes))
+}
+
+private val app.lasco.importer.model.MediaCounts.resourceCount: Int
+    get() = photos + videos + livePhotoVideos + aaeFiles
+
+@Composable
+private fun UploadEstimatePage(
+    plan: ImportPlan?,
+    benchmarks: List<RemoteBenchmark>,
+    benchmarking: Boolean,
+    error: String?,
+) {
+    PageTitle("Expected upload time")
+    Spacer(Modifier.height(24.dp))
+    if (benchmarking) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            CircularProgressIndicator(modifier = Modifier.widthIn(max = 22.dp), color = Pink, strokeWidth = 2.dp)
+            Text("Benchmarking upload speed…", color = InkSub, style = LascoBody)
+        }
+    } else if (error != null) {
+        ErrorMessage(error)
+    } else {
+        val summaries = plan?.remotes.orEmpty().associateBy { it.remoteId }
+        benchmarks.forEach { benchmark ->
+            val remote = summaries[benchmark.remoteId] ?: return@forEach
+            val seconds = if (benchmark.isolatedBytesPerSecond > 0) {
+                (remote.toUpload.bytes + benchmark.isolatedBytesPerSecond - 1) / benchmark.isolatedBytesPerSecond
+            } else {
+                null
+            }
+            Text("${remote.remoteName} ${importerRemoteTypeLabel(remote.remoteType)}", color = Ink, style = LascoLabel.copy(fontSize = 15.sp), fontWeight = FontWeight.Bold)
+            Detail("TO UPLOAD", formatBytes(remote.toUpload.bytes))
+            Detail("BEST SPEED", "${formatRate(benchmark.isolatedBytesPerSecond)} at ${benchmark.selectedParallelism} parallel uploads")
+            Detail("EXPECTED TIME", seconds?.let(::formatDuration) ?: "Unavailable")
+            Spacer(Modifier.height(18.dp))
+        }
     }
-    error?.let { Spacer(Modifier.height(12.dp)); ErrorMessage(it) }
 }
 
 @Composable
 private fun ImportPage(progress: ImportProgress, running: Boolean, error: String?, onStart: () -> Unit, onPause: () -> Unit) {
-    PageTitle("Import", "Pausing keeps this scan in memory. Resume before closing the app. Choose the source again; Lasco recognizes already imported content.")
+    PageTitle("Import")
     Spacer(Modifier.height(24.dp))
     Detail("STATUS", progress.detail.ifBlank { progress.state.name.lowercase().replaceFirstChar(Char::uppercase) })
     Detail("PROGRESS", "${progress.completedAssets} / ${progress.totalAssets} items")
@@ -1044,19 +1127,26 @@ private fun ImportPage(progress: ImportProgress, running: Boolean, error: String
 }
 
 @Composable
-private fun WizardFooter(page: Page, source: SourceType?, connecting: Boolean, connectEnabled: Boolean, discovering: Boolean, archivesReady: Boolean, photosReady: Boolean, onBack: () -> Unit, onConnect: () -> Unit, onContinue: () -> Unit) {
+private fun WizardFooter(page: Page, source: SourceType?, connecting: Boolean, connectEnabled: Boolean, discovering: Boolean, archivesReady: Boolean, photosReady: Boolean, benchmarking: Boolean, benchmarkReady: Boolean, onBack: () -> Unit, onConnect: () -> Unit, onContinue: () -> Unit) {
     val picker = page == Page.DESTINATION || page == Page.SOURCE
     val connectPage = page in setOf(Page.CLOUD, Page.S3, Page.SMB)
     val scanning = page == Page.SCANNING
-    val continueEnabled = page == Page.WELCOME || (page == Page.TAKEOUT && archivesReady) || (page == Page.PHOTOS && photosReady) || page == Page.REVIEW
+    val continueEnabled = page == Page.WELCOME || (page == Page.TAKEOUT && archivesReady) || (page == Page.PHOTOS && photosReady) || page == Page.LIBRARY_SUMMARY || (page == Page.UPLOAD_ESTIMATE && !benchmarking)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         if (page != Page.WELCOME && page != Page.CLOUD_SERVER && !scanning) LascoButton("BACK", onBack, primary = false, fillWidth = false)
         Spacer(Modifier.weight(1f))
         if (connectPage) LascoButton(if (connecting) "CONNECTING…" else "CONNECT REMOTE", onConnect, enabled = connectEnabled && !connecting, fillWidth = false)
         if (!picker && !connectPage && !scanning && page != Page.IMPORT) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                LascoButton(if (discovering) "DISCOVERING…" else if (page == Page.REVIEW) "START IMPORT" else "CONTINUE", onContinue, enabled = continueEnabled && !discovering, fillWidth = false)
-                if (page == Page.REVIEW && source == SourceType.PHOTOS) {
+                val label = when {
+                    discovering -> "DISCOVERING…"
+                    page == Page.LIBRARY_SUMMARY -> "BENCHMARK UPLOAD SPEED"
+                    page == Page.UPLOAD_ESTIMATE && benchmarkReady -> "START IMPORT"
+                    page == Page.UPLOAD_ESTIMATE -> "TRY BENCHMARK AGAIN"
+                    else -> "CONTINUE"
+                }
+                LascoButton(label, onContinue, enabled = continueEnabled && !discovering, fillWidth = false)
+                if (page == Page.UPLOAD_ESTIMATE && source == SourceType.PHOTOS) {
                     Text("(It will not delete your iCloud files.)", color = InkSub, style = LascoBody.copy(fontSize = 12.sp), modifier = Modifier.padding(top = 6.dp))
                 }
             }
@@ -1074,6 +1164,12 @@ private fun PageTitle(title: String, text: String? = null) {
 }
 @Composable private fun Detail(label: String, value: String) { Row(Modifier.padding(vertical = 5.dp)) { Text(label, color = InkMuted, style = LascoLabel, fontWeight = FontWeight.Bold, modifier = Modifier.widthIn(min = 120.dp)); Text(value, color = Ink, style = LascoBody.copy(fontSize = 14.sp)) } }
 @Composable private fun ErrorMessage(text: String) { Text(text, color = Error, style = LascoBody.copy(fontSize = 14.sp), modifier = Modifier.fillMaxWidth().background(Error.copy(alpha = .08f)).border(1.dp, Error).padding(10.dp)) }
+
+private fun formatDuration(seconds: Long): String = when {
+    seconds < 60 -> "$seconds sec"
+    seconds < 3_600 -> "${seconds / 60} min ${seconds % 60} sec"
+    else -> "${seconds / 3_600} hr ${(seconds % 3_600) / 60} min"
+}
 
 @Composable
 private fun LascoButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, primary: Boolean = true, enabled: Boolean = true, fillWidth: Boolean = true) {

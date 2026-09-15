@@ -68,6 +68,25 @@ data class ImportPlan(
     val chunkSize: Int,
     val remoteNames: List<String>,
     val estimatedSeconds: Long?,
+    val library: MediaCounts,
+    val remotes: List<RemoteImportSummary>,
+)
+
+/** Counts source resources rather than gallery entries, so Photos companions remain visible. */
+data class MediaCounts(
+    val photos: Int = 0,
+    val videos: Int = 0,
+    val livePhotoVideos: Int = 0,
+    val aaeFiles: Int = 0,
+    val bytes: Long = 0,
+)
+
+data class RemoteImportSummary(
+    val remoteId: String,
+    val remoteName: String,
+    val remoteType: String,
+    val alreadyThere: MediaCounts,
+    val toUpload: MediaCounts,
 )
 
 data class RemoteBenchmark(

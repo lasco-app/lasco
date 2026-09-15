@@ -552,6 +552,32 @@ impl Library {
         shortfall
     }
 
+    /// Returns the subset of `media_ids` whose full originals are confirmed on one remote.
+    ///
+    /// This consults the positive-only inventory cached by `confirm_remote_media`; it does not
+    /// perform network I/O. A missing ID is deliberately "not confirmed", never proof that the
+    /// remote lacks the blob.
+    #[must_use]
+    pub fn confirmed_remote_media_ids(
+        &self,
+        remote_id: &str,
+        media_ids: &[MediaUuid],
+    ) -> Vec<MediaUuid> {
+        let remote_media_list = self.inner.local_dirs.remote_media_list(remote_id);
+        let Ok(list) = self.inner.remote_media_list_lock.with_lock(
+            remote_id,
+            &remote_media_list,
+            |remote_media_list| MediaList::load_or_default(&remote_media_list.media_list_path()),
+        ) else {
+            return Vec::new();
+        };
+        media_ids
+            .iter()
+            .copied()
+            .filter(|media_id| list.has_full(media_id))
+            .collect()
+    }
+
     /// Returns the ids of media whose full blob has no known home once `scope` is applied.
     ///
     /// Only the full media file counts, a thumbnail alone is never a backup. Remote knowledge

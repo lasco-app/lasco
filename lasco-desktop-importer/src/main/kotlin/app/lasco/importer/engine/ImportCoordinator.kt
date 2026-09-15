@@ -8,7 +8,9 @@ import app.lasco.importer.model.ImportAsset
 import app.lasco.importer.model.ImportPlan
 import app.lasco.importer.model.ImportProgress
 import app.lasco.importer.model.ImportRunState
+import app.lasco.importer.model.MediaCounts
 import app.lasco.importer.model.RemoteBenchmark
+import app.lasco.importer.model.RemoteImportSummary
 import app.lasco.importer.model.ResourceRole
 import app.lasco.importer.source.ImportSourceReader
 import app.lasco.importer.source.ApplePhotosCollectionSourceReader
@@ -55,7 +57,30 @@ class ImportCoordinator(
         val totalBytes = assets.sumOf(ImportAsset::byteCount)
         val collections = (reader as? ApplePhotosCollectionSourceReader)?.collectionDescriptors().orEmpty()
         session = ImportSession(reader, assets, chunkSize, totalBytes, appleCollections = collections)
-        val plan = ImportPlan(reader.source, assets.size, totalBytes, 0, chunkSize, gateway.remotes().map { it.name }, null)
+        val knownMediaByAsset = alreadyImportedMedia(assets)
+        val remoteSummaries = gateway.remotes().map { remote ->
+            gateway.confirmRemoteMedia(remote)
+            val confirmedMediaIds = gateway.confirmedRemoteMediaIds(remote, knownMediaByAsset.values.toSet())
+            val alreadyThere = assets.filter { knownMediaByAsset[it] in confirmedMediaIds }
+            RemoteImportSummary(
+                remoteId = remote.id,
+                remoteName = remote.name,
+                remoteType = remote.kind,
+                alreadyThere = mediaCounts(alreadyThere),
+                toUpload = mediaCounts(assets.filterNot { knownMediaByAsset[it] in confirmedMediaIds }),
+            )
+        }
+        val plan = ImportPlan(
+            source = reader.source,
+            candidates = assets.size,
+            candidatesBytes = totalBytes,
+            alreadyCompleted = knownMediaByAsset.size,
+            chunkSize = chunkSize,
+            remoteNames = gateway.remotes().map { it.name },
+            estimatedSeconds = null,
+            library = mediaCounts(assets),
+            remotes = remoteSummaries,
+        )
         _progress.value = ImportProgress(ImportRunState.READY, 0, assets.size, 0, totalBytes, detail = "Ready to import")
         return plan
     }
@@ -144,6 +169,21 @@ class ImportCoordinator(
             members.forEach { asset ->
                 val type = asset.applePhotosResourceType ?: return@forEach
                 mediaIds[ApplePhotosResourceDescriptor(type, asset.displayName)]?.let { put(asset, it) }
+            }
+        }
+    }
+
+    private fun mediaCounts(assets: List<ImportAsset>) = assets.fold(MediaCounts()) { counts, asset ->
+        when (asset.resourceRole) {
+            ResourceRole.AAE_SIDECAR -> counts.copy(aaeFiles = counts.aaeFiles + 1, bytes = counts.bytes + asset.byteCount)
+            ResourceRole.LIVE_PHOTO_VIDEO -> counts.copy(livePhotoVideos = counts.livePhotoVideos + 1, bytes = counts.bytes + asset.byteCount)
+            ResourceRole.PRIMARY -> when (asset.applePhotosResourceType) {
+                app.lasco.importer.model.ApplePhotosResourceType.VIDEO,
+                app.lasco.importer.model.ApplePhotosResourceType.FULL_SIZE_VIDEO,
+                app.lasco.importer.model.ApplePhotosResourceType.PAIRED_VIDEO,
+                app.lasco.importer.model.ApplePhotosResourceType.FULL_SIZE_PAIRED_VIDEO,
+                -> counts.copy(videos = counts.videos + 1, bytes = counts.bytes + asset.byteCount)
+                else -> counts.copy(photos = counts.photos + 1, bytes = counts.bytes + asset.byteCount)
             }
         }
     }

@@ -25,6 +25,7 @@ import kotlin.concurrent.Volatile
 import platform.Foundation.NSDate
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSISO8601DateFormatter
+import platform.Foundation.NSNumber
 import platform.Foundation.NSSelectorFromString
 import platform.Foundation.NSURL
 import platform.Foundation.NSUUID
@@ -82,6 +83,14 @@ private val iso8601 = NSISO8601DateFormatter()
 private const val cloudMappingBatchSize = 250
 
 private fun sessionHandle(): String = NSUUID().UUIDString
+private val valueForKeySelector = NSSelectorFromString("valueForKey:")
+
+/**
+ * `fileSize` is PhotoKit KVC metadata. Unlike a local URL, it is available while an iCloud
+ * original is still remote, which lets the importer estimate upload size during discovery.
+ */
+private fun resourceByteCount(resource: PHAssetResource): Long =
+    (resource.performSelector(valueForKeySelector, withObject = "fileSize") as? NSNumber)?.longLongValue ?: 0
 
 /**
  * This is the native compatibility seam for PhotoKit's archival cloud form. Older macOS versions
@@ -203,9 +212,7 @@ fun discoverJson(): CPointer<ByteVar>? = memScoped {
                 else -> error("unexpected selected PhotoKit resource type")
             }
             val coordinates = photo.location?.coordinate?.useContents { latitude to longitude }
-            // PhotoKit has no public per-resource byte-size API. Avoid using private KVC and do
-            // not download iCloud originals during discovery merely to calculate it.
-            records += ResourceRecord(handle, assetSessionHandles.getValue(photo.localIdentifier), type, resource.originalFilename, 0,
+            records += ResourceRecord(handle, assetSessionHandles.getValue(photo.localIdentifier), type, resource.originalFilename, resourceByteCount(resource),
                 photo.creationDate?.let(iso8601::stringFromDate), photo.modificationDate?.let(iso8601::stringFromDate), coordinates?.first, coordinates?.second,
                 emptyList(), if (isPrimary) pairedVideo?.let(resourceHandles::get) else null, if (isPrimary) aae?.let(resourceHandles::get) else null,
                 cloudAssetIds[photo.localIdentifier], resourceType)

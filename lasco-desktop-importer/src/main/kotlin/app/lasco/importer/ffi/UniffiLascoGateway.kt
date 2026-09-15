@@ -75,8 +75,19 @@ class UniffiLascoGateway(
         )
     }
 
+    override suspend fun confirmRemoteMedia(remote: LascoRemote) {
+        library.confirmRemoteMediaAsync(FfiRemoteUuid(remote.id), appSupportDirectory)
+    }
+
+    override fun confirmedRemoteMediaIds(remote: LascoRemote, mediaIds: Set<String>): Set<String> =
+        library.confirmedRemoteMediaIds(
+            FfiRemoteUuid(remote.id),
+            mediaIds.map(::FfiMediaUuid),
+        ).mapTo(mutableSetOf()) { it.value }
+
     override suspend fun benchmark(remote: LascoRemote, bytesPerUpload: Long): RemoteBenchmark {
-        val samples = library.benchmarkRemoteUploadAsync(FfiRemoteUuid(remote.id), appSupportDirectory, bytesPerUpload.toULong(), 5u)
+        // Four uploads per remote is the highest useful setting for the desktop importer.
+        val samples = library.benchmarkRemoteUploadAsync(FfiRemoteUuid(remote.id), appSupportDirectory, bytesPerUpload.toULong(), 4u)
         val best = samples.maxBy { it.bytesPerSecond }
         return RemoteBenchmark(remote.id, remote.name, best.parallelUploads.toInt(), best.bytesPerSecond.toLong())
     }

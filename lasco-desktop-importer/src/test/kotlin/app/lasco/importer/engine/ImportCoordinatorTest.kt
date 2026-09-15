@@ -100,6 +100,47 @@ class ImportCoordinatorTest {
     }
 
     @Test
+    fun `Apple Photos summary separates confirmed remote media from companions to upload`() = runBlocking {
+        val gateway = FakeGateway()
+        val revision = ApplePhotosAssetRevision(
+            "cloud-asset",
+            null,
+            listOf(
+                ApplePhotosResourceDescriptor(ApplePhotosResourceType.PHOTO, "still.heic"),
+                ApplePhotosResourceDescriptor(ApplePhotosResourceType.PAIRED_VIDEO, "motion.mov"),
+                ApplePhotosResourceDescriptor(ApplePhotosResourceType.ADJUSTMENT_DATA, "edit.aae"),
+                ApplePhotosResourceDescriptor(ApplePhotosResourceType.VIDEO, "movie.mov"),
+            ),
+        )
+        gateway.revisionMedia[revision] = mapOf(
+            ApplePhotosResourceDescriptor(ApplePhotosResourceType.PHOTO, "still.heic") to "still",
+            ApplePhotosResourceDescriptor(ApplePhotosResourceType.PAIRED_VIDEO, "motion.mov") to "motion",
+            ApplePhotosResourceDescriptor(ApplePhotosResourceType.ADJUSTMENT_DATA, "edit.aae") to "edit",
+            ApplePhotosResourceDescriptor(ApplePhotosResourceType.VIDEO, "movie.mov") to "movie",
+        )
+        gateway.confirmedMedia += setOf("still", "movie")
+        val assets = listOf(
+            asset("still").copy(source = ImportSource.APPLE_PHOTOS, displayName = "still.heic", byteCount = 10, applePhotosRevision = revision, applePhotosResourceType = ApplePhotosResourceType.PHOTO),
+            asset("motion").copy(source = ImportSource.APPLE_PHOTOS, resourceRole = ResourceRole.LIVE_PHOTO_VIDEO, displayName = "motion.mov", byteCount = 20, applePhotosRevision = revision, applePhotosResourceType = ApplePhotosResourceType.PAIRED_VIDEO),
+            asset("edit").copy(source = ImportSource.APPLE_PHOTOS, resourceRole = ResourceRole.AAE_SIDECAR, displayName = "edit.aae", byteCount = 30, applePhotosRevision = revision, applePhotosResourceType = ApplePhotosResourceType.ADJUSTMENT_DATA),
+            asset("movie").copy(source = ImportSource.APPLE_PHOTOS, displayName = "movie.mov", byteCount = 40, applePhotosRevision = revision, applePhotosResourceType = ApplePhotosResourceType.VIDEO),
+        )
+
+        val plan = ImportCoordinator(gateway, Files.createTempDirectory("lasco-stage")) { null }
+            .discover(Reader(assets))
+        val remote = plan.remotes.single()
+
+        assertEquals(1, plan.library.photos)
+        assertEquals(1, plan.library.videos)
+        assertEquals(1, plan.library.livePhotoVideos)
+        assertEquals(1, plan.library.aaeFiles)
+        assertEquals(2, remote.alreadyThere.photos + remote.alreadyThere.videos)
+        assertEquals(1, remote.toUpload.livePhotoVideos)
+        assertEquals(1, remote.toUpload.aaeFiles)
+        assertEquals(50, remote.toUpload.bytes)
+    }
+
+    @Test
     fun `cloud linked collections reuse canonical albums and add primary media only`() = runBlocking {
         val gateway = FakeGateway().apply { collectionLinks["album-cloud"] = "existing-album" }
         val primary = asset("still").copy(
@@ -181,6 +222,8 @@ class ImportCoordinatorTest {
         val createdAlbumParents = mutableListOf<Pair<String, String?>>()
         val memberships = mutableListOf<Pair<String, String>>()
         val collectionLinks = mutableMapOf<String, String>()
+        val revisionMedia = mutableMapOf<ApplePhotosAssetRevision, Map<ApplePhotosResourceDescriptor, String>>()
+        val confirmedMedia = mutableSetOf<String>()
         override fun createAlbum(name: String, parentAlbumId: String?): String {
             createdAlbums += name
             createdAlbumParents += name to parentAlbumId
@@ -191,10 +234,12 @@ class ImportCoordinatorTest {
             imported += path.fileName.toString().substringBeforeLast('.')
             return ImportedMedia("media-${imported.last()}", false)
         }
-        override fun applePhotosAssetRevisionMediaIds(revision: ApplePhotosAssetRevision): Map<ApplePhotosResourceDescriptor, String>? = null
+        override fun applePhotosAssetRevisionMediaIds(revision: ApplePhotosAssetRevision): Map<ApplePhotosResourceDescriptor, String>? = revisionMedia[revision]
         override fun recordApplePhotosResourceOrigin(mediaId: String, revision: ApplePhotosAssetRevision, resourceType: ApplePhotosResourceType, filename: String) = Unit
         override fun applePhotosCollectionLinks(collections: List<ApplePhotosCollectionDescriptor>) = collections.map { collectionLinks[it.cloudCollectionId] }
         override fun recordApplePhotosCollectionLink(albumId: String, collection: ApplePhotosCollectionDescriptor) { collectionLinks[collection.cloudCollectionId] = albumId }
+        override suspend fun confirmRemoteMedia(remote: LascoRemote) = Unit
+        override fun confirmedRemoteMediaIds(remote: LascoRemote, mediaIds: Set<String>) = confirmedMedia.intersect(mediaIds)
         override suspend fun benchmark(remote: LascoRemote, bytesPerUpload: Long) = RemoteBenchmark(remote.id, remote.name, 1, bytesPerUpload)
         override suspend fun push(remote: LascoRemote, maxConcurrentMediaUploads: Int, onProgress: (Double) -> Unit) {
             if (remote.id == failPushForRemoteId) error("Remote ${remote.name} is unavailable")

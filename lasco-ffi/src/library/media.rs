@@ -916,6 +916,29 @@ impl FfiLibrary {
         })
     }
 
+    /// Returns which supplied media IDs are confirmed to have a full original on this remote.
+    ///
+    /// Callers should refresh the remote inventory with `confirm_remote_media_async` first.
+    /// The result reflects this client's cached positive-only inventory and never performs a
+    /// network request itself.
+    pub fn confirmed_remote_media_ids(
+        &self,
+        remote_id: FfiRemoteUuid,
+        media_ids: Vec<FfiMediaUuid>,
+    ) -> Result<Vec<FfiMediaUuid>, LascoError> {
+        let remote_uuid: RemoteUuid = remote_id.try_into()?;
+        let media_ids = media_ids
+            .into_iter()
+            .map(TryInto::try_into)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(self
+            .inner
+            .confirmed_remote_media_ids(&remote_uuid.to_string(), &media_ids)
+            .into_iter()
+            .map(Into::into)
+            .collect())
+    }
+
     /// Counts the media that clearing local media would leave with no known copy anywhere.
     ///
     /// Only a remote can back up a local copy here, because the local copy is what the
