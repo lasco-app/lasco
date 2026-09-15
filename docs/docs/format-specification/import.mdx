@@ -40,6 +40,6 @@ Burst photos are imported as a group containing the main photo and the video of 
 
 Albums are imported only during the initial import when the library is created, not during incremental imports.
 
-In the Apple model, folders can be nested and contain albums, and a photo can belong to several albums. Lasco transcribes this by treating each folder as an album.
+In the Apple model, folders can be nested and contain albums, and a photo can belong to several albums. Lasco transcribes this by treating each folder as an album. Only collections with a cloud mapping receive durable links. A mapped child below an unmapped parent is placed under its nearest mapped ancestor, or at the Lasco root. On reimport, an existing linked album is reused without renaming or reparenting; missing primary-media membership may be added. AAE and paired Live Photo companion media are never album members.
 
 All the original data for photos and videos, including edit information, is packed into the Lasco library, except for information that only lives in the iOS library's local SQLite database. Whether a photo is marked as a favorite and a manual caption entered for a photo are two examples of such metadata.

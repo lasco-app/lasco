@@ -27,6 +27,13 @@ representation, using `#[serde(default)]` for added fields and `#[serde(alias)]`
 snapshot and the log are caches of state the operation history already holds, so a file that
 cannot be decoded is discarded and rebuilt rather than migrated.
 
+## New operation compatibility
+
+`ApplePhotosCollectionLinkAdded` changes the operation enum. A library containing this operation
+must not sync with a release that cannot deserialize it: unknown operation variants are never
+silently discarded. Releases that introduce or consume this operation therefore require an
+explicit rollout policy that prevents older clients from syncing affected libraries.
+
 ---
 
 ## Encrypted blob format

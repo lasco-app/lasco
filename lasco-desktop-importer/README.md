@@ -40,9 +40,11 @@ Kotlin/Native dynamic library in `native-photos-bridge` and loaded only on macOS
 - Source filenames and timestamps are retained. Google JSON sidecars contribute captured time and
   GPS when present.
 - A pause request finishes the current chunk and pushes it, then resumes in memory. Closing the
-  app requires a fresh source scan; already imported content is recognized by Lasco.
+  app requires a fresh source scan; already imported content is recognized by Lasco. Pausing
+  keeps the scan in memory only: resume before closing the app.
 - Imported media remains in the temporary local library until every final destination push
   succeeds. Only then does the importer close and remove that temporary library.
 - Exact duplicate detection remains authoritative in Rust: content hashes are known only after the
-  source bytes are staged. The recap excludes already-completed manifest records and labels other
-  items as candidates until the core reports its exact hash result.
+  source bytes are staged. There is no persisted job, source checkpoint, or PhotoKit locator.
+- If every final push succeeds but local setup deletion fails, the import is complete with a
+  cleanup warning: “Import completed, but this temporary local setup could not be removed.”

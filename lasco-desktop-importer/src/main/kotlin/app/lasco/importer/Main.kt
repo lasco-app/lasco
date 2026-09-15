@@ -372,7 +372,7 @@ private fun ImporterWizard() {
                             ffiDeleteLibrary(FfiLibraryId(libraryId), appData.toString())
                         }.exceptionOrNull()?.let { failure ->
                             failure.message?.ifBlank { null }
-                                ?: "Import completed, but Lasco could not remove its temporary local setup."
+                                ?: "Import completed, but this temporary local setup could not be removed."
                         }
                     }
                     Triple(newCoordinator, newCoordinator.discover(reader), newCoordinator.benchmark(connectedGateway.remotes()))
@@ -694,12 +694,14 @@ private fun ReviewPage(source: SourceType?, archives: List<String>, remotes: Lis
 
 @Composable
 private fun ImportPage(progress: ImportProgress, running: Boolean, error: String?, onStart: () -> Unit, onPause: () -> Unit) {
-    PageTitle("Import", "Your selected media will be imported. You can pause after the current batch and close the app safely.")
+    PageTitle("Import", "Pausing keeps this scan in memory. Resume before closing the app. Choose the source again; Lasco recognizes already imported content.")
     Spacer(Modifier.height(24.dp))
     Detail("STATUS", progress.detail.ifBlank { progress.state.name.lowercase().replaceFirstChar(Char::uppercase) })
     Detail("PROGRESS", "${progress.completedAssets} / ${progress.totalAssets} items")
     if (progress.state == ImportRunState.COMPLETE) {
         Text("IMPORT COMPLETE", color = Good, style = LascoPixel, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 20.dp))
+    } else if (progress.state == ImportRunState.COMPLETE_WITH_CLEANUP_WARNING) {
+        Text("Import completed, but this temporary local setup could not be removed.", color = Error, style = LascoBody, modifier = Modifier.padding(top = 20.dp))
     } else {
         Row(Modifier.padding(top = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             LascoButton(if (running) "IMPORTING…" else "START OR RESUME IMPORT", onStart, enabled = !running, fillWidth = false)
