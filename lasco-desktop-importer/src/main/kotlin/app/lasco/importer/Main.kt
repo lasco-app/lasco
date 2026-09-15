@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -16,12 +17,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.rememberScrollbarAdapter
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -436,8 +439,10 @@ private fun ImporterWizard() {
                 },
                 label = "wizard-swipe",
             ) { current ->
-                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(28.dp)) {
-                    when (current) {
+                val pageScrollState = rememberScrollState()
+                Box(Modifier.fillMaxSize()) {
+                    Column(Modifier.fillMaxSize().verticalScroll(pageScrollState).padding(28.dp)) {
+                        when (current) {
                         Page.WELCOME -> WelcomePage()
                         Page.DESTINATION -> DestinationPicker(
                             state = destinations,
@@ -527,7 +532,12 @@ private fun ImporterWizard() {
                         Page.SCANNING -> ScanningPage(sourceType, discoveryProgress)
                         Page.REVIEW -> ReviewPage(sourceType, archives, remoteNames, importPlan, benchmarks, importError)
                         Page.IMPORT -> ImportPage(importProgress, importRunning, importError, onStart = ::startImport, onPause = { coordinator?.requestPause() })
+                        }
                     }
+                    VerticalScrollbar(
+                        adapter = rememberScrollbarAdapter(pageScrollState),
+                        modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                    )
                 }
             }
         }
@@ -793,7 +803,9 @@ private fun DestinationDialogHost(
                 RemoteType.CLOUD -> false
             }
             Surface(Modifier.widthIn(min = 420.dp, max = 620.dp), color = Panel) {
-                Column(Modifier.verticalScroll(rememberScrollState()).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                val remoteScrollState = rememberScrollState()
+                Box {
+                    Column(Modifier.verticalScroll(remoteScrollState).padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     PageTitle("Add remote", "This remote is initialized immediately. If initialization fails, Lasco removes the incomplete remote.")
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         LascoButton("S3", { kind = RemoteType.S3 }, primary = kind == RemoteType.S3, fillWidth = false)
@@ -813,6 +825,11 @@ private fun DestinationDialogHost(
                         LascoButton("ADD REMOTE", { onAddRemote(dialog.library, remote) }, enabled = ready, fillWidth = false)
                         LascoButton("CANCEL", onDismiss, primary = false, fillWidth = false)
                     }
+                    }
+                    VerticalScrollbar(
+                        adapter = rememberScrollbarAdapter(remoteScrollState),
+                        modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                    )
                 }
             }
         }
