@@ -28,7 +28,7 @@ private interface PhotoKitNative : Library {
 }
 
 @Serializable
-private data class NativePhotoResource(
+internal data class NativePhotoResource(
     val sessionHandle: String,
     val assetSessionHandle: String,
     val type: String,
@@ -46,7 +46,7 @@ private data class NativePhotoResource(
 )
 
 @Serializable
-private data class NativePhotoCollection(
+internal data class NativePhotoCollection(
     val cloudCollectionId: String,
     val kind: String,
     val name: String,
@@ -56,7 +56,7 @@ private data class NativePhotoCollection(
 )
 
 @Serializable
-private data class NativePhotoDiscovery(
+internal data class NativePhotoDiscovery(
     val resources: List<NativePhotoResource>,
     val collections: List<NativePhotoCollection> = emptyList(),
 )
