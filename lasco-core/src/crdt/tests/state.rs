@@ -40,6 +40,26 @@ fn collection_link_uses_the_earliest_dot_as_its_canonical_album() {
 }
 
 #[test]
+fn collection_links_round_trip_with_their_explicit_operation_kind() {
+    let collection_id = ApplePhotosCloudCollectionId("icloud-folder".into());
+    let operation = operation(
+        Dot { lamport_counter: 7, device_id: DeviceId(3) },
+        OperationContent::ApplePhotosCollectionLinkAdded(ApplePhotosCollectionLink {
+            album_id: album(9),
+            cloud_collection_id: collection_id.clone(),
+            kind: ApplePhotosCollectionKind::Folder,
+        }),
+    );
+
+    let json = serde_json::to_string(&operation).unwrap();
+    let decoded: CrdtOperation = serde_json::from_str(&json).unwrap();
+
+    assert!(json.contains("ApplePhotosCollectionLinkAdded"));
+    assert_eq!(decoded, operation);
+    assert_eq!(collection_id.to_string(), "icloud-folder");
+}
+
+#[test]
 fn a_photo_added_to_an_album_and_group_converges_for_every_delivery_order() {
     let album_id = album(1);
     let group_id = group(2);
