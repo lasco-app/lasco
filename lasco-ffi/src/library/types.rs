@@ -85,7 +85,7 @@ pub struct FfiApplePhotosAssetRevision {
 }
 
 /// Immutable provenance for one resource of an Apple Photos asset revision.
-/// `cloud_asset_id` is the serialized `PHCloudIdentifier.stringValue`.
+/// `cloud_asset_id` is the serialized `PHCloudIdentifier.archivalStringValue`.
 #[derive(uniffi::Record, Debug)]
 pub struct FfiApplePhotosResourceOrigin {
     pub media_id: FfiMediaUuid,
@@ -93,6 +93,26 @@ pub struct FfiApplePhotosResourceOrigin {
     pub modification_date: Option<String>,
     pub resource_type: FfiApplePhotosResourceType,
     pub filename: String,
+}
+
+#[derive(uniffi::Enum, Debug, Clone, Copy)]
+pub enum FfiApplePhotosCollectionKind {
+    Folder,
+    Album,
+}
+
+#[derive(uniffi::Record, Debug)]
+pub struct FfiApplePhotosCollectionIdentity {
+    pub cloud_collection_id: String,
+    pub kind: FfiApplePhotosCollectionKind,
+}
+
+/// Immutable provenance for one Apple Photos folder or album.
+#[derive(uniffi::Record, Debug)]
+pub struct FfiApplePhotosCollectionLink {
+    pub album_id: FfiAlbumUuid,
+    pub cloud_collection_id: String,
+    pub kind: FfiApplePhotosCollectionKind,
 }
 
 /// Optional source metadata supplied by a desktop importer.

@@ -2,11 +2,11 @@
 
 use chrono::{DateTime, Utc};
 
-use crate::MediaUuid;
-use crate::crdt::{ApplePhotosResourceOrigin, ApplePhotosResourceType, OperationContent};
+use crate::{AlbumUuid, MediaUuid};
+use crate::crdt::{ApplePhotosCollectionKind, ApplePhotosCollectionLink, ApplePhotosResourceOrigin, ApplePhotosResourceType, OperationContent};
 use crate::error::LibraryError;
 use crate::library::Library;
-use crate::operations::ApplePhotosCloudAssetId;
+use crate::operations::{ApplePhotosCloudAssetId, ApplePhotosCloudCollectionId};
 
 /// Adds one immutable association between a Lasco media item and an Apple Photos resource.
 ///
@@ -21,6 +21,29 @@ pub fn record_resource_origin(
         Utc::now(),
         OperationContent::ApplePhotosResourceOriginAdded(origin),
     )
+}
+
+/// Records immutable provenance for an imported Apple Photos folder or album.
+pub fn record_collection_link(library: &Library, link: ApplePhotosCollectionLink) -> Result<(), LibraryError> {
+    library.record_local_operation(Utc::now(), OperationContent::ApplePhotosCollectionLinkAdded(link))
+}
+
+/// Returns the canonical Lasco album for an Apple collection. The earliest CRDT dot wins if two
+/// clients concurrently linked one collection to distinct albums.
+pub fn collection_album_id(
+    library: &Library,
+    cloud_collection_id: &ApplePhotosCloudCollectionId,
+    kind: ApplePhotosCollectionKind,
+) -> Option<AlbumUuid> {
+    library
+        .inner
+        .state
+        .read()
+        .apple_photos_collection_links
+        .iter()
+        .filter(|entry| entry.link.cloud_collection_id == *cloud_collection_id && entry.link.kind == kind)
+        .min_by_key(|entry| entry.dot)
+        .map(|entry| entry.link.album_id)
 }
 
 /// Returns the media associated with an exact Apple Photos asset revision, in the caller's

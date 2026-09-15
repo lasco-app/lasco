@@ -13,7 +13,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::identifiers::{AlbumUuid, GroupUuid, MediaUuid};
 use crate::library::media::MediaHash;
 use crate::operations::{
-    AlbumName, ApplePhotosCloudAssetId, GpsCoords, LibraryUsername, MediaFilename, MediaName,
+    AlbumName, ApplePhotosCloudAssetId, ApplePhotosCloudCollectionId, GpsCoords, LibraryUsername, MediaFilename, MediaName,
     StorageDate,
 };
 use crate::state::{ComputedViews, build_computed_views};
@@ -156,6 +156,8 @@ pub enum OperationContent {
     /// This is append-only provenance: a later Photos revision emits new origins rather than
     /// mutating the older one.
     ApplePhotosResourceOriginAdded(ApplePhotosResourceOrigin),
+    /// Records the Lasco album created or reused for an iCloud Photos folder or album.
+    ApplePhotosCollectionLinkAdded(ApplePhotosCollectionLink),
     MediaRename {
         media_id: MediaUuid,
         name: Option<MediaName>,
@@ -263,6 +265,25 @@ pub struct ApplePhotosResourceOriginEntry {
     pub origin: ApplePhotosResourceOrigin,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum ApplePhotosCollectionKind {
+    Folder,
+    Album,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ApplePhotosCollectionLink {
+    pub album_id: AlbumUuid,
+    pub cloud_collection_id: ApplePhotosCloudCollectionId,
+    pub kind: ApplePhotosCollectionKind,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ApplePhotosCollectionLinkEntry {
+    pub dot: Dot,
+    pub link: ApplePhotosCollectionLink,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LastWriteWin<T> {
     pub dot: Dot,
@@ -326,6 +347,9 @@ pub struct CrdtState {
     /// Immutable Apple Photos provenance entries, deduplicated by their CRDT dot.
     #[serde(default)]
     pub(crate) apple_photos_resource_origins: Vec<ApplePhotosResourceOriginEntry>,
+    /// Immutable Apple Photos collection provenance entries, deduplicated by their CRDT dot.
+    #[serde(default)]
+    pub(crate) apple_photos_collection_links: Vec<ApplePhotosCollectionLinkEntry>,
     /// Derived, in-memory query indexes. This cache is never serialized.
     #[serde(skip)]
     pub(crate) views: ComputedViews,
@@ -348,6 +372,7 @@ impl Default for CrdtState {
             album_memberships: HashMap::new(),
             group_memberships: HashMap::new(),
             apple_photos_resource_origins: Vec::new(),
+            apple_photos_collection_links: Vec::new(),
             views: ComputedViews::default(),
         }
     }
@@ -446,6 +471,19 @@ impl CrdtState {
                         origin: origin.clone(),
                     });
                     self.apple_photos_resource_origins.sort_by_key(|entry| entry.dot);
+                }
+            }
+            OperationContent::ApplePhotosCollectionLinkAdded(link) => {
+                if !self
+                    .apple_photos_collection_links
+                    .iter()
+                    .any(|entry| entry.dot == operation.dot)
+                {
+                    self.apple_photos_collection_links.push(ApplePhotosCollectionLinkEntry {
+                        dot: operation.dot,
+                        link: link.clone(),
+                    });
+                    self.apple_photos_collection_links.sort_by_key(|entry| entry.dot);
                 }
             }
             OperationContent::MediaRename { media_id, name } => {

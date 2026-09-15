@@ -1396,6 +1396,15 @@ fn operation_to_ffi(op: OperationContent, timestamp: String) -> FfiOperation {
                 kv("filename", &origin.filename),
             ],
         },
+        OperationContent::ApplePhotosCollectionLinkAdded(link) => FfiOperation {
+            kind: "ApplePhotosCollectionLinkAdded".to_string(),
+            timestamp: timestamp.clone(),
+            args: vec![
+                kv("album_id", &link.album_id),
+                kv("cloud_collection_id", &link.cloud_collection_id),
+                kv("kind", &format!("{:?}", link.kind)),
+            ],
+        },
         OperationContent::MediaRename { media_id, name } => FfiOperation {
             kind: "MediaRename".to_string(),
             timestamp: timestamp.clone(),

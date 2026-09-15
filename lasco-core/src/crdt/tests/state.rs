@@ -3,7 +3,41 @@ use chrono::Utc;
 use super::operations::{album, assert_every_delivery_order, group, media, operation};
 use crate::crdt::*;
 use crate::library::media::MediaHash;
-use crate::operations::{MediaName, StorageDate};
+use crate::operations::{ApplePhotosCloudCollectionId, MediaName, StorageDate};
+
+#[test]
+fn collection_link_uses_the_earliest_dot_as_its_canonical_album() {
+    let first_album = album(1);
+    let second_album = album(2);
+    let collection_id = ApplePhotosCloudCollectionId("icloud-collection".into());
+    let operations = [
+        operation(
+            Dot { lamport_counter: 2, device_id: DeviceId(1) },
+            OperationContent::ApplePhotosCollectionLinkAdded(ApplePhotosCollectionLink {
+                album_id: second_album,
+                cloud_collection_id: collection_id.clone(),
+                kind: ApplePhotosCollectionKind::Album,
+            }),
+        ),
+        operation(
+            Dot { lamport_counter: 1, device_id: DeviceId(2) },
+            OperationContent::ApplePhotosCollectionLinkAdded(ApplePhotosCollectionLink {
+                album_id: first_album,
+                cloud_collection_id: collection_id,
+                kind: ApplePhotosCollectionKind::Album,
+            }),
+        ),
+    ];
+
+    assert_every_delivery_order(&operations, |state| {
+        let canonical = state
+            .apple_photos_collection_links
+            .iter()
+            .min_by_key(|entry| entry.dot)
+            .unwrap();
+        assert_eq!(canonical.link.album_id, first_album);
+    });
+}
 
 #[test]
 fn a_photo_added_to_an_album_and_group_converges_for_every_delivery_order() {

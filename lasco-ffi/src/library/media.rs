@@ -3,7 +3,8 @@ use lasco_core::library::media::upload::MediaAddResult;
 use super::native_media_bytes::FfiNativeMediaBytes;
 use super::remotes::media_entry_to_ffi;
 use super::types::{
-    FfiApplePhotosAssetRevision, FfiApplePhotosResourceOrigin, FfiApplePhotosResourceType,
+    FfiApplePhotosAssetRevision, FfiApplePhotosCollectionIdentity, FfiApplePhotosCollectionKind,
+    FfiApplePhotosCollectionLink, FfiApplePhotosResourceOrigin, FfiApplePhotosResourceType,
     FfiLocalStateStats, FfiMediaAddResult, FfiMediaImportMetadata, FfiMediaNeighbors,
     FfiRemoteMediaShortfall,
 };
@@ -11,10 +12,10 @@ use super::{FfiLibrary, FfiMediaItem, ffi_count};
 use crate::error::LascoError;
 use crate::ids::{FfiAlbumUuid, FfiLibraryId, FfiMediaUuid, FfiRemoteUuid};
 use chrono::{DateTime, Utc};
-use lasco_core::crdt::ApplePhotosResourceType;
+use lasco_core::crdt::{ApplePhotosCollectionKind, ApplePhotosCollectionLink, ApplePhotosResourceType};
 use lasco_core::identifiers::RemoteUuid;
 use lasco_core::library::media::upload::MediaAddMetadata;
-use lasco_core::operations::{ApplePhotosCloudAssetId, GpsCoords};
+use lasco_core::operations::{ApplePhotosCloudAssetId, ApplePhotosCloudCollectionId, GpsCoords};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -84,6 +85,40 @@ impl FfiLibrary {
         )
         .map_err(LascoError::from)
     }
+
+    /// Returns the canonical Lasco album for each known Apple Photos collection identity.
+    pub fn apple_photos_collection_links(
+        &self,
+        collections: Vec<FfiApplePhotosCollectionIdentity>,
+    ) -> Result<Vec<Option<FfiAlbumUuid>>, LascoError> {
+        Ok(collections
+            .into_iter()
+            .map(|collection| {
+                lasco_core::library::media::apple_photos::collection_album_id(
+                    &self.inner,
+                    &ApplePhotosCloudCollectionId(collection.cloud_collection_id),
+                    apple_collection_kind(collection.kind),
+                )
+                .map(Into::into)
+            })
+            .collect())
+    }
+
+    /// Records immutable provenance after creating a Lasco album for an Apple Photos collection.
+    pub fn record_apple_photos_collection_link(
+        &self,
+        link: FfiApplePhotosCollectionLink,
+    ) -> Result<(), LascoError> {
+        lasco_core::library::media::apple_photos::record_collection_link(
+            &self.inner,
+            ApplePhotosCollectionLink {
+                album_id: link.album_id.try_into()?,
+                cloud_collection_id: ApplePhotosCloudCollectionId(link.cloud_collection_id),
+                kind: apple_collection_kind(link.kind),
+            },
+        )
+        .map_err(LascoError::from)
+    }
 }
 
 fn apple_resource_type(value: FfiApplePhotosResourceType) -> ApplePhotosResourceType {
@@ -97,6 +132,13 @@ fn apple_resource_type(value: FfiApplePhotosResourceType) -> ApplePhotosResource
         FfiApplePhotosResourceType::FullSizePairedVideo => {
             ApplePhotosResourceType::FullSizePairedVideo
         }
+    }
+}
+
+fn apple_collection_kind(value: FfiApplePhotosCollectionKind) -> ApplePhotosCollectionKind {
+    match value {
+        FfiApplePhotosCollectionKind::Folder => ApplePhotosCollectionKind::Folder,
+        FfiApplePhotosCollectionKind::Album => ApplePhotosCollectionKind::Album,
     }
 }
 
