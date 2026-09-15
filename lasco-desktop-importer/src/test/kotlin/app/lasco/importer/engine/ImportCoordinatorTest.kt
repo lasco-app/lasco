@@ -84,6 +84,32 @@ class ImportCoordinatorTest {
         assertEquals(listOf("existing-album" to "media-still"), gateway.memberships)
     }
 
+    @Test
+    fun `new Apple collection hierarchy is created parent first and links only the primary`() = runBlocking {
+        val gateway = FakeGateway()
+        val primary = asset("still").copy(
+            source = ImportSource.APPLE_PHOTOS,
+            assetSessionHandle = "asset-session",
+            applePhotosRevision = ApplePhotosAssetRevision("asset-cloud", null, emptyList()),
+        )
+        val sidecar = asset("sidecar").copy(source = ImportSource.APPLE_PHOTOS, resourceRole = ResourceRole.AAE_SIDECAR)
+        val reader = AppleReader(
+            listOf(sidecar, primary),
+            listOf(
+                ApplePhotosCollectionDescriptor("folder-cloud", ApplePhotosCollectionKind.FOLDER, "2019", null, emptyList(), emptyList()),
+                ApplePhotosCollectionDescriptor("album-cloud", ApplePhotosCollectionKind.ALBUM, "Trip", "folder-cloud", listOf("asset-cloud"), emptyList()),
+            ),
+        )
+        val coordinator = ImportCoordinator(gateway, Files.createTempDirectory("lasco-stage")) { null }
+
+        coordinator.discover(reader, chunkSize = 2)
+        coordinator.startOrResume(emptyList())
+
+        assertEquals(listOf("2019" to null, "Trip" to "created-2019"), gateway.createdAlbumParents)
+        assertEquals(listOf("created-Trip" to "media-still"), gateway.memberships)
+        assertEquals("created-Trip", gateway.collectionLinks["album-cloud"])
+    }
+
     private fun asset(id: String) = ImportAsset(
         sourceId = id,
         source = ImportSource.GOOGLE_TAKEOUT,
@@ -114,10 +140,12 @@ class ImportCoordinatorTest {
 
         override fun remotes() = listOf(LascoRemote("remote", "Remote", "s3"))
         val createdAlbums = mutableListOf<String>()
+        val createdAlbumParents = mutableListOf<Pair<String, String?>>()
         val memberships = mutableListOf<Pair<String, String>>()
         val collectionLinks = mutableMapOf<String, String>()
         override fun createAlbum(name: String, parentAlbumId: String?): String {
             createdAlbums += name
+            createdAlbumParents += name to parentAlbumId
             return "created-$name"
         }
         override fun addMediaToAlbum(albumId: String, mediaId: String) { memberships += albumId to mediaId }

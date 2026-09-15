@@ -24,7 +24,7 @@ private interface PhotoKitNative : Library {
     fun lasco_photos_discover_json(): String
     fun lasco_photos_discovery_scanned_count(): Int
     fun lasco_photos_discovery_total_count(): Int
-    fun lasco_photos_stage(resourceId: String, destinationDirectory: String): String
+    fun lasco_photos_stage(sessionHandle: String, destinationDirectory: String): String
 }
 
 @Serializable
