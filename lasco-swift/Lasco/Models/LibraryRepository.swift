@@ -120,6 +120,7 @@ protocol LibraryRepositoryProtocol: Sendable {
     func push(remoteID: FfiRemoteUuid, progress: any PushProgressSink) async throws -> UInt64
     func fetch(remoteID: FfiRemoteUuid) async throws -> UInt64
     func confirmRemoteMedia(remoteID: FfiRemoteUuid) async throws -> UInt64
+    func confirmedRemoteMediaIDs(remoteID: FfiRemoteUuid, mediaIDs: [FfiMediaUuid]) async throws -> [FfiMediaUuid]
     func close() async
 }
 
@@ -892,6 +893,11 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         return result
     }
 
+    func confirmedRemoteMediaIDs(remoteID: FfiRemoteUuid, mediaIDs: [FfiMediaUuid]) async throws -> [FfiMediaUuid] {
+        try ensureOpen()
+        return try library.confirmedRemoteMediaIds(remoteId: remoteID, mediaIds: mediaIDs)
+    }
+
     func close() async {
         guard !closed else { return }
         closed = true
@@ -1103,5 +1109,6 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     }
     func fetch(remoteID: FfiRemoteUuid) async throws -> UInt64 { try await storage.fetch(remoteID: remoteID) }
     func confirmRemoteMedia(remoteID: FfiRemoteUuid) async throws -> UInt64 { try await storage.confirmRemoteMedia(remoteID: remoteID) }
+    func confirmedRemoteMediaIDs(remoteID: FfiRemoteUuid, mediaIDs: [FfiMediaUuid]) async throws -> [FfiMediaUuid] { try await storage.confirmedRemoteMediaIDs(remoteID: remoteID, mediaIDs: mediaIDs) }
     func close() async { await storage.close() }
 }

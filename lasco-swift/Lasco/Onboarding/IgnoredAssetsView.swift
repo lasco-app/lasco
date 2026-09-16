@@ -1,31 +1,31 @@
 import SwiftUI
 #if os(iOS)
-import Photos
+import LascoPhotoImportKit
 
 struct IgnoredAssetsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.lascoTheme) var theme
 
-    let ignoredAssets: [PhotoLibraryImporter.IgnoredAsset]
+    let ignoredAssets: [PhotosIgnoredAsset]
 
     private struct Group {
         let label: String
-        let assets: [PhotoLibraryImporter.IgnoredAsset]
+        let assets: [PhotosIgnoredAsset]
     }
 
     private var groups: [Group] {
-        let byType = Dictionary(grouping: ignoredAssets, by: \.mediaType)
+        let byType = Dictionary(grouping: ignoredAssets, by: \.kind)
         return byType
             .map { Group(label: Self.label(for: $0.key), assets: $0.value) }
             .sorted { $0.assets.count > $1.assets.count }
     }
 
-    private static func label(for mediaType: PHAssetMediaType) -> String {
-        switch mediaType {
+    private static func label(for kind: PhotosIgnoredAsset.Kind) -> String {
+        switch kind {
         case .audio: return "Audio"
         case .image: return "Photo"
         case .video: return "Video"
-        default: return "Unknown"
+        case .unknown: return "Unknown"
         }
     }
 
@@ -73,9 +73,9 @@ struct IgnoredAssetsView: View {
                                     .padding(.top, 12)
                                     .padding(.bottom, 8)
 
-                                ForEach(group.assets, id: \.sessionID) { asset in
+                                ForEach(Array(group.assets.enumerated()), id: \.offset) { _, asset in
                                     HStack {
-                                        Text(dateLabel(for: asset.creationDate))
+                                        Text(dateLabel(for: asset.capturedAt))
                                             .font(LascoFont.mono(13))
                                             .foregroundStyle(theme.inkMuted)
                                         Spacer()
@@ -95,8 +95,9 @@ struct IgnoredAssetsView: View {
         }
     }
 
-    private func dateLabel(for date: Date?) -> String {
-        guard let date else { return "Unknown date" }
+    private func dateLabel(for value: String?) -> String {
+        guard let value,
+              let date = ISO8601DateFormatter().date(from: value) else { return "Unknown date" }
         return date.formatted(date: .abbreviated, time: .shortened)
     }
 }

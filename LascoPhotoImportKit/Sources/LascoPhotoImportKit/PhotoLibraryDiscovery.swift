@@ -42,6 +42,7 @@ public actor PhotoLibraryDiscovery {
         var assetTickets: [String: String] = [:]
         var assetsByLocalID: [String: PhotosAsset] = [:]
         var discoveredAssets: [PhotosAsset] = []
+        var ignoredAssets: [PhotosIgnoredAsset] = []
         var resourcesByTicket: [String: PHAssetResource] = [:]
 
         for asset in assets {
@@ -82,7 +83,13 @@ public actor PhotoLibraryDiscovery {
                     ) : .init()
                 )
             }
-            guard !selectedResources.isEmpty else { continue }
+            guard !selectedResources.isEmpty else {
+                ignoredAssets.append(.init(
+                    kind: Self.ignoredKind(for: asset.mediaType),
+                    capturedAt: asset.creationDate.map { ISO8601DateFormatter().string(from: $0) }
+                ))
+                continue
+            }
             assetsByLocalID[asset.localIdentifier] = PhotosAsset(
                 ticket: assetTicket,
                 cloudAssetID: cloudIDs[asset.localIdentifier],
@@ -107,7 +114,13 @@ public actor PhotoLibraryDiscovery {
             )
         }
         await stager.replace(with: resourcesByTicket)
-        return PhotosDiscovery(assets: discoveredAssets, collections: collections, scannedAssetCount: assets.count, totalAssetCount: assets.count)
+        return PhotosDiscovery(
+            assets: discoveredAssets,
+            collections: collections,
+            ignoredAssets: ignoredAssets,
+            scannedAssetCount: assets.count,
+            totalAssetCount: assets.count
+        )
         #else
         throw PhotoLibraryImportError.unavailable
         #endif
@@ -152,6 +165,15 @@ public actor PhotoLibraryDiscovery {
         case .pairedVideo: .pairedVideo
         case .fullSizePairedVideo: .fullSizePairedVideo
         default: nil
+        }
+    }
+
+    private static func ignoredKind(for mediaType: PHAssetMediaType) -> PhotosIgnoredAsset.Kind {
+        switch mediaType {
+        case .audio: .audio
+        case .image: .image
+        case .video: .video
+        default: .unknown
         }
     }
 

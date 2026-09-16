@@ -198,11 +198,9 @@ actor PhotoLibraryImporter {
             let mappings = PHPhotoLibrary.shared().cloudIdentifierMappings(forLocalIdentifiers: batch)
             for localIdentifier in batch {
                 guard case .success(let cloudIdentifier)? = mappings[localIdentifier] else { continue }
-                if #available(iOS 18.2, macOS 15.2, *) {
-                    cloudIDs[localIdentifier] = cloudIdentifier.archivalStringValue
-                } else {
-                    cloudIDs[localIdentifier] = cloudIdentifier.stringValue
-                }
+                // Match LascoPhotoImportKit and the desktop importer. Provenance already stores
+                // this serialization, so changing it requires an explicit data migration.
+                cloudIDs[localIdentifier] = cloudIdentifier.stringValue
             }
         }
         return cloudIDs

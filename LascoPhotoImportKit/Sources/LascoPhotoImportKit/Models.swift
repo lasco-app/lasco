@@ -134,20 +134,57 @@ public struct PhotosCollection: Codable, Hashable, Sendable {
     }
 }
 
+/// A non-importable Photos asset retained only for the host's scan summary. It has no durable
+/// identity and must never be written to a Lasco library.
+public struct PhotosIgnoredAsset: Codable, Hashable, Sendable {
+    public enum Kind: String, Codable, Sendable { case audio, image, video, unknown }
+
+    public let kind: Kind
+    public let capturedAt: String?
+
+    public init(kind: Kind, capturedAt: String?) {
+        self.kind = kind
+        self.capturedAt = capturedAt
+    }
+}
+
 public struct PhotosDiscovery: Codable, Sendable {
     public let assets: [PhotosAsset]
     public let collections: [PhotosCollection]
+    public let ignoredAssets: [PhotosIgnoredAsset]
     public let scannedAssetCount: Int
     public let totalAssetCount: Int
 
-    public init(assets: [PhotosAsset], collections: [PhotosCollection], scannedAssetCount: Int? = nil, totalAssetCount: Int? = nil) {
+    public init(
+        assets: [PhotosAsset],
+        collections: [PhotosCollection],
+        ignoredAssets: [PhotosIgnoredAsset] = [],
+        scannedAssetCount: Int? = nil,
+        totalAssetCount: Int? = nil
+    ) {
         self.assets = assets
         self.collections = collections
+        self.ignoredAssets = ignoredAssets
         self.scannedAssetCount = scannedAssetCount ?? assets.count
         self.totalAssetCount = totalAssetCount ?? assets.count
     }
 
     public var resources: [PhotosResource] { assets.flatMap(\.resources) }
+
+    private enum CodingKeys: String, CodingKey {
+        case assets, collections, ignoredAssets, scannedAssetCount, totalAssetCount
+    }
+
+    /// Desktop bridges from a previous package version do not contain ignored-item metadata.
+    /// Treat that absence as an empty list so an in-flight host upgrade can still resume safely.
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        assets = try values.decode([PhotosAsset].self, forKey: .assets)
+        collections = try values.decode([PhotosCollection].self, forKey: .collections)
+        ignoredAssets = try values.decodeIfPresent([PhotosIgnoredAsset].self, forKey: .ignoredAssets) ?? []
+        scannedAssetCount = try values.decodeIfPresent(Int.self, forKey: .scannedAssetCount) ?? assets.count
+        totalAssetCount = try values.decodeIfPresent(Int.self, forKey: .totalAssetCount) ?? assets.count
+    }
 }
 
 public struct StagedResource: Codable, Hashable, Sendable {

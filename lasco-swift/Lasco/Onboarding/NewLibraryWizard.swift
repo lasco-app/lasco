@@ -777,7 +777,7 @@ struct NewLibraryWizard: View {
                 .foregroundStyle(Color.Lasco.ink)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text("\(photos) \(photos == 1 ? "photo" : "photos") and \(videos) \(videos == 1 ? "video" : "videos") were successfully imported.")
+            Text("\(photos) \(photos == 1 ? "photo" : "photos") and \(videos) \(videos == 1 ? "video" : "videos") are now available in your Lasco library.")
                 .font(LascoFont.body(16))
                 .foregroundStyle(Color.Lasco.inkSub)
                 .fixedSize(horizontal: false, vertical: true)
@@ -824,7 +824,7 @@ struct NewLibraryWizard: View {
             }
         )
         initialImportController = controller
-        await controller.scanPhotoLibrary()
+        await controller.scanPhotoLibrary(remoteIDs: activeSession.state.remotes.map(\.remoteId))
     }
     #endif
 }
