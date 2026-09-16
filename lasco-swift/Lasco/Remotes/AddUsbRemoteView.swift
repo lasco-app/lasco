@@ -31,7 +31,7 @@ struct AddUsbRemoteView: View {
             VStack(spacing: 0) {
                 HStack {
                     Spacer()
-                    Button("Close", systemImage: "xmark", action: dismiss)
+                    Button("Close", systemImage: "xmark", action: { dismiss() })
                         .labelStyle(.iconOnly)
                         .buttonStyle(.plain)
                         .foregroundStyle(theme.ink)
