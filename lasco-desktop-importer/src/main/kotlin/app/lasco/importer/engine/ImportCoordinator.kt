@@ -56,7 +56,6 @@ class ImportCoordinator(
     private val gateway: LascoGateway,
     private val stagingRoot: Path,
     private val thumbnailGenerator: (Path) -> ByteArray? = ::generateDesktopThumbnail,
-    private val finalize: suspend () -> String?,
 ) {
     private data class ImportSession(
         val reader: ImportSourceReader,
@@ -107,7 +106,7 @@ class ImportCoordinator(
             estimatedSeconds = null,
             library = mediaCounts(assets),
             remotes = remoteSummaries,
-            metadataToAdd = !hasMediaToUpload && hasApplePhotosMetadataToAdd(assets, knownMediaByAsset, collections),
+            metadataToAdd = hasApplePhotosMetadataToAdd(assets, knownMediaByAsset, collections),
             hasMediaToUpload = hasMediaToUpload,
         )
         _progress.value = ImportProgress(ImportRunState.READY, 0, assets.size, 0, totalBytes, detail = "Ready to import")
@@ -144,12 +143,11 @@ class ImportCoordinator(
 
         _progress.value = progressFor(activeSession, ImportRunState.IMPORTING, null, "Finishing every destination")
         pushAll(remotes, benchmarks)
-        val cleanupWarning = finalize()
         _progress.value = progressFor(
             activeSession,
-            if (cleanupWarning == null) ImportRunState.COMPLETE else ImportRunState.COMPLETE_WITH_CLEANUP_WARNING,
+            ImportRunState.COMPLETE,
             null,
-            cleanupWarning ?: "Import complete",
+            "Import complete",
         )
     }
 
@@ -240,11 +238,15 @@ class ImportCoordinator(
         return assets.asSequence()
             .filter { it.resourceRole == ResourceRole.PRIMARY }
             .any { asset ->
-                val mediaId = knownMediaByAsset[asset] ?: return@any false
-                val currentAlbumIds = gateway.mediaAlbumIds(mediaId)
+                val currentAlbumIds = knownMediaByAsset[asset]
+                    ?.let(gateway::mediaAlbumIds)
+                    .orEmpty()
                 collections.any { collection ->
                     val belongsToCollection = asset.applePhotosRevision?.cloudAssetId in collection.memberCloudAssetIds ||
                         asset.assetSessionHandle in collection.memberSessionHandles
+                    // A source item which is not in Lasco yet will be added to its Photos
+                    // collection during import, so it is metadata work even before its media
+                    // blob has been pushed to every remote.
                     belongsToCollection && albumsByCollection.getValue(collection) !in currentAlbumIds
                 }
             }

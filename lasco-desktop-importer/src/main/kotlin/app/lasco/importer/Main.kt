@@ -399,7 +399,7 @@ private fun ImporterWizard() {
                     remotes.filter(connectedGateway::hasUnpushedOperations)
                 }
                 if (remotesMissingOperations.isNotEmpty()) {
-                    remoteSyncError = "Remotes do not contain the same state. Please sync so that they do."
+                    remoteSyncError = "These remotes do not contain the same library operation-log state. Open Lasco and sync this library with every configured remote, then return here and try again."
                 } else {
                     remoteSyncReady = true
                 }
@@ -435,19 +435,10 @@ private fun ImporterWizard() {
             }
             try {
                 val prepared = withContext(Dispatchers.IO) {
-                    val appData = Path.of(System.getProperty("user.home"), ".lasco-desktop-importer")
                     val newCoordinator = ImportCoordinator(
                         connectedGateway,
-                        appData.resolve("staging"),
-                    ) {
-                        val libraryId = connectedGateway.libraryId
-                        runCatching {
-                            libraryRepository.deleteLocalSetup(libraryId)
-                        }.exceptionOrNull()?.let { failure ->
-                            failure.message?.ifBlank { null }
-                                ?: "Import completed, but this temporary local setup could not be removed."
-                        }
-                    }
+                        Path.of(System.getProperty("user.home"), ".lasco-desktop-importer", "staging"),
+                    )
                     newCoordinator to newCoordinator.discover(reader)
                 }
                 coordinator = prepared.first
@@ -487,7 +478,7 @@ private fun ImporterWizard() {
     }
 
     fun startImport() {
-        if (importProgress.state in setOf(ImportRunState.COMPLETE, ImportRunState.COMPLETE_WITH_CLEANUP_WARNING)) return
+        if (importProgress.state == ImportRunState.COMPLETE) return
         val activeCoordinator = coordinator ?: return
         importRunning = true
         importError = null
@@ -627,7 +618,23 @@ private fun ImporterWizard() {
                         )
                         Page.LIBRARY_SUMMARY -> LibrarySummaryPage(sourceType, archives, importPlan)
                         Page.UPLOAD_ESTIMATE -> UploadEstimatePage(importPlan, benchmarks, benchmarking, benchmarkError)
-                        Page.IMPORT -> ImportPage(importProgress, importRunning, importError, onStart = ::startImport, onPause = { coordinator?.requestPause() })
+                        Page.IMPORT -> ImportPage(
+                            progress = importProgress,
+                            running = importRunning,
+                            error = importError,
+                            onStart = ::startImport,
+                            onPause = { coordinator?.requestPause() },
+                            onBackToStart = {
+                                coordinator = null
+                                importPlan = null
+                                benchmarks = emptyList()
+                                importProgress = ImportProgress(ImportRunState.READY, 0, 0, 0, 0)
+                                importError = null
+                                sourceType = null
+                                refreshDestinations()
+                                go(if (isDevelopmentBuild) Page.CLOUD_SERVER else Page.WELCOME)
+                            },
+                        )
                         }
                     }
                     VerticalScrollbar(
@@ -1141,6 +1148,8 @@ private fun LibrarySummaryPage(source: SourceType?, archives: List<String>, plan
     if (source == SourceType.TAKEOUT) Detail("ARCHIVES", archives.size.toString())
     plan?.let {
         MediaCountSummary("APPLE PHOTOS LIBRARY", it.library)
+        Spacer(Modifier.height(18.dp))
+        ImportWorkSummary(it)
         it.remotes.forEach { remote ->
             Spacer(Modifier.height(18.dp))
             Column(
@@ -1153,17 +1162,42 @@ private fun LibrarySummaryPage(source: SourceType?, archives: List<String>, plan
                     fontWeight = FontWeight.Bold,
                 )
                 Spacer(Modifier.height(8.dp))
+                Text("MEDIA BLOBS", color = InkMuted, style = LascoLabel, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(8.dp))
                 if (remote.alreadyThere.resourceCount > 0) {
                     MediaCountSummary("ALREADY THERE", remote.alreadyThere)
                     Spacer(Modifier.height(8.dp))
                 }
-                MediaCountSummary("TO BE UPLOADED", remote.toUpload, includeTotal = true)
+                if (remote.toUpload.resourceCount > 0) {
+                    MediaCountSummary("MISSING — TO BE UPLOADED", remote.toUpload, includeTotal = true)
+                } else {
+                    Text("No media blobs missing — nothing to upload.", color = Good, style = LascoBody)
+                }
             }
         }
-        Spacer(Modifier.height(18.dp))
-        when {
-            !it.hasMediaToUpload && it.metadataToAdd ->
-                Text("No media to upload, but some metadata to add.", color = InkSub, style = LascoBody)
+    }
+}
+
+/** The remote-sync gate has already fetched every operation log before this page can appear. */
+@Composable
+private fun ImportWorkSummary(plan: ImportPlan) {
+    Column(
+        Modifier.widthIn(max = 680.dp).fillMaxWidth().background(Color.White).border(2.dp, Ink).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text("METADATA / OPERATION LOG", color = InkMuted, style = LascoLabel, fontWeight = FontWeight.Bold)
+        Text("All remotes contain the same metadata state. Nothing to push.", color = Good, style = LascoBody)
+        if (plan.metadataToAdd) {
+            Text(
+                "Apple Photos collection metadata will be added during import.",
+                color = InkSub,
+                style = LascoBody,
+            )
+        } else {
+            Text("No Apple Photos metadata changes are needed.", color = InkSub, style = LascoBody)
+        }
+        if (!plan.hasMediaToUpload && !plan.metadataToAdd) {
+            Text("Nothing to do — every remote already has this import.", color = Good, style = LascoBody)
         }
     }
 }
@@ -1214,15 +1248,24 @@ private fun UploadEstimatePage(
 }
 
 @Composable
-private fun ImportPage(progress: ImportProgress, running: Boolean, error: String?, onStart: () -> Unit, onPause: () -> Unit) {
+private fun ImportPage(
+    progress: ImportProgress,
+    running: Boolean,
+    error: String?,
+    onStart: () -> Unit,
+    onPause: () -> Unit,
+    onBackToStart: () -> Unit,
+) {
     PageTitle("Import")
     Spacer(Modifier.height(24.dp))
     Detail("STATUS", progress.detail.ifBlank { progress.state.name.lowercase().replaceFirstChar(Char::uppercase) })
     Detail("PROGRESS", "${progress.completedAssets} / ${progress.totalAssets} items")
     if (progress.state == ImportRunState.COMPLETE) {
         Text("IMPORT COMPLETE", color = Good, style = LascoPixel, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 20.dp))
-    } else if (progress.state == ImportRunState.COMPLETE_WITH_CLEANUP_WARNING) {
-        Text("Import completed, but this temporary local setup could not be removed.", color = Error, style = LascoBody, modifier = Modifier.padding(top = 20.dp))
+        Spacer(Modifier.height(16.dp))
+        Text("This library setup is kept so you can import again later.", color = InkSub, style = LascoBody)
+        Spacer(Modifier.height(12.dp))
+        LascoButton("BACK TO START", onBackToStart, primary = false, fillWidth = false)
     } else {
         Row(Modifier.padding(top = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             LascoButton(if (running) "IMPORTING…" else "START OR RESUME IMPORT", onStart, enabled = !running, fillWidth = false)

@@ -4,8 +4,8 @@ A Compose Desktop/JVM importer for an existing Lasco library. It supports Google
 Windows, and Linux, and the local Apple Photos/iCloud Photos library on macOS.
 
 The importer has its own app-support directory and never shares a local Lasco cache with another
-client process. It does not maintain a second manifest or job engine: closing keeps the temporary
-Lasco library, then the next run reopens it, rescans the source, and converges through Lasco's
+client process. It does not maintain a second manifest or job engine: closing keeps the local
+Lasco library setup, then the next run reopens it, rescans the source, and converges through Lasco's
 normal content and Apple Photos provenance deduplication.
 
 ## Build prerequisites
@@ -42,9 +42,8 @@ Kotlin/Native dynamic library in `native-photos-bridge` and loaded only on macOS
 - A pause request finishes the current chunk and pushes it, then resumes in memory. Closing the
   app requires a fresh source scan; already imported content is recognized by Lasco. Pausing
   keeps the scan in memory only: resume before closing the app.
-- Imported media remains in the temporary local library until every final destination push
-  succeeds. Only then does the importer close and remove that temporary library.
+- Imported media remains in the local importer library until every final destination push
+  succeeds. The importer retains that local setup after completion so it can be used for a later
+  import; users can explicitly remove it from the destination picker.
 - Exact duplicate detection remains authoritative in Rust: content hashes are known only after the
   source bytes are staged. There is no persisted job, source checkpoint, or PhotoKit locator.
-- If every final push succeeds but local setup deletion fails, the import is complete with a
-  cleanup warning: “Import completed, but this temporary local setup could not be removed.”

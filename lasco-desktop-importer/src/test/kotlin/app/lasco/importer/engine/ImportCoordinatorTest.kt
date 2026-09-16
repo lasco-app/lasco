@@ -27,41 +27,22 @@ import kotlin.test.assertFailsWith
 
 class ImportCoordinatorTest {
     @Test
-    fun `pause is process local and final cleanup waits for every asset`() = runBlocking {
+    fun `pause is process local and completion waits for every asset`() = runBlocking {
         val gateway = FakeGateway()
-        var finalizations = 0
-        val coordinator = ImportCoordinator(gateway, Files.createTempDirectory("lasco-stage")) {
-            finalizations += 1
-            null
-        }
+        val coordinator = ImportCoordinator(gateway, Files.createTempDirectory("lasco-stage"))
 
         coordinator.discover(Reader(listOf(asset("one"), asset("two"))), chunkSize = 1)
         coordinator.requestPause()
         coordinator.startOrResume(emptyList())
 
         assertEquals(1, gateway.imported.size)
-        assertEquals(0, finalizations)
         assertEquals(ImportRunState.PAUSED, coordinator.progress.value.state)
 
         coordinator.startOrResume(emptyList())
 
         assertEquals(listOf("one", "two"), gateway.imported)
-        assertEquals(1, finalizations)
         assertEquals(ImportRunState.COMPLETE, coordinator.progress.value.state)
         assertEquals(3, gateway.pushes)
-    }
-
-    @Test
-    fun `cleanup failure does not turn a complete import into an import failure`() = runBlocking {
-        val coordinator = ImportCoordinator(FakeGateway(), Files.createTempDirectory("lasco-stage")) {
-            "Could not remove the temporary setup"
-        }
-
-        coordinator.discover(Reader(listOf(asset("one"))), chunkSize = 1)
-        coordinator.startOrResume(emptyList())
-
-        assertEquals(ImportRunState.COMPLETE_WITH_CLEANUP_WARNING, coordinator.progress.value.state)
-        assertEquals("Could not remove the temporary setup", coordinator.progress.value.detail)
     }
 
     @Test
@@ -73,7 +54,6 @@ class ImportCoordinatorTest {
             gateway,
             Files.createTempDirectory("lasco-stage"),
             thumbnailGenerator = { "thumbnail".encodeToByteArray() },
-            finalize = { null },
         )
 
         coordinator.discover(Reader(listOf(sidecar, primary)), chunkSize = 2)
@@ -83,13 +63,9 @@ class ImportCoordinatorTest {
     }
 
     @Test
-    fun `a failed final remote push retains the temporary library`() = runBlocking {
+    fun `a failed final remote push retains the local library setup`() = runBlocking {
         val gateway = FakeGateway().apply { failPushForRemoteId = "remote" }
-        var finalizations = 0
-        val coordinator = ImportCoordinator(gateway, Files.createTempDirectory("lasco-stage")) {
-            finalizations += 1
-            null
-        }
+        val coordinator = ImportCoordinator(gateway, Files.createTempDirectory("lasco-stage"))
 
         coordinator.discover(Reader(listOf(asset("one"))), chunkSize = 1)
 
@@ -97,7 +73,6 @@ class ImportCoordinatorTest {
         assertContains(failure.message.orEmpty(), "Could not upload to remote \"Remote\" (s3).")
         assertContains(failure.message.orEmpty(), "Remote Remote is unavailable")
         assertEquals(listOf("one"), gateway.imported)
-        assertEquals(0, finalizations)
     }
 
     @Test
@@ -124,7 +99,7 @@ class ImportCoordinatorTest {
             source = ImportSource.APPLE_PHOTOS,
             aaeSourceId = "sidecar",
         )
-        val coordinator = ImportCoordinator(gateway, Files.createTempDirectory("lasco-stage")) { null }
+        val coordinator = ImportCoordinator(gateway, Files.createTempDirectory("lasco-stage"))
 
         coordinator.discover(Reader(listOf(primary, sidecar)), chunkSize = 2)
         coordinator.startOrResume(emptyList())
@@ -159,7 +134,7 @@ class ImportCoordinatorTest {
             asset("movie").copy(source = ImportSource.APPLE_PHOTOS, displayName = "movie.mov", byteCount = 40, applePhotosRevision = revision, applePhotosResourceType = ApplePhotosResourceType.VIDEO),
         )
 
-        val plan = ImportCoordinator(gateway, Files.createTempDirectory("lasco-stage")) { null }
+        val plan = ImportCoordinator(gateway, Files.createTempDirectory("lasco-stage"))
             .discover(Reader(assets))
         val remote = plan.remotes.single()
 
@@ -192,7 +167,7 @@ class ImportCoordinatorTest {
             applePhotosResourceType = ApplePhotosResourceType.PHOTO,
         )
 
-        val plan = ImportCoordinator(gateway, Files.createTempDirectory("lasco-stage")) { null }
+        val plan = ImportCoordinator(gateway, Files.createTempDirectory("lasco-stage"))
             .discover(Reader(listOf(asset)))
 
         assertEquals(1, plan.alreadyCompleted)
@@ -225,10 +200,56 @@ class ImportCoordinatorTest {
             listOf(ApplePhotosCollectionDescriptor("album-cloud", ApplePhotosCollectionKind.ALBUM, "Trip", null, listOf("cloud-asset"), emptyList())),
         )
 
-        val plan = ImportCoordinator(gateway, Files.createTempDirectory("lasco-stage")) { null }.discover(reader)
+        val plan = ImportCoordinator(gateway, Files.createTempDirectory("lasco-stage")).discover(reader)
 
         assertEquals(false, plan.hasMediaToUpload)
         assertEquals(false, plan.metadataToAdd)
+    }
+
+    @Test
+    fun `collection metadata remains planned when a remote is missing media blobs`() = runBlocking {
+        val gateway = FakeGateway()
+        val revision = ApplePhotosAssetRevision(
+            "cloud-asset",
+            null,
+            listOf(ApplePhotosResourceDescriptor(ApplePhotosResourceType.PHOTO, "still.heic")),
+        )
+        gateway.revisionMedia[revision] = mapOf(
+            ApplePhotosResourceDescriptor(ApplePhotosResourceType.PHOTO, "still.heic") to "still",
+        )
+        val asset = asset("still").copy(
+            source = ImportSource.APPLE_PHOTOS,
+            displayName = "still.heic",
+            applePhotosRevision = revision,
+            applePhotosResourceType = ApplePhotosResourceType.PHOTO,
+        )
+        val reader = AppleReader(
+            listOf(asset),
+            listOf(ApplePhotosCollectionDescriptor("album-cloud", ApplePhotosCollectionKind.ALBUM, "Trip", null, listOf("cloud-asset"), emptyList())),
+        )
+
+        val plan = ImportCoordinator(gateway, Files.createTempDirectory("lasco-stage")).discover(reader)
+
+        assertEquals(true, plan.hasMediaToUpload)
+        assertEquals(true, plan.metadataToAdd)
+    }
+
+    @Test
+    fun `new media in an existing collection is planned as metadata work`() = runBlocking {
+        val gateway = FakeGateway().apply { collectionLinks["album-cloud"] = "existing-album" }
+        val asset = asset("still").copy(
+            source = ImportSource.APPLE_PHOTOS,
+            assetSessionHandle = "asset-session",
+            applePhotosRevision = ApplePhotosAssetRevision("cloud-asset", null, emptyList()),
+        )
+        val reader = AppleReader(
+            listOf(asset),
+            listOf(ApplePhotosCollectionDescriptor("album-cloud", ApplePhotosCollectionKind.ALBUM, "Trip", null, emptyList(), listOf("asset-session"))),
+        )
+
+        val plan = ImportCoordinator(gateway, Files.createTempDirectory("lasco-stage")).discover(reader)
+
+        assertEquals(true, plan.metadataToAdd)
     }
 
     @Test
@@ -244,7 +265,7 @@ class ImportCoordinatorTest {
             listOf(companion, primary),
             listOf(ApplePhotosCollectionDescriptor("album-cloud", ApplePhotosCollectionKind.ALBUM, "Do not rename", null, listOf("asset-cloud"), emptyList())),
         )
-        val coordinator = ImportCoordinator(gateway, Files.createTempDirectory("lasco-stage")) { null }
+        val coordinator = ImportCoordinator(gateway, Files.createTempDirectory("lasco-stage"))
 
         coordinator.discover(reader, chunkSize = 2)
         coordinator.startOrResume(emptyList())
@@ -269,7 +290,7 @@ class ImportCoordinatorTest {
                 ApplePhotosCollectionDescriptor("album-cloud", ApplePhotosCollectionKind.ALBUM, "Trip", "folder-cloud", listOf("asset-cloud"), emptyList()),
             ),
         )
-        val coordinator = ImportCoordinator(gateway, Files.createTempDirectory("lasco-stage")) { null }
+        val coordinator = ImportCoordinator(gateway, Files.createTempDirectory("lasco-stage"))
 
         coordinator.discover(reader, chunkSize = 2)
         coordinator.startOrResume(emptyList())
