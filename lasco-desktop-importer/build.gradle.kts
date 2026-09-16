@@ -73,14 +73,12 @@ val architecture = when (System.getProperty("os.arch").lowercase()) {
 }
 
 val nativePhotosBridge = if (operatingSystem.contains("mac")) {
-    val nativeTarget = if (architecture == "aarch64") "MacosArm64" else "MacosX64"
     tasks.register<Exec>("buildNativePhotosBridge") {
-        val bridgeDirectory = layout.projectDirectory.dir("native-photos-bridge").asFile
-        workingDir = rootProject.projectDir.parentFile
+        // The shared package exports the existing narrow C/JNA symbols. Kotlin remains the only
+        // desktop caller of Lasco FFI; Swift owns only PhotoKit discovery and staging policy.
+        workingDir = rootProject.projectDir.parentFile.resolve("LascoPhotoImportKit")
         commandLine(
-            rootProject.projectDir.parentFile.resolve("lasco-android/gradlew").absolutePath,
-            "-p", bridgeDirectory.absolutePath,
-            "linkReleaseShared$nativeTarget",
+            "swift", "build", "-c", "release", "--product", "LascoPhotoImportKit",
         )
     }
 } else {
@@ -115,11 +113,11 @@ tasks.processResources {
     inputs.file(ffiLibrary)
     from(ffiLibrary) { into(resourceDirectory) }
 
-    // Apple Photos is macOS-only. Its Kotlin/Native bridge must be loaded by JNA just like
-    // lasco_ffi, so build it for this host and place it at JNA's platform resource path.
+    // Apple Photos is macOS-only. The FFI-free Swift package exports the narrow JNA transport
+    // and is packaged beside Lasco FFI for the desktop JVM.
     if (operatingSystem.contains("mac")) {
         val photosBridge = layout.projectDirectory.file(
-            "native-photos-bridge/build/bin/macos${if (architecture == "aarch64") "Arm64" else "X64"}/releaseShared/liblasco_photos_bridge.dylib",
+            "../LascoPhotoImportKit/.build/release/libLascoPhotoImportKit.dylib",
         )
         nativePhotosBridge?.also { bridgeTask -> dependsOn(bridgeTask) }
         inputs.file(photosBridge)

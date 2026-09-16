@@ -11,30 +11,35 @@ class ApplePhotosBridgeWireFormatTest {
     fun `bridge discovery JSON exposes only cloud identities and opaque handles`() {
         val payload = Json.encodeToString(
             NativePhotoDiscovery(
-                resources = listOf(
+                assets = listOf(
+                    NativePhotoAsset(
+                        ticket = "9A9B9C9D",
+                        cloudAssetID = "cloud-asset",
+                        resources = listOf(
                     NativePhotoResource(
-                        sessionHandle = "8A8B8C8D",
-                        assetSessionHandle = "9A9B9C9D",
-                        type = "primary",
+                        ticket = "8A8B8C8D",
+                        assetTicket = "9A9B9C9D",
+                        role = "primary",
+                        type = "PHOTO",
                         filename = "IMG_0001.HEIC",
                         byteCount = 0,
-                        cloudAssetId = "cloud-asset",
-                        resourceType = "PHOTO",
+                    ),
+                        ),
                     ),
                 ),
                 collections = listOf(
                     NativePhotoCollection(
-                        cloudCollectionId = "cloud-album",
-                        kind = "ALBUM",
+                        cloudCollectionID = "cloud-album",
+                        kind = "album",
                         name = "Trip",
                     ),
                 ),
             ),
         )
 
-        assertTrue(payload.contains("cloudAssetId"))
-        assertTrue(payload.contains("sessionHandle"))
-        assertTrue(payload.contains("cloudCollectionId"))
+        assertTrue(payload.contains("cloudAssetID"))
+        assertTrue(payload.contains("ticket"))
+        assertTrue(payload.contains("cloudCollectionID"))
         assertFalse(payload.contains("localIdentifier"))
         assertFalse(payload.contains("resourceId"))
         assertFalse(payload.contains("assetId"))

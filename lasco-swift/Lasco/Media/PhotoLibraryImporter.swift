@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Photos
 import UIKit
+import LascoPhotoImportKit
 
 actor PhotoLibraryImporter {
     private static let cloudMappingBatchSize = 250
@@ -135,24 +136,16 @@ actor PhotoLibraryImporter {
     private static func applePhotosImportPlan(_ asset: PHAsset, analysis: AssetAnalysis, cloudAssetId: String?) -> ApplePhotosImportPlan? {
         guard let cloudAssetId else { return nil }
 
-        var resources: [PlannedResource] = []
-        if analysis.isEdited, let resource = analysis.adjustmentDataResource {
-            resources.append(PlannedResource(resource: resource, type: .adjustmentData, isLinkable: false))
+        // The package is the single authority for AAE → paired-video → primary selection.
+        // Keep the PHAssetResource objects at this app boundary only for eventual staging.
+        let resourcesWithCandidates = (PHAssetResource.assetResources(for: asset) as [PHAssetResource]).compactMap { resource -> (ResourceSelection.Candidate, PHAssetResource)? in
+            guard let type = sharedResourceType(resource) else { return nil }
+            return (.init(ticket: UUID().uuidString, type: type, filename: resource.originalFilename, byteCount: 0), resource)
         }
-        if analysis.hasStill, let resource = analysis.livePhotoVideoResource {
-            let type: FfiApplePhotosResourceType = resource.type == .pairedVideo ? .pairedVideo : .fullSizePairedVideo
-            resources.append(PlannedResource(resource: resource, type: type, isLinkable: false))
-        }
-        if let resource = analysis.photoResource {
-            resources.append(PlannedResource(resource: resource, type: .photo, isLinkable: true))
-        } else if let resource = analysis.fullSizePhotoResource {
-            resources.append(PlannedResource(resource: resource, type: .fullSizePhoto, isLinkable: true))
-        } else if let resource = analysis.livePhotoVideoResource {
-            let type: FfiApplePhotosResourceType = resource.type == .pairedVideo ? .pairedVideo : .fullSizePairedVideo
-            resources.append(PlannedResource(resource: resource, type: type, isLinkable: true))
-        } else if let resource = analysis.videoResource ?? analysis.fullSizeVideoResource {
-            let type: FfiApplePhotosResourceType = resource.type == .video ? .video : .fullSizeVideo
-            resources.append(PlannedResource(resource: resource, type: type, isLinkable: true))
+        let resourceByTicket = Dictionary(uniqueKeysWithValues: resourcesWithCandidates.map { ($0.0.ticket, $0.1) })
+        let resources = ResourceSelection.select(from: resourcesWithCandidates.map(\.0)).compactMap { selected -> PlannedResource? in
+            guard let resource = resourceByTicket[selected.candidate.ticket] else { return nil }
+            return PlannedResource(resource: resource, type: ffiResourceType(selected.candidate.type), isLinkable: selected.role == .primary)
         }
 
         guard !resources.isEmpty else { return nil }
@@ -165,6 +158,31 @@ actor PhotoLibraryImporter {
             ),
             resources: resources
         )
+    }
+
+    private static func sharedResourceType(_ resource: PHAssetResource) -> PhotosResourceType? {
+        switch resource.type as PHAssetResourceType {
+        case .photo: .photo
+        case .fullSizePhoto: .fullSizePhoto
+        case .video: .video
+        case .fullSizeVideo: .fullSizeVideo
+        case .adjustmentData: .adjustmentData
+        case .pairedVideo: .pairedVideo
+        case .fullSizePairedVideo: .fullSizePairedVideo
+        default: nil
+        }
+    }
+
+    private static func ffiResourceType(_ type: PhotosResourceType) -> FfiApplePhotosResourceType {
+        switch type {
+        case .photo: .photo
+        case .fullSizePhoto: .fullSizePhoto
+        case .video: .video
+        case .fullSizeVideo: .fullSizeVideo
+        case .adjustmentData: .adjustmentData
+        case .pairedVideo: .pairedVideo
+        case .fullSizePairedVideo: .fullSizePairedVideo
+        }
     }
 
     /// Resolves a complete PhotoKit batch before import planning. The archival cloud value keeps
