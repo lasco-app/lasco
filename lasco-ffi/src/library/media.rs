@@ -3,12 +3,19 @@ use lasco_core::library::media::upload::MediaAddResult;
 use super::native_media_bytes::FfiNativeMediaBytes;
 use super::remotes::media_entry_to_ffi;
 use super::types::{
-    FfiLocalStateStats, FfiMediaAddResult, FfiMediaNeighbors, FfiRemoteMediaShortfall,
+    FfiApplePhotosAssetRevision, FfiApplePhotosCollectionIdentity, FfiApplePhotosCollectionKind,
+    FfiApplePhotosCollectionLink, FfiApplePhotosResourceOrigin, FfiApplePhotosResourceType,
+    FfiLocalStateStats, FfiMediaAddResult, FfiMediaImportMetadata, FfiMediaNeighbors,
+    FfiRemoteMediaShortfall,
 };
 use super::{FfiLibrary, FfiMediaItem, ffi_count};
 use crate::error::LascoError;
 use crate::ids::{FfiAlbumUuid, FfiLibraryId, FfiMediaUuid, FfiRemoteUuid};
+use chrono::{DateTime, Utc};
+use lasco_core::crdt::{ApplePhotosCollectionKind, ApplePhotosCollectionLink, ApplePhotosResourceType};
 use lasco_core::identifiers::RemoteUuid;
+use lasco_core::library::media::upload::MediaAddMetadata;
+use lasco_core::operations::{ApplePhotosCloudAssetId, ApplePhotosCloudCollectionId, GpsCoords};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -24,6 +31,115 @@ pub(super) fn inclusive_range(start: u32, end: u32) -> Result<(usize, usize), La
         });
     }
     Ok((start as usize, end as usize))
+}
+
+#[uniffi::export]
+impl FfiLibrary {
+    /// Returns the selected media IDs when this exact Apple Photos asset revision has already
+    /// been associated with Lasco media. This performs no resource download.
+    pub fn apple_photos_asset_revision_media_ids(
+        &self,
+        revision: FfiApplePhotosAssetRevision,
+    ) -> Result<Option<Vec<FfiMediaUuid>>, LascoError> {
+        let modification_date =
+            parse_import_timestamp(revision.modification_date, "modification_date")?;
+        let resources = revision
+            .resources
+            .into_iter()
+            .map(|resource| {
+                (
+                    apple_resource_type(resource.resource_type),
+                    resource.filename,
+                )
+            })
+            .collect::<Vec<_>>();
+        Ok(
+            lasco_core::library::media::apple_photos::complete_revision_media_ids(
+                &self.inner,
+                &ApplePhotosCloudAssetId(revision.cloud_asset_id),
+                modification_date,
+                &resources,
+            )
+            .map(|ids| ids.into_iter().map(Into::into).collect()),
+        )
+    }
+
+    /// Records immutable provenance after an Apple Photos resource has been imported or reused
+    /// by content hash. Importers call this once per selected resource.
+    pub fn record_apple_photos_resource_origin(
+        &self,
+        origin: FfiApplePhotosResourceOrigin,
+    ) -> Result<(), LascoError> {
+        let media_id = origin.media_id.try_into()?;
+        let modification_date =
+            parse_import_timestamp(origin.modification_date, "modification_date")?;
+        lasco_core::library::media::apple_photos::record_resource_origin(
+            &self.inner,
+            lasco_core::crdt::ApplePhotosResourceOrigin {
+                media_id,
+                cloud_asset_id: ApplePhotosCloudAssetId(origin.cloud_asset_id),
+                modification_date,
+                resource_type: apple_resource_type(origin.resource_type),
+                filename: origin.filename,
+            },
+        )
+        .map_err(LascoError::from)
+    }
+
+    /// Returns the canonical Lasco album for each known Apple Photos collection identity.
+    pub fn apple_photos_collection_links(
+        &self,
+        collections: Vec<FfiApplePhotosCollectionIdentity>,
+    ) -> Result<Vec<Option<FfiAlbumUuid>>, LascoError> {
+        Ok(collections
+            .into_iter()
+            .map(|collection| {
+                lasco_core::library::media::apple_photos::collection_album_id(
+                    &self.inner,
+                    &ApplePhotosCloudCollectionId(collection.cloud_collection_id),
+                    apple_collection_kind(collection.kind),
+                )
+                .map(Into::into)
+            })
+            .collect())
+    }
+
+    /// Records immutable provenance after creating a Lasco album for an Apple Photos collection.
+    pub fn record_apple_photos_collection_link(
+        &self,
+        link: FfiApplePhotosCollectionLink,
+    ) -> Result<(), LascoError> {
+        lasco_core::library::media::apple_photos::record_collection_link(
+            &self.inner,
+            ApplePhotosCollectionLink {
+                album_id: link.album_id.try_into()?,
+                cloud_collection_id: ApplePhotosCloudCollectionId(link.cloud_collection_id),
+                kind: apple_collection_kind(link.kind),
+            },
+        )
+        .map_err(LascoError::from)
+    }
+}
+
+fn apple_resource_type(value: FfiApplePhotosResourceType) -> ApplePhotosResourceType {
+    match value {
+        FfiApplePhotosResourceType::Photo => ApplePhotosResourceType::Photo,
+        FfiApplePhotosResourceType::FullSizePhoto => ApplePhotosResourceType::FullSizePhoto,
+        FfiApplePhotosResourceType::Video => ApplePhotosResourceType::Video,
+        FfiApplePhotosResourceType::FullSizeVideo => ApplePhotosResourceType::FullSizeVideo,
+        FfiApplePhotosResourceType::AdjustmentData => ApplePhotosResourceType::AdjustmentData,
+        FfiApplePhotosResourceType::PairedVideo => ApplePhotosResourceType::PairedVideo,
+        FfiApplePhotosResourceType::FullSizePairedVideo => {
+            ApplePhotosResourceType::FullSizePairedVideo
+        }
+    }
+}
+
+fn apple_collection_kind(value: FfiApplePhotosCollectionKind) -> ApplePhotosCollectionKind {
+    match value {
+        FfiApplePhotosCollectionKind::Folder => ApplePhotosCollectionKind::Folder,
+        FfiApplePhotosCollectionKind::Album => ApplePhotosCollectionKind::Album,
+    }
 }
 
 impl FfiLibrary {
@@ -456,6 +572,67 @@ impl FfiLibrary {
         })
     }
 
+    /// Imports a media file with source-supplied metadata.
+    ///
+    /// Importers must preserve the original bytes and pass the source filename. Timestamps are
+    /// RFC 3339 UTC offsets accepted by `chrono`; latitude and longitude must be supplied as a
+    /// pair within their geographic ranges.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if an ID or metadata value is invalid, the source cannot be read, media
+    /// encryption/storage fails, or the creation operation cannot be persisted.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
+    pub fn import_media_with_metadata(
+        &self,
+        path: String,
+        album_id: Option<FfiAlbumUuid>,
+        metadata: FfiMediaImportMetadata,
+    ) -> Result<FfiMediaAddResult, LascoError> {
+        let album_uuid = album_id.map(TryInto::try_into).transpose()?;
+        let apple_aae_media_uuid = metadata
+            .apple_aae_media_id
+            .map(TryInto::try_into)
+            .transpose()?;
+        let apple_live_photo_media_uuid = metadata
+            .apple_live_photo_media_id
+            .map(TryInto::try_into)
+            .transpose()?;
+        let captured_at = parse_import_timestamp(metadata.captured_at, "captured_at")?;
+        let modified_at = parse_import_timestamp(metadata.modified_at, "modified_at")?;
+        let gps = parse_import_gps(metadata.latitude, metadata.longitude)?;
+        let source =
+            lasco_core::library::media::upload::MediaAddSource::CopyFrom(PathBuf::from(path));
+        let result = self
+            .rt
+            .block_on(self.inner.media_add_with_metadata(
+                source,
+                album_uuid,
+                metadata.original_filename,
+                apple_aae_media_uuid,
+                apple_live_photo_media_uuid,
+                MediaAddMetadata {
+                    captured_at,
+                    modified_at,
+                    gps,
+                },
+            ))
+            .map_err(LascoError::from)?;
+        Ok(match result {
+            MediaAddResult::Added(id) => FfiMediaAddResult {
+                media_id: id.into(),
+                already_existed: false,
+            },
+            MediaAddResult::AlreadyExists(id) => FfiMediaAddResult {
+                media_id: id.into(),
+                already_existed: true,
+            },
+        })
+    }
+
     #[allow(
         clippy::needless_pass_by_value,
         reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
@@ -739,6 +916,29 @@ impl FfiLibrary {
         })
     }
 
+    /// Returns which supplied media IDs are confirmed to have a full original on this remote.
+    ///
+    /// Callers should refresh the remote inventory with `confirm_remote_media_async` first.
+    /// The result reflects this client's cached positive-only inventory and never performs a
+    /// network request itself.
+    pub fn confirmed_remote_media_ids(
+        &self,
+        remote_id: FfiRemoteUuid,
+        media_ids: Vec<FfiMediaUuid>,
+    ) -> Result<Vec<FfiMediaUuid>, LascoError> {
+        let remote_uuid: RemoteUuid = remote_id.try_into()?;
+        let media_ids = media_ids
+            .into_iter()
+            .map(TryInto::try_into)
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(self
+            .inner
+            .confirmed_remote_media_ids(&remote_uuid.to_string(), &media_ids)
+            .into_iter()
+            .map(Into::into)
+            .collect())
+    }
+
     /// Counts the media that clearing local media would leave with no known copy anywhere.
     ///
     /// Only a remote can back up a local copy here, because the local copy is what the
@@ -851,6 +1051,71 @@ impl FfiLibrary {
             .block_on(self.inner.media_empty_trash())
             .map(ffi_count)
             .map_err(LascoError::from)
+    }
+}
+
+fn parse_import_timestamp(
+    value: Option<String>,
+    field: &str,
+) -> Result<Option<DateTime<Utc>>, LascoError> {
+    value
+        .map(|timestamp| {
+            DateTime::parse_from_rfc3339(&timestamp)
+                .map(|parsed| parsed.with_timezone(&Utc))
+                .map_err(|error| LascoError::Other {
+                    msg: format!("{field} must be RFC 3339: {error}"),
+                })
+        })
+        .transpose()
+}
+
+fn parse_import_gps(
+    latitude: Option<f64>,
+    longitude: Option<f64>,
+) -> Result<Option<GpsCoords>, LascoError> {
+    let (Some(latitude), Some(longitude)) = (latitude, longitude) else {
+        if latitude.is_none() && longitude.is_none() {
+            return Ok(None);
+        }
+        return Err(LascoError::Other {
+            msg: "latitude and longitude must be supplied together".to_string(),
+        });
+    };
+    if !latitude.is_finite() || !(-90.0..=90.0).contains(&latitude) {
+        return Err(LascoError::Other {
+            msg: "latitude must be finite and between -90 and 90".to_string(),
+        });
+    }
+    if !longitude.is_finite() || !(-180.0..=180.0).contains(&longitude) {
+        return Err(LascoError::Other {
+            msg: "longitude must be finite and between -180 and 180".to_string(),
+        });
+    }
+    Ok(Some(GpsCoords {
+        latitude,
+        longitude,
+    }))
+}
+
+#[cfg(test)]
+mod importer_metadata_tests {
+    use super::{parse_import_gps, parse_import_timestamp};
+
+    #[test]
+    fn parses_metadata_timestamps_as_utc() {
+        let timestamp =
+            parse_import_timestamp(Some("2024-06-01T12:30:00+02:00".to_string()), "captured_at")
+                .unwrap()
+                .unwrap();
+
+        assert_eq!(timestamp.to_rfc3339(), "2024-06-01T10:30:00+00:00");
+    }
+
+    #[test]
+    fn rejects_partial_or_out_of_range_gps() {
+        assert!(parse_import_gps(Some(48.8566), None).is_err());
+        assert!(parse_import_gps(Some(91.0), Some(2.3522)).is_err());
+        assert!(parse_import_gps(Some(48.8566), Some(181.0)).is_err());
     }
 }
 

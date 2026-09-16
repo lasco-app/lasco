@@ -1,3 +1,4 @@
+pub mod apple_photos;
 pub mod hash;
 pub mod query;
 pub mod upload;

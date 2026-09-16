@@ -13,7 +13,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::identifiers::{AlbumUuid, GroupUuid, MediaUuid};
 use crate::library::media::MediaHash;
 use crate::operations::{
-    AlbumName, GpsCoords, LibraryUsername, MediaFilename, MediaName, StorageDate,
+    AlbumName, ApplePhotosCloudAssetId, ApplePhotosCloudCollectionId, GpsCoords, LibraryUsername, MediaFilename, MediaName,
+    StorageDate,
 };
 use crate::state::{ComputedViews, build_computed_views};
 
@@ -151,6 +152,12 @@ pub struct CrdtOperation {
 #[serde(tag = "type")]
 pub enum OperationContent {
     MediaCreation(MediaCreation),
+    /// Records that a Lasco media item represents one resource of an Apple Photos asset revision.
+    /// This is append-only provenance: a later Photos revision emits new origins rather than
+    /// mutating the older one.
+    ApplePhotosResourceOriginAdded(ApplePhotosResourceOrigin),
+    /// Records the Lasco album created or reused for an iCloud Photos folder or album.
+    ApplePhotosCollectionLinkAdded(ApplePhotosCollectionLink),
     MediaRename {
         media_id: MediaUuid,
         name: Option<MediaName>,
@@ -231,6 +238,53 @@ pub struct MediaCreation {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ApplePhotosResourceOrigin {
+    pub media_id: MediaUuid,
+    pub cloud_asset_id: ApplePhotosCloudAssetId,
+    pub modification_date: Option<DateTime<Utc>>,
+    pub resource_type: ApplePhotosResourceType,
+    pub filename: String,
+}
+
+/// The PhotoKit resource roles Lasco currently imports. Unsupported Photos resources are never
+/// represented as an origin, rather than being persisted as an unstable string value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum ApplePhotosResourceType {
+    Photo,
+    FullSizePhoto,
+    Video,
+    FullSizeVideo,
+    AdjustmentData,
+    PairedVideo,
+    FullSizePairedVideo,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ApplePhotosResourceOriginEntry {
+    pub dot: Dot,
+    pub origin: ApplePhotosResourceOrigin,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum ApplePhotosCollectionKind {
+    Folder,
+    Album,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ApplePhotosCollectionLink {
+    pub album_id: AlbumUuid,
+    pub cloud_collection_id: ApplePhotosCloudCollectionId,
+    pub kind: ApplePhotosCollectionKind,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ApplePhotosCollectionLinkEntry {
+    pub dot: Dot,
+    pub link: ApplePhotosCollectionLink,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LastWriteWin<T> {
     pub dot: Dot,
     pub value: T,
@@ -290,6 +344,12 @@ pub struct CrdtState {
     pub(super) groups: HashMap<GroupUuid, GroupCrdt>,
     pub(super) album_memberships: HashMap<(AlbumUuid, MediaUuid), ObservedRemoveSet>,
     pub(super) group_memberships: HashMap<(GroupUuid, MediaUuid), ObservedRemoveSet>,
+    /// Immutable Apple Photos provenance entries, deduplicated by their CRDT dot.
+    #[serde(default)]
+    pub(crate) apple_photos_resource_origins: Vec<ApplePhotosResourceOriginEntry>,
+    /// Immutable Apple Photos collection provenance entries, deduplicated by their CRDT dot.
+    #[serde(default)]
+    pub(crate) apple_photos_collection_links: Vec<ApplePhotosCollectionLinkEntry>,
     /// Derived, in-memory query indexes. This cache is never serialized.
     #[serde(skip)]
     pub(crate) views: ComputedViews,
@@ -311,6 +371,8 @@ impl Default for CrdtState {
             groups: HashMap::new(),
             album_memberships: HashMap::new(),
             group_memberships: HashMap::new(),
+            apple_photos_resource_origins: Vec::new(),
+            apple_photos_collection_links: Vec::new(),
             views: ComputedViews::default(),
         }
     }
@@ -397,6 +459,32 @@ impl CrdtState {
                 let media = self.media.entry(creation.media_id).or_default();
                 write_optional(&mut media.creation, operation.dot, creation.clone());
                 write_optional(&mut media.author, operation.dot, operation.author.clone());
+            }
+            OperationContent::ApplePhotosResourceOriginAdded(origin) => {
+                if !self
+                    .apple_photos_resource_origins
+                    .iter()
+                    .any(|entry| entry.dot == operation.dot)
+                {
+                    self.apple_photos_resource_origins.push(ApplePhotosResourceOriginEntry {
+                        dot: operation.dot,
+                        origin: origin.clone(),
+                    });
+                    self.apple_photos_resource_origins.sort_by_key(|entry| entry.dot);
+                }
+            }
+            OperationContent::ApplePhotosCollectionLinkAdded(link) => {
+                if !self
+                    .apple_photos_collection_links
+                    .iter()
+                    .any(|entry| entry.dot == operation.dot)
+                {
+                    self.apple_photos_collection_links.push(ApplePhotosCollectionLinkEntry {
+                        dot: operation.dot,
+                        link: link.clone(),
+                    });
+                    self.apple_photos_collection_links.sort_by_key(|entry| entry.dot);
+                }
             }
             OperationContent::MediaRename { media_id, name } => {
                 let media = self.media.entry(*media_id).or_default();

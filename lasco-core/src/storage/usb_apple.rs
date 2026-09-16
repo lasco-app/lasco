@@ -107,6 +107,10 @@ impl Storage for StorageUsbApple {
         self.storage.list(prefix).await
     }
 
+    async fn list_recursive(&self, prefix: &str) -> Result<Vec<String>> {
+        self.storage.list_recursive(prefix).await
+    }
+
     async fn exists(&self, key: &str) -> Result<bool> {
         self.storage.exists(key).await
     }

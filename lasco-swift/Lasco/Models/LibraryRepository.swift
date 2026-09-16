@@ -88,6 +88,10 @@ protocol LibraryRepositoryProtocol: Sendable {
 
     func importMedia(source: MediaImportSource, albumID: FfiAlbumUuid?) async throws -> FfiMediaUuid
     func importMediaWithoutNotification(source: MediaImportSource, albumID: FfiAlbumUuid?) async throws -> FfiMediaUuid
+    func applePhotosAssetRevisionMediaIDs(_ revision: FfiApplePhotosAssetRevision) async throws -> [FfiMediaUuid]?
+    func recordApplePhotosResourceOrigin(_ origin: FfiApplePhotosResourceOrigin) async throws
+    func applePhotosCollectionLinks(_ collections: [FfiApplePhotosCollectionIdentity]) async throws -> [FfiAlbumUuid?]
+    func recordApplePhotosCollectionLink(_ link: FfiApplePhotosCollectionLink) async throws
     func importMediaBatch(_ sources: [MediaImportSource], albumID: FfiAlbumUuid?) async throws -> [FfiMediaUuid]
     func setMediaThumbnail(mediaID: FfiMediaUuid, data: Data) async throws
     func evictLocalData(mediaIDs: [FfiMediaUuid]) async throws
@@ -116,6 +120,7 @@ protocol LibraryRepositoryProtocol: Sendable {
     func push(remoteID: FfiRemoteUuid, progress: any PushProgressSink) async throws -> UInt64
     func fetch(remoteID: FfiRemoteUuid) async throws -> UInt64
     func confirmRemoteMedia(remoteID: FfiRemoteUuid) async throws -> UInt64
+    func confirmedRemoteMediaIDs(remoteID: FfiRemoteUuid, mediaIDs: [FfiMediaUuid]) async throws -> [FfiMediaUuid]
     func close() async
 }
 
@@ -586,6 +591,26 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         try library.addMediaToAlbum(albumId: albumID, mediaId: mediaID)
     }
 
+    func applePhotosAssetRevisionMediaIDs(_ revision: FfiApplePhotosAssetRevision) async throws -> [FfiMediaUuid]? {
+        try ensureOpen()
+        return try library.applePhotosAssetRevisionMediaIds(revision: revision)
+    }
+
+    func recordApplePhotosResourceOrigin(_ origin: FfiApplePhotosResourceOrigin) async throws {
+        try ensureOpen()
+        try library.recordApplePhotosResourceOrigin(origin: origin)
+    }
+
+    func applePhotosCollectionLinks(_ collections: [FfiApplePhotosCollectionIdentity]) async throws -> [FfiAlbumUuid?] {
+        try ensureOpen()
+        return try library.applePhotosCollectionLinks(collections: collections)
+    }
+
+    func recordApplePhotosCollectionLink(_ link: FfiApplePhotosCollectionLink) async throws {
+        try ensureOpen()
+        try library.recordApplePhotosCollectionLink(link: link)
+    }
+
     func removeMediaFromAlbum(albumID: FfiAlbumUuid, mediaID: FfiMediaUuid) async throws {
         try ensureOpen()
         try library.removeMediaFromAlbum(albumId: albumID, mediaId: mediaID)
@@ -868,6 +893,11 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         return result
     }
 
+    func confirmedRemoteMediaIDs(remoteID: FfiRemoteUuid, mediaIDs: [FfiMediaUuid]) async throws -> [FfiMediaUuid] {
+        try ensureOpen()
+        return try library.confirmedRemoteMediaIds(remoteId: remoteID, mediaIds: mediaIDs)
+    }
+
     func close() async {
         guard !closed else { return }
         closed = true
@@ -1047,6 +1077,10 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     func createGroupFromSelectedMedia(mediaIDs: [FfiMediaUuid], albumID: FfiAlbumUuid) async throws { try await storage.createGroupFromSelectedMedia(mediaIDs: mediaIDs, albumID: albumID) }
     func importMedia(source: MediaImportSource, albumID: FfiAlbumUuid?) async throws -> FfiMediaUuid { try await storage.importMedia(source: source, albumID: albumID) }
     func importMediaWithoutNotification(source: MediaImportSource, albumID: FfiAlbumUuid?) async throws -> FfiMediaUuid { try await storage.importMediaWithoutNotification(source: source, albumID: albumID) }
+    func applePhotosAssetRevisionMediaIDs(_ revision: FfiApplePhotosAssetRevision) async throws -> [FfiMediaUuid]? { try await storage.applePhotosAssetRevisionMediaIDs(revision) }
+    func recordApplePhotosResourceOrigin(_ origin: FfiApplePhotosResourceOrigin) async throws { try await storage.recordApplePhotosResourceOrigin(origin) }
+    func applePhotosCollectionLinks(_ collections: [FfiApplePhotosCollectionIdentity]) async throws -> [FfiAlbumUuid?] { try await storage.applePhotosCollectionLinks(collections) }
+    func recordApplePhotosCollectionLink(_ link: FfiApplePhotosCollectionLink) async throws { try await storage.recordApplePhotosCollectionLink(link) }
     func importMediaBatch(_ sources: [MediaImportSource], albumID: FfiAlbumUuid?) async throws -> [FfiMediaUuid] { try await storage.importMediaBatch(sources, albumID: albumID) }
     func setMediaThumbnail(mediaID: FfiMediaUuid, data: Data) async throws { try await storage.setMediaThumbnail(mediaID: mediaID, data: data) }
     func evictLocalData(mediaIDs: [FfiMediaUuid]) async throws { try await storage.evictLocalData(mediaIDs: mediaIDs) }
@@ -1075,5 +1109,6 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     }
     func fetch(remoteID: FfiRemoteUuid) async throws -> UInt64 { try await storage.fetch(remoteID: remoteID) }
     func confirmRemoteMedia(remoteID: FfiRemoteUuid) async throws -> UInt64 { try await storage.confirmRemoteMedia(remoteID: remoteID) }
+    func confirmedRemoteMediaIDs(remoteID: FfiRemoteUuid, mediaIDs: [FfiMediaUuid]) async throws -> [FfiMediaUuid] { try await storage.confirmedRemoteMediaIDs(remoteID: remoteID, mediaIDs: mediaIDs) }
     func close() async { await storage.close() }
 }

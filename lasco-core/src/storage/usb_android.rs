@@ -352,6 +352,12 @@ impl Storage for StorageUsbAndroid {
         ))
     }
 
+    async fn list_recursive(&self, _prefix: &str) -> Result<Vec<String>> {
+        Err(StorageError::Unavailable(
+            "Android USB recursive list is not implemented yet".to_string(),
+        ))
+    }
+
     async fn exists(&self, key: &str) -> Result<bool> {
         self.with_env(|env| Ok(self.resolve(env, key, false)?.is_some()))
     }

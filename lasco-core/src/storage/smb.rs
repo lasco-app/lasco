@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::fmt;
 use std::io;
 use std::time::Duration;
@@ -384,6 +385,49 @@ impl Storage for StorageSmb {
                 Err(mapped)
             }
         }
+    }
+
+    async fn list_recursive(&self, prefix: &str) -> Result<Vec<String>> {
+        let mut pending = VecDeque::from([prefix.to_string()]);
+        let mut keys = Vec::new();
+        let mut guard = self.session().await?;
+
+        while let Some(directory) = pending.pop_front() {
+            let path = self.remote_path(&directory)?;
+            let result = {
+                let session = guard.as_mut().expect("session initialized before use");
+                // `list_directory` drains SMB QUERY_DIRECTORY continuation pages before it
+                // returns, so every pagination page is included before descending further.
+                session
+                    .client
+                    .list_directory(&mut session.tree, &path)
+                    .await
+            };
+            match result {
+                Ok(entries) => {
+                    for entry in entries
+                        .into_iter()
+                        .filter(|entry| entry.name != "." && entry.name != "..")
+                    {
+                        let key = self.logical_key(&directory, &entry.name)?;
+                        if entry.is_directory {
+                            pending.push_back(key);
+                        } else {
+                            keys.push(key);
+                        }
+                    }
+                }
+                Err(error) => {
+                    let clear = should_reset_session(&error);
+                    let mapped = map_smb_error(error);
+                    if clear {
+                        *guard = None;
+                    }
+                    return Err(mapped);
+                }
+            }
+        }
+        Ok(keys)
     }
 
     async fn exists(&self, key: &str) -> Result<bool> {

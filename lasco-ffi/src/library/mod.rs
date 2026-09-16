@@ -438,6 +438,66 @@ pub fn ffi_add_existing_library_smb(
     }))
 }
 
+/// Add a library that already exists at a fixed local filesystem path.
+///
+/// Desktop callers must obtain user permission for the path before invoking this API. USB-backed
+/// remotes deliberately use their platform-specific APIs and are not covered here.
+#[uniffi::export(default(app_dir = None))]
+#[allow(clippy::too_many_arguments, clippy::needless_pass_by_value)]
+pub fn ffi_add_existing_library_fixed_path(
+    nickname: String,
+    username: String,
+    password: String,
+    new_username: Option<String>,
+    new_password: Option<String>,
+    remote_name: String,
+    path: String,
+    app_dir: Option<String>,
+) -> Result<Arc<FfiLibrary>, LascoError> {
+    if path.trim().is_empty() {
+        return Err(LascoError::Other {
+            msg: "fixed-path remote path must not be empty".to_string(),
+        });
+    }
+    let rt =
+        tokio::runtime::Runtime::new().map_err(|e| LascoError::Other { msg: e.to_string() })?;
+    let app_dir = crate::resolve_app_dir(app_dir)?;
+    let sessions = sessions_dir(&app_dir);
+    let new_user = match (new_username, new_password) {
+        (Some(username), Some(password)) if !username.is_empty() => {
+            Some((LibraryUsername(username), LibraryPassword(password)))
+        }
+        _ => None,
+    };
+    let (_library_id, library) = rt
+        .block_on(lasco_core::client::add_existing_library_fixed_path(
+            &app_dir,
+            nickname,
+            LibraryUsername(username),
+            LibraryPassword(password),
+            new_user,
+            remote_name,
+            PathBuf::from(path),
+            Some(&sessions),
+        ))
+        .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+    let library_config =
+        LibraryJson::load(&app_dir, &library.library_id())?.ok_or(LascoError::NotFound)?;
+    let remotes = library_config
+        .remotes
+        .iter()
+        .map(remote_config_to_ffi)
+        .collect();
+    Ok(Arc::new(FfiLibrary {
+        inner: library,
+        rt,
+        app_dir,
+        remotes: Mutex::new(remotes),
+        #[cfg(test)]
+        test_remotes: Mutex::new(HashMap::new()),
+    }))
+}
+
 /// Add a library already stored in Lasco Cloud.
 ///
 /// Cloud account credentials authorize storage discovery. Library credentials

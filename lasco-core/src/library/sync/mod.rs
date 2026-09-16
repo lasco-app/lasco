@@ -12,9 +12,10 @@ pub(super) mod push;
 use crate::error::{LibraryError, OperationError, SyncError};
 use crate::identifiers::{MediaUuid, RemoteUuid};
 use crate::library::Library;
+use crate::remote::MediaList;
 use crate::storage::{AtomicWriteMode, StorageError};
 use fetch::{FetchAccess, fetch_impl};
-use push::PushAccess;
+use push::{DEFAULT_MAX_CONCURRENT_MEDIA_UPLOADS, PushAccess};
 use remote_access::{StorageRead, StorageReadWrite};
 use std::collections::HashMap;
 
@@ -127,8 +128,9 @@ impl Library {
     /// Confirms which media blobs `remote_id` holds and records them in its media inventory.
     ///
     /// This is media availability confirmation run on its own, which is how a client repairs
-    /// incomplete knowledge of a remote without performing a full fetch. It lists media folders
-    /// only, so it never reads an operation file and cannot become an implicit fetch.
+    /// incomplete knowledge of a remote without performing a full fetch. It recursively lists
+    /// `media/`, exhausting backend pagination, but never reads an operation file and therefore
+    /// cannot become an implicit fetch.
     ///
     /// Returns how many blobs it newly confirmed.
     ///
@@ -148,27 +150,23 @@ impl Library {
         let remote = StorageRead::new(storage);
         verify_remote_identity(&remote, remote_id).await?;
 
-        let known_media: Vec<media_inventory::KnownMedia> = {
-            let state = self.inner.state.read();
-            state
-                .media_entries()
-                .iter()
-                .map(|entry| media_inventory::KnownMedia {
-                    media_id: entry.media_id,
-                    storage_date: entry.storage_date,
-                    expects_thumb: entry.companion_kind.is_none(),
-                })
-                .collect()
-        };
         let remote_media_list = self.inner.local_dirs.remote_media_list(&remote_id_string);
-        Ok(media_inventory::confirm_known_media(
-            &remote,
-            &known_media,
+        let scanned = media_inventory::list_all_remote_media(&remote)
+            .await
+            .map_err(|error| LibraryError::Io(std::io::Error::other(error.to_string())))?;
+        self.inner.remote_media_list_lock.with_lock(
             &remote_id_string,
             &remote_media_list,
-            &self.inner.remote_media_list_lock,
+            |remote_media_list| -> Result<usize, LibraryError> {
+                let path = remote_media_list.media_list_path();
+                let previous = MediaList::load_or_default(&path)?;
+                let newly_confirmed = scanned.newly_confirmed_since(&previous);
+                if scanned != previous {
+                    scanned.save(&path)?;
+                }
+                Ok(newly_confirmed)
+            },
         )
-        .await)
     }
 
     /// Copy local crypto files (`library/`) to the remote if not already present.
@@ -284,6 +282,7 @@ impl Library {
                 PushMediaSource::LocalOnly,
                 None,
                 None,
+                DEFAULT_MAX_CONCURRENT_MEDIA_UPLOADS,
             )
             .await?;
         Ok(SyncReport {

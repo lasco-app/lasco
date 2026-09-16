@@ -14,11 +14,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -26,6 +26,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -182,8 +184,6 @@ fun LascoCloudLoginDialog(onDismiss: () -> Unit, onResult: (String?) -> Unit) {
     var password by remember { mutableStateOf("") }
     var submitting by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    val completedSteps = remember { mutableStateListOf<String>() }
-    var currentStep by remember { mutableStateOf<String?>(null) }
     FullSheet(onDismiss = onDismiss) {
         Column(
             modifier = Modifier.fillMaxWidth().weight(1f, fill = false).padding(horizontal = 32.dp),
@@ -193,45 +193,31 @@ fun LascoCloudLoginDialog(onDismiss: () -> Unit, onResult: (String?) -> Unit) {
             Text("Authenticate this library with your Lasco Cloud account.", style = LascoTheme.type.body(16), color = colors.inkSub)
             LascoField(label = "Email", value = email, onValueChange = { email = it }, placeholder = "you@example.com")
             LascoField(label = "Password", value = password, onValueChange = { password = it }, secure = true)
-            if (completedSteps.isNotEmpty() || currentStep != null) {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    completedSteps.forEach { step ->
-                        Text("✓  $step", style = LascoTheme.type.body(13), color = colors.ok)
-                    }
-                    currentStep?.let { step ->
-                        Text(step, style = LascoTheme.type.body(13), color = colors.inkSub)
-                    }
+            error?.let { Text(it, style = LascoTheme.type.body(13), color = colors.error) }
+            if (submitting) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(
+                        color = colors.ink,
+                        modifier = Modifier.semantics { contentDescription = "Authenticating" },
+                    )
                 }
             }
-            error?.let { Text(it, style = LascoTheme.type.body(13), color = colors.error) }
         }
         Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 20.dp)) {
             LascoPrimaryButton(
-                text = if (submitting) "Authenticating…" else "Authenticate",
+                text = "Authenticate",
                 enabled = email.isNotBlank() && password.isNotBlank() && !submitting,
                 onClick = {
-                    submitting = true; error = null; completedSteps.clear(); currentStep = "Authenticating…"
+                    submitting = true; error = null
                     scope.launch {
                         try {
-                            repo.authenticateLascoCloud(email, password) { step ->
-                                when (step) {
-                                    LibraryRepository.LascoCloudConnectionStep.Authenticated -> {
-                                        completedSteps += "Authentication successful"
-                                        currentStep = "Checking Cloud storage…"
-                                    }
-                                    LibraryRepository.LascoCloudConnectionStep.CredentialsReceived -> {
-                                        completedSteps += "Cloud storage verified"
-                                        currentStep = "Configuring storage remotes…"
-                                    }
-                                    LibraryRepository.LascoCloudConnectionStep.RemotesConfigured -> {
-                                        completedSteps += "Storage remotes configured"
-                                    }
-                                }
-                            }
+                            repo.authenticateLascoCloud(email, password)
                             onDismiss(); onResult(null)
                         } catch (e: Exception) {
                             error = e.message?.ifBlank { null } ?: "Could not authenticate with Lasco Cloud"
-                            currentStep = null
                         } finally { submitting = false }
                     }
                 },

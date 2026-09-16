@@ -8,7 +8,7 @@ use chrono::{DateTime, Utc};
 use keyring_core::Entry;
 use serde::{Deserialize, Serialize};
 
-#[cfg(any(target_os = "ios", target_os = "android"))]
+#[cfg(any(target_os = "ios", target_os = "android", target_os = "macos"))]
 use std::{collections::HashMap, sync::OnceLock};
 
 use crate::identifiers::LibraryId;
@@ -108,10 +108,25 @@ impl LascoCloudSessionStore {
     }
 }
 
-/// Keyring's `Entry` convenience API initializes a default store on macOS,
-/// but deliberately leaves iOS to applications because iOS must use Protected
-/// Data. The default store is process-global, so set it exactly once before
-/// any entry is created.
+/// This module uses `keyring_core::Entry` directly, so it must install a provider itself.
+/// The default store is process-global, so set it exactly once before any entry is created.
+#[cfg(target_os = "macos")]
+fn initialize_platform_credential_store() -> Result<(), LascoCloudSessionStoreError> {
+    static INITIALIZATION: OnceLock<Result<(), String>> = OnceLock::new();
+    INITIALIZATION
+        .get_or_init(|| {
+            apple_native_keyring_store::keychain::Store::new_with_configuration(&HashMap::new())
+                .map(|store| {
+                    let store: std::sync::Arc<keyring_core::CredentialStore> = store;
+                    keyring_core::set_default_store(store);
+                })
+                .map_err(|error| error.to_string())
+        })
+        .as_ref()
+        .map(|_| ())
+        .map_err(|error| LascoCloudSessionStoreError::Keyring(error.clone()))
+}
+
 #[cfg(target_os = "ios")]
 fn initialize_platform_credential_store() -> Result<(), LascoCloudSessionStoreError> {
     static INITIALIZATION: OnceLock<Result<(), String>> = OnceLock::new();
@@ -146,7 +161,7 @@ fn initialize_platform_credential_store() -> Result<(), LascoCloudSessionStoreEr
         .map_err(|error| LascoCloudSessionStoreError::Keyring(error.clone()))
 }
 
-#[cfg(not(any(target_os = "ios", target_os = "android")))]
+#[cfg(not(any(target_os = "ios", target_os = "android", target_os = "macos")))]
 fn initialize_platform_credential_store() -> Result<(), LascoCloudSessionStoreError> {
     Ok(())
 }

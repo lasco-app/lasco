@@ -9,6 +9,29 @@ sidebar_label: Import
 
 Lasco uses Apple's PhotoKit API to access your iOS photo library directly. Assets are fetched on demand, iCloud photos are downloaded automatically when imported and do not need to be fully synced to the device beforehand.
 
+### iCloud Photos revision identity
+
+Lasco identifies an Apple Photos import at the `PHAsset` level, not at the individual
+`PHAssetResource` level. The stable source identifier is the parent asset's serialized
+`PHCloudIdentifier`; a device-local `PHAsset.localIdentifier` is never persisted as the
+cross-device identity.
+
+Before staging bytes, an importer builds a selected-resource manifest from the resource type and
+filename, together with the parent asset's `modificationDate`. An exact matching
+complete manifest means the asset is already imported and no iCloud resource is downloaded.
+Otherwise the importer processes the complete asset normally. Existing byte-identical files reuse
+their Lasco media records through content-hash deduplication, while each resulting media receives a
+new `ApplePhotosResourceOriginAdded` provenance operation for the current asset revision.
+
+An interrupted import has only a partial set of provenance operations. It never satisfies the
+complete-manifest lookup, so a later run safely retries the whole Photos asset. This can reread an
+unchanged resource after a failure, but it cannot create another encrypted media blob for identical
+content.
+
+`PHAsset.modificationDate` may also change when Photos metadata changes. Such a change therefore
+causes the asset to be checked again; content-hash reuse prevents metadata-only changes from
+duplicating or re-uploading unchanged bytes.
+
 Files are kept in their original format, including the metadata it contains, such as position.
 
 Edits like crops and rotations, stored in `.aae` files, are imported as individual media, and linked to their associated photo's media. The AAE file is kept in the library so it can be recovered later, but it is not currently used to change how the photo is displayed in the app.
@@ -17,6 +40,6 @@ Burst photos are imported as a group containing the main photo and the video of 
 
 Albums are imported only during the initial import when the library is created, not during incremental imports.
 
-In the Apple model, folders can be nested and contain albums, and a photo can belong to several albums. Lasco transcribes this by treating each folder as an album.
+In the Apple model, folders can be nested and contain albums, and a photo can belong to several albums. Lasco transcribes this by treating each folder as an album. Only collections with a cloud mapping receive durable links. A mapped child below an unmapped parent is placed under its nearest mapped ancestor, or at the Lasco root. On reimport, an existing linked album is reused without renaming or reparenting; missing primary-media membership may be added. AAE and paired Live Photo companion media are never album members.
 
 All the original data for photos and videos, including edit information, is packed into the Lasco library, except for information that only lives in the iOS library's local SQLite database. Whether a photo is marked as a favorite and a manual caption entered for a photo are two examples of such metadata.

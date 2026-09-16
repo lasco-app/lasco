@@ -982,6 +982,24 @@ internal open class UniffiVTableCallbackInterfacePushProgressSink(
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -997,7 +1015,9 @@ internal open class UniffiVTableCallbackInterfacePushProgressSink(
 // when the library is loaded.
 internal interface IntegrityCheckingUniffiLib : Library {
     // Integrity check functions only
-    fun uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_lasco_cloud(
+    fun uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_fixed_path(
+): Short
+fun uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_lasco_cloud(
 ): Short
 fun uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_s3(
 ): Short
@@ -1055,11 +1075,19 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_album_list_items_sorted(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_all_media_ids(
 ): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_apple_photos_asset_revision_media_ids(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_apple_photos_collection_links(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_benchmark_remote_upload_async(
+): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_clear_lasco_cloud_auth_and_credentials(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_configure_lasco_cloud_auth(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_confirm_remote_media_async(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_confirmed_remote_media_ids(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_connect_remote(
 ): Short
@@ -1110,6 +1138,8 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_hard_delete_media(
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_has_unpushed_changes(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_import_media(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_import_media_with_metadata(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_initialize_remote(
 ): Short
@@ -1184,6 +1214,12 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_from_remote(
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_from_remote_async(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_using_configured_media_sources_async(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_using_configured_media_sources_with_options_async(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_record_apple_photos_collection_link(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_record_apple_photos_resource_origin(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_remote_media_shortfall(
 ): Short
@@ -1329,12 +1365,20 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_album_list_items_sorted(`ptr`: Pointer
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_all_media_ids(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_lasco_ffi_fn_method_ffilibrary_apple_photos_asset_revision_media_ids(`ptr`: Pointer,`revision`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_lasco_ffi_fn_method_ffilibrary_apple_photos_collection_links(`ptr`: Pointer,`collections`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_lasco_ffi_fn_method_ffilibrary_benchmark_remote_upload_async(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,`bytesPerUpload`: Long,`maxParallelUploads`: Byte,
+): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_clear_lasco_cloud_auth_and_credentials(`ptr`: Pointer,
 ): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_configure_lasco_cloud_auth(`ptr`: Pointer,`baseUrl`: RustBuffer.ByValue,
 ): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_confirm_remote_media_async(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,
 ): Long
+fun uniffi_lasco_ffi_fn_method_ffilibrary_confirmed_remote_media_ids(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`mediaIds`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_connect_remote(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_create_album(`ptr`: Pointer,`name`: RustBuffer.ByValue,`parentAlbumId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1384,6 +1428,8 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_hard_delete_media(`ptr`: Pointer,`medi
 fun uniffi_lasco_ffi_fn_method_ffilibrary_has_unpushed_changes(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
 fun uniffi_lasco_ffi_fn_method_ffilibrary_import_media(`ptr`: Pointer,`path`: RustBuffer.ByValue,`albumId`: RustBuffer.ByValue,`originalFilename`: RustBuffer.ByValue,`appleAaeMediaId`: RustBuffer.ByValue,`appleLivePhotoMediaId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): RustBuffer.ByValue
+fun uniffi_lasco_ffi_fn_method_ffilibrary_import_media_with_metadata(`ptr`: Pointer,`path`: RustBuffer.ByValue,`albumId`: RustBuffer.ByValue,`metadata`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_initialize_remote(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -1459,6 +1505,12 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_from_remote_async(`ptr`: P
 ): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_using_configured_media_sources_async(`ptr`: Pointer,`targetRemoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,`progress`: Long,
 ): Long
+fun uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_using_configured_media_sources_with_options_async(`ptr`: Pointer,`targetRemoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,`progress`: Long,`maxConcurrentMediaUploads`: Byte,
+): Long
+fun uniffi_lasco_ffi_fn_method_ffilibrary_record_apple_photos_collection_link(`ptr`: Pointer,`link`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
+fun uniffi_lasco_ffi_fn_method_ffilibrary_record_apple_photos_resource_origin(`ptr`: Pointer,`origin`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_remote_media_shortfall(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_remove_media_from_album(`ptr`: Pointer,`albumId`: RustBuffer.ByValue,`mediaId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1513,6 +1565,8 @@ fun uniffi_lasco_ffi_fn_method_ffinativemediabytes_len(`ptr`: Pointer,uniffi_out
 ): Long
 fun uniffi_lasco_ffi_fn_init_callback_vtable_pushprogresssink(`vtable`: UniffiVTableCallbackInterfacePushProgressSink,
 ): Unit
+fun uniffi_lasco_ffi_fn_func_ffi_add_existing_library_fixed_path(`nickname`: RustBuffer.ByValue,`username`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,`newUsername`: RustBuffer.ByValue,`newPassword`: RustBuffer.ByValue,`remoteName`: RustBuffer.ByValue,`path`: RustBuffer.ByValue,`appDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+): Pointer
 fun uniffi_lasco_ffi_fn_func_ffi_add_existing_library_lasco_cloud(`config`: RustBuffer.ByValue,`appDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Pointer
 fun uniffi_lasco_ffi_fn_func_ffi_add_existing_library_s3(`nickname`: RustBuffer.ByValue,`username`: RustBuffer.ByValue,`password`: RustBuffer.ByValue,`newUsername`: RustBuffer.ByValue,`newPassword`: RustBuffer.ByValue,`remoteName`: RustBuffer.ByValue,`endpoint`: RustBuffer.ByValue,`bucket`: RustBuffer.ByValue,`region`: RustBuffer.ByValue,`pathPrefix`: RustBuffer.ByValue,`accessKey`: RustBuffer.ByValue,`secretKey`: RustBuffer.ByValue,`appDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1661,6 +1715,9 @@ private fun uniffiCheckContractApiVersion(lib: IntegrityCheckingUniffiLib) {
 }
 @Suppress("UNUSED_PARAMETER")
 private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
+    if (lib.uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_fixed_path() != 41077.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_lasco_cloud() != 61860.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1748,13 +1805,25 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_all_media_ids() != 28671.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_apple_photos_asset_revision_media_ids() != 3343.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_apple_photos_collection_links() != 49566.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_benchmark_remote_upload_async() != 35799.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_clear_lasco_cloud_auth_and_credentials() != 41699.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_configure_lasco_cloud_auth() != 39402.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_confirm_remote_media_async() != 59085.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_confirm_remote_media_async() != 39271.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_confirmed_remote_media_ids() != 41075.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_connect_remote() != 33397.toShort()) {
@@ -1830,6 +1899,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_import_media() != 49744.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_import_media_with_metadata() != 23220.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_initialize_remote() != 54402.toShort()) {
@@ -1941,6 +2013,15 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_using_configured_media_sources_async() != 3322.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_using_configured_media_sources_with_options_async() != 2562.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_record_apple_photos_collection_link() != 20088.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_record_apple_photos_resource_origin() != 37582.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_remote_media_shortfall() != 52429.toShort()) {
@@ -2702,13 +2783,42 @@ public interface FfiLibraryInterface {
     
     fun `allMediaIds`(): List<FfiMediaUuid>
     
+    /**
+     * Returns the selected media IDs when this exact Apple Photos asset revision has already
+     * been associated with Lasco media. This performs no resource download.
+     */
+    fun `applePhotosAssetRevisionMediaIds`(`revision`: FfiApplePhotosAssetRevision): List<FfiMediaUuid>?
+    
+    /**
+     * Returns the canonical Lasco album for each known Apple Photos collection identity.
+     */
+    fun `applePhotosCollectionLinks`(`collections`: List<FfiApplePhotosCollectionIdentity>): List<FfiAlbumUuid?>
+    
+    /**
+     * Measures one remote at each parallelism from one through `max_parallel_uploads`.
+     * Temporary random benchmark objects are removed before this method returns.
+     *
+     * The desktop importer runs this concurrently for selected remotes, then uses the result to
+     * select an individual remote upload limit and to compare aggregate throughput against the
+     * sum of isolated remote rates.
+     *
+     * # Errors
+     *
+     * An individual parallelism sample that times out or fails is discarded so the importer can
+     * still select from the remaining samples. Returns an error if the request is outside 1
+     * through 16 MiB or 1 through 5 uploads, storage construction fails, cleanup fails, or no
+     * sample completes successfully.
+     */
+    suspend fun `benchmarkRemoteUploadAsync`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?, `bytesPerUpload`: kotlin.ULong, `maxParallelUploads`: kotlin.UByte): List<FfiUploadBenchmarkSample>
+    
     suspend fun `clearLascoCloudAuthAndCredentials`()
     
     suspend fun `configureLascoCloudAuth`(`baseUrl`: kotlin.String)
     
     /**
-     * Confirms which media blobs a remote holds and records them in its media inventory,
-     * without fetching. Returns how many blobs it newly confirmed.
+     * Recursively lists every media blob a remote holds, exhausting backend pagination, and
+     * replaces its cached media inventory without fetching operations. Returns how many blobs
+     * were newly observed.
      *
      * # Errors
      *
@@ -2716,6 +2826,15 @@ public interface FfiLibraryInterface {
      * running for this remote, or the remote does not belong to this library.
      */
     suspend fun `confirmRemoteMediaAsync`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): kotlin.ULong
+    
+    /**
+     * Returns which supplied media IDs are confirmed to have a full original on this remote.
+     *
+     * Callers should refresh the remote inventory with `confirm_remote_media_async` first.
+     * The result reflects this client's cached positive-only inventory and never performs a
+     * network request itself.
+     */
+    fun `confirmedRemoteMediaIds`(`remoteId`: FfiRemoteUuid, `mediaIds`: List<FfiMediaUuid>): List<FfiMediaUuid>
     
     /**
      * # Errors
@@ -2884,6 +3003,20 @@ public interface FfiLibraryInterface {
      * Returns an error if an ID is invalid, the source cannot be read, media encryption/storage fails, or the creation operation cannot be persisted.
      */
     fun `importMedia`(`path`: kotlin.String, `albumId`: FfiAlbumUuid?, `originalFilename`: kotlin.String?, `appleAaeMediaId`: FfiMediaUuid?, `appleLivePhotoMediaId`: FfiMediaUuid?): FfiMediaAddResult
+    
+    /**
+     * Imports a media file with source-supplied metadata.
+     *
+     * Importers must preserve the original bytes and pass the source filename. Timestamps are
+     * RFC 3339 UTC offsets accepted by `chrono`; latitude and longitude must be supplied as a
+     * pair within their geographic ranges.
+     *
+     * # Errors
+     *
+     * Returns an error if an ID or metadata value is invalid, the source cannot be read, media
+     * encryption/storage fails, or the creation operation cannot be persisted.
+     */
+    fun `importMediaWithMetadata`(`path`: kotlin.String, `albumId`: FfiAlbumUuid?, `metadata`: FfiMediaImportMetadata): FfiMediaAddResult
     
     /**
      * # Errors
@@ -3118,6 +3251,29 @@ public interface FfiLibraryInterface {
      * data blob has no known place to be read from, or the push itself fails.
      */
     suspend fun `pushRemoteUsingConfiguredMediaSourcesAsync`(`targetRemoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?, `progress`: PushProgressSink): kotlin.ULong
+    
+    /**
+     * Push using configured media sources with a bounded number of concurrent full-media
+     * uploads for this target. A desktop importer should choose this after benchmarking the
+     * target and schedule several remotes independently.
+     *
+     * # Errors
+     *
+     * Returns an error for a concurrency outside 1 through 5, or for the same failures as
+     * [`Self::push_remote_using_configured_media_sources_async`].
+     */
+    suspend fun `pushRemoteUsingConfiguredMediaSourcesWithOptionsAsync`(`targetRemoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?, `progress`: PushProgressSink, `maxConcurrentMediaUploads`: kotlin.UByte): kotlin.ULong
+    
+    /**
+     * Records immutable provenance after creating a Lasco album for an Apple Photos collection.
+     */
+    fun `recordApplePhotosCollectionLink`(`link`: FfiApplePhotosCollectionLink)
+    
+    /**
+     * Records immutable provenance after an Apple Photos resource has been imported or reused
+     * by content hash. Importers call this once per selected resource.
+     */
+    fun `recordApplePhotosResourceOrigin`(`origin`: FfiApplePhotosResourceOrigin)
     
     /**
      * What `remote_id` is not yet confirmed to hold.
@@ -3713,6 +3869,75 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * Returns the selected media IDs when this exact Apple Photos asset revision has already
+     * been associated with Lasco media. This performs no resource download.
+     */
+    @Throws(LascoException::class)override fun `applePhotosAssetRevisionMediaIds`(`revision`: FfiApplePhotosAssetRevision): List<FfiMediaUuid>? {
+            return FfiConverterOptionalSequenceTypeFfiMediaUuid.lift(
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_apple_photos_asset_revision_media_ids(
+        it, FfiConverterTypeFfiApplePhotosAssetRevision.lower(`revision`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Returns the canonical Lasco album for each known Apple Photos collection identity.
+     */
+    @Throws(LascoException::class)override fun `applePhotosCollectionLinks`(`collections`: List<FfiApplePhotosCollectionIdentity>): List<FfiAlbumUuid?> {
+            return FfiConverterSequenceOptionalTypeFfiAlbumUuid.lift(
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_apple_photos_collection_links(
+        it, FfiConverterSequenceTypeFfiApplePhotosCollectionIdentity.lower(`collections`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Measures one remote at each parallelism from one through `max_parallel_uploads`.
+     * Temporary random benchmark objects are removed before this method returns.
+     *
+     * The desktop importer runs this concurrently for selected remotes, then uses the result to
+     * select an individual remote upload limit and to compare aggregate throughput against the
+     * sum of isolated remote rates.
+     *
+     * # Errors
+     *
+     * An individual parallelism sample that times out or fails is discarded so the importer can
+     * still select from the remaining samples. Returns an error if the request is outside 1
+     * through 16 MiB or 1 through 5 uploads, storage construction fails, cleanup fails, or no
+     * sample completes successfully.
+     */
+    @Throws(LascoException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `benchmarkRemoteUploadAsync`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?, `bytesPerUpload`: kotlin.ULong, `maxParallelUploads`: kotlin.UByte) : List<FfiUploadBenchmarkSample> {
+        return uniffiRustCallAsync(
+        callWithPointer { thisPtr ->
+            UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_benchmark_remote_upload_async(
+                thisPtr,
+                FfiConverterTypeFfiRemoteUuid.lower(`remoteId`),FfiConverterOptionalString.lower(`appSupportDir`),FfiConverterULong.lower(`bytesPerUpload`),FfiConverterUByte.lower(`maxParallelUploads`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterSequenceTypeFfiUploadBenchmarkSample.lift(it) },
+        // Error FFI converter
+        LascoException.ErrorHandler,
+    )
+    }
+
+    
     @Throws(LascoException::class)
     @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
     override suspend fun `clearLascoCloudAuthAndCredentials`() {
@@ -3758,8 +3983,9 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
 
     
     /**
-     * Confirms which media blobs a remote holds and records them in its media inventory,
-     * without fetching. Returns how many blobs it newly confirmed.
+     * Recursively lists every media blob a remote holds, exhausting backend pagination, and
+     * replaces its cached media inventory without fetching operations. Returns how many blobs
+     * were newly observed.
      *
      * # Errors
      *
@@ -3785,6 +4011,26 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
         LascoException.ErrorHandler,
     )
     }
+
+    
+    /**
+     * Returns which supplied media IDs are confirmed to have a full original on this remote.
+     *
+     * Callers should refresh the remote inventory with `confirm_remote_media_async` first.
+     * The result reflects this client's cached positive-only inventory and never performs a
+     * network request itself.
+     */
+    @Throws(LascoException::class)override fun `confirmedRemoteMediaIds`(`remoteId`: FfiRemoteUuid, `mediaIds`: List<FfiMediaUuid>): List<FfiMediaUuid> {
+            return FfiConverterSequenceTypeFfiMediaUuid.lift(
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_confirmed_remote_media_ids(
+        it, FfiConverterTypeFfiRemoteUuid.lower(`remoteId`),FfiConverterSequenceTypeFfiMediaUuid.lower(`mediaIds`),_status)
+}
+    }
+    )
+    }
+    
 
     
     /**
@@ -4244,6 +4490,31 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     uniffiRustCallWithError(LascoException) { _status ->
     UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_import_media(
         it, FfiConverterString.lower(`path`),FfiConverterOptionalTypeFfiAlbumUuid.lower(`albumId`),FfiConverterOptionalString.lower(`originalFilename`),FfiConverterOptionalTypeFfiMediaUuid.lower(`appleAaeMediaId`),FfiConverterOptionalTypeFfiMediaUuid.lower(`appleLivePhotoMediaId`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Imports a media file with source-supplied metadata.
+     *
+     * Importers must preserve the original bytes and pass the source filename. Timestamps are
+     * RFC 3339 UTC offsets accepted by `chrono`; latitude and longitude must be supplied as a
+     * pair within their geographic ranges.
+     *
+     * # Errors
+     *
+     * Returns an error if an ID or metadata value is invalid, the source cannot be read, media
+     * encryption/storage fails, or the creation operation cannot be persisted.
+     */
+    @Throws(LascoException::class)override fun `importMediaWithMetadata`(`path`: kotlin.String, `albumId`: FfiAlbumUuid?, `metadata`: FfiMediaImportMetadata): FfiMediaAddResult {
+            return FfiConverterTypeFfiMediaAddResult.lift(
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_import_media_with_metadata(
+        it, FfiConverterString.lower(`path`),FfiConverterOptionalTypeFfiAlbumUuid.lower(`albumId`),FfiConverterTypeFfiMediaImportMetadata.lower(`metadata`),_status)
 }
     }
     )
@@ -4973,6 +5244,68 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
         LascoException.ErrorHandler,
     )
     }
+
+    
+    /**
+     * Push using configured media sources with a bounded number of concurrent full-media
+     * uploads for this target. A desktop importer should choose this after benchmarking the
+     * target and schedule several remotes independently.
+     *
+     * # Errors
+     *
+     * Returns an error for a concurrency outside 1 through 5, or for the same failures as
+     * [`Self::push_remote_using_configured_media_sources_async`].
+     */
+    @Throws(LascoException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `pushRemoteUsingConfiguredMediaSourcesWithOptionsAsync`(`targetRemoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?, `progress`: PushProgressSink, `maxConcurrentMediaUploads`: kotlin.UByte) : kotlin.ULong {
+        return uniffiRustCallAsync(
+        callWithPointer { thisPtr ->
+            UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_using_configured_media_sources_with_options_async(
+                thisPtr,
+                FfiConverterTypeFfiRemoteUuid.lower(`targetRemoteId`),FfiConverterOptionalString.lower(`appSupportDir`),FfiConverterTypePushProgressSink.lower(`progress`),FfiConverterUByte.lower(`maxConcurrentMediaUploads`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_poll_u64(future, callback, continuation) },
+        { future, continuation -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_complete_u64(future, continuation) },
+        { future -> UniffiLib.INSTANCE.ffi_lasco_ffi_rust_future_free_u64(future) },
+        // lift function
+        { FfiConverterULong.lift(it) },
+        // Error FFI converter
+        LascoException.ErrorHandler,
+    )
+    }
+
+    
+    /**
+     * Records immutable provenance after creating a Lasco album for an Apple Photos collection.
+     */
+    @Throws(LascoException::class)override fun `recordApplePhotosCollectionLink`(`link`: FfiApplePhotosCollectionLink)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_record_apple_photos_collection_link(
+        it, FfiConverterTypeFfiApplePhotosCollectionLink.lower(`link`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Records immutable provenance after an Apple Photos resource has been imported or reused
+     * by content hash. Importers call this once per selected resource.
+     */
+    @Throws(LascoException::class)override fun `recordApplePhotosResourceOrigin`(`origin`: FfiApplePhotosResourceOrigin)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_record_apple_photos_resource_origin(
+        it, FfiConverterTypeFfiApplePhotosResourceOrigin.lower(`origin`),_status)
+}
+    }
+    
+    
 
     
     /**
@@ -5820,6 +6153,193 @@ public object FfiConverterTypeFfiAlbumUuid: FfiConverterRustBuffer<FfiAlbumUuid>
 
 
 
+data class FfiApplePhotosAssetRevision (
+    var `cloudAssetId`: kotlin.String, 
+    var `modificationDate`: kotlin.String?, 
+    var `resources`: List<FfiApplePhotosResourceDescriptor>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFfiApplePhotosAssetRevision: FfiConverterRustBuffer<FfiApplePhotosAssetRevision> {
+    override fun read(buf: ByteBuffer): FfiApplePhotosAssetRevision {
+        return FfiApplePhotosAssetRevision(
+            FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterSequenceTypeFfiApplePhotosResourceDescriptor.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FfiApplePhotosAssetRevision) = (
+            FfiConverterString.allocationSize(value.`cloudAssetId`) +
+            FfiConverterOptionalString.allocationSize(value.`modificationDate`) +
+            FfiConverterSequenceTypeFfiApplePhotosResourceDescriptor.allocationSize(value.`resources`)
+    )
+
+    override fun write(value: FfiApplePhotosAssetRevision, buf: ByteBuffer) {
+            FfiConverterString.write(value.`cloudAssetId`, buf)
+            FfiConverterOptionalString.write(value.`modificationDate`, buf)
+            FfiConverterSequenceTypeFfiApplePhotosResourceDescriptor.write(value.`resources`, buf)
+    }
+}
+
+
+
+data class FfiApplePhotosCollectionIdentity (
+    var `cloudCollectionId`: kotlin.String, 
+    var `kind`: FfiApplePhotosCollectionKind
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFfiApplePhotosCollectionIdentity: FfiConverterRustBuffer<FfiApplePhotosCollectionIdentity> {
+    override fun read(buf: ByteBuffer): FfiApplePhotosCollectionIdentity {
+        return FfiApplePhotosCollectionIdentity(
+            FfiConverterString.read(buf),
+            FfiConverterTypeFfiApplePhotosCollectionKind.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FfiApplePhotosCollectionIdentity) = (
+            FfiConverterString.allocationSize(value.`cloudCollectionId`) +
+            FfiConverterTypeFfiApplePhotosCollectionKind.allocationSize(value.`kind`)
+    )
+
+    override fun write(value: FfiApplePhotosCollectionIdentity, buf: ByteBuffer) {
+            FfiConverterString.write(value.`cloudCollectionId`, buf)
+            FfiConverterTypeFfiApplePhotosCollectionKind.write(value.`kind`, buf)
+    }
+}
+
+
+
+/**
+ * Immutable provenance for one Apple Photos folder or album.
+ */
+data class FfiApplePhotosCollectionLink (
+    var `albumId`: FfiAlbumUuid, 
+    var `cloudCollectionId`: kotlin.String, 
+    var `kind`: FfiApplePhotosCollectionKind
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFfiApplePhotosCollectionLink: FfiConverterRustBuffer<FfiApplePhotosCollectionLink> {
+    override fun read(buf: ByteBuffer): FfiApplePhotosCollectionLink {
+        return FfiApplePhotosCollectionLink(
+            FfiConverterTypeFfiAlbumUuid.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterTypeFfiApplePhotosCollectionKind.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FfiApplePhotosCollectionLink) = (
+            FfiConverterTypeFfiAlbumUuid.allocationSize(value.`albumId`) +
+            FfiConverterString.allocationSize(value.`cloudCollectionId`) +
+            FfiConverterTypeFfiApplePhotosCollectionKind.allocationSize(value.`kind`)
+    )
+
+    override fun write(value: FfiApplePhotosCollectionLink, buf: ByteBuffer) {
+            FfiConverterTypeFfiAlbumUuid.write(value.`albumId`, buf)
+            FfiConverterString.write(value.`cloudCollectionId`, buf)
+            FfiConverterTypeFfiApplePhotosCollectionKind.write(value.`kind`, buf)
+    }
+}
+
+
+
+data class FfiApplePhotosResourceDescriptor (
+    var `resourceType`: FfiApplePhotosResourceType, 
+    var `filename`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFfiApplePhotosResourceDescriptor: FfiConverterRustBuffer<FfiApplePhotosResourceDescriptor> {
+    override fun read(buf: ByteBuffer): FfiApplePhotosResourceDescriptor {
+        return FfiApplePhotosResourceDescriptor(
+            FfiConverterTypeFfiApplePhotosResourceType.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FfiApplePhotosResourceDescriptor) = (
+            FfiConverterTypeFfiApplePhotosResourceType.allocationSize(value.`resourceType`) +
+            FfiConverterString.allocationSize(value.`filename`)
+    )
+
+    override fun write(value: FfiApplePhotosResourceDescriptor, buf: ByteBuffer) {
+            FfiConverterTypeFfiApplePhotosResourceType.write(value.`resourceType`, buf)
+            FfiConverterString.write(value.`filename`, buf)
+    }
+}
+
+
+
+/**
+ * Immutable provenance for one resource of an Apple Photos asset revision.
+ * `cloud_asset_id` is the opaque serialized cloud value supplied by PhotoKit.
+ */
+data class FfiApplePhotosResourceOrigin (
+    var `mediaId`: FfiMediaUuid, 
+    var `cloudAssetId`: kotlin.String, 
+    var `modificationDate`: kotlin.String?, 
+    var `resourceType`: FfiApplePhotosResourceType, 
+    var `filename`: kotlin.String
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFfiApplePhotosResourceOrigin: FfiConverterRustBuffer<FfiApplePhotosResourceOrigin> {
+    override fun read(buf: ByteBuffer): FfiApplePhotosResourceOrigin {
+        return FfiApplePhotosResourceOrigin(
+            FfiConverterTypeFfiMediaUuid.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterTypeFfiApplePhotosResourceType.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FfiApplePhotosResourceOrigin) = (
+            FfiConverterTypeFfiMediaUuid.allocationSize(value.`mediaId`) +
+            FfiConverterString.allocationSize(value.`cloudAssetId`) +
+            FfiConverterOptionalString.allocationSize(value.`modificationDate`) +
+            FfiConverterTypeFfiApplePhotosResourceType.allocationSize(value.`resourceType`) +
+            FfiConverterString.allocationSize(value.`filename`)
+    )
+
+    override fun write(value: FfiApplePhotosResourceOrigin, buf: ByteBuffer) {
+            FfiConverterTypeFfiMediaUuid.write(value.`mediaId`, buf)
+            FfiConverterString.write(value.`cloudAssetId`, buf)
+            FfiConverterOptionalString.write(value.`modificationDate`, buf)
+            FfiConverterTypeFfiApplePhotosResourceType.write(value.`resourceType`, buf)
+            FfiConverterString.write(value.`filename`, buf)
+    }
+}
+
+
+
 /**
  * Remote compaction-lock metadata. Absence of this record means no lock is held.
  */
@@ -6425,6 +6945,64 @@ public object FfiConverterTypeFfiMediaId: FfiConverterRustBuffer<FfiMediaId> {
 
 
 
+/**
+ * Optional source metadata supplied by a desktop importer.
+ *
+ * Timestamps are RFC 3339 strings. The source file's bytes, including any embedded metadata,
+ * are always copied unchanged; this record exists for Lasco's queryable index fields.
+ */
+data class FfiMediaImportMetadata (
+    var `originalFilename`: kotlin.String?, 
+    var `capturedAt`: kotlin.String?, 
+    var `modifiedAt`: kotlin.String?, 
+    var `latitude`: kotlin.Double?, 
+    var `longitude`: kotlin.Double?, 
+    var `appleAaeMediaId`: FfiMediaUuid?, 
+    var `appleLivePhotoMediaId`: FfiMediaUuid?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFfiMediaImportMetadata: FfiConverterRustBuffer<FfiMediaImportMetadata> {
+    override fun read(buf: ByteBuffer): FfiMediaImportMetadata {
+        return FfiMediaImportMetadata(
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+            FfiConverterOptionalTypeFfiMediaUuid.read(buf),
+            FfiConverterOptionalTypeFfiMediaUuid.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FfiMediaImportMetadata) = (
+            FfiConverterOptionalString.allocationSize(value.`originalFilename`) +
+            FfiConverterOptionalString.allocationSize(value.`capturedAt`) +
+            FfiConverterOptionalString.allocationSize(value.`modifiedAt`) +
+            FfiConverterOptionalDouble.allocationSize(value.`latitude`) +
+            FfiConverterOptionalDouble.allocationSize(value.`longitude`) +
+            FfiConverterOptionalTypeFfiMediaUuid.allocationSize(value.`appleAaeMediaId`) +
+            FfiConverterOptionalTypeFfiMediaUuid.allocationSize(value.`appleLivePhotoMediaId`)
+    )
+
+    override fun write(value: FfiMediaImportMetadata, buf: ByteBuffer) {
+            FfiConverterOptionalString.write(value.`originalFilename`, buf)
+            FfiConverterOptionalString.write(value.`capturedAt`, buf)
+            FfiConverterOptionalString.write(value.`modifiedAt`, buf)
+            FfiConverterOptionalDouble.write(value.`latitude`, buf)
+            FfiConverterOptionalDouble.write(value.`longitude`, buf)
+            FfiConverterOptionalTypeFfiMediaUuid.write(value.`appleAaeMediaId`, buf)
+            FfiConverterOptionalTypeFfiMediaUuid.write(value.`appleLivePhotoMediaId`, buf)
+    }
+}
+
+
+
 data class FfiMediaItem (
     var `mediaId`: FfiMediaUuid, 
     var `filenameOriginal`: kotlin.String, 
@@ -6792,6 +7370,117 @@ public object FfiConverterTypeFfiRemoteUuid: FfiConverterRustBuffer<FfiRemoteUui
 
 
 
+/**
+ * Result from one isolated remote throughput measurement.
+ *
+ * `bytes_per_second` is the aggregate rate for all transfers in this sample, not a per-transfer
+ * rate. Benchmark objects are random, temporary objects and are deleted after measurement.
+ */
+data class FfiUploadBenchmarkSample (
+    var `parallelUploads`: kotlin.UByte, 
+    var `bytesPerUpload`: kotlin.ULong, 
+    var `elapsedMillis`: kotlin.ULong, 
+    var `bytesPerSecond`: kotlin.ULong
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFfiUploadBenchmarkSample: FfiConverterRustBuffer<FfiUploadBenchmarkSample> {
+    override fun read(buf: ByteBuffer): FfiUploadBenchmarkSample {
+        return FfiUploadBenchmarkSample(
+            FfiConverterUByte.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterULong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FfiUploadBenchmarkSample) = (
+            FfiConverterUByte.allocationSize(value.`parallelUploads`) +
+            FfiConverterULong.allocationSize(value.`bytesPerUpload`) +
+            FfiConverterULong.allocationSize(value.`elapsedMillis`) +
+            FfiConverterULong.allocationSize(value.`bytesPerSecond`)
+    )
+
+    override fun write(value: FfiUploadBenchmarkSample, buf: ByteBuffer) {
+            FfiConverterUByte.write(value.`parallelUploads`, buf)
+            FfiConverterULong.write(value.`bytesPerUpload`, buf)
+            FfiConverterULong.write(value.`elapsedMillis`, buf)
+            FfiConverterULong.write(value.`bytesPerSecond`, buf)
+    }
+}
+
+
+
+
+enum class FfiApplePhotosCollectionKind {
+    
+    FOLDER,
+    ALBUM;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFfiApplePhotosCollectionKind: FfiConverterRustBuffer<FfiApplePhotosCollectionKind> {
+    override fun read(buf: ByteBuffer) = try {
+        FfiApplePhotosCollectionKind.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: FfiApplePhotosCollectionKind) = 4UL
+
+    override fun write(value: FfiApplePhotosCollectionKind, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+
+enum class FfiApplePhotosResourceType {
+    
+    PHOTO,
+    FULL_SIZE_PHOTO,
+    VIDEO,
+    FULL_SIZE_VIDEO,
+    ADJUSTMENT_DATA,
+    PAIRED_VIDEO,
+    FULL_SIZE_PAIRED_VIDEO;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFfiApplePhotosResourceType: FfiConverterRustBuffer<FfiApplePhotosResourceType> {
+    override fun read(buf: ByteBuffer) = try {
+        FfiApplePhotosResourceType.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: FfiApplePhotosResourceType) = 4UL
+
+    override fun write(value: FfiApplePhotosResourceType, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
 
 
 sealed class LascoException: kotlin.Exception() {
@@ -7131,6 +7820,38 @@ public object FfiConverterOptionalUShort: FfiConverterRustBuffer<kotlin.UShort?>
 /**
  * @suppress
  */
+public object FfiConverterOptionalDouble: FfiConverterRustBuffer<kotlin.Double?> {
+    override fun read(buf: ByteBuffer): kotlin.Double? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterDouble.read(buf)
+    }
+
+    override fun allocationSize(value: kotlin.Double?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterDouble.allocationSize(value)
+        }
+    }
+
+    override fun write(value: kotlin.Double?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterDouble.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalString: FfiConverterRustBuffer<kotlin.String?> {
     override fun read(buf: ByteBuffer): kotlin.String? {
         if (buf.get().toInt() == 0) {
@@ -7451,6 +8172,38 @@ public object FfiConverterOptionalTypeFfiRemoteUuid: FfiConverterRustBuffer<FfiR
 /**
  * @suppress
  */
+public object FfiConverterOptionalSequenceTypeFfiMediaUuid: FfiConverterRustBuffer<List<FfiMediaUuid>?> {
+    override fun read(buf: ByteBuffer): List<FfiMediaUuid>? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterSequenceTypeFfiMediaUuid.read(buf)
+    }
+
+    override fun allocationSize(value: List<FfiMediaUuid>?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterSequenceTypeFfiMediaUuid.allocationSize(value)
+        }
+    }
+
+    override fun write(value: List<FfiMediaUuid>?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterSequenceTypeFfiMediaUuid.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceString: FfiConverterRustBuffer<List<kotlin.String>> {
     override fun read(buf: ByteBuffer): List<kotlin.String> {
         val len = buf.getInt()
@@ -7553,6 +8306,62 @@ public object FfiConverterSequenceTypeFfiAlbumUuid: FfiConverterRustBuffer<List<
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeFfiAlbumUuid.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeFfiApplePhotosCollectionIdentity: FfiConverterRustBuffer<List<FfiApplePhotosCollectionIdentity>> {
+    override fun read(buf: ByteBuffer): List<FfiApplePhotosCollectionIdentity> {
+        val len = buf.getInt()
+        return List<FfiApplePhotosCollectionIdentity>(len) {
+            FfiConverterTypeFfiApplePhotosCollectionIdentity.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<FfiApplePhotosCollectionIdentity>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeFfiApplePhotosCollectionIdentity.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<FfiApplePhotosCollectionIdentity>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeFfiApplePhotosCollectionIdentity.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeFfiApplePhotosResourceDescriptor: FfiConverterRustBuffer<List<FfiApplePhotosResourceDescriptor>> {
+    override fun read(buf: ByteBuffer): List<FfiApplePhotosResourceDescriptor> {
+        val len = buf.getInt()
+        return List<FfiApplePhotosResourceDescriptor>(len) {
+            FfiConverterTypeFfiApplePhotosResourceDescriptor.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<FfiApplePhotosResourceDescriptor>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeFfiApplePhotosResourceDescriptor.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<FfiApplePhotosResourceDescriptor>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeFfiApplePhotosResourceDescriptor.write(it, buf)
         }
     }
 }
@@ -7840,9 +8649,81 @@ public object FfiConverterSequenceTypeFfiRemoteUuid: FfiConverterRustBuffer<List
 
 
 
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeFfiUploadBenchmarkSample: FfiConverterRustBuffer<List<FfiUploadBenchmarkSample>> {
+    override fun read(buf: ByteBuffer): List<FfiUploadBenchmarkSample> {
+        val len = buf.getInt()
+        return List<FfiUploadBenchmarkSample>(len) {
+            FfiConverterTypeFfiUploadBenchmarkSample.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<FfiUploadBenchmarkSample>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeFfiUploadBenchmarkSample.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<FfiUploadBenchmarkSample>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeFfiUploadBenchmarkSample.write(it, buf)
+        }
+    }
+}
 
 
 
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceOptionalTypeFfiAlbumUuid: FfiConverterRustBuffer<List<FfiAlbumUuid?>> {
+    override fun read(buf: ByteBuffer): List<FfiAlbumUuid?> {
+        val len = buf.getInt()
+        return List<FfiAlbumUuid?>(len) {
+            FfiConverterOptionalTypeFfiAlbumUuid.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<FfiAlbumUuid?>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterOptionalTypeFfiAlbumUuid.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<FfiAlbumUuid?>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterOptionalTypeFfiAlbumUuid.write(it, buf)
+        }
+    }
+}
+
+
+
+
+
+
+
+
+        /**
+         * Add a library that already exists at a fixed local filesystem path.
+         *
+         * Desktop callers must obtain user permission for the path before invoking this API. USB-backed
+         * remotes deliberately use their platform-specific APIs and are not covered here.
+         */
+    @Throws(LascoException::class) fun `ffiAddExistingLibraryFixedPath`(`nickname`: kotlin.String, `username`: kotlin.String, `password`: kotlin.String, `newUsername`: kotlin.String?, `newPassword`: kotlin.String?, `remoteName`: kotlin.String, `path`: kotlin.String, `appDir`: kotlin.String? = null): FfiLibrary {
+            return FfiConverterTypeFfiLibrary.lift(
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_func_ffi_add_existing_library_fixed_path(
+        FfiConverterString.lower(`nickname`),FfiConverterString.lower(`username`),FfiConverterString.lower(`password`),FfiConverterOptionalString.lower(`newUsername`),FfiConverterOptionalString.lower(`newPassword`),FfiConverterString.lower(`remoteName`),FfiConverterString.lower(`path`),FfiConverterOptionalString.lower(`appDir`),_status)
+}
+    )
+    }
+    
 
         /**
          * Add a library already stored in Lasco Cloud.
