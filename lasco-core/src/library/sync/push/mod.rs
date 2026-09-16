@@ -409,6 +409,23 @@ impl Library {
                 .unwrap_or(u64::MAX),
             );
         }
+        if let Some(cloud) = cloud {
+            let usage = cloud
+                .runtime
+                .check_storage_usage(&cloud.remote_id, media_bytes)
+                .await
+                .map_err(|error| SyncError::CloudQuotaExceeded(error.to_string()))?;
+            if !usage.allowed {
+                return Err(SyncError::CloudQuotaExceeded(format!(
+                    "{} bytes requested with {} of {} bytes already indicated",
+                    usage.proposed_media_bytes,
+                    usage.approximate_used_bytes,
+                    usage.storage_quota_bytes
+                ))
+                .into());
+            }
+        }
+
         // Master-key files are immutable credentials. Do not replace a pre-existing remote key.
         for entry in std::fs::read_dir(access.local_state_library_dir.path())? {
             let entry = entry?;

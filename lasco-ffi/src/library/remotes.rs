@@ -324,6 +324,55 @@ impl FfiLibrary {
         self.add_remote_config(name, RemoteKind::UsbAndroid(UsbAndroidConfig { tree_uri }))
     }
 
+    /// Check whether a selected Android USB folder has already been initialized
+    /// as any Lasco remote. This performs no writes and is intended to run
+    /// before a new remote configuration is created.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for an empty or inaccessible tree URI, or if a
+    /// `remote_id_*` marker already exists in the selected folder.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
+    pub fn ensure_usb_android_folder_is_uninitialized(
+        &self,
+        tree_uri: String,
+    ) -> Result<(), LascoError> {
+        if tree_uri.trim().is_empty() {
+            return Err(LascoError::Other {
+                msg: "USB drive tree URI must not be empty".to_string(),
+            });
+        }
+
+        #[cfg(target_os = "android")]
+        {
+            let storage =
+                lasco_core::storage::StorageUsbAndroid::new(&tree_uri).map_err(|error| {
+                    LascoError::Other {
+                        msg: format!("could not access selected USB folder: {error}"),
+                    }
+                })?;
+            let remote = lasco_core::library::sync::remote_access::StorageRead::new(&storage);
+            self.rt
+                .block_on(lasco_core::library::sync::ensure_remote_identity_absent(
+                    &remote,
+                ))
+                .map_err(|error| LascoError::Other {
+                    msg: error.to_string(),
+                })
+        }
+
+        #[cfg(not(target_os = "android"))]
+        {
+            let _ = tree_uri;
+            Err(LascoError::Other {
+                msg: "Android USB folders are supported only on Android".to_string(),
+            })
+        }
+    }
+
     /// Add a wired USB drive selected through Apple's document picker.
     /// `bookmark_base64` is an opaque security-scoped bookmark.
     ///
@@ -344,6 +393,55 @@ impl FfiLibrary {
             name,
             RemoteKind::UsbApple(UsbAppleConfig { bookmark_base64 }),
         )
+    }
+
+    /// Check whether a selected Apple USB folder has already been initialized
+    /// as any Lasco remote. This performs no writes and is intended to run
+    /// before a new remote configuration is created.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for an empty or inaccessible bookmark, or if a
+    /// `remote_id_*` marker already exists in the selected folder.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
+    pub fn ensure_usb_apple_folder_is_uninitialized(
+        &self,
+        bookmark_base64: String,
+    ) -> Result<(), LascoError> {
+        if bookmark_base64.trim().is_empty() {
+            return Err(LascoError::Other {
+                msg: "USB drive bookmark must not be empty".to_string(),
+            });
+        }
+
+        #[cfg(target_vendor = "apple")]
+        {
+            let storage =
+                lasco_core::storage::StorageUsbApple::new(&bookmark_base64).map_err(|error| {
+                    LascoError::Other {
+                        msg: format!("could not access selected USB folder: {error}"),
+                    }
+                })?;
+            let remote = lasco_core::library::sync::remote_access::StorageRead::new(&storage);
+            self.rt
+                .block_on(lasco_core::library::sync::ensure_remote_identity_absent(
+                    &remote,
+                ))
+                .map_err(|error| LascoError::Other {
+                    msg: error.to_string(),
+                })
+        }
+
+        #[cfg(not(target_vendor = "apple"))]
+        {
+            let _ = bookmark_base64;
+            Err(LascoError::Other {
+                msg: "Apple USB folders are supported only on Apple platforms".to_string(),
+            })
+        }
     }
 
     /// # Errors
@@ -1164,6 +1262,16 @@ impl FfiLibrary {
 
         let mut lib_config = library_json.read()?;
 
+        #[cfg(target_vendor = "apple")]
+        if let RemoteKind::UsbApple(config) = &kind {
+            validate_usb_apple_folder(&lib_config, &config.bookmark_base64)?;
+        }
+
+        #[cfg(target_os = "android")]
+        if let RemoteKind::UsbAndroid(config) = &kind {
+            validate_usb_android_folder(&lib_config, &config.tree_uri)?;
+        }
+
         if lib_config.remotes.iter().any(|r| r.name == name) {
             return Err(LascoError::Other {
                 msg: format!("remote '{name}' already exists"),
@@ -1242,6 +1350,89 @@ impl FfiLibrary {
         )
         .map_err(|e| LascoError::Other { msg: e.to_string() })
     }
+}
+
+/// Rejects folders that would make two USB remotes address the same files.
+///
+/// The currently connected bookmark paths are compared component-by-component,
+/// so `/Drive/Lasco` conflicts with `/Drive/Lasco/Archive`, but not with
+/// `/Drive/Lasco-Archive`.
+#[cfg(target_vendor = "apple")]
+fn validate_usb_apple_folder(
+    library: &LibraryJson,
+    candidate_bookmark: &str,
+) -> Result<(), LascoError> {
+    let candidate = lasco_core::storage::StorageUsbApple::bookmark_folder_path(candidate_bookmark)
+        .map_err(|error| LascoError::Other {
+            msg: format!("could not inspect selected USB folder: {error}"),
+        })?;
+
+    for remote in &library.remotes {
+        let RemoteKind::UsbApple(existing) = &remote.kind else {
+            continue;
+        };
+        let existing_path = lasco_core::storage::StorageUsbApple::bookmark_folder_path(
+            &existing.bookmark_base64,
+        )
+        .map_err(|error| LascoError::Other {
+            msg: format!(
+                "could not inspect existing USB remote '{}'; reconnect its drive before adding another USB remote: {error}",
+                remote.name
+            ),
+        })?;
+
+        if candidate == existing_path
+            || candidate.starts_with(&existing_path)
+            || existing_path.starts_with(&candidate)
+        {
+            return Err(LascoError::Other {
+                msg: format!(
+                    "the selected USB folder overlaps existing remote '{}'; choose a separate, non-nested folder",
+                    remote.name
+                ),
+            });
+        }
+    }
+
+    Ok(())
+}
+
+/// Rejects Android SAF trees that would make two USB remotes address the same files.
+///
+/// The tree document IDs are compared after parsing their provider, volume, and
+/// path components. A nested folder conflicts, while a sibling does not.
+#[cfg(target_os = "android")]
+fn validate_usb_android_folder(
+    library: &LibraryJson,
+    candidate_tree_uri: &str,
+) -> Result<(), LascoError> {
+    let candidate = lasco_core::storage::StorageUsbAndroid::tree_identity(candidate_tree_uri)
+        .map_err(|error| LascoError::Other {
+            msg: format!("could not inspect selected USB folder: {error}"),
+        })?;
+
+    for remote in &library.remotes {
+        let RemoteKind::UsbAndroid(existing) = &remote.kind else {
+            continue;
+        };
+        let existing_tree = lasco_core::storage::StorageUsbAndroid::tree_identity(&existing.tree_uri)
+            .map_err(|error| LascoError::Other {
+                msg: format!(
+                    "could not inspect existing USB remote '{}'; remove it before adding another USB remote: {error}",
+                    remote.name
+                ),
+            })?;
+        if candidate.overlaps(&existing_tree) {
+            return Err(LascoError::Other {
+                msg: format!(
+                    "the selected USB folder overlaps existing remote '{}'; choose a separate, non-nested folder",
+                    remote.name
+                ),
+            });
+        }
+    }
+
+    Ok(())
 }
 
 pub(super) fn remote_config_to_ffi(r: &RemoteConfig) -> FfiRemote {

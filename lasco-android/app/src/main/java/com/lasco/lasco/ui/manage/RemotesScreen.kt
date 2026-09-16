@@ -63,6 +63,7 @@ fun RemotesScreen(
 
     var showRemotePicker by remember { mutableStateOf(false) }
     var showAddS3 by remember { mutableStateOf(false) }
+    var showAddUsb by remember { mutableStateOf(false) }
     var showAddSmb by remember { mutableStateOf(false) }
     var showAddLocalFS by remember { mutableStateOf(false) }
     var showCloudLogin by remember { mutableStateOf(false) }
@@ -208,6 +209,7 @@ fun RemotesScreen(
             showCloud = !cloudConnected,
             onCloud = { showRemotePicker = false; showCloudLogin = true },
             onS3 = { showRemotePicker = false; showAddS3 = true },
+            onUsb = { showRemotePicker = false; showAddUsb = true },
             onSmb = { showRemotePicker = false; showAddSmb = true },
             onLocalFS = { showRemotePicker = false; showAddLocalFS = true },
             onDismiss = { showRemotePicker = false },
@@ -222,6 +224,12 @@ fun RemotesScreen(
     if (showAddS3) {
         AddS3RemoteDialog(
             onDismiss = { showAddS3 = false },
+            onResult = { name, error -> feedback = error ?: "$name: initialized" },
+        )
+    }
+    if (showAddUsb) {
+        AddUsbRemoteDialog(
+            onDismiss = { showAddUsb = false },
             onResult = { name, error -> feedback = error ?: "$name: initialized" },
         )
     }

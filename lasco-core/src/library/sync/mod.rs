@@ -181,6 +181,7 @@ impl Library {
         remote_uuid: RemoteUuid,
     ) -> Result<(), LibraryError> {
         let remote = StorageReadWrite::new(storage);
+        ensure_remote_identity_is_available(&remote.as_read(), remote_uuid).await?;
         let marker_key = format!("remote_id_{remote_uuid}");
         remote
             .put_atomic(&marker_key, b"", AtomicWriteMode::Replace)
@@ -312,6 +313,50 @@ pub(crate) async fn discover_remote_uuid(
         .ok_or_else(|| {
             SyncError::RemoteIdMismatch("remote is missing remote_id_{uuid} file".to_string())
         })
+}
+
+/// Fails if the remote contains any identity marker.
+///
+/// This is used before a new remote is configured so an already-initialized
+/// folder is rejected before a new marker can be written into it.
+pub async fn ensure_remote_identity_absent(storage: &StorageRead<'_>) -> Result<(), SyncError> {
+    ensure_remote_identity(storage, None).await
+}
+
+/// Allows an existing marker only when it belongs to the remote being
+/// initialized. This makes initialization idempotent for its own remote while
+/// preventing it from writing a second marker into another remote's folder.
+pub async fn ensure_remote_identity_is_available(
+    storage: &StorageRead<'_>,
+    expected: RemoteUuid,
+) -> Result<(), SyncError> {
+    ensure_remote_identity(storage, Some(expected)).await
+}
+
+async fn ensure_remote_identity(
+    storage: &StorageRead<'_>,
+    expected: Option<RemoteUuid>,
+) -> Result<(), SyncError> {
+    let remote_files = storage
+        .list("")
+        .await
+        .map_err(SyncError::RemoteUnreachable)?;
+    let expected_marker = expected.map(|remote_uuid| format!("remote_id_{remote_uuid}"));
+
+    if let Some(marker) = remote_files.iter().find_map(|key| {
+        let name = key.rsplit('/').next().unwrap_or(key);
+        name.strip_prefix("remote_id_").and_then(|_| {
+            if expected_marker.as_deref() == Some(name) {
+                None
+            } else {
+                Some(name.to_string())
+            }
+        })
+    }) {
+        return Err(SyncError::RemoteAlreadyInitialized(marker));
+    }
+
+    Ok(())
 }
 
 /// Verifies that the remote's `library/` directory carries the format sentinel this build

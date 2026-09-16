@@ -28,6 +28,8 @@ pub enum SyncError {
     LibraryIdMismatch(String),
     #[error("remote id does not match configured remote: {0}")]
     RemoteIdMismatch(String),
+    #[error("remote already has an identity marker: {0}")]
+    RemoteAlreadyInitialized(String),
     #[error("remote library format is not supported: found {found}, expected {expected}")]
     UnsupportedRemoteFormat { found: String, expected: String },
     #[error("media missing from local cache: {0:?}")]
