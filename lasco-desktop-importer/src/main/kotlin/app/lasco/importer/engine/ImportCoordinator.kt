@@ -14,6 +14,7 @@ import app.lasco.importer.model.RemoteImportSummary
 import app.lasco.importer.model.ResourceRole
 import app.lasco.importer.source.ImportSourceReader
 import app.lasco.importer.source.ApplePhotosCollectionSourceReader
+import app.lasco.importer.thumbnail.generateDesktopThumbnail
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -54,6 +55,7 @@ internal class RemotePushFailure(
 class ImportCoordinator(
     private val gateway: LascoGateway,
     private val stagingRoot: Path,
+    private val thumbnailGenerator: (Path) -> ByteArray? = ::generateDesktopThumbnail,
     private val finalize: suspend () -> String?,
 ) {
     private data class ImportSession(
@@ -172,6 +174,17 @@ class ImportCoordinator(
                     asset.liveVideoSourceId?.let { require(videoId != null) { "missing staged Live Photo video: $it" } }
                 }
                 val imported = gateway.importMedia(staged.path, asset.metadata, aaeId, videoId)
+                if (asset.resourceRole == ResourceRole.PRIMARY) {
+                    // A preview is optional: the original has already been durably imported, and
+                    // an unsupported/corrupt source must not discard that successful import.
+                    try {
+                        thumbnailGenerator(staged.path)?.let { thumbnail ->
+                            gateway.setMediaThumbnail(imported.mediaId, thumbnail)
+                        }
+                    } catch (_: Exception) {
+                        // The next import can try again; full media remains available regardless.
+                    }
+                }
                 if (asset.applePhotosRevision?.cloudAssetId != null && asset.applePhotosResourceType != null) {
                     gateway.recordApplePhotosResourceOrigin(
                         imported.mediaId,

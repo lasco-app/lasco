@@ -65,6 +65,24 @@ class ImportCoordinatorTest {
     }
 
     @Test
+    fun `primary resources get thumbnails while companion resources do not`() = runBlocking {
+        val gateway = FakeGateway()
+        val sidecar = asset("sidecar").copy(resourceRole = ResourceRole.AAE_SIDECAR)
+        val primary = asset("primary")
+        val coordinator = ImportCoordinator(
+            gateway,
+            Files.createTempDirectory("lasco-stage"),
+            thumbnailGenerator = { "thumbnail".encodeToByteArray() },
+            finalize = { null },
+        )
+
+        coordinator.discover(Reader(listOf(sidecar, primary)), chunkSize = 2)
+        coordinator.startOrResume(emptyList())
+
+        assertEquals(mapOf("media-primary" to "thumbnail".encodeToByteArray().toList()), gateway.thumbnails.mapValues { it.value.toList() })
+    }
+
+    @Test
     fun `a failed final remote push retains the temporary library`() = runBlocking {
         val gateway = FakeGateway().apply { failPushForRemoteId = "remote" }
         var finalizations = 0
@@ -153,6 +171,33 @@ class ImportCoordinatorTest {
         assertEquals(1, remote.toUpload.livePhotoVideos)
         assertEquals(1, remote.toUpload.aaeFiles)
         assertEquals(50, remote.toUpload.bytes)
+    }
+
+    @Test
+    fun `PhotoKit cloud identifier reuses a matching import`() = runBlocking {
+        val gateway = FakeGateway()
+        val revision = ApplePhotosAssetRevision(
+            cloudAssetId = "cloud-id",
+            modificationDate = null,
+            resources = listOf(ApplePhotosResourceDescriptor(ApplePhotosResourceType.PHOTO, "still.heic")),
+        )
+        gateway.revisionMedia[revision] = mapOf(
+            ApplePhotosResourceDescriptor(ApplePhotosResourceType.PHOTO, "still.heic") to "still",
+        )
+        gateway.confirmedMedia += "still"
+        val asset = asset("still").copy(
+            source = ImportSource.APPLE_PHOTOS,
+            displayName = "still.heic",
+            applePhotosRevision = revision,
+            applePhotosResourceType = ApplePhotosResourceType.PHOTO,
+        )
+
+        val plan = ImportCoordinator(gateway, Files.createTempDirectory("lasco-stage")) { null }
+            .discover(Reader(listOf(asset)))
+
+        assertEquals(1, plan.alreadyCompleted)
+        assertEquals(1, plan.remotes.single().alreadyThere.photos)
+        assertEquals(0, plan.remotes.single().toUpload.photos)
     }
 
     @Test
@@ -267,6 +312,7 @@ class ImportCoordinatorTest {
         val createdAlbums = mutableListOf<String>()
         val createdAlbumParents = mutableListOf<Pair<String, String?>>()
         val memberships = mutableListOf<Pair<String, String>>()
+        val thumbnails = mutableMapOf<String, ByteArray>()
         val collectionLinks = mutableMapOf<String, String>()
         val mediaAlbums = mutableMapOf<String, Set<String>>()
         val revisionMedia = mutableMapOf<ApplePhotosAssetRevision, Map<ApplePhotosResourceDescriptor, String>>()
@@ -281,6 +327,7 @@ class ImportCoordinatorTest {
             imported += path.fileName.toString().substringBeforeLast('.')
             return ImportedMedia("media-${imported.last()}", false)
         }
+        override fun setMediaThumbnail(mediaId: String, data: ByteArray) { thumbnails[mediaId] = data }
         override fun applePhotosAssetRevisionMediaIds(revision: ApplePhotosAssetRevision): Map<ApplePhotosResourceDescriptor, String>? = revisionMedia[revision]
         override fun recordApplePhotosResourceOrigin(mediaId: String, revision: ApplePhotosAssetRevision, resourceType: ApplePhotosResourceType, filename: String) = Unit
         override fun applePhotosCollectionLinks(collections: List<ApplePhotosCollectionDescriptor>) = collections.map { collectionLinks[it.cloudCollectionId] }

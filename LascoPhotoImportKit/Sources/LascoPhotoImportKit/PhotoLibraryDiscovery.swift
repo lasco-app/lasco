@@ -130,11 +130,9 @@ public actor PhotoLibraryDiscovery {
             let mappings = PHPhotoLibrary.shared().cloudIdentifierMappings(forLocalIdentifiers: batch)
             for localIdentifier in batch {
                 guard case .success(let identifier)? = mappings[localIdentifier] else { continue }
-                if #available(macOS 15.2, iOS 18.2, *) {
-                    result[localIdentifier] = identifier.archivalStringValue
-                } else {
-                    result[localIdentifier] = identifier.stringValue
-                }
+                // Persist the established deprecated serialization until a deliberate migration
+                // can prove an archival-ID transition preserves existing provenance matching.
+                result[localIdentifier] = identifier.stringValue
             }
         }
         return result

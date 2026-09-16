@@ -21,6 +21,8 @@ interface LascoGateway : AutoCloseable {
     fun createAlbum(name: String, parentAlbumId: String? = null): String
     fun addMediaToAlbum(albumId: String, mediaId: String)
     fun importMedia(path: Path, metadata: SourceMetadata, aaeMediaId: String?, liveVideoMediaId: String?): ImportedMedia
+    /** Persists the encrypted preview beside an already-imported primary resource. */
+    fun setMediaThumbnail(mediaId: String, data: ByteArray)
     fun applePhotosAssetRevisionMediaIds(revision: ApplePhotosAssetRevision): Map<ApplePhotosResourceDescriptor, String>?
     fun recordApplePhotosResourceOrigin(mediaId: String, revision: ApplePhotosAssetRevision, resourceType: ApplePhotosResourceType, filename: String)
     fun applePhotosCollectionLinks(collections: List<ApplePhotosCollectionDescriptor>): List<String?>

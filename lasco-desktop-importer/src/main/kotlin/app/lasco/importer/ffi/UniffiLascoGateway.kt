@@ -48,6 +48,10 @@ class UniffiLascoGateway(
         return ImportedMedia(result.mediaId.value, result.alreadyExisted)
     }
 
+    override fun setMediaThumbnail(mediaId: String, data: ByteArray) {
+        library.setMediaThumbnail(FfiMediaUuid(mediaId), data)
+    }
+
     override fun applePhotosAssetRevisionMediaIds(revision: ApplePhotosAssetRevision): Map<ApplePhotosResourceDescriptor, String>? {
         val cloudAssetId = revision.cloudAssetId ?: return null
         val resources = revision.resources.map { FfiApplePhotosResourceDescriptor(it.type.toFfi(), it.filename) }

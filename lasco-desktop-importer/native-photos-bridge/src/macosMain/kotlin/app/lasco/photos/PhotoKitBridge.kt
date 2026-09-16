@@ -93,18 +93,10 @@ private fun resourceByteCount(resource: PHAssetResource): Long =
     (resource.performSelector(valueForKeySelector, withObject = "fileSize") as? NSNumber)?.longLongValue ?: 0
 
 /**
- * This is the native compatibility seam for PhotoKit's archival cloud form. Older macOS versions
- * retain the legacy property only as a runtime fallback; its serialized form is compatible with
- * `archivalStringValue`.
+ * Keep using the serialization already stored in Apple Photos provenance. A future migration to
+ * `archivalStringValue` must explicitly preserve matching with existing libraries.
  */
-private fun archivalCloudId(mapping: PHCloudIdentifierMapping?): String? = mapping?.cloudIdentifier?.let { identifier ->
-    val archivalSelector = NSSelectorFromString("archivalStringValue")
-    if (identifier.respondsToSelector(archivalSelector)) {
-        identifier.performSelector(archivalSelector) as? String
-    } else {
-        identifier.stringValue
-    }
-}
+private fun serializedCloudId(mapping: PHCloudIdentifierMapping?): String? = mapping?.cloudIdentifier?.stringValue
 
 /** PhotoKit accepts an array, but keeping requests bounded avoids a giant bridge call on large libraries. */
 private fun cloudMappingsFor(localIdentifiers: List<String>): Map<String, Any?> = buildMap {
@@ -166,7 +158,7 @@ fun discoverJson(): CPointer<ByteVar>? = memScoped {
     val cloudAssetIds = mutableMapOf<String, String>()
     photos.forEach { photo ->
         assetSessionHandles[photo.localIdentifier] = sessionHandle()
-        archivalCloudId(cloudMappings[photo.localIdentifier] as? PHCloudIdentifierMapping)
+        serializedCloudId(cloudMappings[photo.localIdentifier] as? PHCloudIdentifierMapping)
             ?.let { cloudAssetIds[photo.localIdentifier] = it }
     }
     photos.forEach { photo ->
@@ -238,10 +230,10 @@ fun discoverJson(): CPointer<ByteVar>? = memScoped {
     collectCollections(PHCollectionList.fetchTopLevelUserCollectionsWithOptions(null), null)
     val collectionMappings = cloudMappingsFor(collectionLocals.map { it.first.localIdentifier })
     val collections = collectionLocals.mapNotNull { (collection, parentLocal) ->
-        val cloudId = archivalCloudId(collectionMappings[collection.localIdentifier] as? PHCloudIdentifierMapping)
+        val cloudId = serializedCloudId(collectionMappings[collection.localIdentifier] as? PHCloudIdentifierMapping)
             ?: return@mapNotNull null
         val parentCloudId = parentLocal?.let { local ->
-            archivalCloudId(collectionMappings[local] as? PHCloudIdentifierMapping)
+            serializedCloudId(collectionMappings[local] as? PHCloudIdentifierMapping)
         }
         when (collection) {
             is PHCollectionList -> CollectionRecord(cloudId, "FOLDER", collection.localizedTitle ?: "", parentCloudId, emptyList(), emptyList())
