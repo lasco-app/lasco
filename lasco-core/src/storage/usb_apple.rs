@@ -213,6 +213,10 @@ impl Storage for StorageUsbApple {
         self.coordinate(false, |storage| storage.list_sync(prefix))
     }
 
+    async fn list_recursive(&self, prefix: &str) -> Result<Vec<String>> {
+        self.coordinate(false, |storage| storage.list_recursive_sync(prefix))
+    }
+
     async fn exists(&self, key: &str) -> Result<bool> {
         self.coordinate(false, |storage| storage.exists_sync(key))
     }

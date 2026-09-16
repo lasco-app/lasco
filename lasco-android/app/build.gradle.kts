@@ -49,10 +49,10 @@ android {
             )
         }
         release {
-            // R8 is off until the JNA and uniffi generated bindings have keep rules,
-            // since both rely on reflection that minification would otherwise strip.
+            // Applies R8 code/resource shrinking and optimization. The JNA/UniFFI
+            // reflection boundary is preserved by src/main/keepRules/rules.keep.
             optimization {
-                enable = false
+                enable = true
             }
             buildConfigField("String", "LASCO_CLOUD_URL", "\"https://cloud.getlasco.app\"")
         }

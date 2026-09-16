@@ -18,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import com.lasco.lasco.ui.components.maestroTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -80,7 +81,11 @@ fun SettingsDialog(onDismiss: () -> Unit) {
             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
                 Text(text = "Expert mode", style = LascoTheme.type.body(), color = colors.inkSub)
                 Spacer(modifier = Modifier.weight(1f))
-                LascoToggle(checked = expertMode, onCheckedChange = { prefs.setExpertMode(it) })
+                LascoToggle(
+                    checked = expertMode,
+                    onCheckedChange = { prefs.setExpertMode(it) },
+                    modifier = Modifier.maestroTag("settings.expert-mode"),
+                )
             }
         }
     }

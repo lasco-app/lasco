@@ -21,18 +21,21 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -46,6 +49,7 @@ import kotlinx.coroutines.launch
 import uniffi.lasco_ffi.LascoException
 import uniffi.lasco_ffi.FfiRemoteUuid
 import uniffi.lasco_ffi.ffiTestS3Remote
+import uniffi.lasco_ffi.ffiTestSmbRemote
 
 @Composable
 private fun FullSheet(onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
@@ -77,6 +81,7 @@ fun RemoteTypePickerDialog(
     onCloud: () -> Unit,
     onS3: () -> Unit,
     onUsb: () -> Unit,
+    onSmb: () -> Unit,
     onLocalFS: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -97,6 +102,8 @@ fun RemoteTypePickerDialog(
             LascoPrimaryButton(text = "Add S3-compatible remote", onClick = onS3)
             Spacer(modifier = Modifier.height(12.dp))
             LascoPrimaryButton(text = "Add USB drive", onClick = onUsb)
+            Spacer(modifier = Modifier.height(12.dp))
+            LascoPrimaryButton(text = "Add SMB remote", onClick = onSmb)
             if (expertMode) {
                 Spacer(modifier = Modifier.height(12.dp))
                 LascoPrimaryButton(text = "Add local filesystem remote", onClick = onLocalFS)
@@ -201,6 +208,80 @@ fun rememberUsbTreePicker(
     return { picker.launch(null) }
 }
 
+/** Adds an SMB 2/3 share after a real write/read/delete connection probe. */
+@Composable
+fun AddSmbRemoteDialog(onDismiss: () -> Unit, onResult: (name: String, error: String?) -> Unit) {
+    val colors = LascoTheme.colors
+    val context = LocalContext.current
+    val repo = remember { LibraryRepository.from(context) }
+    val scope = rememberCoroutineScope()
+    var name by rememberSaveable { mutableStateOf("") }
+    var server by rememberSaveable { mutableStateOf("") }
+    var portText by rememberSaveable { mutableStateOf("445") }
+    var share by rememberSaveable { mutableStateOf("") }
+    var pathPrefix by rememberSaveable { mutableStateOf("") }
+    var username by rememberSaveable { mutableStateOf("") }
+    var password by rememberSaveable { mutableStateOf("") }
+    var domain by rememberSaveable { mutableStateOf("") }
+    var acknowledged by rememberSaveable { mutableStateOf(false) }
+    var testing by rememberSaveable { mutableStateOf(false) }
+    var submitting by rememberSaveable { mutableStateOf(false) }
+    var message by rememberSaveable { mutableStateOf<Pair<Boolean, String>?>(null) }
+    val port = portText.toUShortOrNull()
+    val canTest = server.isNotBlank() && port != null && share.isNotBlank() && username.isNotBlank() && password.isNotBlank() && !testing
+    val canSubmit = name.isNotBlank() && canTest && acknowledged && !submitting
+    FullSheet(onDismiss = onDismiss) {
+        Column(
+            modifier = Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState()).padding(horizontal = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text("Add an SMB remote", style = LascoTheme.type.title(26), color = colors.ink)
+            Text("Connect to an SMB 2 or SMB 3 shared folder on your NAS, server, or local network. For \\nas.local\\photos, enter photos as the shared folder name, then optionally choose a folder within it.", style = LascoTheme.type.body(16), color = colors.inkSub)
+            LascoField(label = "Remote name", value = name, onValueChange = { name = it }, placeholder = "home-nas", testTag = "smb-remote.name")
+            LascoField(label = "Server address", value = server, onValueChange = { server = it }, placeholder = "nas.local or 192.168.1.20", testTag = "smb-remote.server")
+            LascoField(label = "Port", value = portText, onValueChange = { portText = it }, placeholder = "445", testTag = "smb-remote.port")
+            LascoField(label = "Shared folder name", value = share, onValueChange = { share = it }, placeholder = "photos", testTag = "smb-remote.share")
+            LascoField(label = "Folders within shared folder (optional)", value = pathPrefix, onValueChange = { pathPrefix = it }, placeholder = "lasco", testTag = "smb-remote.path")
+            LascoField(label = "Username", value = username, onValueChange = { username = it }, testTag = "smb-remote.username")
+            LascoField(label = "Domain or workgroup (optional)", value = domain, onValueChange = { domain = it }, placeholder = "WORKGROUP", testTag = "smb-remote.domain")
+            LascoField(label = "Password", value = password, onValueChange = { password = it }, secure = true, testTag = "smb-remote.password")
+            Text("The password is stored locally and encrypted with the library password.", style = LascoTheme.type.body(13), color = colors.inkMuted)
+            LascoCheckbox(checked = acknowledged, onCheckedChange = { acknowledged = it }, label = "I understand this app will upload my photos to the SMB share configured above.")
+            LascoPrimaryButton(text = if (testing) "Testing…" else "Test connection", enabled = canTest, onClick = {
+                val validPort = port ?: return@LascoPrimaryButton
+                testing = true; message = null
+                scope.launch {
+                    message = try {
+                        ffiTestSmbRemote(server, validPort, share, pathPrefix, username, password, domain.ifBlank { null })
+                        true to "Connection succeeded."
+                    } catch (e: Exception) {
+                        false to (e.message?.ifBlank { "Connection failed." } ?: "Connection failed.")
+                    }
+                    testing = false
+                }
+            })
+            message?.let { (ok, text) -> Text(text, style = LascoTheme.type.body(13), color = if (ok) colors.ok else colors.error) }
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+        Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 20.dp)) {
+            LascoPrimaryButton(text = if (submitting) "Adding…" else "Add Remote", enabled = canSubmit, onClick = {
+                val validPort = port ?: return@LascoPrimaryButton
+                submitting = true
+                scope.launch {
+                    var added: FfiRemoteUuid? = null
+                    try {
+                        val id = repo.addRemoteSmb(name, server, validPort, share, pathPrefix, username, password, domain.ifBlank { null })
+                        added = id; repo.initializeRemote(id, null); onDismiss(); onResult(name, null)
+                    } catch (e: Exception) {
+                        added?.let { runCatching { repo.removeRemote(it) } }
+                        message = false to (e.message?.ifBlank { "Failed to add remote" } ?: "Failed to add remote")
+                    } finally { submitting = false }
+                }
+            })
+        }
+    }
+}
+
 @Composable
 fun LascoCloudLoginDialog(onDismiss: () -> Unit, onResult: (String?) -> Unit) {
     val colors = LascoTheme.colors
@@ -211,8 +292,6 @@ fun LascoCloudLoginDialog(onDismiss: () -> Unit, onResult: (String?) -> Unit) {
     var password by remember { mutableStateOf("") }
     var submitting by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    val completedSteps = remember { mutableStateListOf<String>() }
-    var currentStep by remember { mutableStateOf<String?>(null) }
     FullSheet(onDismiss = onDismiss) {
         Column(
             modifier = Modifier.fillMaxWidth().weight(1f, fill = false).padding(horizontal = 32.dp),
@@ -222,45 +301,31 @@ fun LascoCloudLoginDialog(onDismiss: () -> Unit, onResult: (String?) -> Unit) {
             Text("Authenticate this library with your Lasco Cloud account.", style = LascoTheme.type.body(16), color = colors.inkSub)
             LascoField(label = "Email", value = email, onValueChange = { email = it }, placeholder = "you@example.com")
             LascoField(label = "Password", value = password, onValueChange = { password = it }, secure = true)
-            if (completedSteps.isNotEmpty() || currentStep != null) {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    completedSteps.forEach { step ->
-                        Text("✓  $step", style = LascoTheme.type.body(13), color = colors.ok)
-                    }
-                    currentStep?.let { step ->
-                        Text(step, style = LascoTheme.type.body(13), color = colors.inkSub)
-                    }
+            error?.let { Text(it, style = LascoTheme.type.body(13), color = colors.error) }
+            if (submitting) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator(
+                        color = colors.ink,
+                        modifier = Modifier.semantics { contentDescription = "Authenticating" },
+                    )
                 }
             }
-            error?.let { Text(it, style = LascoTheme.type.body(13), color = colors.error) }
         }
         Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 20.dp)) {
             LascoPrimaryButton(
-                text = if (submitting) "Authenticating…" else "Authenticate",
+                text = "Authenticate",
                 enabled = email.isNotBlank() && password.isNotBlank() && !submitting,
                 onClick = {
-                    submitting = true; error = null; completedSteps.clear(); currentStep = "Authenticating…"
+                    submitting = true; error = null
                     scope.launch {
                         try {
-                            repo.authenticateLascoCloud(email, password) { step ->
-                                when (step) {
-                                    LibraryRepository.LascoCloudConnectionStep.Authenticated -> {
-                                        completedSteps += "Authentication successful"
-                                        currentStep = "Checking Cloud storage…"
-                                    }
-                                    LibraryRepository.LascoCloudConnectionStep.CredentialsReceived -> {
-                                        completedSteps += "Cloud storage verified"
-                                        currentStep = "Configuring storage remotes…"
-                                    }
-                                    LibraryRepository.LascoCloudConnectionStep.RemotesConfigured -> {
-                                        completedSteps += "Storage remotes configured"
-                                    }
-                                }
-                            }
+                            repo.authenticateLascoCloud(email, password)
                             onDismiss(); onResult(null)
                         } catch (e: Exception) {
                             error = e.message?.ifBlank { null } ?: "Could not authenticate with Lasco Cloud"
-                            currentStep = null
                         } finally { submitting = false }
                     }
                 },
@@ -424,6 +489,7 @@ fun AddLocalFSRemoteDialog(
                 onValueChange = { name = it },
                 placeholder = "local-test",
                 autoFocus = true,
+                testTag = "local-fs-remote.name",
             )
             addError?.let { message ->
                 Text(text = message, style = LascoTheme.type.body(13), color = colors.error)

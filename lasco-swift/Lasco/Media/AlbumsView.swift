@@ -124,6 +124,7 @@ enum AlbumItem: Hashable, Identifiable {
 
 enum AlbumsDestination: Hashable {
     case album(FfiAlbum)
+    case trash
     case mediaDetail(MediaDetailState)
 }
 
@@ -166,6 +167,10 @@ struct AlbumsView: View {
                     case .album(let album):
                         AlbumContentView(album: album, path: $path)
                             .navigationBarBackButtonHidden(true)
+                            .navigationTitle("")
+                            .hideSystemNavigationBar()
+                    case .trash:
+                        TrashView(repository: repository)
                             .navigationTitle("")
                             .hideSystemNavigationBar()
                     case .mediaDetail(let detail):
@@ -557,6 +562,15 @@ struct AlbumContentView: View {
             }
         }
 
+        if isRoot {
+            HStack(alignment: .top) {
+                TrashAlbumCard { path.append(.trash) }
+                    .containerRelativeFrame(.horizontal, count: gridColumns.count, spacing: 12)
+                Spacer(minLength: 0)
+            }
+            .padding(.top, 12)
+        }
+
         Spacer(minLength: 40)
     }
 
@@ -731,6 +745,7 @@ struct AlbumContentView: View {
         let canAddToAlbum = !mediaIds.isEmpty
         let canMove = groupIds.isEmpty && (!mediaIds.isEmpty || !selectedAlbumIds.isEmpty)
         let canRemove = !mediaIds.isEmpty || !groupIds.isEmpty || !selectedAlbumIds.isEmpty
+        let canDeleteMedia = !mediaIds.isEmpty && album != nil
 
         if canRename || canGroup || canAddToGroup || canAddToAlbum || canMove || canRemove {
             Menu {
@@ -768,6 +783,11 @@ struct AlbumContentView: View {
                 if canRemove {
                     Button(selectedAlbumIds.isEmpty ? "Remove from album" : "Delete", role: .destructive) {
                         handleRemove()
+                    }
+                }
+                if canDeleteMedia {
+                    Button("Move to Trash", role: .destructive) {
+                        handleDeleteMedia()
                     }
                 }
             } label: {
@@ -865,6 +885,14 @@ struct AlbumContentView: View {
         }
     }
 
+    private func handleDeleteMedia() {
+        guard case .items(let mediaIds, _) = selection else { return }
+        for id in mediaIds {
+            albumModel.deleteMedia(id: id)
+        }
+        selection = .none
+    }
+
     private func handleMoveTo(targetAlbumId: FfiAlbumUuid) {
         switch selection {
         case .none:
@@ -938,7 +966,7 @@ struct AlbumContentView: View {
                     selection = .albums([child.albumId])
                     showingMovePicker = true
                 }
-                Button("Delete", role: .destructive) {
+                Button("Move to Trash", role: .destructive) {
                     selection = .albums([child.albumId])
                     showingDeleteConfirm = true
                 }
@@ -1035,6 +1063,9 @@ struct AlbumContentView: View {
                 }
                 Button("Remove from album", role: .destructive) {
                     albumModel.removeMediaFromAlbum(albumID: albumId, mediaID: item.mediaId)
+                }
+                Button("Delete", role: .destructive) {
+                    albumModel.deleteMedia(id: item.mediaId)
                 }
             }
         }
@@ -1168,6 +1199,34 @@ struct AlbumCell: View {
                 thumbnail = Image(data: data)
             }
         }
+    }
+}
+
+private struct TrashAlbumCard: View {
+    let onOpen: () -> Void
+    @Environment(LibraryRepository.self) private var repository
+    @Environment(\.lascoTheme) private var theme
+
+    var body: some View {
+        Button(action: onOpen) {
+            VStack(alignment: .leading, spacing: 8) {
+                theme.bgDeep
+                    .aspectRatio(1, contentMode: .fit)
+                    .overlay {
+                        TrashThumbnailCollage(repository: repository)
+                    }
+
+                Text("Trash")
+                    .font(LascoFont.body())
+                    .foregroundStyle(theme.ink)
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 8)
+            }
+            .background(theme.surfaceAlt)
+            .overlay(Rectangle().stroke(theme.pink, lineWidth: 2))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Open Trash")
     }
 }
 

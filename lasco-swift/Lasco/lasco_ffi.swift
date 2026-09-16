@@ -11,7 +11,7 @@ import Foundation
 import lasco_ffiFFI
 #endif
 
-nonisolated fileprivate extension RustBuffer {
+fileprivate extension RustBuffer {
     // Allocate a new buffer, copying the contents of a `UInt8` array.
     init(bytes: [UInt8]) {
         let rbuf = bytes.withUnsafeBufferPointer { ptr in
@@ -35,7 +35,7 @@ nonisolated fileprivate extension RustBuffer {
     }
 }
 
-nonisolated fileprivate extension ForeignBytes {
+fileprivate extension ForeignBytes {
     init(bufferPointer: UnsafeBufferPointer<UInt8>) {
         self.init(len: Int32(bufferPointer.count), data: bufferPointer.baseAddress)
     }
@@ -48,7 +48,7 @@ nonisolated fileprivate extension ForeignBytes {
 // Helper classes/extensions that don't change.
 // Someday, this will be in a library of its own.
 
-nonisolated fileprivate extension Data {
+fileprivate extension Data {
     init(rustBuffer: RustBuffer) {
         self.init(
             bytesNoCopy: rustBuffer.data!,
@@ -72,14 +72,14 @@ nonisolated fileprivate extension Data {
 //
 // Instead, the read() method and these helper functions input a tuple of data
 
-nonisolated fileprivate func createReader(data: Data) -> (data: Data, offset: Data.Index) {
+fileprivate func createReader(data: Data) -> (data: Data, offset: Data.Index) {
     (data: data, offset: 0)
 }
 
 // Reads an integer at the current offset, in big-endian order, and advances
 // the offset on success. Throws if reading the integer would move the
 // offset past the end of the buffer.
-nonisolated fileprivate func readInt<T: FixedWidthInteger>(_ reader: inout (data: Data, offset: Data.Index)) throws -> T {
+fileprivate func readInt<T: FixedWidthInteger>(_ reader: inout (data: Data, offset: Data.Index)) throws -> T {
     let range = reader.offset..<reader.offset + MemoryLayout<T>.size
     guard reader.data.count >= range.upperBound else {
         throw UniffiInternalError.bufferOverflow
@@ -97,7 +97,7 @@ nonisolated fileprivate func readInt<T: FixedWidthInteger>(_ reader: inout (data
 
 // Reads an arbitrary number of bytes, to be used to read
 // raw bytes, this is useful when lifting strings
-nonisolated fileprivate func readBytes(_ reader: inout (data: Data, offset: Data.Index), count: Int) throws -> Array<UInt8> {
+fileprivate func readBytes(_ reader: inout (data: Data, offset: Data.Index), count: Int) throws -> Array<UInt8> {
     let range = reader.offset..<(reader.offset+count)
     guard reader.data.count >= range.upperBound else {
         throw UniffiInternalError.bufferOverflow
@@ -111,17 +111,17 @@ nonisolated fileprivate func readBytes(_ reader: inout (data: Data, offset: Data
 }
 
 // Reads a float at the current offset.
-nonisolated fileprivate func readFloat(_ reader: inout (data: Data, offset: Data.Index)) throws -> Float {
+fileprivate func readFloat(_ reader: inout (data: Data, offset: Data.Index)) throws -> Float {
     return Float(bitPattern: try readInt(&reader))
 }
 
 // Reads a float at the current offset.
-nonisolated fileprivate func readDouble(_ reader: inout (data: Data, offset: Data.Index)) throws -> Double {
+fileprivate func readDouble(_ reader: inout (data: Data, offset: Data.Index)) throws -> Double {
     return Double(bitPattern: try readInt(&reader))
 }
 
 // Indicates if the offset has reached the end of the buffer.
-nonisolated fileprivate func hasRemaining(_ reader: (data: Data, offset: Data.Index)) -> Bool {
+fileprivate func hasRemaining(_ reader: (data: Data, offset: Data.Index)) -> Bool {
     return reader.offset < reader.data.count
 }
 
@@ -129,11 +129,11 @@ nonisolated fileprivate func hasRemaining(_ reader: (data: Data, offset: Data.In
 // struct, but we use standalone functions instead in order to make external
 // types work.  See the above discussion on Readers for details.
 
-nonisolated fileprivate func createWriter() -> [UInt8] {
+fileprivate func createWriter() -> [UInt8] {
     return []
 }
 
-nonisolated fileprivate func writeBytes<S>(_ writer: inout [UInt8], _ byteArr: S) where S: Sequence, S.Element == UInt8 {
+fileprivate func writeBytes<S>(_ writer: inout [UInt8], _ byteArr: S) where S: Sequence, S.Element == UInt8 {
     writer.append(contentsOf: byteArr)
 }
 
@@ -141,22 +141,22 @@ nonisolated fileprivate func writeBytes<S>(_ writer: inout [UInt8], _ byteArr: S
 //
 // Warning: make sure what you are trying to write
 // is in the correct type!
-nonisolated fileprivate func writeInt<T: FixedWidthInteger>(_ writer: inout [UInt8], _ value: T) {
+fileprivate func writeInt<T: FixedWidthInteger>(_ writer: inout [UInt8], _ value: T) {
     var value = value.bigEndian
     withUnsafeBytes(of: &value) { writer.append(contentsOf: $0) }
 }
 
-nonisolated fileprivate func writeFloat(_ writer: inout [UInt8], _ value: Float) {
+fileprivate func writeFloat(_ writer: inout [UInt8], _ value: Float) {
     writeInt(&writer, value.bitPattern)
 }
 
-nonisolated fileprivate func writeDouble(_ writer: inout [UInt8], _ value: Double) {
+fileprivate func writeDouble(_ writer: inout [UInt8], _ value: Double) {
     writeInt(&writer, value.bitPattern)
 }
 
 // Protocol for types that transfer other types across the FFI. This is
 // analogous to the Rust trait of the same name.
-nonisolated fileprivate protocol FfiConverter {
+fileprivate protocol FfiConverter {
     associatedtype FfiType
     associatedtype SwiftType
 
@@ -167,9 +167,9 @@ nonisolated fileprivate protocol FfiConverter {
 }
 
 // Types conforming to `Primitive` pass themselves directly over the FFI.
-nonisolated fileprivate protocol FfiConverterPrimitive: FfiConverter where FfiType == SwiftType { }
+fileprivate protocol FfiConverterPrimitive: FfiConverter where FfiType == SwiftType { }
 
-nonisolated extension FfiConverterPrimitive {
+extension FfiConverterPrimitive {
 #if swift(>=5.8)
     @_documentation(visibility: private)
 #endif
@@ -187,9 +187,9 @@ nonisolated extension FfiConverterPrimitive {
 
 // Types conforming to `FfiConverterRustBuffer` lift and lower into a `RustBuffer`.
 // Used for complex types where it's hard to write a custom lift/lower.
-nonisolated fileprivate protocol FfiConverterRustBuffer: FfiConverter where FfiType == RustBuffer {}
+fileprivate protocol FfiConverterRustBuffer: FfiConverter where FfiType == RustBuffer {}
 
-nonisolated extension FfiConverterRustBuffer {
+extension FfiConverterRustBuffer {
 #if swift(>=5.8)
     @_documentation(visibility: private)
 #endif
@@ -214,7 +214,7 @@ nonisolated extension FfiConverterRustBuffer {
 }
 // An error type for FFI errors. These errors occur at the UniFFI level, not
 // the library level.
-nonisolated fileprivate enum UniffiInternalError: LocalizedError {
+fileprivate enum UniffiInternalError: LocalizedError {
     case bufferOverflow
     case incompleteData
     case unexpectedOptionalTag
@@ -240,7 +240,7 @@ nonisolated fileprivate enum UniffiInternalError: LocalizedError {
     }
 }
 
-nonisolated fileprivate extension NSLock {
+fileprivate extension NSLock {
     func withLock<T>(f: () throws -> T) rethrows -> T {
         self.lock()
         defer { self.unlock() }
@@ -248,12 +248,12 @@ nonisolated fileprivate extension NSLock {
     }
 }
 
-nonisolated fileprivate let CALL_SUCCESS: Int8 = 0
-nonisolated fileprivate let CALL_ERROR: Int8 = 1
-nonisolated fileprivate let CALL_UNEXPECTED_ERROR: Int8 = 2
-nonisolated fileprivate let CALL_CANCELLED: Int8 = 3
+fileprivate let CALL_SUCCESS: Int8 = 0
+fileprivate let CALL_ERROR: Int8 = 1
+fileprivate let CALL_UNEXPECTED_ERROR: Int8 = 2
+fileprivate let CALL_CANCELLED: Int8 = 3
 
-nonisolated fileprivate extension RustCallStatus {
+fileprivate extension RustCallStatus {
     init() {
         self.init(
             code: CALL_SUCCESS,
@@ -266,18 +266,18 @@ nonisolated fileprivate extension RustCallStatus {
     }
 }
 
-nonisolated private func rustCall<T>(_ callback: (UnsafeMutablePointer<RustCallStatus>) -> T) throws -> T {
+private func rustCall<T>(_ callback: (UnsafeMutablePointer<RustCallStatus>) -> T) throws -> T {
     let neverThrow: ((RustBuffer) throws -> Never)? = nil
     return try makeRustCall(callback, errorHandler: neverThrow)
 }
 
-nonisolated private func rustCallWithError<T, E: Swift.Error>(
+private func rustCallWithError<T, E: Swift.Error>(
     _ errorHandler: @escaping (RustBuffer) throws -> E,
     _ callback: (UnsafeMutablePointer<RustCallStatus>) -> T) throws -> T {
     try makeRustCall(callback, errorHandler: errorHandler)
 }
 
-nonisolated private func makeRustCall<T, E: Swift.Error>(
+private func makeRustCall<T, E: Swift.Error>(
     _ callback: (UnsafeMutablePointer<RustCallStatus>) -> T,
     errorHandler: ((RustBuffer) throws -> E)?
 ) throws -> T {
@@ -288,7 +288,7 @@ nonisolated private func makeRustCall<T, E: Swift.Error>(
     return returnedVal
 }
 
-nonisolated private func uniffiCheckCallStatus<E: Swift.Error>(
+private func uniffiCheckCallStatus<E: Swift.Error>(
     callStatus: RustCallStatus,
     errorHandler: ((RustBuffer) throws -> E)?
 ) throws {
@@ -323,7 +323,7 @@ nonisolated private func uniffiCheckCallStatus<E: Swift.Error>(
     }
 }
 
-nonisolated private func uniffiTraitInterfaceCall<T>(
+private func uniffiTraitInterfaceCall<T>(
     callStatus: UnsafeMutablePointer<RustCallStatus>,
     makeCall: () throws -> T,
     writeReturn: (T) -> ()
@@ -336,7 +336,7 @@ nonisolated private func uniffiTraitInterfaceCall<T>(
     }
 }
 
-nonisolated private func uniffiTraitInterfaceCallWithError<T, E>(
+private func uniffiTraitInterfaceCallWithError<T, E>(
     callStatus: UnsafeMutablePointer<RustCallStatus>,
     makeCall: () throws -> T,
     writeReturn: (T) -> (),
@@ -352,7 +352,7 @@ nonisolated private func uniffiTraitInterfaceCallWithError<T, E>(
         callStatus.pointee.errorBuf = FfiConverterString.lower(String(describing: error))
     }
 }
-nonisolated fileprivate final class UniffiHandleMap<T>: @unchecked Sendable {
+fileprivate final class UniffiHandleMap<T>: @unchecked Sendable {
     // All mutation happens with this lock held, which is why we implement @unchecked Sendable.
     private let lock = NSLock()
     private var map: [UInt64: T] = [:]
@@ -397,16 +397,16 @@ nonisolated fileprivate final class UniffiHandleMap<T>: @unchecked Sendable {
 // Public interface members begin here.
 // Magic number for the Rust proxy to call using the same mechanism as every other method,
 // to free the callback once it's dropped by Rust.
-nonisolated private let IDX_CALLBACK_FREE: Int32 = 0
+private let IDX_CALLBACK_FREE: Int32 = 0
 // Callback return codes
-nonisolated private let UNIFFI_CALLBACK_SUCCESS: Int32 = 0
-nonisolated private let UNIFFI_CALLBACK_ERROR: Int32 = 1
-nonisolated private let UNIFFI_CALLBACK_UNEXPECTED_ERROR: Int32 = 2
+private let UNIFFI_CALLBACK_SUCCESS: Int32 = 0
+private let UNIFFI_CALLBACK_ERROR: Int32 = 1
+private let UNIFFI_CALLBACK_UNEXPECTED_ERROR: Int32 = 2
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated fileprivate struct FfiConverterUInt8: FfiConverterPrimitive {
+fileprivate struct FfiConverterUInt8: FfiConverterPrimitive {
     typealias FfiType = UInt8
     typealias SwiftType = UInt8
 
@@ -422,7 +422,7 @@ nonisolated fileprivate struct FfiConverterUInt8: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated fileprivate struct FfiConverterUInt16: FfiConverterPrimitive {
+fileprivate struct FfiConverterUInt16: FfiConverterPrimitive {
     typealias FfiType = UInt16
     typealias SwiftType = UInt16
 
@@ -438,7 +438,7 @@ nonisolated fileprivate struct FfiConverterUInt16: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated fileprivate struct FfiConverterUInt32: FfiConverterPrimitive {
+fileprivate struct FfiConverterUInt32: FfiConverterPrimitive {
     typealias FfiType = UInt32
     typealias SwiftType = UInt32
 
@@ -454,7 +454,7 @@ nonisolated fileprivate struct FfiConverterUInt32: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated fileprivate struct FfiConverterUInt64: FfiConverterPrimitive {
+fileprivate struct FfiConverterUInt64: FfiConverterPrimitive {
     typealias FfiType = UInt64
     typealias SwiftType = UInt64
 
@@ -470,7 +470,7 @@ nonisolated fileprivate struct FfiConverterUInt64: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated fileprivate struct FfiConverterDouble: FfiConverterPrimitive {
+fileprivate struct FfiConverterDouble: FfiConverterPrimitive {
     typealias FfiType = Double
     typealias SwiftType = Double
 
@@ -486,7 +486,7 @@ nonisolated fileprivate struct FfiConverterDouble: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated fileprivate struct FfiConverterBool : FfiConverter {
+fileprivate struct FfiConverterBool : FfiConverter {
     typealias FfiType = Int8
     typealias SwiftType = Bool
 
@@ -510,7 +510,7 @@ nonisolated fileprivate struct FfiConverterBool : FfiConverter {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated fileprivate struct FfiConverterString: FfiConverter {
+fileprivate struct FfiConverterString: FfiConverter {
     typealias SwiftType = String
     typealias FfiType = RustBuffer
 
@@ -551,7 +551,7 @@ nonisolated fileprivate struct FfiConverterString: FfiConverter {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated fileprivate struct FfiConverterData: FfiConverterRustBuffer {
+fileprivate struct FfiConverterData: FfiConverterRustBuffer {
     typealias SwiftType = Data
 
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Data {
@@ -569,28 +569,28 @@ nonisolated fileprivate struct FfiConverterData: FfiConverterRustBuffer {
 
 
 
-nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
-    
+public protocol FfiLibraryProtocol: AnyObject, Sendable {
+
     /**
      * # Errors
      *
      * Returns an error for invalid or absent IDs, or an unpersistable membership operation.
      */
-    func addMediaToAlbum(albumId: FfiAlbumUuid, mediaId: FfiMediaUuid) throws 
-    
+    func addMediaToAlbum(albumId: FfiAlbumUuid, mediaId: FfiMediaUuid) throws
+
     /**
      * # Errors
      *
      * Returns an error for invalid or absent IDs, or an unpersistable membership operation.
      */
-    func addMediaToGroup(groupId: FfiGroupUuid, mediaId: FfiMediaUuid) throws 
-    
+    func addMediaToGroup(groupId: FfiGroupUuid, mediaId: FfiMediaUuid) throws
+
     /**
      * Adds one Lasco Cloud storage destination. The core resolves and caches
      * its short-lived S3 credentials when the remote is first used.
      */
     func addRemoteCloudS3(name: String, cloudStorageId: String) throws  -> FfiRemoteUuid
-    
+
     /**
      * # Errors
      *
@@ -602,7 +602,7 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * in-memory update after configuration is saved.
      */
     func addRemoteDebugLocalAndroid(name: String) throws  -> FfiRemoteUuid
-    
+
     /**
      * # Errors
      *
@@ -614,7 +614,7 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * in-memory update after configuration is saved.
      */
     func addRemoteDebugLocalApple(name: String) throws  -> FfiRemoteUuid
-    
+
     /**
      * # Errors
      *
@@ -626,7 +626,7 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * in-memory update after configuration is saved.
      */
     func addRemoteFixedPath(name: String, path: String) throws  -> FfiRemoteUuid
-    
+
     /**
      * # Errors
      *
@@ -638,7 +638,13 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * in-memory update after configuration is saved.
      */
     func addRemoteS3(name: String, endpoint: String, bucket: String, region: String, pathPrefix: String, accessKey: String, secretKey: String) throws  -> FfiRemoteUuid
-    
+
+    /**
+     * Adds an SMB 2/3 share. The password is encrypted with this library's
+     * master key and is never included in [`FfiRemote`].
+     */
+    func addRemoteSmb(name: String, server: String, port: UInt16, share: String, pathPrefix: String, username: String, password: String, domain: String?) throws  -> FfiRemoteUuid
+
     /**
      * Add a wired USB drive selected through Android's Storage Access
      * Framework. `tree_uri` is an opaque, persistable access grant.
@@ -648,7 +654,7 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * Returns an error for an empty URI, duplicate name, or failed configuration persistence.
      */
     func addRemoteUsbAndroid(name: String, treeUri: String) throws  -> FfiRemoteUuid
-    
+
     /**
      * Add a wired USB drive selected through Apple's document picker.
      * `bookmark_base64` is an opaque security-scoped bookmark.
@@ -658,14 +664,14 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * Returns an error for an empty bookmark, duplicate name, or failed configuration persistence.
      */
     func addRemoteUsbApple(name: String, bookmarkBase64: String) throws  -> FfiRemoteUuid
-    
+
     /**
      * # Errors
      *
      * Returns an error if `parent_album_id` is not a valid UUID.
      */
     func albumAlbumsCount(parentAlbumId: FfiAlbumUuid?) throws  -> UInt64
-    
+
     /**
      * Returns direct albums under `parent_album_id`; `None` means root albums.
      * Positions are zero-based and both ends of the range are inclusive.
@@ -675,7 +681,7 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * Returns an error for an invalid parent ID or an inverted position range.
      */
     func albumAlbumsRange(parentAlbumId: FfiAlbumUuid?, posStartInclusive: UInt32, posEndInclusive: UInt32) throws  -> [FfiAlbum]
-    
+
     /**
      * Returns the entries immediately surrounding a zero-based album position.
      *
@@ -684,7 +690,7 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * Returns an error if the album ID is invalid or absent, or `position` is outside its item list.
      */
     func albumItemsByDateNeighbors(albumId: FfiAlbumUuid, ascending: Bool, position: UInt32) throws  -> FfiMediaOrGroupNeighbors
-    
+
     /**
      * Positions are zero-based and both ends of the range are inclusive.
      *
@@ -693,37 +699,66 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * Returns an error for an invalid or absent album ID, or an inverted position range.
      */
     func albumItemsByDateRange(albumId: FfiAlbumUuid, ascending: Bool, posStartInclusive: UInt32, posEndInclusive: UInt32) throws  -> [FfiAlbumItem]
-    
+
     /**
      * # Errors
      *
      * Returns an error if `album_id` is invalid or absent.
      */
     func albumItemsCount(albumId: FfiAlbumUuid) throws  -> UInt64
-    
+
     /**
      * # Errors
      *
      * Returns an error if `album_id` is invalid or absent.
      */
     func albumListGroups(albumId: FfiAlbumUuid) throws  -> [FfiGroup]
-    
+
     /**
      * # Errors
      *
      * Returns an error if `album_id` is invalid or absent.
      */
     func albumListItemsSorted(albumId: FfiAlbumUuid, ascending: Bool) throws  -> [FfiAlbumItem]
-    
+
     func allMediaIds()  -> [FfiMediaUuid]
-    
-    func clearLascoCloudAuthAndCredentials() async throws 
-    
-    func configureLascoCloudAuth(baseUrl: String) async throws 
-    
+
     /**
-     * Confirms which media blobs a remote holds and records them in its media inventory,
-     * without fetching. Returns how many blobs it newly confirmed.
+     * Returns the selected media IDs when this exact Apple Photos asset revision has already
+     * been associated with Lasco media. This performs no resource download.
+     */
+    func applePhotosAssetRevisionMediaIds(revision: FfiApplePhotosAssetRevision) throws  -> [FfiMediaUuid]?
+
+    /**
+     * Returns the canonical Lasco album for each known Apple Photos collection identity.
+     */
+    func applePhotosCollectionLinks(collections: [FfiApplePhotosCollectionIdentity]) throws  -> [FfiAlbumUuid?]
+
+    /**
+     * Measures one remote at each parallelism from one through `max_parallel_uploads`.
+     * Temporary random benchmark objects are removed before this method returns.
+     *
+     * The desktop importer runs this concurrently for selected remotes, then uses the result to
+     * select an individual remote upload limit and to compare aggregate throughput against the
+     * sum of isolated remote rates.
+     *
+     * # Errors
+     *
+     * An individual parallelism sample that times out or fails is discarded so the importer can
+     * still select from the remaining samples. Returns an error if the request is outside 1
+     * through 16 MiB or 1 through 5 uploads, storage construction fails, cleanup fails, or no
+     * sample completes successfully.
+     */
+    func benchmarkRemoteUploadAsync(remoteId: FfiRemoteUuid, appSupportDir: String?, bytesPerUpload: UInt64, maxParallelUploads: UInt8) async throws  -> [FfiUploadBenchmarkSample]
+
+    func clearLascoCloudAuthAndCredentials() async throws
+
+    func configureLascoCloudAuth(baseUrl: String) async throws
+
+    /**
+     * Recursively lists every media blob a remote holds, exhausting backend pagination, and
+     * replaces its cached media inventory without fetching operations. Returns how many blobs
+     * were newly observed.
      *
      * # Errors
      *
@@ -731,51 +766,60 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * running for this remote, or the remote does not belong to this library.
      */
     func confirmRemoteMediaAsync(remoteId: FfiRemoteUuid, appSupportDir: String?) async throws  -> UInt64
-    
+
+    /**
+     * Returns which supplied media IDs are confirmed to have a full original on this remote.
+     *
+     * Callers should refresh the remote inventory with `confirm_remote_media_async` first.
+     * The result reflects this client's cached positive-only inventory and never performs a
+     * network request itself.
+     */
+    func confirmedRemoteMediaIds(remoteId: FfiRemoteUuid, mediaIds: [FfiMediaUuid]) throws  -> [FfiMediaUuid]
+
     /**
      * # Errors
      *
      * Returns an error if the ID/configuration is invalid, storage cannot be built, or remote identity cannot be verified.
      */
-    func connectRemote(remoteId: FfiRemoteUuid, appSupportDir: String?) throws 
-    
+    func connectRemote(remoteId: FfiRemoteUuid, appSupportDir: String?) throws
+
     /**
      * # Errors
      *
      * Returns an error if the optional parent ID is invalid or absent, or creation cannot be persisted.
      */
     func createAlbum(name: String, parentAlbumId: FfiAlbumUuid?) throws  -> FfiAlbumUuid
-    
+
     /**
      * # Errors
      *
      * Returns an error if `album_id` is invalid or absent, or creation cannot be persisted.
      */
     func createGroup(albumId: FfiAlbumUuid) throws  -> FfiGroupUuid
-    
+
     /**
      * # Errors
      *
      * Returns an error if `album_id` is invalid or absent, or deletion cannot be persisted.
      */
-    func deleteAlbum(albumId: FfiAlbumUuid) throws 
-    
+    func deleteAlbum(albumId: FfiAlbumUuid) throws
+
     /**
      * # Errors
      *
      * Returns an error if `group_id` is invalid or absent, or deletion cannot be persisted.
      */
-    func deleteGroup(groupId: FfiGroupUuid) throws 
-    
+    func deleteGroup(groupId: FfiGroupUuid) throws
+
     /**
      * # Errors
      *
-     * Returns an error if `media_id` is invalid, absent, or the delete operation cannot be persisted.
+     * Moves media to Trash. Its encrypted data remains available for Restore.
      */
-    func deleteMedia(mediaId: FfiMediaUuid) throws 
-    
+    func deleteMedia(mediaId: FfiMediaUuid) throws
+
     func disconnectedAlbumsCount()  -> UInt64
-    
+
     /**
      * Returns disconnected albums in the same order as `list_albums`.
      * Positions are zero-based and both ends of the range are inclusive.
@@ -785,7 +829,25 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * Returns an error when the start position exceeds the end position.
      */
     func disconnectedAlbumsRange(posStartInclusive: UInt32, posEndInclusive: UInt32) throws  -> [FfiAlbum]
-    
+
+    /**
+     * Permanently deletes every item in Trash, including hidden companions.
+     * Remote blobs are reclaimed after their tombstones are pushed.
+     */
+    func emptyTrash() throws  -> UInt64
+
+    /**
+     * Check whether a selected Android USB folder has already been initialized
+     * as any Lasco remote. This performs no writes and is intended to run
+     * before a new remote configuration is created.
+     *
+     * # Errors
+     *
+     * Returns an error for an empty or inaccessible tree URI, or if a
+     * `remote_id_*` marker already exists in the selected folder.
+     */
+    func ensureUsbAndroidFolderIsUninitialized(treeUri: String) throws
+
     /**
      * Check whether a selected Apple USB folder has already been initialized
      * as any Lasco remote. This performs no writes and is intended to run
@@ -796,54 +858,54 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * Returns an error for an empty or inaccessible bookmark, or if a
      * `remote_id_*` marker already exists in the selected folder.
      */
-    func ensureUsbAppleFolderIsUninitialized(bookmarkBase64: String) throws 
-    
+    func ensureUsbAppleFolderIsUninitialized(bookmarkBase64: String) throws
+
     /**
      * # Errors
      *
      * Returns an error if an ID is invalid or removing a cached media file fails.
      */
-    func evictLocalData(mediaIds: [FfiMediaUuid]) throws 
-    
+    func evictLocalData(mediaIds: [FfiMediaUuid]) throws
+
     /**
      * # Errors
      *
      * Returns an error if an ID is invalid or removing a cached thumbnail fails.
      */
-    func evictLocalThumbnails(mediaIds: [FfiMediaUuid]) throws 
-    
+    func evictLocalThumbnails(mediaIds: [FfiMediaUuid]) throws
+
     /**
      * # Errors
      *
      * Returns an error if the ID/configuration is invalid, storage cannot be built, or remote fetch fails.
      */
     func fetchRemote(remoteId: FfiRemoteUuid, appSupportDir: String?) throws  -> UInt64
-    
+
     /**
      * # Errors
      *
      * Returns an error if the ID/configuration is invalid, storage cannot be built, the task fails, or remote fetch fails.
      */
     func fetchRemoteAsync(remoteId: FfiRemoteUuid, appSupportDir: String?) async throws  -> UInt64
-    
+
     func getAutoImportDeviceMedia()  -> Bool
-    
+
     func getDefaultFetchRemote()  -> FfiRemoteUuid?
-    
+
     /**
      * # Errors
      *
      * Returns an error if the ID is invalid, no local or configured remote copy is available, or reading, decrypting, or caching it fails.
      */
     func getMediaBytes(mediaId: FfiMediaUuid, appSupportDir: String?) throws  -> Data
-    
+
     /**
      * # Errors
      *
      * Returns an error if the ID is invalid, no local or configured remote blob is available, or a remote read, decryption, or cache write fails.
      */
     func getMediaBytesAsync(mediaId: FfiMediaUuid, appSupportDir: String?) async throws  -> Data
-    
+
     /**
      * Returns Rust-owned plaintext media bytes without serializing them into
      * a UniFFI byte array. The returned object's lifetime owns the backing
@@ -859,7 +921,7 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * blob is available, or a remote read, decryption, or cache write fails.
      */
     func getMediaBytesNativeAsync(mediaId: FfiMediaUuid, appSupportDir: String?) async throws  -> FfiNativeMediaBytes
-    
+
     /**
      * Returns the ordered subset of remotes used to retrieve uncached originals.
      *
@@ -868,85 +930,106 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * Returns an error if the library configuration cannot be read.
      */
     func getMediaSourceOrder() throws  -> [FfiRemoteUuid]
-    
+
     /**
      * # Errors
      *
      * Returns an error if the ID is invalid, no local or configured remote copy is available, or reading, decrypting, or caching it fails.
      */
     func getMediaThumbnail(mediaId: FfiMediaUuid, appSupportDir: String?) throws  -> Data
-    
+
     /**
      * # Errors
      *
      * Returns an error if the ID is invalid, no local or configured remote thumbnail is available, or a remote read or cache write fails.
      */
     func getMediaThumbnailAsync(mediaId: FfiMediaUuid, appSupportDir: String?) async throws  -> Data
-    
+
     /**
      * # Errors
      *
      * Returns an error if `group_id` is invalid or absent.
      */
     func groupListMedia(groupId: FfiGroupUuid) throws  -> [FfiMediaItem]
-    
+
+    /**
+     * Permanently deletes media already in Trash and its trashed companions from CRDT state
+     * and the local encrypted cache.
+     * Remote blobs are reclaimed after the tombstone is pushed to each remote.
+     */
+    func hardDeleteMedia(mediaId: FfiMediaUuid) throws
+
     func hasUnpushedChanges(remoteId: FfiRemoteUuid)  -> Bool
-    
+
     /**
      * # Errors
      *
      * Returns an error if an ID is invalid, the source cannot be read, media encryption/storage fails, or the creation operation cannot be persisted.
      */
     func importMedia(path: String, albumId: FfiAlbumUuid?, originalFilename: String?, appleAaeMediaId: FfiMediaUuid?, appleLivePhotoMediaId: FfiMediaUuid?) throws  -> FfiMediaAddResult
-    
+
+    /**
+     * Imports a media file with source-supplied metadata.
+     *
+     * Importers must preserve the original bytes and pass the source filename. Timestamps are
+     * RFC 3339 UTC offsets accepted by `chrono`; latitude and longitude must be supplied as a
+     * pair within their geographic ranges.
+     *
+     * # Errors
+     *
+     * Returns an error if an ID or metadata value is invalid, the source cannot be read, media
+     * encryption/storage fails, or the creation operation cannot be persisted.
+     */
+    func importMediaWithMetadata(path: String, albumId: FfiAlbumUuid?, metadata: FfiMediaImportMetadata) throws  -> FfiMediaAddResult
+
     /**
      * # Errors
      *
      * Returns an error if the ID is invalid or unknown, storage cannot be built, or remote initialization fails.
      */
-    func initializeRemote(remoteId: FfiRemoteUuid, appSupportDir: String?) throws 
-    
+    func initializeRemote(remoteId: FfiRemoteUuid, appSupportDir: String?) throws
+
     /**
      * Returns the owner and creation time of this remote's compaction lock, if held.
      */
     func inspectCompactionLock(remoteId: FfiRemoteUuid, appSupportDir: String?) throws  -> FfiCompactionLockInfo?
-    
-    func lascoCloudAssignRemotesToThisLibrary(remoteIds: [String]) async throws 
-    
+
+    func lascoCloudAssignRemotesToThisLibrary(remoteIds: [String]) async throws
+
     /**
      * Rejects an initial import that cannot fit on the configured Cloud remotes.
      * Only media data bytes are supplied; state and generated thumbnails are excluded.
      */
-    func lascoCloudCheckInitialImport(mediaBytes: UInt64) async throws 
-    
+    func lascoCloudCheckInitialImport(mediaBytes: UInt64) async throws
+
     func lascoCloudIsAuthenticated()  -> Bool
-    
+
     func lascoCloudListRemotes() async throws  -> [FfiLascoCloudRemote]
-    
-    func lascoCloudLogin(email: String, password: String, platform: String, appVersion: String) async throws 
-    
-    func lascoCloudRevokeSession() async throws 
-    
+
+    func lascoCloudLogin(email: String, password: String, platform: String, appVersion: String) async throws
+
+    func lascoCloudRevokeSession() async throws
+
     func lascoCloudStorageUsage() async throws  -> UInt64
-    
+
     func lascoCloudSubscription() async throws  -> FfiLascoCloudAccount
-    
+
     func libraryId()  -> FfiLibraryId
-    
+
     /**
      * # Errors
      *
      * This method currently cannot fail; the `Result` preserves the FFI query API.
      */
     func listAlbums() throws  -> [FfiAlbum]
-    
+
     /**
      * # Errors
      *
      * This method currently cannot fail; the `Result` preserves the FFI query API.
      */
     func listMedia() throws  -> [FfiMediaItem]
-    
+
     /**
      * # Errors
      *
@@ -955,23 +1038,23 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * Returns an error if persisted local operations cannot be read or decoded.
      */
     func listOperations(startPos: UInt64, endPosExclusive: UInt64) throws  -> [FfiCrdtOperation]
-    
+
     /**
      * # Panics
      *
      * Panics if another thread panicked while holding the cached remote-list mutex.
      */
     func listRemotes()  -> [FfiRemote]
-    
+
     /**
      * # Errors
      *
      * Views are rebuilt atomically with every state change; retained as a no-op for FFI compatibility.
      */
-    func loadLocalState() throws 
-    
+    func loadLocalState() throws
+
     func localStateStats()  -> FfiLocalStateStats
-    
+
     /**
      * Materializes decrypted media to an app-private destination without
      * returning the full plaintext as a Kotlin byte array. Android uses this
@@ -983,23 +1066,23 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * the encrypted Lasco blob before writing the plaintext destination.
      */
     func materializeMediaToPathAsync(mediaId: FfiMediaUuid, appSupportDir: String?, destinationPath: String) async throws  -> String
-    
+
     /**
      * # Errors
      *
      * Returns an error if `media_id` is not a valid UUID.
      */
     func mediaAlbumIds(mediaId: FfiMediaUuid) throws  -> [FfiAlbumUuid]
-    
+
     /**
      * # Errors
      *
      * This method currently cannot fail; the `Result` preserves the FFI query API.
      */
     func mediaByDate() throws  -> [FfiMediaItem]
-    
+
     func mediaByDateCount()  -> UInt64
-    
+
     /**
      * Returns the entries immediately surrounding a zero-based home position.
      *
@@ -1008,7 +1091,7 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * Returns an error when `position` is outside the dated-media list.
      */
     func mediaByDateNeighbors(position: UInt32) throws  -> FfiMediaNeighbors
-    
+
     /**
      * Positions are zero-based and both ends of the range are inclusive.
      *
@@ -1017,14 +1100,14 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * Returns an error when the start position exceeds the end position.
      */
     func mediaByDateRange(posStartInclusive: UInt32, posEndInclusive: UInt32) throws  -> [FfiMediaItem]
-    
+
     /**
      * # Errors
      *
      * Returns an error if `media_id` is not a valid UUID.
      */
     func mediaContainingAlbumIds(mediaId: FfiMediaUuid, includeViaGroups: Bool) throws  -> [FfiAlbumUuid]
-    
+
     /**
      * Counts the media that clearing local media would leave with no known copy anywhere.
      *
@@ -1036,7 +1119,7 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * Returns an error if the library configuration cannot be read.
      */
     func mediaCountLostIfLocalMediaCleared() throws  -> UInt64
-    
+
     /**
      * Counts the media that removing `remote_id` would leave with no known copy anywhere.
      *
@@ -1048,30 +1131,30 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * Returns an error if the library configuration cannot be read or `remote_id` is invalid.
      */
     func mediaCountLostIfRemoteRemoved(remoteId: FfiRemoteUuid) throws  -> UInt64
-    
+
     /**
      * # Errors
      *
      * Returns an error if `album_id` is invalid or absent.
      */
     func mediaInAlbum(albumId: FfiAlbumUuid) throws  -> [FfiMediaItem]
-    
+
     /**
      * # Errors
      *
      * Returns an error for invalid or absent IDs, missing source membership, or a failed remove/add operation.
      */
-    func moveMediaToAlbum(mediaId: FfiMediaUuid, fromAlbumId: FfiAlbumUuid, toAlbumId: FfiAlbumUuid) throws 
-    
+    func moveMediaToAlbum(mediaId: FfiMediaUuid, fromAlbumId: FfiAlbumUuid, toAlbumId: FfiAlbumUuid) throws
+
     /**
      * # Errors
      *
      * This method currently cannot fail; the `Result` preserves the FFI query API.
      */
     func orphanMediaByDate() throws  -> [FfiMediaItem]
-    
+
     func orphanMediaByDateCount()  -> UInt64
-    
+
     /**
      * Returns the entries immediately surrounding a zero-based orphan position.
      *
@@ -1080,7 +1163,7 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * Returns an error when `position` is outside the dated orphan-media list.
      */
     func orphanMediaByDateNeighbors(position: UInt32) throws  -> FfiMediaNeighbors
-    
+
     /**
      * Positions are zero-based and both ends of the range are inclusive.
      *
@@ -1089,21 +1172,21 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * Returns an error when the start position exceeds the end position.
      */
     func orphanMediaByDateRange(posStartInclusive: UInt32, posEndInclusive: UInt32) throws  -> [FfiMediaItem]
-    
+
     /**
      * # Errors
      *
      * Returns an error if the ID/configuration is invalid, storage cannot be built, or remote push fails.
      */
     func pushRemote(remoteId: FfiRemoteUuid, appSupportDir: String?) throws  -> UInt64
-    
+
     /**
      * # Errors
      *
      * Returns an error if the ID/configuration is invalid, storage cannot be built, the task fails, or remote push fails.
      */
     func pushRemoteAsync(remoteId: FfiRemoteUuid, appSupportDir: String?) async throws  -> UInt64
-    
+
     /**
      * Push to `target_remote_id`, relaying absent local media from the selected
      * configured source remote. Callers should only use this after an explicit
@@ -1114,14 +1197,14 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * Returns an error for invalid IDs, unavailable remote storage, failed validation, or failed relay/upload.
      */
     func pushRemoteFromRemote(targetRemoteId: FfiRemoteUuid, sourceRemoteId: FfiRemoteUuid, appSupportDir: String?) throws  -> UInt64
-    
+
     /**
      * # Errors
      *
      * Returns an error for invalid IDs, unavailable storage, task failure, failed validation, or failed relay/upload.
      */
     func pushRemoteFromRemoteAsync(targetRemoteId: FfiRemoteUuid, sourceRemoteId: FfiRemoteUuid, appSupportDir: String?) async throws  -> UInt64
-    
+
     /**
      * Push using the ordered configured media sources. Preparation completes before core push
      * starts, and reads nothing but local files: the media cache and the media inventories.
@@ -1132,7 +1215,30 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * data blob has no known place to be read from, or the push itself fails.
      */
     func pushRemoteUsingConfiguredMediaSourcesAsync(targetRemoteId: FfiRemoteUuid, appSupportDir: String?, progress: PushProgressSink) async throws  -> UInt64
-    
+
+    /**
+     * Push using configured media sources with a bounded number of concurrent full-media
+     * uploads for this target. A desktop importer should choose this after benchmarking the
+     * target and schedule several remotes independently.
+     *
+     * # Errors
+     *
+     * Returns an error for a concurrency outside 1 through 5, or for the same failures as
+     * [`Self::push_remote_using_configured_media_sources_async`].
+     */
+    func pushRemoteUsingConfiguredMediaSourcesWithOptionsAsync(targetRemoteId: FfiRemoteUuid, appSupportDir: String?, progress: PushProgressSink, maxConcurrentMediaUploads: UInt8) async throws  -> UInt64
+
+    /**
+     * Records immutable provenance after creating a Lasco album for an Apple Photos collection.
+     */
+    func recordApplePhotosCollectionLink(link: FfiApplePhotosCollectionLink) throws
+
+    /**
+     * Records immutable provenance after an Apple Photos resource has been imported or reused
+     * by content hash. Importers call this once per selected resource.
+     */
+    func recordApplePhotosResourceOrigin(origin: FfiApplePhotosResourceOrigin) throws
+
     /**
      * What `remote_id` is not yet confirmed to hold.
      *
@@ -1144,27 +1250,27 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * Returns an error if `remote_id` is invalid.
      */
     func remoteMediaShortfall(remoteId: FfiRemoteUuid) throws  -> FfiRemoteMediaShortfall
-    
+
     /**
      * # Errors
      *
      * Returns an error for invalid or absent IDs, missing membership, or an unpersistable operation.
      */
-    func removeMediaFromAlbum(albumId: FfiAlbumUuid, mediaId: FfiMediaUuid) throws 
-    
+    func removeMediaFromAlbum(albumId: FfiAlbumUuid, mediaId: FfiMediaUuid) throws
+
     /**
      * # Errors
      *
      * Returns an error for invalid or absent IDs, missing membership, or an unpersistable operation.
      */
-    func removeMediaFromGroup(groupId: FfiGroupUuid, mediaId: FfiMediaUuid) throws 
-    
+    func removeMediaFromGroup(groupId: FfiGroupUuid, mediaId: FfiMediaUuid) throws
+
     /**
      * Removes a compaction lock only when it still names this local device as its owner.
      * The caller is responsible for obtaining explicit user confirmation before this call.
      */
     func removeOwnCompactionLock(remoteId: FfiRemoteUuid, appSupportDir: String?) throws  -> Bool
-    
+
     /**
      * Removes a remote from the configuration and deletes everything this client cached
      * about it.
@@ -1180,50 +1286,52 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * Panics if another thread panicked while holding the cached remote-list mutex during the
      * in-memory removal after configuration is saved.
      */
-    func removeRemote(remoteId: FfiRemoteUuid) throws 
-    
+    func removeRemote(remoteId: FfiRemoteUuid) throws
+
     /**
      * # Errors
      *
      * Returns an error if the ID is invalid or absent, or the rename cannot be persisted.
      */
-    func renameAlbum(albumId: FfiAlbumUuid, name: String) throws 
-    
+    func renameAlbum(albumId: FfiAlbumUuid, name: String) throws
+
     /**
      * # Errors
      *
      * Returns an error if `media_id` is invalid, absent, or the rename operation cannot be persisted.
      */
-    func renameMedia(mediaId: FfiMediaUuid, name: String?) throws 
-    
+    func renameMedia(mediaId: FfiMediaUuid, name: String?) throws
+
     /**
      * # Errors
      *
      * Returns an error for invalid or absent IDs, a cyclic move, or an unpersistable operation.
      */
-    func reparentAlbum(albumId: FfiAlbumUuid, newParentAlbumId: FfiAlbumUuid?) throws 
-    
+    func reparentAlbum(albumId: FfiAlbumUuid, newParentAlbumId: FfiAlbumUuid?) throws
+
+    func restoreMedia(mediaId: FfiMediaUuid) throws
+
     /**
      * # Errors
      *
      * Returns an error for invalid or absent album/media IDs, or an unpersistable operation.
      */
-    func setAlbumThumbnail(albumId: FfiAlbumUuid, mediaId: FfiMediaUuid?) throws 
-    
+    func setAlbumThumbnail(albumId: FfiAlbumUuid, mediaId: FfiMediaUuid?) throws
+
     /**
      * # Errors
      *
      * Returns an error if the library configuration is missing, malformed, or cannot be saved.
      */
-    func setAutoImportDeviceMedia(enabled: Bool) throws 
-    
+    func setAutoImportDeviceMedia(enabled: Bool) throws
+
     /**
      * # Errors
      *
      * Returns an error if the library config cannot be read or saved, or `remote_id` is invalid or unconfigured.
      */
-    func setDefaultFetchRemote(remoteId: FfiRemoteUuid?) throws 
-    
+    func setDefaultFetchRemote(remoteId: FfiRemoteUuid?) throws
+
     /**
      * Replaces the ordered subset of remotes used to retrieve uncached originals.
      *
@@ -1235,15 +1343,15 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * Returns an error if an ID is invalid, unknown, duplicated, or the configuration cannot be
      * saved.
      */
-    func setMediaSourceOrder(remoteIds: [FfiRemoteUuid]) throws 
-    
+    func setMediaSourceOrder(remoteIds: [FfiRemoteUuid]) throws
+
     /**
      * # Errors
      *
      * Returns an error if `media_id` is invalid or the local thumbnail cannot be written.
      */
-    func setMediaThumbnail(mediaId: FfiMediaUuid, data: Data) throws 
-    
+    func setMediaThumbnail(mediaId: FfiMediaUuid, data: Data) throws
+
     /**
      * # Errors
      *
@@ -1254,31 +1362,46 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * Panics if another thread panicked while holding the cached remote-list mutex during the
      * in-memory auto-push update after configuration is saved.
      */
-    func setRemoteAutoPush(remoteId: FfiRemoteUuid, enabled: Bool) throws 
-    
+    func setRemoteAutoPush(remoteId: FfiRemoteUuid, enabled: Bool) throws
+
     /**
      * # Errors
      *
      * Returns an error if `media_id` is invalid or does not identify media in the local state.
      */
     func showMedia(mediaId: FfiMediaUuid) throws  -> FfiMediaItem
-    
+
+    func softDeleteMedia(mediaId: FfiMediaUuid) throws
+
+    /**
+     * Returns every trashed media record, including companions hidden from
+     * normal Trash browsing. This is intended for maintenance flows.
+     */
+    func trashedMediaAll()  -> [FfiMediaItem]
+
+    func trashedMediaByDateCount()  -> UInt64
+
+    /**
+     * Positions are zero-based and both ends of the range are inclusive.
+     */
+    func trashedMediaByDateRange(posStartInclusive: UInt32, posEndInclusive: UInt32) throws  -> [FfiMediaItem]
+
     /**
      * # Errors
      *
      * Returns an error if the user key or add-user operation cannot be persisted.
      */
-    func userAdd(username: String, password: String) throws 
-    
+    func userAdd(username: String, password: String) throws
+
     /**
      * # Errors
      *
      * Returns an error if user records cannot be read from local library state.
      */
     func userList() throws  -> [String]
-    
+
 }
-nonisolated open class FfiLibrary: FfiLibraryProtocol, @unchecked Sendable {
+open class FfiLibrary: FfiLibraryProtocol, @unchecked Sendable {
     fileprivate let pointer: UnsafeMutableRawPointer!
 
     /// Used to instantiate a [FFIObject] without an actual pointer, for fakes in tests, mostly.
@@ -1327,7 +1450,7 @@ nonisolated open class FfiLibrary: FfiLibraryProtocol, @unchecked Sendable {
         try! rustCall { uniffi_lasco_ffi_fn_free_ffilibrary(pointer, $0) }
     }
 
-    
+
     /**
      * Open a library by nickname. Delegates config loading, storage
      * construction, and session/master-key handling to `lasco_core::client`.
@@ -1336,7 +1459,7 @@ nonisolated open class FfiLibrary: FfiLibraryProtocol, @unchecked Sendable {
      *
      * Returns an error if setup/configuration fails, the nickname is unknown, or credentials cannot open the library.
      */
-nonisolated public static func `open`(nickname: String?, username: String, password: String, appDir: String? = nil)throws  -> FfiLibrary  {
+public static func `open`(nickname: String?, username: String, password: String, appDir: String? = nil)throws  -> FfiLibrary  {
     return try  FfiConverterTypeFfiLibrary_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_constructor_ffilibrary_open(
         FfiConverterOptionString.lower(nickname),
@@ -1346,40 +1469,40 @@ nonisolated public static func `open`(nickname: String?, username: String, passw
     )
 })
 }
-    
 
-    
+
+
     /**
      * # Errors
      *
      * Returns an error for invalid or absent IDs, or an unpersistable membership operation.
      */
-nonisolated open func addMediaToAlbum(albumId: FfiAlbumUuid, mediaId: FfiMediaUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+open func addMediaToAlbum(albumId: FfiAlbumUuid, mediaId: FfiMediaUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_add_media_to_album(self.uniffiClonePointer(),
         FfiConverterTypeFfiAlbumUuid_lower(albumId),
         FfiConverterTypeFfiMediaUuid_lower(mediaId),$0
     )
 }
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error for invalid or absent IDs, or an unpersistable membership operation.
      */
-nonisolated open func addMediaToGroup(groupId: FfiGroupUuid, mediaId: FfiMediaUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+open func addMediaToGroup(groupId: FfiGroupUuid, mediaId: FfiMediaUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_add_media_to_group(self.uniffiClonePointer(),
         FfiConverterTypeFfiGroupUuid_lower(groupId),
         FfiConverterTypeFfiMediaUuid_lower(mediaId),$0
     )
 }
 }
-    
+
     /**
      * Adds one Lasco Cloud storage destination. The core resolves and caches
      * its short-lived S3 credentials when the remote is first used.
      */
-nonisolated open func addRemoteCloudS3(name: String, cloudStorageId: String)throws  -> FfiRemoteUuid  {
+open func addRemoteCloudS3(name: String, cloudStorageId: String)throws  -> FfiRemoteUuid  {
     return try  FfiConverterTypeFfiRemoteUuid_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_cloud_s3(self.uniffiClonePointer(),
         FfiConverterString.lower(name),
@@ -1387,7 +1510,7 @@ nonisolated open func addRemoteCloudS3(name: String, cloudStorageId: String)thro
     )
 })
 }
-    
+
     /**
      * # Errors
      *
@@ -1398,14 +1521,14 @@ nonisolated open func addRemoteCloudS3(name: String, cloudStorageId: String)thro
      * Panics if another thread panicked while holding the cached remote-list mutex during the
      * in-memory update after configuration is saved.
      */
-nonisolated open func addRemoteDebugLocalAndroid(name: String)throws  -> FfiRemoteUuid  {
+open func addRemoteDebugLocalAndroid(name: String)throws  -> FfiRemoteUuid  {
     return try  FfiConverterTypeFfiRemoteUuid_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_debug_local_android(self.uniffiClonePointer(),
         FfiConverterString.lower(name),$0
     )
 })
 }
-    
+
     /**
      * # Errors
      *
@@ -1416,14 +1539,14 @@ nonisolated open func addRemoteDebugLocalAndroid(name: String)throws  -> FfiRemo
      * Panics if another thread panicked while holding the cached remote-list mutex during the
      * in-memory update after configuration is saved.
      */
-nonisolated open func addRemoteDebugLocalApple(name: String)throws  -> FfiRemoteUuid  {
+open func addRemoteDebugLocalApple(name: String)throws  -> FfiRemoteUuid  {
     return try  FfiConverterTypeFfiRemoteUuid_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_debug_local_apple(self.uniffiClonePointer(),
         FfiConverterString.lower(name),$0
     )
 })
 }
-    
+
     /**
      * # Errors
      *
@@ -1434,7 +1557,7 @@ nonisolated open func addRemoteDebugLocalApple(name: String)throws  -> FfiRemote
      * Panics if another thread panicked while holding the cached remote-list mutex during the
      * in-memory update after configuration is saved.
      */
-nonisolated open func addRemoteFixedPath(name: String, path: String)throws  -> FfiRemoteUuid  {
+open func addRemoteFixedPath(name: String, path: String)throws  -> FfiRemoteUuid  {
     return try  FfiConverterTypeFfiRemoteUuid_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_fixed_path(self.uniffiClonePointer(),
         FfiConverterString.lower(name),
@@ -1442,7 +1565,7 @@ nonisolated open func addRemoteFixedPath(name: String, path: String)throws  -> F
     )
 })
 }
-    
+
     /**
      * # Errors
      *
@@ -1453,7 +1576,7 @@ nonisolated open func addRemoteFixedPath(name: String, path: String)throws  -> F
      * Panics if another thread panicked while holding the cached remote-list mutex during the
      * in-memory update after configuration is saved.
      */
-nonisolated open func addRemoteS3(name: String, endpoint: String, bucket: String, region: String, pathPrefix: String, accessKey: String, secretKey: String)throws  -> FfiRemoteUuid  {
+open func addRemoteS3(name: String, endpoint: String, bucket: String, region: String, pathPrefix: String, accessKey: String, secretKey: String)throws  -> FfiRemoteUuid  {
     return try  FfiConverterTypeFfiRemoteUuid_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_s3(self.uniffiClonePointer(),
         FfiConverterString.lower(name),
@@ -1466,7 +1589,26 @@ nonisolated open func addRemoteS3(name: String, endpoint: String, bucket: String
     )
 })
 }
-    
+
+    /**
+     * Adds an SMB 2/3 share. The password is encrypted with this library's
+     * master key and is never included in [`FfiRemote`].
+     */
+open func addRemoteSmb(name: String, server: String, port: UInt16, share: String, pathPrefix: String, username: String, password: String, domain: String?)throws  -> FfiRemoteUuid  {
+    return try  FfiConverterTypeFfiRemoteUuid_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_smb(self.uniffiClonePointer(),
+        FfiConverterString.lower(name),
+        FfiConverterString.lower(server),
+        FfiConverterUInt16.lower(port),
+        FfiConverterString.lower(share),
+        FfiConverterString.lower(pathPrefix),
+        FfiConverterString.lower(username),
+        FfiConverterString.lower(password),
+        FfiConverterOptionString.lower(domain),$0
+    )
+})
+}
+
     /**
      * Add a wired USB drive selected through Android's Storage Access
      * Framework. `tree_uri` is an opaque, persistable access grant.
@@ -1475,7 +1617,7 @@ nonisolated open func addRemoteS3(name: String, endpoint: String, bucket: String
      *
      * Returns an error for an empty URI, duplicate name, or failed configuration persistence.
      */
-nonisolated open func addRemoteUsbAndroid(name: String, treeUri: String)throws  -> FfiRemoteUuid  {
+open func addRemoteUsbAndroid(name: String, treeUri: String)throws  -> FfiRemoteUuid  {
     return try  FfiConverterTypeFfiRemoteUuid_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_usb_android(self.uniffiClonePointer(),
         FfiConverterString.lower(name),
@@ -1483,7 +1625,7 @@ nonisolated open func addRemoteUsbAndroid(name: String, treeUri: String)throws  
     )
 })
 }
-    
+
     /**
      * Add a wired USB drive selected through Apple's document picker.
      * `bookmark_base64` is an opaque security-scoped bookmark.
@@ -1492,7 +1634,7 @@ nonisolated open func addRemoteUsbAndroid(name: String, treeUri: String)throws  
      *
      * Returns an error for an empty bookmark, duplicate name, or failed configuration persistence.
      */
-nonisolated open func addRemoteUsbApple(name: String, bookmarkBase64: String)throws  -> FfiRemoteUuid  {
+open func addRemoteUsbApple(name: String, bookmarkBase64: String)throws  -> FfiRemoteUuid  {
     return try  FfiConverterTypeFfiRemoteUuid_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_add_remote_usb_apple(self.uniffiClonePointer(),
         FfiConverterString.lower(name),
@@ -1500,20 +1642,20 @@ nonisolated open func addRemoteUsbApple(name: String, bookmarkBase64: String)thr
     )
 })
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error if `parent_album_id` is not a valid UUID.
      */
-nonisolated open func albumAlbumsCount(parentAlbumId: FfiAlbumUuid?)throws  -> UInt64  {
+open func albumAlbumsCount(parentAlbumId: FfiAlbumUuid?)throws  -> UInt64  {
     return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_album_albums_count(self.uniffiClonePointer(),
         FfiConverterOptionTypeFfiAlbumUuid.lower(parentAlbumId),$0
     )
 })
 }
-    
+
     /**
      * Returns direct albums under `parent_album_id`; `None` means root albums.
      * Positions are zero-based and both ends of the range are inclusive.
@@ -1522,7 +1664,7 @@ nonisolated open func albumAlbumsCount(parentAlbumId: FfiAlbumUuid?)throws  -> U
      *
      * Returns an error for an invalid parent ID or an inverted position range.
      */
-nonisolated open func albumAlbumsRange(parentAlbumId: FfiAlbumUuid?, posStartInclusive: UInt32, posEndInclusive: UInt32)throws  -> [FfiAlbum]  {
+open func albumAlbumsRange(parentAlbumId: FfiAlbumUuid?, posStartInclusive: UInt32, posEndInclusive: UInt32)throws  -> [FfiAlbum]  {
     return try  FfiConverterSequenceTypeFfiAlbum.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_album_albums_range(self.uniffiClonePointer(),
         FfiConverterOptionTypeFfiAlbumUuid.lower(parentAlbumId),
@@ -1531,7 +1673,7 @@ nonisolated open func albumAlbumsRange(parentAlbumId: FfiAlbumUuid?, posStartInc
     )
 })
 }
-    
+
     /**
      * Returns the entries immediately surrounding a zero-based album position.
      *
@@ -1539,7 +1681,7 @@ nonisolated open func albumAlbumsRange(parentAlbumId: FfiAlbumUuid?, posStartInc
      *
      * Returns an error if the album ID is invalid or absent, or `position` is outside its item list.
      */
-nonisolated open func albumItemsByDateNeighbors(albumId: FfiAlbumUuid, ascending: Bool, position: UInt32)throws  -> FfiMediaOrGroupNeighbors  {
+open func albumItemsByDateNeighbors(albumId: FfiAlbumUuid, ascending: Bool, position: UInt32)throws  -> FfiMediaOrGroupNeighbors  {
     return try  FfiConverterTypeFfiMediaOrGroupNeighbors_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_album_items_by_date_neighbors(self.uniffiClonePointer(),
         FfiConverterTypeFfiAlbumUuid_lower(albumId),
@@ -1548,7 +1690,7 @@ nonisolated open func albumItemsByDateNeighbors(albumId: FfiAlbumUuid, ascending
     )
 })
 }
-    
+
     /**
      * Positions are zero-based and both ends of the range are inclusive.
      *
@@ -1556,7 +1698,7 @@ nonisolated open func albumItemsByDateNeighbors(albumId: FfiAlbumUuid, ascending
      *
      * Returns an error for an invalid or absent album ID, or an inverted position range.
      */
-nonisolated open func albumItemsByDateRange(albumId: FfiAlbumUuid, ascending: Bool, posStartInclusive: UInt32, posEndInclusive: UInt32)throws  -> [FfiAlbumItem]  {
+open func albumItemsByDateRange(albumId: FfiAlbumUuid, ascending: Bool, posStartInclusive: UInt32, posEndInclusive: UInt32)throws  -> [FfiAlbumItem]  {
     return try  FfiConverterSequenceTypeFfiAlbumItem.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_album_items_by_date_range(self.uniffiClonePointer(),
         FfiConverterTypeFfiAlbumUuid_lower(albumId),
@@ -1566,39 +1708,39 @@ nonisolated open func albumItemsByDateRange(albumId: FfiAlbumUuid, ascending: Bo
     )
 })
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error if `album_id` is invalid or absent.
      */
-nonisolated open func albumItemsCount(albumId: FfiAlbumUuid)throws  -> UInt64  {
+open func albumItemsCount(albumId: FfiAlbumUuid)throws  -> UInt64  {
     return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_album_items_count(self.uniffiClonePointer(),
         FfiConverterTypeFfiAlbumUuid_lower(albumId),$0
     )
 })
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error if `album_id` is invalid or absent.
      */
-nonisolated open func albumListGroups(albumId: FfiAlbumUuid)throws  -> [FfiGroup]  {
+open func albumListGroups(albumId: FfiAlbumUuid)throws  -> [FfiGroup]  {
     return try  FfiConverterSequenceTypeFfiGroup.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_album_list_groups(self.uniffiClonePointer(),
         FfiConverterTypeFfiAlbumUuid_lower(albumId),$0
     )
 })
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error if `album_id` is invalid or absent.
      */
-nonisolated open func albumListItemsSorted(albumId: FfiAlbumUuid, ascending: Bool)throws  -> [FfiAlbumItem]  {
+open func albumListItemsSorted(albumId: FfiAlbumUuid, ascending: Bool)throws  -> [FfiAlbumItem]  {
     return try  FfiConverterSequenceTypeFfiAlbumItem.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_album_list_items_sorted(self.uniffiClonePointer(),
         FfiConverterTypeFfiAlbumUuid_lower(albumId),
@@ -1606,21 +1748,76 @@ nonisolated open func albumListItemsSorted(albumId: FfiAlbumUuid, ascending: Boo
     )
 })
 }
-    
-nonisolated open func allMediaIds() -> [FfiMediaUuid]  {
+
+open func allMediaIds() -> [FfiMediaUuid]  {
     return try!  FfiConverterSequenceTypeFfiMediaUuid.lift(try! rustCall() {
     uniffi_lasco_ffi_fn_method_ffilibrary_all_media_ids(self.uniffiClonePointer(),$0
     )
 })
 }
-    
-nonisolated open func clearLascoCloudAuthAndCredentials()async throws   {
+
+    /**
+     * Returns the selected media IDs when this exact Apple Photos asset revision has already
+     * been associated with Lasco media. This performs no resource download.
+     */
+open func applePhotosAssetRevisionMediaIds(revision: FfiApplePhotosAssetRevision)throws  -> [FfiMediaUuid]?  {
+    return try  FfiConverterOptionSequenceTypeFfiMediaUuid.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_apple_photos_asset_revision_media_ids(self.uniffiClonePointer(),
+        FfiConverterTypeFfiApplePhotosAssetRevision_lower(revision),$0
+    )
+})
+}
+
+    /**
+     * Returns the canonical Lasco album for each known Apple Photos collection identity.
+     */
+open func applePhotosCollectionLinks(collections: [FfiApplePhotosCollectionIdentity])throws  -> [FfiAlbumUuid?]  {
+    return try  FfiConverterSequenceOptionTypeFfiAlbumUuid.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_apple_photos_collection_links(self.uniffiClonePointer(),
+        FfiConverterSequenceTypeFfiApplePhotosCollectionIdentity.lower(collections),$0
+    )
+})
+}
+
+    /**
+     * Measures one remote at each parallelism from one through `max_parallel_uploads`.
+     * Temporary random benchmark objects are removed before this method returns.
+     *
+     * The desktop importer runs this concurrently for selected remotes, then uses the result to
+     * select an individual remote upload limit and to compare aggregate throughput against the
+     * sum of isolated remote rates.
+     *
+     * # Errors
+     *
+     * An individual parallelism sample that times out or fails is discarded so the importer can
+     * still select from the remaining samples. Returns an error if the request is outside 1
+     * through 16 MiB or 1 through 5 uploads, storage construction fails, cleanup fails, or no
+     * sample completes successfully.
+     */
+open func benchmarkRemoteUploadAsync(remoteId: FfiRemoteUuid, appSupportDir: String?, bytesPerUpload: UInt64, maxParallelUploads: UInt8)async throws  -> [FfiUploadBenchmarkSample]  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_lasco_ffi_fn_method_ffilibrary_benchmark_remote_upload_async(
+                    self.uniffiClonePointer(),
+                    FfiConverterTypeFfiRemoteUuid_lower(remoteId),FfiConverterOptionString.lower(appSupportDir),FfiConverterUInt64.lower(bytesPerUpload),FfiConverterUInt8.lower(maxParallelUploads)
+                )
+            },
+            pollFunc: ffi_lasco_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_lasco_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_lasco_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterSequenceTypeFfiUploadBenchmarkSample.lift,
+            errorHandler: FfiConverterTypeLascoError_lift
+        )
+}
+
+open func clearLascoCloudAuthAndCredentials()async throws   {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_lasco_ffi_fn_method_ffilibrary_clear_lasco_cloud_auth_and_credentials(
                     self.uniffiClonePointer()
-                    
+
                 )
             },
             pollFunc: ffi_lasco_ffi_rust_future_poll_void,
@@ -1630,8 +1827,8 @@ nonisolated open func clearLascoCloudAuthAndCredentials()async throws   {
             errorHandler: FfiConverterTypeLascoError_lift
         )
 }
-    
-nonisolated open func configureLascoCloudAuth(baseUrl: String)async throws   {
+
+open func configureLascoCloudAuth(baseUrl: String)async throws   {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
@@ -1647,17 +1844,18 @@ nonisolated open func configureLascoCloudAuth(baseUrl: String)async throws   {
             errorHandler: FfiConverterTypeLascoError_lift
         )
 }
-    
+
     /**
-     * Confirms which media blobs a remote holds and records them in its media inventory,
-     * without fetching. Returns how many blobs it newly confirmed.
+     * Recursively lists every media blob a remote holds, exhausting backend pagination, and
+     * replaces its cached media inventory without fetching operations. Returns how many blobs
+     * were newly observed.
      *
      * # Errors
      *
      * Returns an error if the ID is invalid, storage cannot be built, a sync is already
      * running for this remote, or the remote does not belong to this library.
      */
-nonisolated open func confirmRemoteMediaAsync(remoteId: FfiRemoteUuid, appSupportDir: String?)async throws  -> UInt64  {
+open func confirmRemoteMediaAsync(remoteId: FfiRemoteUuid, appSupportDir: String?)async throws  -> UInt64  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
@@ -1673,26 +1871,42 @@ nonisolated open func confirmRemoteMediaAsync(remoteId: FfiRemoteUuid, appSuppor
             errorHandler: FfiConverterTypeLascoError_lift
         )
 }
-    
+
+    /**
+     * Returns which supplied media IDs are confirmed to have a full original on this remote.
+     *
+     * Callers should refresh the remote inventory with `confirm_remote_media_async` first.
+     * The result reflects this client's cached positive-only inventory and never performs a
+     * network request itself.
+     */
+open func confirmedRemoteMediaIds(remoteId: FfiRemoteUuid, mediaIds: [FfiMediaUuid])throws  -> [FfiMediaUuid]  {
+    return try  FfiConverterSequenceTypeFfiMediaUuid.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_confirmed_remote_media_ids(self.uniffiClonePointer(),
+        FfiConverterTypeFfiRemoteUuid_lower(remoteId),
+        FfiConverterSequenceTypeFfiMediaUuid.lower(mediaIds),$0
+    )
+})
+}
+
     /**
      * # Errors
      *
      * Returns an error if the ID/configuration is invalid, storage cannot be built, or remote identity cannot be verified.
      */
-nonisolated open func connectRemote(remoteId: FfiRemoteUuid, appSupportDir: String?)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+open func connectRemote(remoteId: FfiRemoteUuid, appSupportDir: String?)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_connect_remote(self.uniffiClonePointer(),
         FfiConverterTypeFfiRemoteUuid_lower(remoteId),
         FfiConverterOptionString.lower(appSupportDir),$0
     )
 }
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error if the optional parent ID is invalid or absent, or creation cannot be persisted.
      */
-nonisolated open func createAlbum(name: String, parentAlbumId: FfiAlbumUuid?)throws  -> FfiAlbumUuid  {
+open func createAlbum(name: String, parentAlbumId: FfiAlbumUuid?)throws  -> FfiAlbumUuid  {
     return try  FfiConverterTypeFfiAlbumUuid_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_create_album(self.uniffiClonePointer(),
         FfiConverterString.lower(name),
@@ -1700,63 +1914,63 @@ nonisolated open func createAlbum(name: String, parentAlbumId: FfiAlbumUuid?)thr
     )
 })
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error if `album_id` is invalid or absent, or creation cannot be persisted.
      */
-nonisolated open func createGroup(albumId: FfiAlbumUuid)throws  -> FfiGroupUuid  {
+open func createGroup(albumId: FfiAlbumUuid)throws  -> FfiGroupUuid  {
     return try  FfiConverterTypeFfiGroupUuid_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_create_group(self.uniffiClonePointer(),
         FfiConverterTypeFfiAlbumUuid_lower(albumId),$0
     )
 })
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error if `album_id` is invalid or absent, or deletion cannot be persisted.
      */
-nonisolated open func deleteAlbum(albumId: FfiAlbumUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+open func deleteAlbum(albumId: FfiAlbumUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_delete_album(self.uniffiClonePointer(),
         FfiConverterTypeFfiAlbumUuid_lower(albumId),$0
     )
 }
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error if `group_id` is invalid or absent, or deletion cannot be persisted.
      */
-nonisolated open func deleteGroup(groupId: FfiGroupUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+open func deleteGroup(groupId: FfiGroupUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_delete_group(self.uniffiClonePointer(),
         FfiConverterTypeFfiGroupUuid_lower(groupId),$0
     )
 }
 }
-    
+
     /**
      * # Errors
      *
-     * Returns an error if `media_id` is invalid, absent, or the delete operation cannot be persisted.
+     * Moves media to Trash. Its encrypted data remains available for Restore.
      */
-nonisolated open func deleteMedia(mediaId: FfiMediaUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+open func deleteMedia(mediaId: FfiMediaUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_delete_media(self.uniffiClonePointer(),
         FfiConverterTypeFfiMediaUuid_lower(mediaId),$0
     )
 }
 }
-    
-nonisolated open func disconnectedAlbumsCount() -> UInt64  {
+
+open func disconnectedAlbumsCount() -> UInt64  {
     return try!  FfiConverterUInt64.lift(try! rustCall() {
     uniffi_lasco_ffi_fn_method_ffilibrary_disconnected_albums_count(self.uniffiClonePointer(),$0
     )
 })
 }
-    
+
     /**
      * Returns disconnected albums in the same order as `list_albums`.
      * Positions are zero-based and both ends of the range are inclusive.
@@ -1765,7 +1979,7 @@ nonisolated open func disconnectedAlbumsCount() -> UInt64  {
      *
      * Returns an error when the start position exceeds the end position.
      */
-nonisolated open func disconnectedAlbumsRange(posStartInclusive: UInt32, posEndInclusive: UInt32)throws  -> [FfiAlbum]  {
+open func disconnectedAlbumsRange(posStartInclusive: UInt32, posEndInclusive: UInt32)throws  -> [FfiAlbum]  {
     return try  FfiConverterSequenceTypeFfiAlbum.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_disconnected_albums_range(self.uniffiClonePointer(),
         FfiConverterUInt32.lower(posStartInclusive),
@@ -1773,7 +1987,35 @@ nonisolated open func disconnectedAlbumsRange(posStartInclusive: UInt32, posEndI
     )
 })
 }
-    
+
+    /**
+     * Permanently deletes every item in Trash, including hidden companions.
+     * Remote blobs are reclaimed after their tombstones are pushed.
+     */
+open func emptyTrash()throws  -> UInt64  {
+    return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_empty_trash(self.uniffiClonePointer(),$0
+    )
+})
+}
+
+    /**
+     * Check whether a selected Android USB folder has already been initialized
+     * as any Lasco remote. This performs no writes and is intended to run
+     * before a new remote configuration is created.
+     *
+     * # Errors
+     *
+     * Returns an error for an empty or inaccessible tree URI, or if a
+     * `remote_id_*` marker already exists in the selected folder.
+     */
+open func ensureUsbAndroidFolderIsUninitialized(treeUri: String)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_ensure_usb_android_folder_is_uninitialized(self.uniffiClonePointer(),
+        FfiConverterString.lower(treeUri),$0
+    )
+}
+}
+
     /**
      * Check whether a selected Apple USB folder has already been initialized
      * as any Lasco remote. This performs no writes and is intended to run
@@ -1784,43 +2026,43 @@ nonisolated open func disconnectedAlbumsRange(posStartInclusive: UInt32, posEndI
      * Returns an error for an empty or inaccessible bookmark, or if a
      * `remote_id_*` marker already exists in the selected folder.
      */
-nonisolated open func ensureUsbAppleFolderIsUninitialized(bookmarkBase64: String)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+open func ensureUsbAppleFolderIsUninitialized(bookmarkBase64: String)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_ensure_usb_apple_folder_is_uninitialized(self.uniffiClonePointer(),
         FfiConverterString.lower(bookmarkBase64),$0
     )
 }
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error if an ID is invalid or removing a cached media file fails.
      */
-nonisolated open func evictLocalData(mediaIds: [FfiMediaUuid])throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+open func evictLocalData(mediaIds: [FfiMediaUuid])throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_evict_local_data(self.uniffiClonePointer(),
         FfiConverterSequenceTypeFfiMediaUuid.lower(mediaIds),$0
     )
 }
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error if an ID is invalid or removing a cached thumbnail fails.
      */
-nonisolated open func evictLocalThumbnails(mediaIds: [FfiMediaUuid])throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+open func evictLocalThumbnails(mediaIds: [FfiMediaUuid])throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_evict_local_thumbnails(self.uniffiClonePointer(),
         FfiConverterSequenceTypeFfiMediaUuid.lower(mediaIds),$0
     )
 }
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error if the ID/configuration is invalid, storage cannot be built, or remote fetch fails.
      */
-nonisolated open func fetchRemote(remoteId: FfiRemoteUuid, appSupportDir: String?)throws  -> UInt64  {
+open func fetchRemote(remoteId: FfiRemoteUuid, appSupportDir: String?)throws  -> UInt64  {
     return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_fetch_remote(self.uniffiClonePointer(),
         FfiConverterTypeFfiRemoteUuid_lower(remoteId),
@@ -1828,13 +2070,13 @@ nonisolated open func fetchRemote(remoteId: FfiRemoteUuid, appSupportDir: String
     )
 })
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error if the ID/configuration is invalid, storage cannot be built, the task fails, or remote fetch fails.
      */
-nonisolated open func fetchRemoteAsync(remoteId: FfiRemoteUuid, appSupportDir: String?)async throws  -> UInt64  {
+open func fetchRemoteAsync(remoteId: FfiRemoteUuid, appSupportDir: String?)async throws  -> UInt64  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
@@ -1850,27 +2092,27 @@ nonisolated open func fetchRemoteAsync(remoteId: FfiRemoteUuid, appSupportDir: S
             errorHandler: FfiConverterTypeLascoError_lift
         )
 }
-    
-nonisolated open func getAutoImportDeviceMedia() -> Bool  {
+
+open func getAutoImportDeviceMedia() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
     uniffi_lasco_ffi_fn_method_ffilibrary_get_auto_import_device_media(self.uniffiClonePointer(),$0
     )
 })
 }
-    
-nonisolated open func getDefaultFetchRemote() -> FfiRemoteUuid?  {
+
+open func getDefaultFetchRemote() -> FfiRemoteUuid?  {
     return try!  FfiConverterOptionTypeFfiRemoteUuid.lift(try! rustCall() {
     uniffi_lasco_ffi_fn_method_ffilibrary_get_default_fetch_remote(self.uniffiClonePointer(),$0
     )
 })
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error if the ID is invalid, no local or configured remote copy is available, or reading, decrypting, or caching it fails.
      */
-nonisolated open func getMediaBytes(mediaId: FfiMediaUuid, appSupportDir: String?)throws  -> Data  {
+open func getMediaBytes(mediaId: FfiMediaUuid, appSupportDir: String?)throws  -> Data  {
     return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_get_media_bytes(self.uniffiClonePointer(),
         FfiConverterTypeFfiMediaUuid_lower(mediaId),
@@ -1878,13 +2120,13 @@ nonisolated open func getMediaBytes(mediaId: FfiMediaUuid, appSupportDir: String
     )
 })
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error if the ID is invalid, no local or configured remote blob is available, or a remote read, decryption, or cache write fails.
      */
-nonisolated open func getMediaBytesAsync(mediaId: FfiMediaUuid, appSupportDir: String?)async throws  -> Data  {
+open func getMediaBytesAsync(mediaId: FfiMediaUuid, appSupportDir: String?)async throws  -> Data  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
@@ -1900,7 +2142,7 @@ nonisolated open func getMediaBytesAsync(mediaId: FfiMediaUuid, appSupportDir: S
             errorHandler: FfiConverterTypeLascoError_lift
         )
 }
-    
+
     /**
      * Returns Rust-owned plaintext media bytes without serializing them into
      * a UniFFI byte array. The returned object's lifetime owns the backing
@@ -1915,7 +2157,7 @@ nonisolated open func getMediaBytesAsync(mediaId: FfiMediaUuid, appSupportDir: S
      * Returns an error if the ID is invalid, no local or configured remote
      * blob is available, or a remote read, decryption, or cache write fails.
      */
-nonisolated open func getMediaBytesNativeAsync(mediaId: FfiMediaUuid, appSupportDir: String?)async throws  -> FfiNativeMediaBytes  {
+open func getMediaBytesNativeAsync(mediaId: FfiMediaUuid, appSupportDir: String?)async throws  -> FfiNativeMediaBytes  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
@@ -1931,7 +2173,7 @@ nonisolated open func getMediaBytesNativeAsync(mediaId: FfiMediaUuid, appSupport
             errorHandler: FfiConverterTypeLascoError_lift
         )
 }
-    
+
     /**
      * Returns the ordered subset of remotes used to retrieve uncached originals.
      *
@@ -1939,19 +2181,19 @@ nonisolated open func getMediaBytesNativeAsync(mediaId: FfiMediaUuid, appSupport
      *
      * Returns an error if the library configuration cannot be read.
      */
-nonisolated open func getMediaSourceOrder()throws  -> [FfiRemoteUuid]  {
+open func getMediaSourceOrder()throws  -> [FfiRemoteUuid]  {
     return try  FfiConverterSequenceTypeFfiRemoteUuid.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_get_media_source_order(self.uniffiClonePointer(),$0
     )
 })
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error if the ID is invalid, no local or configured remote copy is available, or reading, decrypting, or caching it fails.
      */
-nonisolated open func getMediaThumbnail(mediaId: FfiMediaUuid, appSupportDir: String?)throws  -> Data  {
+open func getMediaThumbnail(mediaId: FfiMediaUuid, appSupportDir: String?)throws  -> Data  {
     return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_get_media_thumbnail(self.uniffiClonePointer(),
         FfiConverterTypeFfiMediaUuid_lower(mediaId),
@@ -1959,13 +2201,13 @@ nonisolated open func getMediaThumbnail(mediaId: FfiMediaUuid, appSupportDir: St
     )
 })
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error if the ID is invalid, no local or configured remote thumbnail is available, or a remote read or cache write fails.
      */
-nonisolated open func getMediaThumbnailAsync(mediaId: FfiMediaUuid, appSupportDir: String?)async throws  -> Data  {
+open func getMediaThumbnailAsync(mediaId: FfiMediaUuid, appSupportDir: String?)async throws  -> Data  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
@@ -1981,34 +2223,46 @@ nonisolated open func getMediaThumbnailAsync(mediaId: FfiMediaUuid, appSupportDi
             errorHandler: FfiConverterTypeLascoError_lift
         )
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error if `group_id` is invalid or absent.
      */
-nonisolated open func groupListMedia(groupId: FfiGroupUuid)throws  -> [FfiMediaItem]  {
+open func groupListMedia(groupId: FfiGroupUuid)throws  -> [FfiMediaItem]  {
     return try  FfiConverterSequenceTypeFfiMediaItem.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_group_list_media(self.uniffiClonePointer(),
         FfiConverterTypeFfiGroupUuid_lower(groupId),$0
     )
 })
 }
-    
-nonisolated open func hasUnpushedChanges(remoteId: FfiRemoteUuid) -> Bool  {
+
+    /**
+     * Permanently deletes media already in Trash and its trashed companions from CRDT state
+     * and the local encrypted cache.
+     * Remote blobs are reclaimed after the tombstone is pushed to each remote.
+     */
+open func hardDeleteMedia(mediaId: FfiMediaUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_hard_delete_media(self.uniffiClonePointer(),
+        FfiConverterTypeFfiMediaUuid_lower(mediaId),$0
+    )
+}
+}
+
+open func hasUnpushedChanges(remoteId: FfiRemoteUuid) -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
     uniffi_lasco_ffi_fn_method_ffilibrary_has_unpushed_changes(self.uniffiClonePointer(),
         FfiConverterTypeFfiRemoteUuid_lower(remoteId),$0
     )
 })
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error if an ID is invalid, the source cannot be read, media encryption/storage fails, or the creation operation cannot be persisted.
      */
-nonisolated open func importMedia(path: String, albumId: FfiAlbumUuid?, originalFilename: String?, appleAaeMediaId: FfiMediaUuid?, appleLivePhotoMediaId: FfiMediaUuid?)throws  -> FfiMediaAddResult  {
+open func importMedia(path: String, albumId: FfiAlbumUuid?, originalFilename: String?, appleAaeMediaId: FfiMediaUuid?, appleLivePhotoMediaId: FfiMediaUuid?)throws  -> FfiMediaAddResult  {
     return try  FfiConverterTypeFfiMediaAddResult_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_import_media(self.uniffiClonePointer(),
         FfiConverterString.lower(path),
@@ -2019,24 +2273,46 @@ nonisolated open func importMedia(path: String, albumId: FfiAlbumUuid?, original
     )
 })
 }
-    
+
+    /**
+     * Imports a media file with source-supplied metadata.
+     *
+     * Importers must preserve the original bytes and pass the source filename. Timestamps are
+     * RFC 3339 UTC offsets accepted by `chrono`; latitude and longitude must be supplied as a
+     * pair within their geographic ranges.
+     *
+     * # Errors
+     *
+     * Returns an error if an ID or metadata value is invalid, the source cannot be read, media
+     * encryption/storage fails, or the creation operation cannot be persisted.
+     */
+open func importMediaWithMetadata(path: String, albumId: FfiAlbumUuid?, metadata: FfiMediaImportMetadata)throws  -> FfiMediaAddResult  {
+    return try  FfiConverterTypeFfiMediaAddResult_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_import_media_with_metadata(self.uniffiClonePointer(),
+        FfiConverterString.lower(path),
+        FfiConverterOptionTypeFfiAlbumUuid.lower(albumId),
+        FfiConverterTypeFfiMediaImportMetadata_lower(metadata),$0
+    )
+})
+}
+
     /**
      * # Errors
      *
      * Returns an error if the ID is invalid or unknown, storage cannot be built, or remote initialization fails.
      */
-nonisolated open func initializeRemote(remoteId: FfiRemoteUuid, appSupportDir: String?)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+open func initializeRemote(remoteId: FfiRemoteUuid, appSupportDir: String?)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_initialize_remote(self.uniffiClonePointer(),
         FfiConverterTypeFfiRemoteUuid_lower(remoteId),
         FfiConverterOptionString.lower(appSupportDir),$0
     )
 }
 }
-    
+
     /**
      * Returns the owner and creation time of this remote's compaction lock, if held.
      */
-nonisolated open func inspectCompactionLock(remoteId: FfiRemoteUuid, appSupportDir: String?)throws  -> FfiCompactionLockInfo?  {
+open func inspectCompactionLock(remoteId: FfiRemoteUuid, appSupportDir: String?)throws  -> FfiCompactionLockInfo?  {
     return try  FfiConverterOptionTypeFfiCompactionLockInfo.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_inspect_compaction_lock(self.uniffiClonePointer(),
         FfiConverterTypeFfiRemoteUuid_lower(remoteId),
@@ -2044,8 +2320,8 @@ nonisolated open func inspectCompactionLock(remoteId: FfiRemoteUuid, appSupportD
     )
 })
 }
-    
-nonisolated open func lascoCloudAssignRemotesToThisLibrary(remoteIds: [String])async throws   {
+
+open func lascoCloudAssignRemotesToThisLibrary(remoteIds: [String])async throws   {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
@@ -2061,12 +2337,12 @@ nonisolated open func lascoCloudAssignRemotesToThisLibrary(remoteIds: [String])a
             errorHandler: FfiConverterTypeLascoError_lift
         )
 }
-    
+
     /**
      * Rejects an initial import that cannot fit on the configured Cloud remotes.
      * Only media data bytes are supplied; state and generated thumbnails are excluded.
      */
-nonisolated open func lascoCloudCheckInitialImport(mediaBytes: UInt64)async throws   {
+open func lascoCloudCheckInitialImport(mediaBytes: UInt64)async throws   {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
@@ -2082,21 +2358,21 @@ nonisolated open func lascoCloudCheckInitialImport(mediaBytes: UInt64)async thro
             errorHandler: FfiConverterTypeLascoError_lift
         )
 }
-    
-nonisolated open func lascoCloudIsAuthenticated() -> Bool  {
+
+open func lascoCloudIsAuthenticated() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
     uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_is_authenticated(self.uniffiClonePointer(),$0
     )
 })
 }
-    
-nonisolated open func lascoCloudListRemotes()async throws  -> [FfiLascoCloudRemote]  {
+
+open func lascoCloudListRemotes()async throws  -> [FfiLascoCloudRemote]  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_list_remotes(
                     self.uniffiClonePointer()
-                    
+
                 )
             },
             pollFunc: ffi_lasco_ffi_rust_future_poll_rust_buffer,
@@ -2106,8 +2382,8 @@ nonisolated open func lascoCloudListRemotes()async throws  -> [FfiLascoCloudRemo
             errorHandler: FfiConverterTypeLascoError_lift
         )
 }
-    
-nonisolated open func lascoCloudLogin(email: String, password: String, platform: String, appVersion: String)async throws   {
+
+open func lascoCloudLogin(email: String, password: String, platform: String, appVersion: String)async throws   {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
@@ -2123,14 +2399,14 @@ nonisolated open func lascoCloudLogin(email: String, password: String, platform:
             errorHandler: FfiConverterTypeLascoError_lift
         )
 }
-    
-nonisolated open func lascoCloudRevokeSession()async throws   {
+
+open func lascoCloudRevokeSession()async throws   {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_revoke_session(
                     self.uniffiClonePointer()
-                    
+
                 )
             },
             pollFunc: ffi_lasco_ffi_rust_future_poll_void,
@@ -2140,14 +2416,14 @@ nonisolated open func lascoCloudRevokeSession()async throws   {
             errorHandler: FfiConverterTypeLascoError_lift
         )
 }
-    
-nonisolated open func lascoCloudStorageUsage()async throws  -> UInt64  {
+
+open func lascoCloudStorageUsage()async throws  -> UInt64  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_storage_usage(
                     self.uniffiClonePointer()
-                    
+
                 )
             },
             pollFunc: ffi_lasco_ffi_rust_future_poll_u64,
@@ -2157,14 +2433,14 @@ nonisolated open func lascoCloudStorageUsage()async throws  -> UInt64  {
             errorHandler: FfiConverterTypeLascoError_lift
         )
 }
-    
-nonisolated open func lascoCloudSubscription()async throws  -> FfiLascoCloudAccount  {
+
+open func lascoCloudSubscription()async throws  -> FfiLascoCloudAccount  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_lasco_ffi_fn_method_ffilibrary_lasco_cloud_subscription(
                     self.uniffiClonePointer()
-                    
+
                 )
             },
             pollFunc: ffi_lasco_ffi_rust_future_poll_rust_buffer,
@@ -2174,38 +2450,38 @@ nonisolated open func lascoCloudSubscription()async throws  -> FfiLascoCloudAcco
             errorHandler: FfiConverterTypeLascoError_lift
         )
 }
-    
-nonisolated open func libraryId() -> FfiLibraryId  {
+
+open func libraryId() -> FfiLibraryId  {
     return try!  FfiConverterTypeFfiLibraryId_lift(try! rustCall() {
     uniffi_lasco_ffi_fn_method_ffilibrary_library_id(self.uniffiClonePointer(),$0
     )
 })
 }
-    
+
     /**
      * # Errors
      *
      * This method currently cannot fail; the `Result` preserves the FFI query API.
      */
-nonisolated open func listAlbums()throws  -> [FfiAlbum]  {
+open func listAlbums()throws  -> [FfiAlbum]  {
     return try  FfiConverterSequenceTypeFfiAlbum.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_list_albums(self.uniffiClonePointer(),$0
     )
 })
 }
-    
+
     /**
      * # Errors
      *
      * This method currently cannot fail; the `Result` preserves the FFI query API.
      */
-nonisolated open func listMedia()throws  -> [FfiMediaItem]  {
+open func listMedia()throws  -> [FfiMediaItem]  {
     return try  FfiConverterSequenceTypeFfiMediaItem.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_list_media(self.uniffiClonePointer(),$0
     )
 })
 }
-    
+
     /**
      * # Errors
      *
@@ -2213,7 +2489,7 @@ nonisolated open func listMedia()throws  -> [FfiMediaItem]  {
      *
      * Returns an error if persisted local operations cannot be read or decoded.
      */
-nonisolated open func listOperations(startPos: UInt64, endPosExclusive: UInt64)throws  -> [FfiCrdtOperation]  {
+open func listOperations(startPos: UInt64, endPosExclusive: UInt64)throws  -> [FfiCrdtOperation]  {
     return try  FfiConverterSequenceTypeFfiCrdtOperation.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_list_operations(self.uniffiClonePointer(),
         FfiConverterUInt64.lower(startPos),
@@ -2221,37 +2497,37 @@ nonisolated open func listOperations(startPos: UInt64, endPosExclusive: UInt64)t
     )
 })
 }
-    
+
     /**
      * # Panics
      *
      * Panics if another thread panicked while holding the cached remote-list mutex.
      */
-nonisolated open func listRemotes() -> [FfiRemote]  {
+open func listRemotes() -> [FfiRemote]  {
     return try!  FfiConverterSequenceTypeFfiRemote.lift(try! rustCall() {
     uniffi_lasco_ffi_fn_method_ffilibrary_list_remotes(self.uniffiClonePointer(),$0
     )
 })
 }
-    
+
     /**
      * # Errors
      *
      * Views are rebuilt atomically with every state change; retained as a no-op for FFI compatibility.
      */
-nonisolated open func loadLocalState()throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+open func loadLocalState()throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_load_local_state(self.uniffiClonePointer(),$0
     )
 }
 }
-    
-nonisolated open func localStateStats() -> FfiLocalStateStats  {
+
+open func localStateStats() -> FfiLocalStateStats  {
     return try!  FfiConverterTypeFfiLocalStateStats_lift(try! rustCall() {
     uniffi_lasco_ffi_fn_method_ffilibrary_local_state_stats(self.uniffiClonePointer(),$0
     )
 })
 }
-    
+
     /**
      * Materializes decrypted media to an app-private destination without
      * returning the full plaintext as a Kotlin byte array. Android uses this
@@ -2262,7 +2538,7 @@ nonisolated open func localStateStats() -> FfiLocalStateStats  {
      * evicting it. On a remote cache miss this method downloads and caches
      * the encrypted Lasco blob before writing the plaintext destination.
      */
-nonisolated open func materializeMediaToPathAsync(mediaId: FfiMediaUuid, appSupportDir: String?, destinationPath: String)async throws  -> String  {
+open func materializeMediaToPathAsync(mediaId: FfiMediaUuid, appSupportDir: String?, destinationPath: String)async throws  -> String  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
@@ -2278,39 +2554,39 @@ nonisolated open func materializeMediaToPathAsync(mediaId: FfiMediaUuid, appSupp
             errorHandler: FfiConverterTypeLascoError_lift
         )
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error if `media_id` is not a valid UUID.
      */
-nonisolated open func mediaAlbumIds(mediaId: FfiMediaUuid)throws  -> [FfiAlbumUuid]  {
+open func mediaAlbumIds(mediaId: FfiMediaUuid)throws  -> [FfiAlbumUuid]  {
     return try  FfiConverterSequenceTypeFfiAlbumUuid.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_media_album_ids(self.uniffiClonePointer(),
         FfiConverterTypeFfiMediaUuid_lower(mediaId),$0
     )
 })
 }
-    
+
     /**
      * # Errors
      *
      * This method currently cannot fail; the `Result` preserves the FFI query API.
      */
-nonisolated open func mediaByDate()throws  -> [FfiMediaItem]  {
+open func mediaByDate()throws  -> [FfiMediaItem]  {
     return try  FfiConverterSequenceTypeFfiMediaItem.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_media_by_date(self.uniffiClonePointer(),$0
     )
 })
 }
-    
-nonisolated open func mediaByDateCount() -> UInt64  {
+
+open func mediaByDateCount() -> UInt64  {
     return try!  FfiConverterUInt64.lift(try! rustCall() {
     uniffi_lasco_ffi_fn_method_ffilibrary_media_by_date_count(self.uniffiClonePointer(),$0
     )
 })
 }
-    
+
     /**
      * Returns the entries immediately surrounding a zero-based home position.
      *
@@ -2318,14 +2594,14 @@ nonisolated open func mediaByDateCount() -> UInt64  {
      *
      * Returns an error when `position` is outside the dated-media list.
      */
-nonisolated open func mediaByDateNeighbors(position: UInt32)throws  -> FfiMediaNeighbors  {
+open func mediaByDateNeighbors(position: UInt32)throws  -> FfiMediaNeighbors  {
     return try  FfiConverterTypeFfiMediaNeighbors_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_media_by_date_neighbors(self.uniffiClonePointer(),
         FfiConverterUInt32.lower(position),$0
     )
 })
 }
-    
+
     /**
      * Positions are zero-based and both ends of the range are inclusive.
      *
@@ -2333,7 +2609,7 @@ nonisolated open func mediaByDateNeighbors(position: UInt32)throws  -> FfiMediaN
      *
      * Returns an error when the start position exceeds the end position.
      */
-nonisolated open func mediaByDateRange(posStartInclusive: UInt32, posEndInclusive: UInt32)throws  -> [FfiMediaItem]  {
+open func mediaByDateRange(posStartInclusive: UInt32, posEndInclusive: UInt32)throws  -> [FfiMediaItem]  {
     return try  FfiConverterSequenceTypeFfiMediaItem.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_media_by_date_range(self.uniffiClonePointer(),
         FfiConverterUInt32.lower(posStartInclusive),
@@ -2341,13 +2617,13 @@ nonisolated open func mediaByDateRange(posStartInclusive: UInt32, posEndInclusiv
     )
 })
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error if `media_id` is not a valid UUID.
      */
-nonisolated open func mediaContainingAlbumIds(mediaId: FfiMediaUuid, includeViaGroups: Bool)throws  -> [FfiAlbumUuid]  {
+open func mediaContainingAlbumIds(mediaId: FfiMediaUuid, includeViaGroups: Bool)throws  -> [FfiAlbumUuid]  {
     return try  FfiConverterSequenceTypeFfiAlbumUuid.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_media_containing_album_ids(self.uniffiClonePointer(),
         FfiConverterTypeFfiMediaUuid_lower(mediaId),
@@ -2355,7 +2631,7 @@ nonisolated open func mediaContainingAlbumIds(mediaId: FfiMediaUuid, includeViaG
     )
 })
 }
-    
+
     /**
      * Counts the media that clearing local media would leave with no known copy anywhere.
      *
@@ -2366,13 +2642,13 @@ nonisolated open func mediaContainingAlbumIds(mediaId: FfiMediaUuid, includeViaG
      *
      * Returns an error if the library configuration cannot be read.
      */
-nonisolated open func mediaCountLostIfLocalMediaCleared()throws  -> UInt64  {
+open func mediaCountLostIfLocalMediaCleared()throws  -> UInt64  {
     return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_media_count_lost_if_local_media_cleared(self.uniffiClonePointer(),$0
     )
 })
 }
-    
+
     /**
      * Counts the media that removing `remote_id` would leave with no known copy anywhere.
      *
@@ -2383,33 +2659,33 @@ nonisolated open func mediaCountLostIfLocalMediaCleared()throws  -> UInt64  {
      *
      * Returns an error if the library configuration cannot be read or `remote_id` is invalid.
      */
-nonisolated open func mediaCountLostIfRemoteRemoved(remoteId: FfiRemoteUuid)throws  -> UInt64  {
+open func mediaCountLostIfRemoteRemoved(remoteId: FfiRemoteUuid)throws  -> UInt64  {
     return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_media_count_lost_if_remote_removed(self.uniffiClonePointer(),
         FfiConverterTypeFfiRemoteUuid_lower(remoteId),$0
     )
 })
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error if `album_id` is invalid or absent.
      */
-nonisolated open func mediaInAlbum(albumId: FfiAlbumUuid)throws  -> [FfiMediaItem]  {
+open func mediaInAlbum(albumId: FfiAlbumUuid)throws  -> [FfiMediaItem]  {
     return try  FfiConverterSequenceTypeFfiMediaItem.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_media_in_album(self.uniffiClonePointer(),
         FfiConverterTypeFfiAlbumUuid_lower(albumId),$0
     )
 })
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error for invalid or absent IDs, missing source membership, or a failed remove/add operation.
      */
-nonisolated open func moveMediaToAlbum(mediaId: FfiMediaUuid, fromAlbumId: FfiAlbumUuid, toAlbumId: FfiAlbumUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+open func moveMediaToAlbum(mediaId: FfiMediaUuid, fromAlbumId: FfiAlbumUuid, toAlbumId: FfiAlbumUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_move_media_to_album(self.uniffiClonePointer(),
         FfiConverterTypeFfiMediaUuid_lower(mediaId),
         FfiConverterTypeFfiAlbumUuid_lower(fromAlbumId),
@@ -2417,26 +2693,26 @@ nonisolated open func moveMediaToAlbum(mediaId: FfiMediaUuid, fromAlbumId: FfiAl
     )
 }
 }
-    
+
     /**
      * # Errors
      *
      * This method currently cannot fail; the `Result` preserves the FFI query API.
      */
-nonisolated open func orphanMediaByDate()throws  -> [FfiMediaItem]  {
+open func orphanMediaByDate()throws  -> [FfiMediaItem]  {
     return try  FfiConverterSequenceTypeFfiMediaItem.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date(self.uniffiClonePointer(),$0
     )
 })
 }
-    
-nonisolated open func orphanMediaByDateCount() -> UInt64  {
+
+open func orphanMediaByDateCount() -> UInt64  {
     return try!  FfiConverterUInt64.lift(try! rustCall() {
     uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date_count(self.uniffiClonePointer(),$0
     )
 })
 }
-    
+
     /**
      * Returns the entries immediately surrounding a zero-based orphan position.
      *
@@ -2444,14 +2720,14 @@ nonisolated open func orphanMediaByDateCount() -> UInt64  {
      *
      * Returns an error when `position` is outside the dated orphan-media list.
      */
-nonisolated open func orphanMediaByDateNeighbors(position: UInt32)throws  -> FfiMediaNeighbors  {
+open func orphanMediaByDateNeighbors(position: UInt32)throws  -> FfiMediaNeighbors  {
     return try  FfiConverterTypeFfiMediaNeighbors_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date_neighbors(self.uniffiClonePointer(),
         FfiConverterUInt32.lower(position),$0
     )
 })
 }
-    
+
     /**
      * Positions are zero-based and both ends of the range are inclusive.
      *
@@ -2459,7 +2735,7 @@ nonisolated open func orphanMediaByDateNeighbors(position: UInt32)throws  -> Ffi
      *
      * Returns an error when the start position exceeds the end position.
      */
-nonisolated open func orphanMediaByDateRange(posStartInclusive: UInt32, posEndInclusive: UInt32)throws  -> [FfiMediaItem]  {
+open func orphanMediaByDateRange(posStartInclusive: UInt32, posEndInclusive: UInt32)throws  -> [FfiMediaItem]  {
     return try  FfiConverterSequenceTypeFfiMediaItem.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_orphan_media_by_date_range(self.uniffiClonePointer(),
         FfiConverterUInt32.lower(posStartInclusive),
@@ -2467,13 +2743,13 @@ nonisolated open func orphanMediaByDateRange(posStartInclusive: UInt32, posEndIn
     )
 })
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error if the ID/configuration is invalid, storage cannot be built, or remote push fails.
      */
-nonisolated open func pushRemote(remoteId: FfiRemoteUuid, appSupportDir: String?)throws  -> UInt64  {
+open func pushRemote(remoteId: FfiRemoteUuid, appSupportDir: String?)throws  -> UInt64  {
     return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_push_remote(self.uniffiClonePointer(),
         FfiConverterTypeFfiRemoteUuid_lower(remoteId),
@@ -2481,13 +2757,13 @@ nonisolated open func pushRemote(remoteId: FfiRemoteUuid, appSupportDir: String?
     )
 })
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error if the ID/configuration is invalid, storage cannot be built, the task fails, or remote push fails.
      */
-nonisolated open func pushRemoteAsync(remoteId: FfiRemoteUuid, appSupportDir: String?)async throws  -> UInt64  {
+open func pushRemoteAsync(remoteId: FfiRemoteUuid, appSupportDir: String?)async throws  -> UInt64  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
@@ -2503,7 +2779,7 @@ nonisolated open func pushRemoteAsync(remoteId: FfiRemoteUuid, appSupportDir: St
             errorHandler: FfiConverterTypeLascoError_lift
         )
 }
-    
+
     /**
      * Push to `target_remote_id`, relaying absent local media from the selected
      * configured source remote. Callers should only use this after an explicit
@@ -2513,7 +2789,7 @@ nonisolated open func pushRemoteAsync(remoteId: FfiRemoteUuid, appSupportDir: St
      *
      * Returns an error for invalid IDs, unavailable remote storage, failed validation, or failed relay/upload.
      */
-nonisolated open func pushRemoteFromRemote(targetRemoteId: FfiRemoteUuid, sourceRemoteId: FfiRemoteUuid, appSupportDir: String?)throws  -> UInt64  {
+open func pushRemoteFromRemote(targetRemoteId: FfiRemoteUuid, sourceRemoteId: FfiRemoteUuid, appSupportDir: String?)throws  -> UInt64  {
     return try  FfiConverterUInt64.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_from_remote(self.uniffiClonePointer(),
         FfiConverterTypeFfiRemoteUuid_lower(targetRemoteId),
@@ -2522,13 +2798,13 @@ nonisolated open func pushRemoteFromRemote(targetRemoteId: FfiRemoteUuid, source
     )
 })
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error for invalid IDs, unavailable storage, task failure, failed validation, or failed relay/upload.
      */
-nonisolated open func pushRemoteFromRemoteAsync(targetRemoteId: FfiRemoteUuid, sourceRemoteId: FfiRemoteUuid, appSupportDir: String?)async throws  -> UInt64  {
+open func pushRemoteFromRemoteAsync(targetRemoteId: FfiRemoteUuid, sourceRemoteId: FfiRemoteUuid, appSupportDir: String?)async throws  -> UInt64  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
@@ -2544,7 +2820,7 @@ nonisolated open func pushRemoteFromRemoteAsync(targetRemoteId: FfiRemoteUuid, s
             errorHandler: FfiConverterTypeLascoError_lift
         )
 }
-    
+
     /**
      * Push using the ordered configured media sources. Preparation completes before core push
      * starts, and reads nothing but local files: the media cache and the media inventories.
@@ -2554,7 +2830,7 @@ nonisolated open func pushRemoteFromRemoteAsync(targetRemoteId: FfiRemoteUuid, s
      * Returns an error if the ID or configuration is invalid, storage cannot be built, some
      * data blob has no known place to be read from, or the push itself fails.
      */
-nonisolated open func pushRemoteUsingConfiguredMediaSourcesAsync(targetRemoteId: FfiRemoteUuid, appSupportDir: String?, progress: PushProgressSink)async throws  -> UInt64  {
+open func pushRemoteUsingConfiguredMediaSourcesAsync(targetRemoteId: FfiRemoteUuid, appSupportDir: String?, progress: PushProgressSink)async throws  -> UInt64  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
@@ -2570,7 +2846,55 @@ nonisolated open func pushRemoteUsingConfiguredMediaSourcesAsync(targetRemoteId:
             errorHandler: FfiConverterTypeLascoError_lift
         )
 }
-    
+
+    /**
+     * Push using configured media sources with a bounded number of concurrent full-media
+     * uploads for this target. A desktop importer should choose this after benchmarking the
+     * target and schedule several remotes independently.
+     *
+     * # Errors
+     *
+     * Returns an error for a concurrency outside 1 through 5, or for the same failures as
+     * [`Self::push_remote_using_configured_media_sources_async`].
+     */
+open func pushRemoteUsingConfiguredMediaSourcesWithOptionsAsync(targetRemoteId: FfiRemoteUuid, appSupportDir: String?, progress: PushProgressSink, maxConcurrentMediaUploads: UInt8)async throws  -> UInt64  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_lasco_ffi_fn_method_ffilibrary_push_remote_using_configured_media_sources_with_options_async(
+                    self.uniffiClonePointer(),
+                    FfiConverterTypeFfiRemoteUuid_lower(targetRemoteId),FfiConverterOptionString.lower(appSupportDir),FfiConverterCallbackInterfacePushProgressSink_lower(progress),FfiConverterUInt8.lower(maxConcurrentMediaUploads)
+                )
+            },
+            pollFunc: ffi_lasco_ffi_rust_future_poll_u64,
+            completeFunc: ffi_lasco_ffi_rust_future_complete_u64,
+            freeFunc: ffi_lasco_ffi_rust_future_free_u64,
+            liftFunc: FfiConverterUInt64.lift,
+            errorHandler: FfiConverterTypeLascoError_lift
+        )
+}
+
+    /**
+     * Records immutable provenance after creating a Lasco album for an Apple Photos collection.
+     */
+open func recordApplePhotosCollectionLink(link: FfiApplePhotosCollectionLink)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_record_apple_photos_collection_link(self.uniffiClonePointer(),
+        FfiConverterTypeFfiApplePhotosCollectionLink_lower(link),$0
+    )
+}
+}
+
+    /**
+     * Records immutable provenance after an Apple Photos resource has been imported or reused
+     * by content hash. Importers call this once per selected resource.
+     */
+open func recordApplePhotosResourceOrigin(origin: FfiApplePhotosResourceOrigin)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_record_apple_photos_resource_origin(self.uniffiClonePointer(),
+        FfiConverterTypeFfiApplePhotosResourceOrigin_lower(origin),$0
+    )
+}
+}
+
     /**
      * What `remote_id` is not yet confirmed to hold.
      *
@@ -2581,45 +2905,45 @@ nonisolated open func pushRemoteUsingConfiguredMediaSourcesAsync(targetRemoteId:
      *
      * Returns an error if `remote_id` is invalid.
      */
-nonisolated open func remoteMediaShortfall(remoteId: FfiRemoteUuid)throws  -> FfiRemoteMediaShortfall  {
+open func remoteMediaShortfall(remoteId: FfiRemoteUuid)throws  -> FfiRemoteMediaShortfall  {
     return try  FfiConverterTypeFfiRemoteMediaShortfall_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_remote_media_shortfall(self.uniffiClonePointer(),
         FfiConverterTypeFfiRemoteUuid_lower(remoteId),$0
     )
 })
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error for invalid or absent IDs, missing membership, or an unpersistable operation.
      */
-nonisolated open func removeMediaFromAlbum(albumId: FfiAlbumUuid, mediaId: FfiMediaUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+open func removeMediaFromAlbum(albumId: FfiAlbumUuid, mediaId: FfiMediaUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_remove_media_from_album(self.uniffiClonePointer(),
         FfiConverterTypeFfiAlbumUuid_lower(albumId),
         FfiConverterTypeFfiMediaUuid_lower(mediaId),$0
     )
 }
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error for invalid or absent IDs, missing membership, or an unpersistable operation.
      */
-nonisolated open func removeMediaFromGroup(groupId: FfiGroupUuid, mediaId: FfiMediaUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+open func removeMediaFromGroup(groupId: FfiGroupUuid, mediaId: FfiMediaUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_remove_media_from_group(self.uniffiClonePointer(),
         FfiConverterTypeFfiGroupUuid_lower(groupId),
         FfiConverterTypeFfiMediaUuid_lower(mediaId),$0
     )
 }
 }
-    
+
     /**
      * Removes a compaction lock only when it still names this local device as its owner.
      * The caller is responsible for obtaining explicit user confirmation before this call.
      */
-nonisolated open func removeOwnCompactionLock(remoteId: FfiRemoteUuid, appSupportDir: String?)throws  -> Bool  {
+open func removeOwnCompactionLock(remoteId: FfiRemoteUuid, appSupportDir: String?)throws  -> Bool  {
     return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_remove_own_compaction_lock(self.uniffiClonePointer(),
         FfiConverterTypeFfiRemoteUuid_lower(remoteId),
@@ -2627,7 +2951,7 @@ nonisolated open func removeOwnCompactionLock(remoteId: FfiRemoteUuid, appSuppor
     )
 })
 }
-    
+
     /**
      * Removes a remote from the configuration and deletes everything this client cached
      * about it.
@@ -2643,89 +2967,96 @@ nonisolated open func removeOwnCompactionLock(remoteId: FfiRemoteUuid, appSuppor
      * Panics if another thread panicked while holding the cached remote-list mutex during the
      * in-memory removal after configuration is saved.
      */
-nonisolated open func removeRemote(remoteId: FfiRemoteUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+open func removeRemote(remoteId: FfiRemoteUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_remove_remote(self.uniffiClonePointer(),
         FfiConverterTypeFfiRemoteUuid_lower(remoteId),$0
     )
 }
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error if the ID is invalid or absent, or the rename cannot be persisted.
      */
-nonisolated open func renameAlbum(albumId: FfiAlbumUuid, name: String)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+open func renameAlbum(albumId: FfiAlbumUuid, name: String)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_rename_album(self.uniffiClonePointer(),
         FfiConverterTypeFfiAlbumUuid_lower(albumId),
         FfiConverterString.lower(name),$0
     )
 }
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error if `media_id` is invalid, absent, or the rename operation cannot be persisted.
      */
-nonisolated open func renameMedia(mediaId: FfiMediaUuid, name: String?)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+open func renameMedia(mediaId: FfiMediaUuid, name: String?)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_rename_media(self.uniffiClonePointer(),
         FfiConverterTypeFfiMediaUuid_lower(mediaId),
         FfiConverterOptionString.lower(name),$0
     )
 }
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error for invalid or absent IDs, a cyclic move, or an unpersistable operation.
      */
-nonisolated open func reparentAlbum(albumId: FfiAlbumUuid, newParentAlbumId: FfiAlbumUuid?)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+open func reparentAlbum(albumId: FfiAlbumUuid, newParentAlbumId: FfiAlbumUuid?)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_reparent_album(self.uniffiClonePointer(),
         FfiConverterTypeFfiAlbumUuid_lower(albumId),
         FfiConverterOptionTypeFfiAlbumUuid.lower(newParentAlbumId),$0
     )
 }
 }
-    
+
+open func restoreMedia(mediaId: FfiMediaUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_restore_media(self.uniffiClonePointer(),
+        FfiConverterTypeFfiMediaUuid_lower(mediaId),$0
+    )
+}
+}
+
     /**
      * # Errors
      *
      * Returns an error for invalid or absent album/media IDs, or an unpersistable operation.
      */
-nonisolated open func setAlbumThumbnail(albumId: FfiAlbumUuid, mediaId: FfiMediaUuid?)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+open func setAlbumThumbnail(albumId: FfiAlbumUuid, mediaId: FfiMediaUuid?)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_set_album_thumbnail(self.uniffiClonePointer(),
         FfiConverterTypeFfiAlbumUuid_lower(albumId),
         FfiConverterOptionTypeFfiMediaUuid.lower(mediaId),$0
     )
 }
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error if the library configuration is missing, malformed, or cannot be saved.
      */
-nonisolated open func setAutoImportDeviceMedia(enabled: Bool)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+open func setAutoImportDeviceMedia(enabled: Bool)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_set_auto_import_device_media(self.uniffiClonePointer(),
         FfiConverterBool.lower(enabled),$0
     )
 }
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error if the library config cannot be read or saved, or `remote_id` is invalid or unconfigured.
      */
-nonisolated open func setDefaultFetchRemote(remoteId: FfiRemoteUuid?)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+open func setDefaultFetchRemote(remoteId: FfiRemoteUuid?)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_set_default_fetch_remote(self.uniffiClonePointer(),
         FfiConverterOptionTypeFfiRemoteUuid.lower(remoteId),$0
     )
 }
 }
-    
+
     /**
      * Replaces the ordered subset of remotes used to retrieve uncached originals.
      *
@@ -2737,26 +3068,26 @@ nonisolated open func setDefaultFetchRemote(remoteId: FfiRemoteUuid?)throws   {t
      * Returns an error if an ID is invalid, unknown, duplicated, or the configuration cannot be
      * saved.
      */
-nonisolated open func setMediaSourceOrder(remoteIds: [FfiRemoteUuid])throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+open func setMediaSourceOrder(remoteIds: [FfiRemoteUuid])throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_set_media_source_order(self.uniffiClonePointer(),
         FfiConverterSequenceTypeFfiRemoteUuid.lower(remoteIds),$0
     )
 }
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error if `media_id` is invalid or the local thumbnail cannot be written.
      */
-nonisolated open func setMediaThumbnail(mediaId: FfiMediaUuid, data: Data)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+open func setMediaThumbnail(mediaId: FfiMediaUuid, data: Data)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_set_media_thumbnail(self.uniffiClonePointer(),
         FfiConverterTypeFfiMediaUuid_lower(mediaId),
         FfiConverterData.lower(data),$0
     )
 }
 }
-    
+
     /**
      * # Errors
      *
@@ -2767,52 +3098,89 @@ nonisolated open func setMediaThumbnail(mediaId: FfiMediaUuid, data: Data)throws
      * Panics if another thread panicked while holding the cached remote-list mutex during the
      * in-memory auto-push update after configuration is saved.
      */
-nonisolated open func setRemoteAutoPush(remoteId: FfiRemoteUuid, enabled: Bool)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+open func setRemoteAutoPush(remoteId: FfiRemoteUuid, enabled: Bool)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_set_remote_auto_push(self.uniffiClonePointer(),
         FfiConverterTypeFfiRemoteUuid_lower(remoteId),
         FfiConverterBool.lower(enabled),$0
     )
 }
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error if `media_id` is invalid or does not identify media in the local state.
      */
-nonisolated open func showMedia(mediaId: FfiMediaUuid)throws  -> FfiMediaItem  {
+open func showMedia(mediaId: FfiMediaUuid)throws  -> FfiMediaItem  {
     return try  FfiConverterTypeFfiMediaItem_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_show_media(self.uniffiClonePointer(),
         FfiConverterTypeFfiMediaUuid_lower(mediaId),$0
     )
 })
 }
-    
+
+open func softDeleteMedia(mediaId: FfiMediaUuid)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_soft_delete_media(self.uniffiClonePointer(),
+        FfiConverterTypeFfiMediaUuid_lower(mediaId),$0
+    )
+}
+}
+
+    /**
+     * Returns every trashed media record, including companions hidden from
+     * normal Trash browsing. This is intended for maintenance flows.
+     */
+open func trashedMediaAll() -> [FfiMediaItem]  {
+    return try!  FfiConverterSequenceTypeFfiMediaItem.lift(try! rustCall() {
+    uniffi_lasco_ffi_fn_method_ffilibrary_trashed_media_all(self.uniffiClonePointer(),$0
+    )
+})
+}
+
+open func trashedMediaByDateCount() -> UInt64  {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
+    uniffi_lasco_ffi_fn_method_ffilibrary_trashed_media_by_date_count(self.uniffiClonePointer(),$0
+    )
+})
+}
+
+    /**
+     * Positions are zero-based and both ends of the range are inclusive.
+     */
+open func trashedMediaByDateRange(posStartInclusive: UInt32, posEndInclusive: UInt32)throws  -> [FfiMediaItem]  {
+    return try  FfiConverterSequenceTypeFfiMediaItem.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_trashed_media_by_date_range(self.uniffiClonePointer(),
+        FfiConverterUInt32.lower(posStartInclusive),
+        FfiConverterUInt32.lower(posEndInclusive),$0
+    )
+})
+}
+
     /**
      * # Errors
      *
      * Returns an error if the user key or add-user operation cannot be persisted.
      */
-nonisolated open func userAdd(username: String, password: String)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+open func userAdd(username: String, password: String)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_user_add(self.uniffiClonePointer(),
         FfiConverterString.lower(username),
         FfiConverterString.lower(password),$0
     )
 }
 }
-    
+
     /**
      * # Errors
      *
      * Returns an error if user records cannot be read from local library state.
      */
-nonisolated open func userList()throws  -> [String]  {
+open func userList()throws  -> [String]  {
     return try  FfiConverterSequenceString.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_method_ffilibrary_user_list(self.uniffiClonePointer(),$0
     )
 })
 }
-    
+
 
 }
 
@@ -2820,7 +3188,7 @@ nonisolated open func userList()throws  -> [String]  {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public struct FfiConverterTypeFfiLibrary: FfiConverter {
+public struct FfiConverterTypeFfiLibrary: FfiConverter {
 
     typealias FfiType = UnsafeMutableRawPointer
     typealias SwiftType = FfiLibrary
@@ -2855,14 +3223,14 @@ nonisolated public struct FfiConverterTypeFfiLibrary: FfiConverter {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiLibrary_lift(_ pointer: UnsafeMutableRawPointer) throws -> FfiLibrary {
+public func FfiConverterTypeFfiLibrary_lift(_ pointer: UnsafeMutableRawPointer) throws -> FfiLibrary {
     return try FfiConverterTypeFfiLibrary.lift(pointer)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiLibrary_lower(_ value: FfiLibrary) -> UnsafeMutableRawPointer {
+public func FfiConverterTypeFfiLibrary_lower(_ value: FfiLibrary) -> UnsafeMutableRawPointer {
     return FfiConverterTypeFfiLibrary.lower(value)
 }
 
@@ -2880,19 +3248,19 @@ nonisolated public func FfiConverterTypeFfiLibrary_lower(_ value: FfiLibrary) ->
  * making a second full-size allocation to serialize the bytes into a UniFFI
  * `RustBuffer` and then a platform byte array.
  */
-nonisolated public protocol FfiNativeMediaBytesProtocol: AnyObject, Sendable {
-    
+public protocol FfiNativeMediaBytesProtocol: AnyObject, Sendable {
+
     /**
      * Address of the first byte. It is an opaque native address, not an
      * ownership handle; clients must not free it directly.
      */
     func dataPointer()  -> UInt64
-    
+
     /**
      * Number of bytes addressable from `data_pointer`.
      */
     func len()  -> UInt64
-    
+
 }
 /**
  * Rust-owned plaintext bytes exposed as a borrowed native-memory view.
@@ -2903,7 +3271,7 @@ nonisolated public protocol FfiNativeMediaBytesProtocol: AnyObject, Sendable {
  * making a second full-size allocation to serialize the bytes into a UniFFI
  * `RustBuffer` and then a platform byte array.
  */
-nonisolated open class FfiNativeMediaBytes: FfiNativeMediaBytesProtocol, @unchecked Sendable {
+open class FfiNativeMediaBytes: FfiNativeMediaBytesProtocol, @unchecked Sendable {
     fileprivate let pointer: UnsafeMutableRawPointer!
 
     /// Used to instantiate a [FFIObject] without an actual pointer, for fakes in tests, mostly.
@@ -2952,30 +3320,30 @@ nonisolated open class FfiNativeMediaBytes: FfiNativeMediaBytesProtocol, @unchec
         try! rustCall { uniffi_lasco_ffi_fn_free_ffinativemediabytes(pointer, $0) }
     }
 
-    
 
-    
+
+
     /**
      * Address of the first byte. It is an opaque native address, not an
      * ownership handle; clients must not free it directly.
      */
-nonisolated open func dataPointer() -> UInt64  {
+open func dataPointer() -> UInt64  {
     return try!  FfiConverterUInt64.lift(try! rustCall() {
     uniffi_lasco_ffi_fn_method_ffinativemediabytes_data_pointer(self.uniffiClonePointer(),$0
     )
 })
 }
-    
+
     /**
      * Number of bytes addressable from `data_pointer`.
      */
-nonisolated open func len() -> UInt64  {
+open func len() -> UInt64  {
     return try!  FfiConverterUInt64.lift(try! rustCall() {
     uniffi_lasco_ffi_fn_method_ffinativemediabytes_len(self.uniffiClonePointer(),$0
     )
 })
 }
-    
+
 
 }
 
@@ -2983,7 +3351,7 @@ nonisolated open func len() -> UInt64  {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public struct FfiConverterTypeFfiNativeMediaBytes: FfiConverter {
+public struct FfiConverterTypeFfiNativeMediaBytes: FfiConverter {
 
     typealias FfiType = UnsafeMutableRawPointer
     typealias SwiftType = FfiNativeMediaBytes
@@ -3018,21 +3386,21 @@ nonisolated public struct FfiConverterTypeFfiNativeMediaBytes: FfiConverter {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiNativeMediaBytes_lift(_ pointer: UnsafeMutableRawPointer) throws -> FfiNativeMediaBytes {
+public func FfiConverterTypeFfiNativeMediaBytes_lift(_ pointer: UnsafeMutableRawPointer) throws -> FfiNativeMediaBytes {
     return try FfiConverterTypeFfiNativeMediaBytes.lift(pointer)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiNativeMediaBytes_lower(_ value: FfiNativeMediaBytes) -> UnsafeMutableRawPointer {
+public func FfiConverterTypeFfiNativeMediaBytes_lower(_ value: FfiNativeMediaBytes) -> UnsafeMutableRawPointer {
     return FfiConverterTypeFfiNativeMediaBytes.lower(value)
 }
 
 
 
 
-nonisolated public struct FfiAlbum {
+public struct FfiAlbum {
     public var albumId: FfiAlbumUuid
     public var name: String
     public var parentAlbumId: FfiAlbumUuid?
@@ -3055,11 +3423,11 @@ nonisolated public struct FfiAlbum {
 }
 
 #if compiler(>=6)
-nonisolated extension FfiAlbum: Sendable {}
+extension FfiAlbum: Sendable {}
 #endif
 
 
-nonisolated extension FfiAlbum: Equatable, Hashable {
+extension FfiAlbum: Equatable, Hashable {
     public static func ==(lhs: FfiAlbum, rhs: FfiAlbum) -> Bool {
         if lhs.albumId != rhs.albumId {
             return false
@@ -3101,16 +3469,16 @@ nonisolated extension FfiAlbum: Equatable, Hashable {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public struct FfiConverterTypeFfiAlbum: FfiConverterRustBuffer {
+public struct FfiConverterTypeFfiAlbum: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiAlbum {
         return
             try FfiAlbum(
-                albumId: FfiConverterTypeFfiAlbumUuid.read(from: &buf), 
-                name: FfiConverterString.read(from: &buf), 
-                parentAlbumId: FfiConverterOptionTypeFfiAlbumUuid.read(from: &buf), 
-                mediaCount: FfiConverterUInt64.read(from: &buf), 
-                deleted: FfiConverterBool.read(from: &buf), 
-                isDisconnected: FfiConverterBool.read(from: &buf), 
+                albumId: FfiConverterTypeFfiAlbumUuid.read(from: &buf),
+                name: FfiConverterString.read(from: &buf),
+                parentAlbumId: FfiConverterOptionTypeFfiAlbumUuid.read(from: &buf),
+                mediaCount: FfiConverterUInt64.read(from: &buf),
+                deleted: FfiConverterBool.read(from: &buf),
+                isDisconnected: FfiConverterBool.read(from: &buf),
                 thumbnailMediaId: FfiConverterOptionTypeFfiMediaUuid.read(from: &buf)
         )
     }
@@ -3130,19 +3498,19 @@ nonisolated public struct FfiConverterTypeFfiAlbum: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiAlbum_lift(_ buf: RustBuffer) throws -> FfiAlbum {
+public func FfiConverterTypeFfiAlbum_lift(_ buf: RustBuffer) throws -> FfiAlbum {
     return try FfiConverterTypeFfiAlbum.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiAlbum_lower(_ value: FfiAlbum) -> RustBuffer {
+public func FfiConverterTypeFfiAlbum_lower(_ value: FfiAlbum) -> RustBuffer {
     return FfiConverterTypeFfiAlbum.lower(value)
 }
 
 
-nonisolated public struct FfiAlbumItem {
+public struct FfiAlbumItem {
     public var kind: String
     public var media: FfiMediaItem?
     public var group: FfiGroup?
@@ -3159,11 +3527,11 @@ nonisolated public struct FfiAlbumItem {
 }
 
 #if compiler(>=6)
-nonisolated extension FfiAlbumItem: Sendable {}
+extension FfiAlbumItem: Sendable {}
 #endif
 
 
-nonisolated extension FfiAlbumItem: Equatable, Hashable {
+extension FfiAlbumItem: Equatable, Hashable {
     public static func ==(lhs: FfiAlbumItem, rhs: FfiAlbumItem) -> Bool {
         if lhs.kind != rhs.kind {
             return false
@@ -3193,13 +3561,13 @@ nonisolated extension FfiAlbumItem: Equatable, Hashable {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public struct FfiConverterTypeFfiAlbumItem: FfiConverterRustBuffer {
+public struct FfiConverterTypeFfiAlbumItem: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiAlbumItem {
         return
             try FfiAlbumItem(
-                kind: FfiConverterString.read(from: &buf), 
-                media: FfiConverterOptionTypeFfiMediaItem.read(from: &buf), 
-                group: FfiConverterOptionTypeFfiGroup.read(from: &buf), 
+                kind: FfiConverterString.read(from: &buf),
+                media: FfiConverterOptionTypeFfiMediaItem.read(from: &buf),
+                group: FfiConverterOptionTypeFfiGroup.read(from: &buf),
                 effectiveDate: FfiConverterString.read(from: &buf)
         )
     }
@@ -3216,19 +3584,19 @@ nonisolated public struct FfiConverterTypeFfiAlbumItem: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiAlbumItem_lift(_ buf: RustBuffer) throws -> FfiAlbumItem {
+public func FfiConverterTypeFfiAlbumItem_lift(_ buf: RustBuffer) throws -> FfiAlbumItem {
     return try FfiConverterTypeFfiAlbumItem.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiAlbumItem_lower(_ value: FfiAlbumItem) -> RustBuffer {
+public func FfiConverterTypeFfiAlbumItem_lower(_ value: FfiAlbumItem) -> RustBuffer {
     return FfiConverterTypeFfiAlbumItem.lower(value)
 }
 
 
-nonisolated public struct FfiAlbumUuid {
+public struct FfiAlbumUuid {
     public var value: String
 
     // Default memberwise initializers are never public by default, so we
@@ -3239,11 +3607,11 @@ nonisolated public struct FfiAlbumUuid {
 }
 
 #if compiler(>=6)
-nonisolated extension FfiAlbumUuid: Sendable {}
+extension FfiAlbumUuid: Sendable {}
 #endif
 
 
-nonisolated extension FfiAlbumUuid: Equatable, Hashable {
+extension FfiAlbumUuid: Equatable, Hashable {
     public static func ==(lhs: FfiAlbumUuid, rhs: FfiAlbumUuid) -> Bool {
         if lhs.value != rhs.value {
             return false
@@ -3261,7 +3629,7 @@ nonisolated extension FfiAlbumUuid: Equatable, Hashable {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public struct FfiConverterTypeFfiAlbumUuid: FfiConverterRustBuffer {
+public struct FfiConverterTypeFfiAlbumUuid: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiAlbumUuid {
         return
             try FfiAlbumUuid(
@@ -3278,22 +3646,419 @@ nonisolated public struct FfiConverterTypeFfiAlbumUuid: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiAlbumUuid_lift(_ buf: RustBuffer) throws -> FfiAlbumUuid {
+public func FfiConverterTypeFfiAlbumUuid_lift(_ buf: RustBuffer) throws -> FfiAlbumUuid {
     return try FfiConverterTypeFfiAlbumUuid.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiAlbumUuid_lower(_ value: FfiAlbumUuid) -> RustBuffer {
+public func FfiConverterTypeFfiAlbumUuid_lower(_ value: FfiAlbumUuid) -> RustBuffer {
     return FfiConverterTypeFfiAlbumUuid.lower(value)
+}
+
+
+public struct FfiApplePhotosAssetRevision {
+    public var cloudAssetId: String
+    public var modificationDate: String?
+    public var resources: [FfiApplePhotosResourceDescriptor]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(cloudAssetId: String, modificationDate: String?, resources: [FfiApplePhotosResourceDescriptor]) {
+        self.cloudAssetId = cloudAssetId
+        self.modificationDate = modificationDate
+        self.resources = resources
+    }
+}
+
+#if compiler(>=6)
+extension FfiApplePhotosAssetRevision: Sendable {}
+#endif
+
+
+extension FfiApplePhotosAssetRevision: Equatable, Hashable {
+    public static func ==(lhs: FfiApplePhotosAssetRevision, rhs: FfiApplePhotosAssetRevision) -> Bool {
+        if lhs.cloudAssetId != rhs.cloudAssetId {
+            return false
+        }
+        if lhs.modificationDate != rhs.modificationDate {
+            return false
+        }
+        if lhs.resources != rhs.resources {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(cloudAssetId)
+        hasher.combine(modificationDate)
+        hasher.combine(resources)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiApplePhotosAssetRevision: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiApplePhotosAssetRevision {
+        return
+            try FfiApplePhotosAssetRevision(
+                cloudAssetId: FfiConverterString.read(from: &buf),
+                modificationDate: FfiConverterOptionString.read(from: &buf),
+                resources: FfiConverterSequenceTypeFfiApplePhotosResourceDescriptor.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiApplePhotosAssetRevision, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.cloudAssetId, into: &buf)
+        FfiConverterOptionString.write(value.modificationDate, into: &buf)
+        FfiConverterSequenceTypeFfiApplePhotosResourceDescriptor.write(value.resources, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiApplePhotosAssetRevision_lift(_ buf: RustBuffer) throws -> FfiApplePhotosAssetRevision {
+    return try FfiConverterTypeFfiApplePhotosAssetRevision.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiApplePhotosAssetRevision_lower(_ value: FfiApplePhotosAssetRevision) -> RustBuffer {
+    return FfiConverterTypeFfiApplePhotosAssetRevision.lower(value)
+}
+
+
+public struct FfiApplePhotosCollectionIdentity {
+    public var cloudCollectionId: String
+    public var kind: FfiApplePhotosCollectionKind
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(cloudCollectionId: String, kind: FfiApplePhotosCollectionKind) {
+        self.cloudCollectionId = cloudCollectionId
+        self.kind = kind
+    }
+}
+
+#if compiler(>=6)
+extension FfiApplePhotosCollectionIdentity: Sendable {}
+#endif
+
+
+extension FfiApplePhotosCollectionIdentity: Equatable, Hashable {
+    public static func ==(lhs: FfiApplePhotosCollectionIdentity, rhs: FfiApplePhotosCollectionIdentity) -> Bool {
+        if lhs.cloudCollectionId != rhs.cloudCollectionId {
+            return false
+        }
+        if lhs.kind != rhs.kind {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(cloudCollectionId)
+        hasher.combine(kind)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiApplePhotosCollectionIdentity: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiApplePhotosCollectionIdentity {
+        return
+            try FfiApplePhotosCollectionIdentity(
+                cloudCollectionId: FfiConverterString.read(from: &buf),
+                kind: FfiConverterTypeFfiApplePhotosCollectionKind.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiApplePhotosCollectionIdentity, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.cloudCollectionId, into: &buf)
+        FfiConverterTypeFfiApplePhotosCollectionKind.write(value.kind, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiApplePhotosCollectionIdentity_lift(_ buf: RustBuffer) throws -> FfiApplePhotosCollectionIdentity {
+    return try FfiConverterTypeFfiApplePhotosCollectionIdentity.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiApplePhotosCollectionIdentity_lower(_ value: FfiApplePhotosCollectionIdentity) -> RustBuffer {
+    return FfiConverterTypeFfiApplePhotosCollectionIdentity.lower(value)
+}
+
+
+/**
+ * Immutable provenance for one Apple Photos folder or album.
+ */
+public struct FfiApplePhotosCollectionLink {
+    public var albumId: FfiAlbumUuid
+    public var cloudCollectionId: String
+    public var kind: FfiApplePhotosCollectionKind
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(albumId: FfiAlbumUuid, cloudCollectionId: String, kind: FfiApplePhotosCollectionKind) {
+        self.albumId = albumId
+        self.cloudCollectionId = cloudCollectionId
+        self.kind = kind
+    }
+}
+
+#if compiler(>=6)
+extension FfiApplePhotosCollectionLink: Sendable {}
+#endif
+
+
+extension FfiApplePhotosCollectionLink: Equatable, Hashable {
+    public static func ==(lhs: FfiApplePhotosCollectionLink, rhs: FfiApplePhotosCollectionLink) -> Bool {
+        if lhs.albumId != rhs.albumId {
+            return false
+        }
+        if lhs.cloudCollectionId != rhs.cloudCollectionId {
+            return false
+        }
+        if lhs.kind != rhs.kind {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(albumId)
+        hasher.combine(cloudCollectionId)
+        hasher.combine(kind)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiApplePhotosCollectionLink: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiApplePhotosCollectionLink {
+        return
+            try FfiApplePhotosCollectionLink(
+                albumId: FfiConverterTypeFfiAlbumUuid.read(from: &buf),
+                cloudCollectionId: FfiConverterString.read(from: &buf),
+                kind: FfiConverterTypeFfiApplePhotosCollectionKind.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiApplePhotosCollectionLink, into buf: inout [UInt8]) {
+        FfiConverterTypeFfiAlbumUuid.write(value.albumId, into: &buf)
+        FfiConverterString.write(value.cloudCollectionId, into: &buf)
+        FfiConverterTypeFfiApplePhotosCollectionKind.write(value.kind, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiApplePhotosCollectionLink_lift(_ buf: RustBuffer) throws -> FfiApplePhotosCollectionLink {
+    return try FfiConverterTypeFfiApplePhotosCollectionLink.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiApplePhotosCollectionLink_lower(_ value: FfiApplePhotosCollectionLink) -> RustBuffer {
+    return FfiConverterTypeFfiApplePhotosCollectionLink.lower(value)
+}
+
+
+public struct FfiApplePhotosResourceDescriptor {
+    public var resourceType: FfiApplePhotosResourceType
+    public var filename: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(resourceType: FfiApplePhotosResourceType, filename: String) {
+        self.resourceType = resourceType
+        self.filename = filename
+    }
+}
+
+#if compiler(>=6)
+extension FfiApplePhotosResourceDescriptor: Sendable {}
+#endif
+
+
+extension FfiApplePhotosResourceDescriptor: Equatable, Hashable {
+    public static func ==(lhs: FfiApplePhotosResourceDescriptor, rhs: FfiApplePhotosResourceDescriptor) -> Bool {
+        if lhs.resourceType != rhs.resourceType {
+            return false
+        }
+        if lhs.filename != rhs.filename {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(resourceType)
+        hasher.combine(filename)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiApplePhotosResourceDescriptor: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiApplePhotosResourceDescriptor {
+        return
+            try FfiApplePhotosResourceDescriptor(
+                resourceType: FfiConverterTypeFfiApplePhotosResourceType.read(from: &buf),
+                filename: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiApplePhotosResourceDescriptor, into buf: inout [UInt8]) {
+        FfiConverterTypeFfiApplePhotosResourceType.write(value.resourceType, into: &buf)
+        FfiConverterString.write(value.filename, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiApplePhotosResourceDescriptor_lift(_ buf: RustBuffer) throws -> FfiApplePhotosResourceDescriptor {
+    return try FfiConverterTypeFfiApplePhotosResourceDescriptor.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiApplePhotosResourceDescriptor_lower(_ value: FfiApplePhotosResourceDescriptor) -> RustBuffer {
+    return FfiConverterTypeFfiApplePhotosResourceDescriptor.lower(value)
+}
+
+
+/**
+ * Immutable provenance for one resource of an Apple Photos asset revision.
+ * `cloud_asset_id` is the opaque serialized cloud value supplied by PhotoKit.
+ */
+public struct FfiApplePhotosResourceOrigin {
+    public var mediaId: FfiMediaUuid
+    public var cloudAssetId: String
+    public var modificationDate: String?
+    public var resourceType: FfiApplePhotosResourceType
+    public var filename: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(mediaId: FfiMediaUuid, cloudAssetId: String, modificationDate: String?, resourceType: FfiApplePhotosResourceType, filename: String) {
+        self.mediaId = mediaId
+        self.cloudAssetId = cloudAssetId
+        self.modificationDate = modificationDate
+        self.resourceType = resourceType
+        self.filename = filename
+    }
+}
+
+#if compiler(>=6)
+extension FfiApplePhotosResourceOrigin: Sendable {}
+#endif
+
+
+extension FfiApplePhotosResourceOrigin: Equatable, Hashable {
+    public static func ==(lhs: FfiApplePhotosResourceOrigin, rhs: FfiApplePhotosResourceOrigin) -> Bool {
+        if lhs.mediaId != rhs.mediaId {
+            return false
+        }
+        if lhs.cloudAssetId != rhs.cloudAssetId {
+            return false
+        }
+        if lhs.modificationDate != rhs.modificationDate {
+            return false
+        }
+        if lhs.resourceType != rhs.resourceType {
+            return false
+        }
+        if lhs.filename != rhs.filename {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(mediaId)
+        hasher.combine(cloudAssetId)
+        hasher.combine(modificationDate)
+        hasher.combine(resourceType)
+        hasher.combine(filename)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiApplePhotosResourceOrigin: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiApplePhotosResourceOrigin {
+        return
+            try FfiApplePhotosResourceOrigin(
+                mediaId: FfiConverterTypeFfiMediaUuid.read(from: &buf),
+                cloudAssetId: FfiConverterString.read(from: &buf),
+                modificationDate: FfiConverterOptionString.read(from: &buf),
+                resourceType: FfiConverterTypeFfiApplePhotosResourceType.read(from: &buf),
+                filename: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiApplePhotosResourceOrigin, into buf: inout [UInt8]) {
+        FfiConverterTypeFfiMediaUuid.write(value.mediaId, into: &buf)
+        FfiConverterString.write(value.cloudAssetId, into: &buf)
+        FfiConverterOptionString.write(value.modificationDate, into: &buf)
+        FfiConverterTypeFfiApplePhotosResourceType.write(value.resourceType, into: &buf)
+        FfiConverterString.write(value.filename, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiApplePhotosResourceOrigin_lift(_ buf: RustBuffer) throws -> FfiApplePhotosResourceOrigin {
+    return try FfiConverterTypeFfiApplePhotosResourceOrigin.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiApplePhotosResourceOrigin_lower(_ value: FfiApplePhotosResourceOrigin) -> RustBuffer {
+    return FfiConverterTypeFfiApplePhotosResourceOrigin.lower(value)
 }
 
 
 /**
  * Remote compaction-lock metadata. Absence of this record means no lock is held.
  */
-nonisolated public struct FfiCompactionLockInfo {
+public struct FfiCompactionLockInfo {
     public var ownerDeviceId: String
     public var createdAt: String
     public var isOwnedByCurrentDevice: Bool
@@ -3308,11 +4073,11 @@ nonisolated public struct FfiCompactionLockInfo {
 }
 
 #if compiler(>=6)
-nonisolated extension FfiCompactionLockInfo: Sendable {}
+extension FfiCompactionLockInfo: Sendable {}
 #endif
 
 
-nonisolated extension FfiCompactionLockInfo: Equatable, Hashable {
+extension FfiCompactionLockInfo: Equatable, Hashable {
     public static func ==(lhs: FfiCompactionLockInfo, rhs: FfiCompactionLockInfo) -> Bool {
         if lhs.ownerDeviceId != rhs.ownerDeviceId {
             return false
@@ -3338,12 +4103,12 @@ nonisolated extension FfiCompactionLockInfo: Equatable, Hashable {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public struct FfiConverterTypeFfiCompactionLockInfo: FfiConverterRustBuffer {
+public struct FfiConverterTypeFfiCompactionLockInfo: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiCompactionLockInfo {
         return
             try FfiCompactionLockInfo(
-                ownerDeviceId: FfiConverterString.read(from: &buf), 
-                createdAt: FfiConverterString.read(from: &buf), 
+                ownerDeviceId: FfiConverterString.read(from: &buf),
+                createdAt: FfiConverterString.read(from: &buf),
                 isOwnedByCurrentDevice: FfiConverterBool.read(from: &buf)
         )
     }
@@ -3359,19 +4124,19 @@ nonisolated public struct FfiConverterTypeFfiCompactionLockInfo: FfiConverterRus
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiCompactionLockInfo_lift(_ buf: RustBuffer) throws -> FfiCompactionLockInfo {
+public func FfiConverterTypeFfiCompactionLockInfo_lift(_ buf: RustBuffer) throws -> FfiCompactionLockInfo {
     return try FfiConverterTypeFfiCompactionLockInfo.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiCompactionLockInfo_lower(_ value: FfiCompactionLockInfo) -> RustBuffer {
+public func FfiConverterTypeFfiCompactionLockInfo_lower(_ value: FfiCompactionLockInfo) -> RustBuffer {
     return FfiConverterTypeFfiCompactionLockInfo.lower(value)
 }
 
 
-nonisolated public struct FfiCrdtOperation {
+public struct FfiCrdtOperation {
     public var dot: FfiDot
     public var author: String
     public var operation: FfiOperation
@@ -3386,11 +4151,11 @@ nonisolated public struct FfiCrdtOperation {
 }
 
 #if compiler(>=6)
-nonisolated extension FfiCrdtOperation: Sendable {}
+extension FfiCrdtOperation: Sendable {}
 #endif
 
 
-nonisolated extension FfiCrdtOperation: Equatable, Hashable {
+extension FfiCrdtOperation: Equatable, Hashable {
     public static func ==(lhs: FfiCrdtOperation, rhs: FfiCrdtOperation) -> Bool {
         if lhs.dot != rhs.dot {
             return false
@@ -3416,12 +4181,12 @@ nonisolated extension FfiCrdtOperation: Equatable, Hashable {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public struct FfiConverterTypeFfiCrdtOperation: FfiConverterRustBuffer {
+public struct FfiConverterTypeFfiCrdtOperation: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiCrdtOperation {
         return
             try FfiCrdtOperation(
-                dot: FfiConverterTypeFfiDot.read(from: &buf), 
-                author: FfiConverterString.read(from: &buf), 
+                dot: FfiConverterTypeFfiDot.read(from: &buf),
+                author: FfiConverterString.read(from: &buf),
                 operation: FfiConverterTypeFfiOperation.read(from: &buf)
         )
     }
@@ -3437,19 +4202,19 @@ nonisolated public struct FfiConverterTypeFfiCrdtOperation: FfiConverterRustBuff
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiCrdtOperation_lift(_ buf: RustBuffer) throws -> FfiCrdtOperation {
+public func FfiConverterTypeFfiCrdtOperation_lift(_ buf: RustBuffer) throws -> FfiCrdtOperation {
     return try FfiConverterTypeFfiCrdtOperation.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiCrdtOperation_lower(_ value: FfiCrdtOperation) -> RustBuffer {
+public func FfiConverterTypeFfiCrdtOperation_lower(_ value: FfiCrdtOperation) -> RustBuffer {
     return FfiConverterTypeFfiCrdtOperation.lower(value)
 }
 
 
-nonisolated public struct FfiCreateLibraryResult {
+public struct FfiCreateLibraryResult {
     public var libraryId: FfiLibraryId
     public var masterKeyHex: String
 
@@ -3462,11 +4227,11 @@ nonisolated public struct FfiCreateLibraryResult {
 }
 
 #if compiler(>=6)
-nonisolated extension FfiCreateLibraryResult: Sendable {}
+extension FfiCreateLibraryResult: Sendable {}
 #endif
 
 
-nonisolated extension FfiCreateLibraryResult: Equatable, Hashable {
+extension FfiCreateLibraryResult: Equatable, Hashable {
     public static func ==(lhs: FfiCreateLibraryResult, rhs: FfiCreateLibraryResult) -> Bool {
         if lhs.libraryId != rhs.libraryId {
             return false
@@ -3488,11 +4253,11 @@ nonisolated extension FfiCreateLibraryResult: Equatable, Hashable {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public struct FfiConverterTypeFfiCreateLibraryResult: FfiConverterRustBuffer {
+public struct FfiConverterTypeFfiCreateLibraryResult: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiCreateLibraryResult {
         return
             try FfiCreateLibraryResult(
-                libraryId: FfiConverterTypeFfiLibraryId.read(from: &buf), 
+                libraryId: FfiConverterTypeFfiLibraryId.read(from: &buf),
                 masterKeyHex: FfiConverterString.read(from: &buf)
         )
     }
@@ -3507,19 +4272,19 @@ nonisolated public struct FfiConverterTypeFfiCreateLibraryResult: FfiConverterRu
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiCreateLibraryResult_lift(_ buf: RustBuffer) throws -> FfiCreateLibraryResult {
+public func FfiConverterTypeFfiCreateLibraryResult_lift(_ buf: RustBuffer) throws -> FfiCreateLibraryResult {
     return try FfiConverterTypeFfiCreateLibraryResult.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiCreateLibraryResult_lower(_ value: FfiCreateLibraryResult) -> RustBuffer {
+public func FfiConverterTypeFfiCreateLibraryResult_lower(_ value: FfiCreateLibraryResult) -> RustBuffer {
     return FfiConverterTypeFfiCreateLibraryResult.lower(value)
 }
 
 
-nonisolated public struct FfiDot {
+public struct FfiDot {
     public var lamportCounter: UInt64
     public var deviceId: String
 
@@ -3532,11 +4297,11 @@ nonisolated public struct FfiDot {
 }
 
 #if compiler(>=6)
-nonisolated extension FfiDot: Sendable {}
+extension FfiDot: Sendable {}
 #endif
 
 
-nonisolated extension FfiDot: Equatable, Hashable {
+extension FfiDot: Equatable, Hashable {
     public static func ==(lhs: FfiDot, rhs: FfiDot) -> Bool {
         if lhs.lamportCounter != rhs.lamportCounter {
             return false
@@ -3558,11 +4323,11 @@ nonisolated extension FfiDot: Equatable, Hashable {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public struct FfiConverterTypeFfiDot: FfiConverterRustBuffer {
+public struct FfiConverterTypeFfiDot: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiDot {
         return
             try FfiDot(
-                lamportCounter: FfiConverterUInt64.read(from: &buf), 
+                lamportCounter: FfiConverterUInt64.read(from: &buf),
                 deviceId: FfiConverterString.read(from: &buf)
         )
     }
@@ -3577,19 +4342,19 @@ nonisolated public struct FfiConverterTypeFfiDot: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiDot_lift(_ buf: RustBuffer) throws -> FfiDot {
+public func FfiConverterTypeFfiDot_lift(_ buf: RustBuffer) throws -> FfiDot {
     return try FfiConverterTypeFfiDot.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiDot_lower(_ value: FfiDot) -> RustBuffer {
+public func FfiConverterTypeFfiDot_lower(_ value: FfiDot) -> RustBuffer {
     return FfiConverterTypeFfiDot.lower(value)
 }
 
 
-nonisolated public struct FfiGroup {
+public struct FfiGroup {
     public var groupId: FfiGroupUuid
     public var albumIdParent: FfiAlbumUuid
     public var mediaIds: [FfiMediaUuid]
@@ -3604,11 +4369,11 @@ nonisolated public struct FfiGroup {
 }
 
 #if compiler(>=6)
-nonisolated extension FfiGroup: Sendable {}
+extension FfiGroup: Sendable {}
 #endif
 
 
-nonisolated extension FfiGroup: Equatable, Hashable {
+extension FfiGroup: Equatable, Hashable {
     public static func ==(lhs: FfiGroup, rhs: FfiGroup) -> Bool {
         if lhs.groupId != rhs.groupId {
             return false
@@ -3634,12 +4399,12 @@ nonisolated extension FfiGroup: Equatable, Hashable {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public struct FfiConverterTypeFfiGroup: FfiConverterRustBuffer {
+public struct FfiConverterTypeFfiGroup: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiGroup {
         return
             try FfiGroup(
-                groupId: FfiConverterTypeFfiGroupUuid.read(from: &buf), 
-                albumIdParent: FfiConverterTypeFfiAlbumUuid.read(from: &buf), 
+                groupId: FfiConverterTypeFfiGroupUuid.read(from: &buf),
+                albumIdParent: FfiConverterTypeFfiAlbumUuid.read(from: &buf),
                 mediaIds: FfiConverterSequenceTypeFfiMediaUuid.read(from: &buf)
         )
     }
@@ -3655,19 +4420,19 @@ nonisolated public struct FfiConverterTypeFfiGroup: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiGroup_lift(_ buf: RustBuffer) throws -> FfiGroup {
+public func FfiConverterTypeFfiGroup_lift(_ buf: RustBuffer) throws -> FfiGroup {
     return try FfiConverterTypeFfiGroup.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiGroup_lower(_ value: FfiGroup) -> RustBuffer {
+public func FfiConverterTypeFfiGroup_lower(_ value: FfiGroup) -> RustBuffer {
     return FfiConverterTypeFfiGroup.lower(value)
 }
 
 
-nonisolated public struct FfiGroupUuid {
+public struct FfiGroupUuid {
     public var value: String
 
     // Default memberwise initializers are never public by default, so we
@@ -3678,11 +4443,11 @@ nonisolated public struct FfiGroupUuid {
 }
 
 #if compiler(>=6)
-nonisolated extension FfiGroupUuid: Sendable {}
+extension FfiGroupUuid: Sendable {}
 #endif
 
 
-nonisolated extension FfiGroupUuid: Equatable, Hashable {
+extension FfiGroupUuid: Equatable, Hashable {
     public static func ==(lhs: FfiGroupUuid, rhs: FfiGroupUuid) -> Bool {
         if lhs.value != rhs.value {
             return false
@@ -3700,7 +4465,7 @@ nonisolated extension FfiGroupUuid: Equatable, Hashable {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public struct FfiConverterTypeFfiGroupUuid: FfiConverterRustBuffer {
+public struct FfiConverterTypeFfiGroupUuid: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiGroupUuid {
         return
             try FfiGroupUuid(
@@ -3717,19 +4482,19 @@ nonisolated public struct FfiConverterTypeFfiGroupUuid: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiGroupUuid_lift(_ buf: RustBuffer) throws -> FfiGroupUuid {
+public func FfiConverterTypeFfiGroupUuid_lift(_ buf: RustBuffer) throws -> FfiGroupUuid {
     return try FfiConverterTypeFfiGroupUuid.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiGroupUuid_lower(_ value: FfiGroupUuid) -> RustBuffer {
+public func FfiConverterTypeFfiGroupUuid_lower(_ value: FfiGroupUuid) -> RustBuffer {
     return FfiConverterTypeFfiGroupUuid.lower(value)
 }
 
 
-nonisolated public struct FfiKv {
+public struct FfiKv {
     public var key: String
     public var value: String
 
@@ -3742,11 +4507,11 @@ nonisolated public struct FfiKv {
 }
 
 #if compiler(>=6)
-nonisolated extension FfiKv: Sendable {}
+extension FfiKv: Sendable {}
 #endif
 
 
-nonisolated extension FfiKv: Equatable, Hashable {
+extension FfiKv: Equatable, Hashable {
     public static func ==(lhs: FfiKv, rhs: FfiKv) -> Bool {
         if lhs.key != rhs.key {
             return false
@@ -3768,11 +4533,11 @@ nonisolated extension FfiKv: Equatable, Hashable {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public struct FfiConverterTypeFfiKv: FfiConverterRustBuffer {
+public struct FfiConverterTypeFfiKv: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiKv {
         return
             try FfiKv(
-                key: FfiConverterString.read(from: &buf), 
+                key: FfiConverterString.read(from: &buf),
                 value: FfiConverterString.read(from: &buf)
         )
     }
@@ -3787,19 +4552,19 @@ nonisolated public struct FfiConverterTypeFfiKv: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiKv_lift(_ buf: RustBuffer) throws -> FfiKv {
+public func FfiConverterTypeFfiKv_lift(_ buf: RustBuffer) throws -> FfiKv {
     return try FfiConverterTypeFfiKv.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiKv_lower(_ value: FfiKv) -> RustBuffer {
+public func FfiConverterTypeFfiKv_lower(_ value: FfiKv) -> RustBuffer {
     return FfiConverterTypeFfiKv.lower(value)
 }
 
 
-nonisolated public struct FfiLascoCloudAccount {
+public struct FfiLascoCloudAccount {
     public var email: String
     public var subscription: FfiLascoCloudSubscription?
 
@@ -3812,11 +4577,11 @@ nonisolated public struct FfiLascoCloudAccount {
 }
 
 #if compiler(>=6)
-nonisolated extension FfiLascoCloudAccount: Sendable {}
+extension FfiLascoCloudAccount: Sendable {}
 #endif
 
 
-nonisolated extension FfiLascoCloudAccount: Equatable, Hashable {
+extension FfiLascoCloudAccount: Equatable, Hashable {
     public static func ==(lhs: FfiLascoCloudAccount, rhs: FfiLascoCloudAccount) -> Bool {
         if lhs.email != rhs.email {
             return false
@@ -3838,11 +4603,11 @@ nonisolated extension FfiLascoCloudAccount: Equatable, Hashable {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public struct FfiConverterTypeFfiLascoCloudAccount: FfiConverterRustBuffer {
+public struct FfiConverterTypeFfiLascoCloudAccount: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiLascoCloudAccount {
         return
             try FfiLascoCloudAccount(
-                email: FfiConverterString.read(from: &buf), 
+                email: FfiConverterString.read(from: &buf),
                 subscription: FfiConverterOptionTypeFfiLascoCloudSubscription.read(from: &buf)
         )
     }
@@ -3857,14 +4622,14 @@ nonisolated public struct FfiConverterTypeFfiLascoCloudAccount: FfiConverterRust
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiLascoCloudAccount_lift(_ buf: RustBuffer) throws -> FfiLascoCloudAccount {
+public func FfiConverterTypeFfiLascoCloudAccount_lift(_ buf: RustBuffer) throws -> FfiLascoCloudAccount {
     return try FfiConverterTypeFfiLascoCloudAccount.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiLascoCloudAccount_lower(_ value: FfiLascoCloudAccount) -> RustBuffer {
+public func FfiConverterTypeFfiLascoCloudAccount_lower(_ value: FfiLascoCloudAccount) -> RustBuffer {
     return FfiConverterTypeFfiLascoCloudAccount.lower(value)
 }
 
@@ -3875,7 +4640,7 @@ nonisolated public func FfiConverterTypeFfiLascoCloudAccount_lower(_ value: FfiL
  * This intentionally crosses the FFI boundary as one record. Android's native ABI cannot
  * reliably marshal the previous wide list of `RustBuffer` arguments.
  */
-nonisolated public struct FfiLascoCloudImportConfig {
+public struct FfiLascoCloudImportConfig {
     public var nickname: String
     public var username: String
     public var password: String
@@ -3904,11 +4669,11 @@ nonisolated public struct FfiLascoCloudImportConfig {
 }
 
 #if compiler(>=6)
-nonisolated extension FfiLascoCloudImportConfig: Sendable {}
+extension FfiLascoCloudImportConfig: Sendable {}
 #endif
 
 
-nonisolated extension FfiLascoCloudImportConfig: Equatable, Hashable {
+extension FfiLascoCloudImportConfig: Equatable, Hashable {
     public static func ==(lhs: FfiLascoCloudImportConfig, rhs: FfiLascoCloudImportConfig) -> Bool {
         if lhs.nickname != rhs.nickname {
             return false
@@ -3962,19 +4727,19 @@ nonisolated extension FfiLascoCloudImportConfig: Equatable, Hashable {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public struct FfiConverterTypeFfiLascoCloudImportConfig: FfiConverterRustBuffer {
+public struct FfiConverterTypeFfiLascoCloudImportConfig: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiLascoCloudImportConfig {
         return
             try FfiLascoCloudImportConfig(
-                nickname: FfiConverterString.read(from: &buf), 
-                username: FfiConverterString.read(from: &buf), 
-                password: FfiConverterString.read(from: &buf), 
-                newUsername: FfiConverterOptionString.read(from: &buf), 
-                newPassword: FfiConverterOptionString.read(from: &buf), 
-                cloudBaseUrl: FfiConverterString.read(from: &buf), 
-                cloudEmail: FfiConverterString.read(from: &buf), 
-                cloudPassword: FfiConverterString.read(from: &buf), 
-                platform: FfiConverterString.read(from: &buf), 
+                nickname: FfiConverterString.read(from: &buf),
+                username: FfiConverterString.read(from: &buf),
+                password: FfiConverterString.read(from: &buf),
+                newUsername: FfiConverterOptionString.read(from: &buf),
+                newPassword: FfiConverterOptionString.read(from: &buf),
+                cloudBaseUrl: FfiConverterString.read(from: &buf),
+                cloudEmail: FfiConverterString.read(from: &buf),
+                cloudPassword: FfiConverterString.read(from: &buf),
+                platform: FfiConverterString.read(from: &buf),
                 appVersion: FfiConverterString.read(from: &buf)
         )
     }
@@ -3997,19 +4762,19 @@ nonisolated public struct FfiConverterTypeFfiLascoCloudImportConfig: FfiConverte
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiLascoCloudImportConfig_lift(_ buf: RustBuffer) throws -> FfiLascoCloudImportConfig {
+public func FfiConverterTypeFfiLascoCloudImportConfig_lift(_ buf: RustBuffer) throws -> FfiLascoCloudImportConfig {
     return try FfiConverterTypeFfiLascoCloudImportConfig.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiLascoCloudImportConfig_lower(_ value: FfiLascoCloudImportConfig) -> RustBuffer {
+public func FfiConverterTypeFfiLascoCloudImportConfig_lower(_ value: FfiLascoCloudImportConfig) -> RustBuffer {
     return FfiConverterTypeFfiLascoCloudImportConfig.lower(value)
 }
 
 
-nonisolated public struct FfiLascoCloudRemote {
+public struct FfiLascoCloudRemote {
     public var id: String
     public var libraryId: String?
     public var name: String
@@ -4032,11 +4797,11 @@ nonisolated public struct FfiLascoCloudRemote {
 }
 
 #if compiler(>=6)
-nonisolated extension FfiLascoCloudRemote: Sendable {}
+extension FfiLascoCloudRemote: Sendable {}
 #endif
 
 
-nonisolated extension FfiLascoCloudRemote: Equatable, Hashable {
+extension FfiLascoCloudRemote: Equatable, Hashable {
     public static func ==(lhs: FfiLascoCloudRemote, rhs: FfiLascoCloudRemote) -> Bool {
         if lhs.id != rhs.id {
             return false
@@ -4078,16 +4843,16 @@ nonisolated extension FfiLascoCloudRemote: Equatable, Hashable {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public struct FfiConverterTypeFfiLascoCloudRemote: FfiConverterRustBuffer {
+public struct FfiConverterTypeFfiLascoCloudRemote: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiLascoCloudRemote {
         return
             try FfiLascoCloudRemote(
-                id: FfiConverterString.read(from: &buf), 
-                libraryId: FfiConverterOptionString.read(from: &buf), 
-                name: FfiConverterString.read(from: &buf), 
-                endpoint: FfiConverterString.read(from: &buf), 
-                bucket: FfiConverterString.read(from: &buf), 
-                region: FfiConverterString.read(from: &buf), 
+                id: FfiConverterString.read(from: &buf),
+                libraryId: FfiConverterOptionString.read(from: &buf),
+                name: FfiConverterString.read(from: &buf),
+                endpoint: FfiConverterString.read(from: &buf),
+                bucket: FfiConverterString.read(from: &buf),
+                region: FfiConverterString.read(from: &buf),
                 pathPrefix: FfiConverterString.read(from: &buf)
         )
     }
@@ -4107,19 +4872,19 @@ nonisolated public struct FfiConverterTypeFfiLascoCloudRemote: FfiConverterRustB
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiLascoCloudRemote_lift(_ buf: RustBuffer) throws -> FfiLascoCloudRemote {
+public func FfiConverterTypeFfiLascoCloudRemote_lift(_ buf: RustBuffer) throws -> FfiLascoCloudRemote {
     return try FfiConverterTypeFfiLascoCloudRemote.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiLascoCloudRemote_lower(_ value: FfiLascoCloudRemote) -> RustBuffer {
+public func FfiConverterTypeFfiLascoCloudRemote_lower(_ value: FfiLascoCloudRemote) -> RustBuffer {
     return FfiConverterTypeFfiLascoCloudRemote.lower(value)
 }
 
 
-nonisolated public struct FfiLascoCloudSubscription {
+public struct FfiLascoCloudSubscription {
     public var planId: String
     public var planName: String
     public var status: String
@@ -4138,11 +4903,11 @@ nonisolated public struct FfiLascoCloudSubscription {
 }
 
 #if compiler(>=6)
-nonisolated extension FfiLascoCloudSubscription: Sendable {}
+extension FfiLascoCloudSubscription: Sendable {}
 #endif
 
 
-nonisolated extension FfiLascoCloudSubscription: Equatable, Hashable {
+extension FfiLascoCloudSubscription: Equatable, Hashable {
     public static func ==(lhs: FfiLascoCloudSubscription, rhs: FfiLascoCloudSubscription) -> Bool {
         if lhs.planId != rhs.planId {
             return false
@@ -4176,14 +4941,14 @@ nonisolated extension FfiLascoCloudSubscription: Equatable, Hashable {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public struct FfiConverterTypeFfiLascoCloudSubscription: FfiConverterRustBuffer {
+public struct FfiConverterTypeFfiLascoCloudSubscription: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiLascoCloudSubscription {
         return
             try FfiLascoCloudSubscription(
-                planId: FfiConverterString.read(from: &buf), 
-                planName: FfiConverterString.read(from: &buf), 
-                status: FfiConverterString.read(from: &buf), 
-                storageQuotaBytes: FfiConverterUInt64.read(from: &buf), 
+                planId: FfiConverterString.read(from: &buf),
+                planName: FfiConverterString.read(from: &buf),
+                status: FfiConverterString.read(from: &buf),
+                storageQuotaBytes: FfiConverterUInt64.read(from: &buf),
                 renewsAt: FfiConverterString.read(from: &buf)
         )
     }
@@ -4201,19 +4966,19 @@ nonisolated public struct FfiConverterTypeFfiLascoCloudSubscription: FfiConverte
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiLascoCloudSubscription_lift(_ buf: RustBuffer) throws -> FfiLascoCloudSubscription {
+public func FfiConverterTypeFfiLascoCloudSubscription_lift(_ buf: RustBuffer) throws -> FfiLascoCloudSubscription {
     return try FfiConverterTypeFfiLascoCloudSubscription.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiLascoCloudSubscription_lower(_ value: FfiLascoCloudSubscription) -> RustBuffer {
+public func FfiConverterTypeFfiLascoCloudSubscription_lower(_ value: FfiLascoCloudSubscription) -> RustBuffer {
     return FfiConverterTypeFfiLascoCloudSubscription.lower(value)
 }
 
 
-nonisolated public struct FfiLibraryEntry {
+public struct FfiLibraryEntry {
     public var libraryId: FfiLibraryId
     public var nickname: String
     public var username: String?
@@ -4230,11 +4995,11 @@ nonisolated public struct FfiLibraryEntry {
 }
 
 #if compiler(>=6)
-nonisolated extension FfiLibraryEntry: Sendable {}
+extension FfiLibraryEntry: Sendable {}
 #endif
 
 
-nonisolated extension FfiLibraryEntry: Equatable, Hashable {
+extension FfiLibraryEntry: Equatable, Hashable {
     public static func ==(lhs: FfiLibraryEntry, rhs: FfiLibraryEntry) -> Bool {
         if lhs.libraryId != rhs.libraryId {
             return false
@@ -4264,13 +5029,13 @@ nonisolated extension FfiLibraryEntry: Equatable, Hashable {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public struct FfiConverterTypeFfiLibraryEntry: FfiConverterRustBuffer {
+public struct FfiConverterTypeFfiLibraryEntry: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiLibraryEntry {
         return
             try FfiLibraryEntry(
-                libraryId: FfiConverterTypeFfiLibraryId.read(from: &buf), 
-                nickname: FfiConverterString.read(from: &buf), 
-                username: FfiConverterOptionString.read(from: &buf), 
+                libraryId: FfiConverterTypeFfiLibraryId.read(from: &buf),
+                nickname: FfiConverterString.read(from: &buf),
+                username: FfiConverterOptionString.read(from: &buf),
                 loadError: FfiConverterOptionString.read(from: &buf)
         )
     }
@@ -4287,19 +5052,19 @@ nonisolated public struct FfiConverterTypeFfiLibraryEntry: FfiConverterRustBuffe
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiLibraryEntry_lift(_ buf: RustBuffer) throws -> FfiLibraryEntry {
+public func FfiConverterTypeFfiLibraryEntry_lift(_ buf: RustBuffer) throws -> FfiLibraryEntry {
     return try FfiConverterTypeFfiLibraryEntry.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiLibraryEntry_lower(_ value: FfiLibraryEntry) -> RustBuffer {
+public func FfiConverterTypeFfiLibraryEntry_lower(_ value: FfiLibraryEntry) -> RustBuffer {
     return FfiConverterTypeFfiLibraryEntry.lower(value)
 }
 
 
-nonisolated public struct FfiLibraryId {
+public struct FfiLibraryId {
     public var value: String
 
     // Default memberwise initializers are never public by default, so we
@@ -4310,11 +5075,11 @@ nonisolated public struct FfiLibraryId {
 }
 
 #if compiler(>=6)
-nonisolated extension FfiLibraryId: Sendable {}
+extension FfiLibraryId: Sendable {}
 #endif
 
 
-nonisolated extension FfiLibraryId: Equatable, Hashable {
+extension FfiLibraryId: Equatable, Hashable {
     public static func ==(lhs: FfiLibraryId, rhs: FfiLibraryId) -> Bool {
         if lhs.value != rhs.value {
             return false
@@ -4332,7 +5097,7 @@ nonisolated extension FfiLibraryId: Equatable, Hashable {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public struct FfiConverterTypeFfiLibraryId: FfiConverterRustBuffer {
+public struct FfiConverterTypeFfiLibraryId: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiLibraryId {
         return
             try FfiLibraryId(
@@ -4349,19 +5114,19 @@ nonisolated public struct FfiConverterTypeFfiLibraryId: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiLibraryId_lift(_ buf: RustBuffer) throws -> FfiLibraryId {
+public func FfiConverterTypeFfiLibraryId_lift(_ buf: RustBuffer) throws -> FfiLibraryId {
     return try FfiConverterTypeFfiLibraryId.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiLibraryId_lower(_ value: FfiLibraryId) -> RustBuffer {
+public func FfiConverterTypeFfiLibraryId_lower(_ value: FfiLibraryId) -> RustBuffer {
     return FfiConverterTypeFfiLibraryId.lower(value)
 }
 
 
-nonisolated public struct FfiLocalStateStats {
+public struct FfiLocalStateStats {
     public var mediaCachedCount: UInt32
     public var mediaCachedBytes: UInt64
     public var thumbCachedCount: UInt32
@@ -4378,11 +5143,11 @@ nonisolated public struct FfiLocalStateStats {
 }
 
 #if compiler(>=6)
-nonisolated extension FfiLocalStateStats: Sendable {}
+extension FfiLocalStateStats: Sendable {}
 #endif
 
 
-nonisolated extension FfiLocalStateStats: Equatable, Hashable {
+extension FfiLocalStateStats: Equatable, Hashable {
     public static func ==(lhs: FfiLocalStateStats, rhs: FfiLocalStateStats) -> Bool {
         if lhs.mediaCachedCount != rhs.mediaCachedCount {
             return false
@@ -4412,13 +5177,13 @@ nonisolated extension FfiLocalStateStats: Equatable, Hashable {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public struct FfiConverterTypeFfiLocalStateStats: FfiConverterRustBuffer {
+public struct FfiConverterTypeFfiLocalStateStats: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiLocalStateStats {
         return
             try FfiLocalStateStats(
-                mediaCachedCount: FfiConverterUInt32.read(from: &buf), 
-                mediaCachedBytes: FfiConverterUInt64.read(from: &buf), 
-                thumbCachedCount: FfiConverterUInt32.read(from: &buf), 
+                mediaCachedCount: FfiConverterUInt32.read(from: &buf),
+                mediaCachedBytes: FfiConverterUInt64.read(from: &buf),
+                thumbCachedCount: FfiConverterUInt32.read(from: &buf),
                 thumbCachedBytes: FfiConverterUInt64.read(from: &buf)
         )
     }
@@ -4435,19 +5200,19 @@ nonisolated public struct FfiConverterTypeFfiLocalStateStats: FfiConverterRustBu
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiLocalStateStats_lift(_ buf: RustBuffer) throws -> FfiLocalStateStats {
+public func FfiConverterTypeFfiLocalStateStats_lift(_ buf: RustBuffer) throws -> FfiLocalStateStats {
     return try FfiConverterTypeFfiLocalStateStats.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiLocalStateStats_lower(_ value: FfiLocalStateStats) -> RustBuffer {
+public func FfiConverterTypeFfiLocalStateStats_lower(_ value: FfiLocalStateStats) -> RustBuffer {
     return FfiConverterTypeFfiLocalStateStats.lower(value)
 }
 
 
-nonisolated public struct FfiMediaAddResult {
+public struct FfiMediaAddResult {
     public var mediaId: FfiMediaUuid
     public var alreadyExisted: Bool
 
@@ -4460,11 +5225,11 @@ nonisolated public struct FfiMediaAddResult {
 }
 
 #if compiler(>=6)
-nonisolated extension FfiMediaAddResult: Sendable {}
+extension FfiMediaAddResult: Sendable {}
 #endif
 
 
-nonisolated extension FfiMediaAddResult: Equatable, Hashable {
+extension FfiMediaAddResult: Equatable, Hashable {
     public static func ==(lhs: FfiMediaAddResult, rhs: FfiMediaAddResult) -> Bool {
         if lhs.mediaId != rhs.mediaId {
             return false
@@ -4486,11 +5251,11 @@ nonisolated extension FfiMediaAddResult: Equatable, Hashable {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public struct FfiConverterTypeFfiMediaAddResult: FfiConverterRustBuffer {
+public struct FfiConverterTypeFfiMediaAddResult: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiMediaAddResult {
         return
             try FfiMediaAddResult(
-                mediaId: FfiConverterTypeFfiMediaUuid.read(from: &buf), 
+                mediaId: FfiConverterTypeFfiMediaUuid.read(from: &buf),
                 alreadyExisted: FfiConverterBool.read(from: &buf)
         )
     }
@@ -4505,14 +5270,14 @@ nonisolated public struct FfiConverterTypeFfiMediaAddResult: FfiConverterRustBuf
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiMediaAddResult_lift(_ buf: RustBuffer) throws -> FfiMediaAddResult {
+public func FfiConverterTypeFfiMediaAddResult_lift(_ buf: RustBuffer) throws -> FfiMediaAddResult {
     return try FfiConverterTypeFfiMediaAddResult.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiMediaAddResult_lower(_ value: FfiMediaAddResult) -> RustBuffer {
+public func FfiConverterTypeFfiMediaAddResult_lower(_ value: FfiMediaAddResult) -> RustBuffer {
     return FfiConverterTypeFfiMediaAddResult.lower(value)
 }
 
@@ -4521,7 +5286,7 @@ nonisolated public func FfiConverterTypeFfiMediaAddResult_lower(_ value: FfiMedi
  * A media identifier returned to clients when a local-only push cannot find
  * every required original in this device's cache.
  */
-nonisolated public struct FfiMediaId {
+public struct FfiMediaId {
     public var value: String
 
     // Default memberwise initializers are never public by default, so we
@@ -4532,11 +5297,11 @@ nonisolated public struct FfiMediaId {
 }
 
 #if compiler(>=6)
-nonisolated extension FfiMediaId: Sendable {}
+extension FfiMediaId: Sendable {}
 #endif
 
 
-nonisolated extension FfiMediaId: Equatable, Hashable {
+extension FfiMediaId: Equatable, Hashable {
     public static func ==(lhs: FfiMediaId, rhs: FfiMediaId) -> Bool {
         if lhs.value != rhs.value {
             return false
@@ -4554,7 +5319,7 @@ nonisolated extension FfiMediaId: Equatable, Hashable {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public struct FfiConverterTypeFfiMediaId: FfiConverterRustBuffer {
+public struct FfiConverterTypeFfiMediaId: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiMediaId {
         return
             try FfiMediaId(
@@ -4571,19 +5336,135 @@ nonisolated public struct FfiConverterTypeFfiMediaId: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiMediaId_lift(_ buf: RustBuffer) throws -> FfiMediaId {
+public func FfiConverterTypeFfiMediaId_lift(_ buf: RustBuffer) throws -> FfiMediaId {
     return try FfiConverterTypeFfiMediaId.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiMediaId_lower(_ value: FfiMediaId) -> RustBuffer {
+public func FfiConverterTypeFfiMediaId_lower(_ value: FfiMediaId) -> RustBuffer {
     return FfiConverterTypeFfiMediaId.lower(value)
 }
 
 
-nonisolated public struct FfiMediaItem {
+/**
+ * Optional source metadata supplied by a desktop importer.
+ *
+ * Timestamps are RFC 3339 strings. The source file's bytes, including any embedded metadata,
+ * are always copied unchanged; this record exists for Lasco's queryable index fields.
+ */
+public struct FfiMediaImportMetadata {
+    public var originalFilename: String?
+    public var capturedAt: String?
+    public var modifiedAt: String?
+    public var latitude: Double?
+    public var longitude: Double?
+    public var appleAaeMediaId: FfiMediaUuid?
+    public var appleLivePhotoMediaId: FfiMediaUuid?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(originalFilename: String?, capturedAt: String?, modifiedAt: String?, latitude: Double?, longitude: Double?, appleAaeMediaId: FfiMediaUuid?, appleLivePhotoMediaId: FfiMediaUuid?) {
+        self.originalFilename = originalFilename
+        self.capturedAt = capturedAt
+        self.modifiedAt = modifiedAt
+        self.latitude = latitude
+        self.longitude = longitude
+        self.appleAaeMediaId = appleAaeMediaId
+        self.appleLivePhotoMediaId = appleLivePhotoMediaId
+    }
+}
+
+#if compiler(>=6)
+extension FfiMediaImportMetadata: Sendable {}
+#endif
+
+
+extension FfiMediaImportMetadata: Equatable, Hashable {
+    public static func ==(lhs: FfiMediaImportMetadata, rhs: FfiMediaImportMetadata) -> Bool {
+        if lhs.originalFilename != rhs.originalFilename {
+            return false
+        }
+        if lhs.capturedAt != rhs.capturedAt {
+            return false
+        }
+        if lhs.modifiedAt != rhs.modifiedAt {
+            return false
+        }
+        if lhs.latitude != rhs.latitude {
+            return false
+        }
+        if lhs.longitude != rhs.longitude {
+            return false
+        }
+        if lhs.appleAaeMediaId != rhs.appleAaeMediaId {
+            return false
+        }
+        if lhs.appleLivePhotoMediaId != rhs.appleLivePhotoMediaId {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(originalFilename)
+        hasher.combine(capturedAt)
+        hasher.combine(modifiedAt)
+        hasher.combine(latitude)
+        hasher.combine(longitude)
+        hasher.combine(appleAaeMediaId)
+        hasher.combine(appleLivePhotoMediaId)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiMediaImportMetadata: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiMediaImportMetadata {
+        return
+            try FfiMediaImportMetadata(
+                originalFilename: FfiConverterOptionString.read(from: &buf),
+                capturedAt: FfiConverterOptionString.read(from: &buf),
+                modifiedAt: FfiConverterOptionString.read(from: &buf),
+                latitude: FfiConverterOptionDouble.read(from: &buf),
+                longitude: FfiConverterOptionDouble.read(from: &buf),
+                appleAaeMediaId: FfiConverterOptionTypeFfiMediaUuid.read(from: &buf),
+                appleLivePhotoMediaId: FfiConverterOptionTypeFfiMediaUuid.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiMediaImportMetadata, into buf: inout [UInt8]) {
+        FfiConverterOptionString.write(value.originalFilename, into: &buf)
+        FfiConverterOptionString.write(value.capturedAt, into: &buf)
+        FfiConverterOptionString.write(value.modifiedAt, into: &buf)
+        FfiConverterOptionDouble.write(value.latitude, into: &buf)
+        FfiConverterOptionDouble.write(value.longitude, into: &buf)
+        FfiConverterOptionTypeFfiMediaUuid.write(value.appleAaeMediaId, into: &buf)
+        FfiConverterOptionTypeFfiMediaUuid.write(value.appleLivePhotoMediaId, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiMediaImportMetadata_lift(_ buf: RustBuffer) throws -> FfiMediaImportMetadata {
+    return try FfiConverterTypeFfiMediaImportMetadata.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiMediaImportMetadata_lower(_ value: FfiMediaImportMetadata) -> RustBuffer {
+    return FfiConverterTypeFfiMediaImportMetadata.lower(value)
+}
+
+
+public struct FfiMediaItem {
     public var mediaId: FfiMediaUuid
     public var filenameOriginal: String
     public var name: String?
@@ -4593,12 +5474,26 @@ nonisolated public struct FfiMediaItem {
     public var sizeBytes: UInt64
     public var contentHash: String
     public var author: String
+    /**
+     * Person who performed the current trash action, when the item is in Trash.
+     */
+    public var trashedBy: String?
+    /**
+     * RFC 3339 timestamp of the current trash action, when the item is in Trash.
+     */
+    public var trashedAt: String?
     public var appleAaeMediaId: FfiMediaUuid?
     public var appleLivePhotoMediaId: FfiMediaUuid?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(mediaId: FfiMediaUuid, filenameOriginal: String, name: String?, date: String, year: UInt16, month: UInt8, sizeBytes: UInt64, contentHash: String, author: String, appleAaeMediaId: FfiMediaUuid?, appleLivePhotoMediaId: FfiMediaUuid?) {
+    public init(mediaId: FfiMediaUuid, filenameOriginal: String, name: String?, date: String, year: UInt16, month: UInt8, sizeBytes: UInt64, contentHash: String, author: String,
+        /**
+         * Person who performed the current trash action, when the item is in Trash.
+         */trashedBy: String?,
+        /**
+         * RFC 3339 timestamp of the current trash action, when the item is in Trash.
+         */trashedAt: String?, appleAaeMediaId: FfiMediaUuid?, appleLivePhotoMediaId: FfiMediaUuid?) {
         self.mediaId = mediaId
         self.filenameOriginal = filenameOriginal
         self.name = name
@@ -4608,17 +5503,19 @@ nonisolated public struct FfiMediaItem {
         self.sizeBytes = sizeBytes
         self.contentHash = contentHash
         self.author = author
+        self.trashedBy = trashedBy
+        self.trashedAt = trashedAt
         self.appleAaeMediaId = appleAaeMediaId
         self.appleLivePhotoMediaId = appleLivePhotoMediaId
     }
 }
 
 #if compiler(>=6)
-nonisolated extension FfiMediaItem: Sendable {}
+extension FfiMediaItem: Sendable {}
 #endif
 
 
-nonisolated extension FfiMediaItem: Equatable, Hashable {
+extension FfiMediaItem: Equatable, Hashable {
     public static func ==(lhs: FfiMediaItem, rhs: FfiMediaItem) -> Bool {
         if lhs.mediaId != rhs.mediaId {
             return false
@@ -4647,6 +5544,12 @@ nonisolated extension FfiMediaItem: Equatable, Hashable {
         if lhs.author != rhs.author {
             return false
         }
+        if lhs.trashedBy != rhs.trashedBy {
+            return false
+        }
+        if lhs.trashedAt != rhs.trashedAt {
+            return false
+        }
         if lhs.appleAaeMediaId != rhs.appleAaeMediaId {
             return false
         }
@@ -4666,6 +5569,8 @@ nonisolated extension FfiMediaItem: Equatable, Hashable {
         hasher.combine(sizeBytes)
         hasher.combine(contentHash)
         hasher.combine(author)
+        hasher.combine(trashedBy)
+        hasher.combine(trashedAt)
         hasher.combine(appleAaeMediaId)
         hasher.combine(appleLivePhotoMediaId)
     }
@@ -4676,20 +5581,22 @@ nonisolated extension FfiMediaItem: Equatable, Hashable {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public struct FfiConverterTypeFfiMediaItem: FfiConverterRustBuffer {
+public struct FfiConverterTypeFfiMediaItem: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiMediaItem {
         return
             try FfiMediaItem(
-                mediaId: FfiConverterTypeFfiMediaUuid.read(from: &buf), 
-                filenameOriginal: FfiConverterString.read(from: &buf), 
-                name: FfiConverterOptionString.read(from: &buf), 
-                date: FfiConverterString.read(from: &buf), 
-                year: FfiConverterUInt16.read(from: &buf), 
-                month: FfiConverterUInt8.read(from: &buf), 
-                sizeBytes: FfiConverterUInt64.read(from: &buf), 
-                contentHash: FfiConverterString.read(from: &buf), 
-                author: FfiConverterString.read(from: &buf), 
-                appleAaeMediaId: FfiConverterOptionTypeFfiMediaUuid.read(from: &buf), 
+                mediaId: FfiConverterTypeFfiMediaUuid.read(from: &buf),
+                filenameOriginal: FfiConverterString.read(from: &buf),
+                name: FfiConverterOptionString.read(from: &buf),
+                date: FfiConverterString.read(from: &buf),
+                year: FfiConverterUInt16.read(from: &buf),
+                month: FfiConverterUInt8.read(from: &buf),
+                sizeBytes: FfiConverterUInt64.read(from: &buf),
+                contentHash: FfiConverterString.read(from: &buf),
+                author: FfiConverterString.read(from: &buf),
+                trashedBy: FfiConverterOptionString.read(from: &buf),
+                trashedAt: FfiConverterOptionString.read(from: &buf),
+                appleAaeMediaId: FfiConverterOptionTypeFfiMediaUuid.read(from: &buf),
                 appleLivePhotoMediaId: FfiConverterOptionTypeFfiMediaUuid.read(from: &buf)
         )
     }
@@ -4704,6 +5611,8 @@ nonisolated public struct FfiConverterTypeFfiMediaItem: FfiConverterRustBuffer {
         FfiConverterUInt64.write(value.sizeBytes, into: &buf)
         FfiConverterString.write(value.contentHash, into: &buf)
         FfiConverterString.write(value.author, into: &buf)
+        FfiConverterOptionString.write(value.trashedBy, into: &buf)
+        FfiConverterOptionString.write(value.trashedAt, into: &buf)
         FfiConverterOptionTypeFfiMediaUuid.write(value.appleAaeMediaId, into: &buf)
         FfiConverterOptionTypeFfiMediaUuid.write(value.appleLivePhotoMediaId, into: &buf)
     }
@@ -4713,19 +5622,19 @@ nonisolated public struct FfiConverterTypeFfiMediaItem: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiMediaItem_lift(_ buf: RustBuffer) throws -> FfiMediaItem {
+public func FfiConverterTypeFfiMediaItem_lift(_ buf: RustBuffer) throws -> FfiMediaItem {
     return try FfiConverterTypeFfiMediaItem.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiMediaItem_lower(_ value: FfiMediaItem) -> RustBuffer {
+public func FfiConverterTypeFfiMediaItem_lower(_ value: FfiMediaItem) -> RustBuffer {
     return FfiConverterTypeFfiMediaItem.lower(value)
 }
 
 
-nonisolated public struct FfiMediaNeighbors {
+public struct FfiMediaNeighbors {
     public var previous: FfiMediaItem?
     public var current: FfiMediaItem
     public var next: FfiMediaItem?
@@ -4740,11 +5649,11 @@ nonisolated public struct FfiMediaNeighbors {
 }
 
 #if compiler(>=6)
-nonisolated extension FfiMediaNeighbors: Sendable {}
+extension FfiMediaNeighbors: Sendable {}
 #endif
 
 
-nonisolated extension FfiMediaNeighbors: Equatable, Hashable {
+extension FfiMediaNeighbors: Equatable, Hashable {
     public static func ==(lhs: FfiMediaNeighbors, rhs: FfiMediaNeighbors) -> Bool {
         if lhs.previous != rhs.previous {
             return false
@@ -4770,12 +5679,12 @@ nonisolated extension FfiMediaNeighbors: Equatable, Hashable {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public struct FfiConverterTypeFfiMediaNeighbors: FfiConverterRustBuffer {
+public struct FfiConverterTypeFfiMediaNeighbors: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiMediaNeighbors {
         return
             try FfiMediaNeighbors(
-                previous: FfiConverterOptionTypeFfiMediaItem.read(from: &buf), 
-                current: FfiConverterTypeFfiMediaItem.read(from: &buf), 
+                previous: FfiConverterOptionTypeFfiMediaItem.read(from: &buf),
+                current: FfiConverterTypeFfiMediaItem.read(from: &buf),
                 next: FfiConverterOptionTypeFfiMediaItem.read(from: &buf)
         )
     }
@@ -4791,19 +5700,19 @@ nonisolated public struct FfiConverterTypeFfiMediaNeighbors: FfiConverterRustBuf
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiMediaNeighbors_lift(_ buf: RustBuffer) throws -> FfiMediaNeighbors {
+public func FfiConverterTypeFfiMediaNeighbors_lift(_ buf: RustBuffer) throws -> FfiMediaNeighbors {
     return try FfiConverterTypeFfiMediaNeighbors.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiMediaNeighbors_lower(_ value: FfiMediaNeighbors) -> RustBuffer {
+public func FfiConverterTypeFfiMediaNeighbors_lower(_ value: FfiMediaNeighbors) -> RustBuffer {
     return FfiConverterTypeFfiMediaNeighbors.lower(value)
 }
 
 
-nonisolated public struct FfiMediaOrGroupNeighbors {
+public struct FfiMediaOrGroupNeighbors {
     public var previous: FfiAlbumItem?
     public var current: FfiAlbumItem
     public var next: FfiAlbumItem?
@@ -4818,11 +5727,11 @@ nonisolated public struct FfiMediaOrGroupNeighbors {
 }
 
 #if compiler(>=6)
-nonisolated extension FfiMediaOrGroupNeighbors: Sendable {}
+extension FfiMediaOrGroupNeighbors: Sendable {}
 #endif
 
 
-nonisolated extension FfiMediaOrGroupNeighbors: Equatable, Hashable {
+extension FfiMediaOrGroupNeighbors: Equatable, Hashable {
     public static func ==(lhs: FfiMediaOrGroupNeighbors, rhs: FfiMediaOrGroupNeighbors) -> Bool {
         if lhs.previous != rhs.previous {
             return false
@@ -4848,12 +5757,12 @@ nonisolated extension FfiMediaOrGroupNeighbors: Equatable, Hashable {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public struct FfiConverterTypeFfiMediaOrGroupNeighbors: FfiConverterRustBuffer {
+public struct FfiConverterTypeFfiMediaOrGroupNeighbors: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiMediaOrGroupNeighbors {
         return
             try FfiMediaOrGroupNeighbors(
-                previous: FfiConverterOptionTypeFfiAlbumItem.read(from: &buf), 
-                current: FfiConverterTypeFfiAlbumItem.read(from: &buf), 
+                previous: FfiConverterOptionTypeFfiAlbumItem.read(from: &buf),
+                current: FfiConverterTypeFfiAlbumItem.read(from: &buf),
                 next: FfiConverterOptionTypeFfiAlbumItem.read(from: &buf)
         )
     }
@@ -4869,14 +5778,14 @@ nonisolated public struct FfiConverterTypeFfiMediaOrGroupNeighbors: FfiConverter
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiMediaOrGroupNeighbors_lift(_ buf: RustBuffer) throws -> FfiMediaOrGroupNeighbors {
+public func FfiConverterTypeFfiMediaOrGroupNeighbors_lift(_ buf: RustBuffer) throws -> FfiMediaOrGroupNeighbors {
     return try FfiConverterTypeFfiMediaOrGroupNeighbors.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiMediaOrGroupNeighbors_lower(_ value: FfiMediaOrGroupNeighbors) -> RustBuffer {
+public func FfiConverterTypeFfiMediaOrGroupNeighbors_lower(_ value: FfiMediaOrGroupNeighbors) -> RustBuffer {
     return FfiConverterTypeFfiMediaOrGroupNeighbors.lower(value)
 }
 
@@ -4887,7 +5796,7 @@ nonisolated public func FfiConverterTypeFfiMediaOrGroupNeighbors_lower(_ value: 
  * `String`: `UniFFI` generates custom string types as `String` aliases, allowing
  * media IDs to be accidentally passed where another ID kind is required.
  */
-nonisolated public struct FfiMediaUuid {
+public struct FfiMediaUuid {
     public var value: String
 
     // Default memberwise initializers are never public by default, so we
@@ -4898,11 +5807,11 @@ nonisolated public struct FfiMediaUuid {
 }
 
 #if compiler(>=6)
-nonisolated extension FfiMediaUuid: Sendable {}
+extension FfiMediaUuid: Sendable {}
 #endif
 
 
-nonisolated extension FfiMediaUuid: Equatable, Hashable {
+extension FfiMediaUuid: Equatable, Hashable {
     public static func ==(lhs: FfiMediaUuid, rhs: FfiMediaUuid) -> Bool {
         if lhs.value != rhs.value {
             return false
@@ -4920,7 +5829,7 @@ nonisolated extension FfiMediaUuid: Equatable, Hashable {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public struct FfiConverterTypeFfiMediaUuid: FfiConverterRustBuffer {
+public struct FfiConverterTypeFfiMediaUuid: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiMediaUuid {
         return
             try FfiMediaUuid(
@@ -4937,19 +5846,19 @@ nonisolated public struct FfiConverterTypeFfiMediaUuid: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiMediaUuid_lift(_ buf: RustBuffer) throws -> FfiMediaUuid {
+public func FfiConverterTypeFfiMediaUuid_lift(_ buf: RustBuffer) throws -> FfiMediaUuid {
     return try FfiConverterTypeFfiMediaUuid.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiMediaUuid_lower(_ value: FfiMediaUuid) -> RustBuffer {
+public func FfiConverterTypeFfiMediaUuid_lower(_ value: FfiMediaUuid) -> RustBuffer {
     return FfiConverterTypeFfiMediaUuid.lower(value)
 }
 
 
-nonisolated public struct FfiOperation {
+public struct FfiOperation {
     public var kind: String
     public var timestamp: String
     public var args: [FfiKv]
@@ -4964,11 +5873,11 @@ nonisolated public struct FfiOperation {
 }
 
 #if compiler(>=6)
-nonisolated extension FfiOperation: Sendable {}
+extension FfiOperation: Sendable {}
 #endif
 
 
-nonisolated extension FfiOperation: Equatable, Hashable {
+extension FfiOperation: Equatable, Hashable {
     public static func ==(lhs: FfiOperation, rhs: FfiOperation) -> Bool {
         if lhs.kind != rhs.kind {
             return false
@@ -4994,12 +5903,12 @@ nonisolated extension FfiOperation: Equatable, Hashable {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public struct FfiConverterTypeFfiOperation: FfiConverterRustBuffer {
+public struct FfiConverterTypeFfiOperation: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiOperation {
         return
             try FfiOperation(
-                kind: FfiConverterString.read(from: &buf), 
-                timestamp: FfiConverterString.read(from: &buf), 
+                kind: FfiConverterString.read(from: &buf),
+                timestamp: FfiConverterString.read(from: &buf),
                 args: FfiConverterSequenceTypeFfiKv.read(from: &buf)
         )
     }
@@ -5015,19 +5924,19 @@ nonisolated public struct FfiConverterTypeFfiOperation: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiOperation_lift(_ buf: RustBuffer) throws -> FfiOperation {
+public func FfiConverterTypeFfiOperation_lift(_ buf: RustBuffer) throws -> FfiOperation {
     return try FfiConverterTypeFfiOperation.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiOperation_lower(_ value: FfiOperation) -> RustBuffer {
+public func FfiConverterTypeFfiOperation_lower(_ value: FfiOperation) -> RustBuffer {
     return FfiConverterTypeFfiOperation.lower(value)
 }
 
 
-nonisolated public struct FfiRemote {
+public struct FfiRemote {
     public var remoteId: FfiRemoteUuid
     public var name: String
     public var autoPush: Bool
@@ -5036,10 +5945,21 @@ nonisolated public struct FfiRemote {
     public var bucket: String?
     public var region: String?
     public var path: String?
+    /**
+     * SMB server hostname/IP. Credentials are intentionally never exposed.
+     */
+    public var server: String?
+    public var port: UInt16?
+    public var share: String?
+    public var username: String?
+    public var domain: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(remoteId: FfiRemoteUuid, name: String, autoPush: Bool, kind: String, endpoint: String?, bucket: String?, region: String?, path: String?) {
+    public init(remoteId: FfiRemoteUuid, name: String, autoPush: Bool, kind: String, endpoint: String?, bucket: String?, region: String?, path: String?,
+        /**
+         * SMB server hostname/IP. Credentials are intentionally never exposed.
+         */server: String?, port: UInt16?, share: String?, username: String?, domain: String?) {
         self.remoteId = remoteId
         self.name = name
         self.autoPush = autoPush
@@ -5048,15 +5968,20 @@ nonisolated public struct FfiRemote {
         self.bucket = bucket
         self.region = region
         self.path = path
+        self.server = server
+        self.port = port
+        self.share = share
+        self.username = username
+        self.domain = domain
     }
 }
 
 #if compiler(>=6)
-nonisolated extension FfiRemote: Sendable {}
+extension FfiRemote: Sendable {}
 #endif
 
 
-nonisolated extension FfiRemote: Equatable, Hashable {
+extension FfiRemote: Equatable, Hashable {
     public static func ==(lhs: FfiRemote, rhs: FfiRemote) -> Bool {
         if lhs.remoteId != rhs.remoteId {
             return false
@@ -5082,6 +6007,21 @@ nonisolated extension FfiRemote: Equatable, Hashable {
         if lhs.path != rhs.path {
             return false
         }
+        if lhs.server != rhs.server {
+            return false
+        }
+        if lhs.port != rhs.port {
+            return false
+        }
+        if lhs.share != rhs.share {
+            return false
+        }
+        if lhs.username != rhs.username {
+            return false
+        }
+        if lhs.domain != rhs.domain {
+            return false
+        }
         return true
     }
 
@@ -5094,6 +6034,11 @@ nonisolated extension FfiRemote: Equatable, Hashable {
         hasher.combine(bucket)
         hasher.combine(region)
         hasher.combine(path)
+        hasher.combine(server)
+        hasher.combine(port)
+        hasher.combine(share)
+        hasher.combine(username)
+        hasher.combine(domain)
     }
 }
 
@@ -5102,18 +6047,23 @@ nonisolated extension FfiRemote: Equatable, Hashable {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public struct FfiConverterTypeFfiRemote: FfiConverterRustBuffer {
+public struct FfiConverterTypeFfiRemote: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiRemote {
         return
             try FfiRemote(
-                remoteId: FfiConverterTypeFfiRemoteUuid.read(from: &buf), 
-                name: FfiConverterString.read(from: &buf), 
-                autoPush: FfiConverterBool.read(from: &buf), 
-                kind: FfiConverterString.read(from: &buf), 
-                endpoint: FfiConverterOptionString.read(from: &buf), 
-                bucket: FfiConverterOptionString.read(from: &buf), 
-                region: FfiConverterOptionString.read(from: &buf), 
-                path: FfiConverterOptionString.read(from: &buf)
+                remoteId: FfiConverterTypeFfiRemoteUuid.read(from: &buf),
+                name: FfiConverterString.read(from: &buf),
+                autoPush: FfiConverterBool.read(from: &buf),
+                kind: FfiConverterString.read(from: &buf),
+                endpoint: FfiConverterOptionString.read(from: &buf),
+                bucket: FfiConverterOptionString.read(from: &buf),
+                region: FfiConverterOptionString.read(from: &buf),
+                path: FfiConverterOptionString.read(from: &buf),
+                server: FfiConverterOptionString.read(from: &buf),
+                port: FfiConverterOptionUInt16.read(from: &buf),
+                share: FfiConverterOptionString.read(from: &buf),
+                username: FfiConverterOptionString.read(from: &buf),
+                domain: FfiConverterOptionString.read(from: &buf)
         )
     }
 
@@ -5126,6 +6076,11 @@ nonisolated public struct FfiConverterTypeFfiRemote: FfiConverterRustBuffer {
         FfiConverterOptionString.write(value.bucket, into: &buf)
         FfiConverterOptionString.write(value.region, into: &buf)
         FfiConverterOptionString.write(value.path, into: &buf)
+        FfiConverterOptionString.write(value.server, into: &buf)
+        FfiConverterOptionUInt16.write(value.port, into: &buf)
+        FfiConverterOptionString.write(value.share, into: &buf)
+        FfiConverterOptionString.write(value.username, into: &buf)
+        FfiConverterOptionString.write(value.domain, into: &buf)
     }
 }
 
@@ -5133,14 +6088,14 @@ nonisolated public struct FfiConverterTypeFfiRemote: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiRemote_lift(_ buf: RustBuffer) throws -> FfiRemote {
+public func FfiConverterTypeFfiRemote_lift(_ buf: RustBuffer) throws -> FfiRemote {
     return try FfiConverterTypeFfiRemote.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiRemote_lower(_ value: FfiRemote) -> RustBuffer {
+public func FfiConverterTypeFfiRemote_lower(_ value: FfiRemote) -> RustBuffer {
     return FfiConverterTypeFfiRemote.lower(value)
 }
 
@@ -5149,7 +6104,7 @@ nonisolated public func FfiConverterTypeFfiRemote_lower(_ value: FfiRemote) -> R
  * What one remote is not yet confirmed to hold. Both counts come from the media list this
  * client cached for that remote, so they are accurate as of its last fetch or push.
  */
-nonisolated public struct FfiRemoteMediaShortfall {
+public struct FfiRemoteMediaShortfall {
     public var missingFull: UInt64
     public var missingThumb: UInt64
 
@@ -5162,11 +6117,11 @@ nonisolated public struct FfiRemoteMediaShortfall {
 }
 
 #if compiler(>=6)
-nonisolated extension FfiRemoteMediaShortfall: Sendable {}
+extension FfiRemoteMediaShortfall: Sendable {}
 #endif
 
 
-nonisolated extension FfiRemoteMediaShortfall: Equatable, Hashable {
+extension FfiRemoteMediaShortfall: Equatable, Hashable {
     public static func ==(lhs: FfiRemoteMediaShortfall, rhs: FfiRemoteMediaShortfall) -> Bool {
         if lhs.missingFull != rhs.missingFull {
             return false
@@ -5188,11 +6143,11 @@ nonisolated extension FfiRemoteMediaShortfall: Equatable, Hashable {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public struct FfiConverterTypeFfiRemoteMediaShortfall: FfiConverterRustBuffer {
+public struct FfiConverterTypeFfiRemoteMediaShortfall: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiRemoteMediaShortfall {
         return
             try FfiRemoteMediaShortfall(
-                missingFull: FfiConverterUInt64.read(from: &buf), 
+                missingFull: FfiConverterUInt64.read(from: &buf),
                 missingThumb: FfiConverterUInt64.read(from: &buf)
         )
     }
@@ -5207,19 +6162,19 @@ nonisolated public struct FfiConverterTypeFfiRemoteMediaShortfall: FfiConverterR
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiRemoteMediaShortfall_lift(_ buf: RustBuffer) throws -> FfiRemoteMediaShortfall {
+public func FfiConverterTypeFfiRemoteMediaShortfall_lift(_ buf: RustBuffer) throws -> FfiRemoteMediaShortfall {
     return try FfiConverterTypeFfiRemoteMediaShortfall.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiRemoteMediaShortfall_lower(_ value: FfiRemoteMediaShortfall) -> RustBuffer {
+public func FfiConverterTypeFfiRemoteMediaShortfall_lower(_ value: FfiRemoteMediaShortfall) -> RustBuffer {
     return FfiConverterTypeFfiRemoteMediaShortfall.lower(value)
 }
 
 
-nonisolated public struct FfiRemoteUuid {
+public struct FfiRemoteUuid {
     public var value: String
 
     // Default memberwise initializers are never public by default, so we
@@ -5230,11 +6185,11 @@ nonisolated public struct FfiRemoteUuid {
 }
 
 #if compiler(>=6)
-nonisolated extension FfiRemoteUuid: Sendable {}
+extension FfiRemoteUuid: Sendable {}
 #endif
 
 
-nonisolated extension FfiRemoteUuid: Equatable, Hashable {
+extension FfiRemoteUuid: Equatable, Hashable {
     public static func ==(lhs: FfiRemoteUuid, rhs: FfiRemoteUuid) -> Bool {
         if lhs.value != rhs.value {
             return false
@@ -5252,7 +6207,7 @@ nonisolated extension FfiRemoteUuid: Equatable, Hashable {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public struct FfiConverterTypeFfiRemoteUuid: FfiConverterRustBuffer {
+public struct FfiConverterTypeFfiRemoteUuid: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiRemoteUuid {
         return
             try FfiRemoteUuid(
@@ -5269,24 +6224,292 @@ nonisolated public struct FfiConverterTypeFfiRemoteUuid: FfiConverterRustBuffer 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiRemoteUuid_lift(_ buf: RustBuffer) throws -> FfiRemoteUuid {
+public func FfiConverterTypeFfiRemoteUuid_lift(_ buf: RustBuffer) throws -> FfiRemoteUuid {
     return try FfiConverterTypeFfiRemoteUuid.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeFfiRemoteUuid_lower(_ value: FfiRemoteUuid) -> RustBuffer {
+public func FfiConverterTypeFfiRemoteUuid_lower(_ value: FfiRemoteUuid) -> RustBuffer {
     return FfiConverterTypeFfiRemoteUuid.lower(value)
 }
 
 
-nonisolated public enum LascoError: Swift.Error {
+/**
+ * Result from one isolated remote throughput measurement.
+ *
+ * `bytes_per_second` is the aggregate rate for all transfers in this sample, not a per-transfer
+ * rate. Benchmark objects are random, temporary objects and are deleted after measurement.
+ */
+public struct FfiUploadBenchmarkSample {
+    public var parallelUploads: UInt8
+    public var bytesPerUpload: UInt64
+    public var elapsedMillis: UInt64
+    public var bytesPerSecond: UInt64
 
-    
-    
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(parallelUploads: UInt8, bytesPerUpload: UInt64, elapsedMillis: UInt64, bytesPerSecond: UInt64) {
+        self.parallelUploads = parallelUploads
+        self.bytesPerUpload = bytesPerUpload
+        self.elapsedMillis = elapsedMillis
+        self.bytesPerSecond = bytesPerSecond
+    }
+}
+
+#if compiler(>=6)
+extension FfiUploadBenchmarkSample: Sendable {}
+#endif
+
+
+extension FfiUploadBenchmarkSample: Equatable, Hashable {
+    public static func ==(lhs: FfiUploadBenchmarkSample, rhs: FfiUploadBenchmarkSample) -> Bool {
+        if lhs.parallelUploads != rhs.parallelUploads {
+            return false
+        }
+        if lhs.bytesPerUpload != rhs.bytesPerUpload {
+            return false
+        }
+        if lhs.elapsedMillis != rhs.elapsedMillis {
+            return false
+        }
+        if lhs.bytesPerSecond != rhs.bytesPerSecond {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(parallelUploads)
+        hasher.combine(bytesPerUpload)
+        hasher.combine(elapsedMillis)
+        hasher.combine(bytesPerSecond)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiUploadBenchmarkSample: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiUploadBenchmarkSample {
+        return
+            try FfiUploadBenchmarkSample(
+                parallelUploads: FfiConverterUInt8.read(from: &buf),
+                bytesPerUpload: FfiConverterUInt64.read(from: &buf),
+                elapsedMillis: FfiConverterUInt64.read(from: &buf),
+                bytesPerSecond: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiUploadBenchmarkSample, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.parallelUploads, into: &buf)
+        FfiConverterUInt64.write(value.bytesPerUpload, into: &buf)
+        FfiConverterUInt64.write(value.elapsedMillis, into: &buf)
+        FfiConverterUInt64.write(value.bytesPerSecond, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiUploadBenchmarkSample_lift(_ buf: RustBuffer) throws -> FfiUploadBenchmarkSample {
+    return try FfiConverterTypeFfiUploadBenchmarkSample.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiUploadBenchmarkSample_lower(_ value: FfiUploadBenchmarkSample) -> RustBuffer {
+    return FfiConverterTypeFfiUploadBenchmarkSample.lower(value)
+}
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+
+public enum FfiApplePhotosCollectionKind {
+
+    case folder
+    case album
+}
+
+
+#if compiler(>=6)
+extension FfiApplePhotosCollectionKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiApplePhotosCollectionKind: FfiConverterRustBuffer {
+    typealias SwiftType = FfiApplePhotosCollectionKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiApplePhotosCollectionKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        case 1: return .folder
+
+        case 2: return .album
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: FfiApplePhotosCollectionKind, into buf: inout [UInt8]) {
+        switch value {
+
+
+        case .folder:
+            writeInt(&buf, Int32(1))
+
+
+        case .album:
+            writeInt(&buf, Int32(2))
+
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiApplePhotosCollectionKind_lift(_ buf: RustBuffer) throws -> FfiApplePhotosCollectionKind {
+    return try FfiConverterTypeFfiApplePhotosCollectionKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiApplePhotosCollectionKind_lower(_ value: FfiApplePhotosCollectionKind) -> RustBuffer {
+    return FfiConverterTypeFfiApplePhotosCollectionKind.lower(value)
+}
+
+
+extension FfiApplePhotosCollectionKind: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+
+public enum FfiApplePhotosResourceType {
+
+    case photo
+    case fullSizePhoto
+    case video
+    case fullSizeVideo
+    case adjustmentData
+    case pairedVideo
+    case fullSizePairedVideo
+}
+
+
+#if compiler(>=6)
+extension FfiApplePhotosResourceType: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiApplePhotosResourceType: FfiConverterRustBuffer {
+    typealias SwiftType = FfiApplePhotosResourceType
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiApplePhotosResourceType {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        case 1: return .photo
+
+        case 2: return .fullSizePhoto
+
+        case 3: return .video
+
+        case 4: return .fullSizeVideo
+
+        case 5: return .adjustmentData
+
+        case 6: return .pairedVideo
+
+        case 7: return .fullSizePairedVideo
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: FfiApplePhotosResourceType, into buf: inout [UInt8]) {
+        switch value {
+
+
+        case .photo:
+            writeInt(&buf, Int32(1))
+
+
+        case .fullSizePhoto:
+            writeInt(&buf, Int32(2))
+
+
+        case .video:
+            writeInt(&buf, Int32(3))
+
+
+        case .fullSizeVideo:
+            writeInt(&buf, Int32(4))
+
+
+        case .adjustmentData:
+            writeInt(&buf, Int32(5))
+
+
+        case .pairedVideo:
+            writeInt(&buf, Int32(6))
+
+
+        case .fullSizePairedVideo:
+            writeInt(&buf, Int32(7))
+
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiApplePhotosResourceType_lift(_ buf: RustBuffer) throws -> FfiApplePhotosResourceType {
+    return try FfiConverterTypeFfiApplePhotosResourceType.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiApplePhotosResourceType_lower(_ value: FfiApplePhotosResourceType) -> RustBuffer {
+    return FfiConverterTypeFfiApplePhotosResourceType.lower(value)
+}
+
+
+extension FfiApplePhotosResourceType: Equatable, Hashable {}
+
+
+
+
+
+
+
+public enum LascoError: Swift.Error {
+
+
+
     case InvalidCredentials
     case NotFound
+    case MediaMustBeTrashed
     case SyncBusy
     case CloudQuotaExceeded(msg: String
     )
@@ -5307,37 +6530,38 @@ nonisolated public enum LascoError: Swift.Error {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public struct FfiConverterTypeLascoError: FfiConverterRustBuffer {
+public struct FfiConverterTypeLascoError: FfiConverterRustBuffer {
     typealias SwiftType = LascoError
 
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LascoError {
         let variant: Int32 = try readInt(&buf)
         switch variant {
 
-        
 
-        
+
+
         case 1: return .InvalidCredentials
         case 2: return .NotFound
-        case 3: return .SyncBusy
-        case 4: return .CloudQuotaExceeded(
+        case 3: return .MediaMustBeTrashed
+        case 4: return .SyncBusy
+        case 5: return .CloudQuotaExceeded(
             msg: try FfiConverterString.read(from: &buf)
             )
-        case 5: return .MissingLocalMedia(
+        case 6: return .MissingLocalMedia(
             mediaIds: try FfiConverterSequenceTypeFfiMediaId.read(from: &buf)
             )
-        case 6: return .MissingMediaOnConfiguredSources(
+        case 7: return .MissingMediaOnConfiguredSources(
             mediaIds: try FfiConverterSequenceTypeFfiMediaId.read(from: &buf)
             )
-        case 7: return .MediaTooLarge(
-            sizeBytes: try FfiConverterUInt64.read(from: &buf), 
+        case 8: return .MediaTooLarge(
+            sizeBytes: try FfiConverterUInt64.read(from: &buf),
             limitBytes: try FfiConverterUInt64.read(from: &buf)
             )
-        case 8: return .CrdtRecoveryAvailable
-        case 9: return .Storage(
+        case 9: return .CrdtRecoveryAvailable
+        case 10: return .Storage(
             msg: try FfiConverterString.read(from: &buf)
             )
-        case 10: return .Other(
+        case 11: return .Other(
             msg: try FfiConverterString.read(from: &buf)
             )
 
@@ -5348,56 +6572,60 @@ nonisolated public struct FfiConverterTypeLascoError: FfiConverterRustBuffer {
     public static func write(_ value: LascoError, into buf: inout [UInt8]) {
         switch value {
 
-        
 
-        
-        
+
+
+
         case .InvalidCredentials:
             writeInt(&buf, Int32(1))
-        
-        
+
+
         case .NotFound:
             writeInt(&buf, Int32(2))
-        
-        
-        case .SyncBusy:
+
+
+        case .MediaMustBeTrashed:
             writeInt(&buf, Int32(3))
-        
-        
-        case let .CloudQuotaExceeded(msg):
+
+
+        case .SyncBusy:
             writeInt(&buf, Int32(4))
-            FfiConverterString.write(msg, into: &buf)
-            
-        
-        case let .MissingLocalMedia(mediaIds):
+
+
+        case let .CloudQuotaExceeded(msg):
             writeInt(&buf, Int32(5))
-            FfiConverterSequenceTypeFfiMediaId.write(mediaIds, into: &buf)
-            
-        
-        case let .MissingMediaOnConfiguredSources(mediaIds):
+            FfiConverterString.write(msg, into: &buf)
+
+
+        case let .MissingLocalMedia(mediaIds):
             writeInt(&buf, Int32(6))
             FfiConverterSequenceTypeFfiMediaId.write(mediaIds, into: &buf)
-            
-        
-        case let .MediaTooLarge(sizeBytes,limitBytes):
+
+
+        case let .MissingMediaOnConfiguredSources(mediaIds):
             writeInt(&buf, Int32(7))
+            FfiConverterSequenceTypeFfiMediaId.write(mediaIds, into: &buf)
+
+
+        case let .MediaTooLarge(sizeBytes,limitBytes):
+            writeInt(&buf, Int32(8))
             FfiConverterUInt64.write(sizeBytes, into: &buf)
             FfiConverterUInt64.write(limitBytes, into: &buf)
-            
-        
+
+
         case .CrdtRecoveryAvailable:
-            writeInt(&buf, Int32(8))
-        
-        
-        case let .Storage(msg):
             writeInt(&buf, Int32(9))
-            FfiConverterString.write(msg, into: &buf)
-            
-        
-        case let .Other(msg):
+
+
+        case let .Storage(msg):
             writeInt(&buf, Int32(10))
             FfiConverterString.write(msg, into: &buf)
-            
+
+
+        case let .Other(msg):
+            writeInt(&buf, Int32(11))
+            FfiConverterString.write(msg, into: &buf)
+
         }
     }
 }
@@ -5406,24 +6634,24 @@ nonisolated public struct FfiConverterTypeLascoError: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeLascoError_lift(_ buf: RustBuffer) throws -> LascoError {
+public func FfiConverterTypeLascoError_lift(_ buf: RustBuffer) throws -> LascoError {
     return try FfiConverterTypeLascoError.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterTypeLascoError_lower(_ value: LascoError) -> RustBuffer {
+public func FfiConverterTypeLascoError_lower(_ value: LascoError) -> RustBuffer {
     return FfiConverterTypeLascoError.lower(value)
 }
 
 
-nonisolated extension LascoError: Equatable, Hashable {}
+extension LascoError: Equatable, Hashable {}
 
 
 
 
-nonisolated extension LascoError: Foundation.LocalizedError {
+extension LascoError: Foundation.LocalizedError {
     public var errorDescription: String? {
         String(reflecting: self)
     }
@@ -5441,15 +6669,15 @@ nonisolated extension LascoError: Foundation.LocalizedError {
  * Calls arrive on Lasco's Rust runtime thread. Implementations must return quickly and must
  * marshal any UI work onto their platform's UI dispatcher.
  */
-nonisolated public protocol PushProgressSink: AnyObject, Sendable {
-    
-    func uploadProgress(fraction: Double) 
-    
+public protocol PushProgressSink: AnyObject, Sendable {
+
+    func uploadProgress(fraction: Double)
+
 }
 
 
 // Put the implementation in a struct so we don't pollute the top-level namespace
-nonisolated fileprivate struct UniffiCallbackInterfacePushProgressSink {
+fileprivate struct UniffiCallbackInterfacePushProgressSink {
 
     // Create the VTable using a series of closures.
     // Swift automatically converts these into C callback functions.
@@ -5473,7 +6701,7 @@ nonisolated fileprivate struct UniffiCallbackInterfacePushProgressSink {
                 )
             }
 
-            
+
             let writeReturn = { () }
             uniffiTraitInterfaceCall(
                 callStatus: uniffiCallStatus,
@@ -5490,7 +6718,7 @@ nonisolated fileprivate struct UniffiCallbackInterfacePushProgressSink {
     )]
 }
 
-nonisolated private func uniffiCallbackInitPushProgressSink() {
+private func uniffiCallbackInitPushProgressSink() {
     uniffi_lasco_ffi_fn_init_callback_vtable_pushprogresssink(UniffiCallbackInterfacePushProgressSink.vtable)
 }
 
@@ -5498,14 +6726,14 @@ nonisolated private func uniffiCallbackInitPushProgressSink() {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated fileprivate struct FfiConverterCallbackInterfacePushProgressSink {
+fileprivate struct FfiConverterCallbackInterfacePushProgressSink {
     fileprivate static let handleMap = UniffiHandleMap<PushProgressSink>()
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated extension FfiConverterCallbackInterfacePushProgressSink : FfiConverter {
+extension FfiConverterCallbackInterfacePushProgressSink : FfiConverter {
     typealias SwiftType = PushProgressSink
     typealias FfiType = UInt64
 
@@ -5543,21 +6771,69 @@ nonisolated extension FfiConverterCallbackInterfacePushProgressSink : FfiConvert
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterCallbackInterfacePushProgressSink_lift(_ handle: UInt64) throws -> PushProgressSink {
+public func FfiConverterCallbackInterfacePushProgressSink_lift(_ handle: UInt64) throws -> PushProgressSink {
     return try FfiConverterCallbackInterfacePushProgressSink.lift(handle)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated public func FfiConverterCallbackInterfacePushProgressSink_lower(_ v: PushProgressSink) -> UInt64 {
+public func FfiConverterCallbackInterfacePushProgressSink_lower(_ v: PushProgressSink) -> UInt64 {
     return FfiConverterCallbackInterfacePushProgressSink.lower(v)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
+fileprivate struct FfiConverterOptionUInt16: FfiConverterRustBuffer {
+    typealias SwiftType = UInt16?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterUInt16.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterUInt16.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionDouble: FfiConverterRustBuffer {
+    typealias SwiftType = Double?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterDouble.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterDouble.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
     typealias SwiftType = String?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
@@ -5581,7 +6857,7 @@ nonisolated fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated fileprivate struct FfiConverterOptionTypeFfiLibrary: FfiConverterRustBuffer {
+fileprivate struct FfiConverterOptionTypeFfiLibrary: FfiConverterRustBuffer {
     typealias SwiftType = FfiLibrary?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
@@ -5605,7 +6881,7 @@ nonisolated fileprivate struct FfiConverterOptionTypeFfiLibrary: FfiConverterRus
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated fileprivate struct FfiConverterOptionTypeFfiAlbumItem: FfiConverterRustBuffer {
+fileprivate struct FfiConverterOptionTypeFfiAlbumItem: FfiConverterRustBuffer {
     typealias SwiftType = FfiAlbumItem?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
@@ -5629,7 +6905,7 @@ nonisolated fileprivate struct FfiConverterOptionTypeFfiAlbumItem: FfiConverterR
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated fileprivate struct FfiConverterOptionTypeFfiAlbumUuid: FfiConverterRustBuffer {
+fileprivate struct FfiConverterOptionTypeFfiAlbumUuid: FfiConverterRustBuffer {
     typealias SwiftType = FfiAlbumUuid?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
@@ -5653,7 +6929,7 @@ nonisolated fileprivate struct FfiConverterOptionTypeFfiAlbumUuid: FfiConverterR
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated fileprivate struct FfiConverterOptionTypeFfiCompactionLockInfo: FfiConverterRustBuffer {
+fileprivate struct FfiConverterOptionTypeFfiCompactionLockInfo: FfiConverterRustBuffer {
     typealias SwiftType = FfiCompactionLockInfo?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
@@ -5677,7 +6953,7 @@ nonisolated fileprivate struct FfiConverterOptionTypeFfiCompactionLockInfo: FfiC
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated fileprivate struct FfiConverterOptionTypeFfiGroup: FfiConverterRustBuffer {
+fileprivate struct FfiConverterOptionTypeFfiGroup: FfiConverterRustBuffer {
     typealias SwiftType = FfiGroup?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
@@ -5701,7 +6977,7 @@ nonisolated fileprivate struct FfiConverterOptionTypeFfiGroup: FfiConverterRustB
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated fileprivate struct FfiConverterOptionTypeFfiLascoCloudSubscription: FfiConverterRustBuffer {
+fileprivate struct FfiConverterOptionTypeFfiLascoCloudSubscription: FfiConverterRustBuffer {
     typealias SwiftType = FfiLascoCloudSubscription?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
@@ -5725,7 +7001,7 @@ nonisolated fileprivate struct FfiConverterOptionTypeFfiLascoCloudSubscription: 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated fileprivate struct FfiConverterOptionTypeFfiMediaItem: FfiConverterRustBuffer {
+fileprivate struct FfiConverterOptionTypeFfiMediaItem: FfiConverterRustBuffer {
     typealias SwiftType = FfiMediaItem?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
@@ -5749,7 +7025,7 @@ nonisolated fileprivate struct FfiConverterOptionTypeFfiMediaItem: FfiConverterR
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated fileprivate struct FfiConverterOptionTypeFfiMediaUuid: FfiConverterRustBuffer {
+fileprivate struct FfiConverterOptionTypeFfiMediaUuid: FfiConverterRustBuffer {
     typealias SwiftType = FfiMediaUuid?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
@@ -5773,7 +7049,7 @@ nonisolated fileprivate struct FfiConverterOptionTypeFfiMediaUuid: FfiConverterR
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated fileprivate struct FfiConverterOptionTypeFfiRemoteUuid: FfiConverterRustBuffer {
+fileprivate struct FfiConverterOptionTypeFfiRemoteUuid: FfiConverterRustBuffer {
     typealias SwiftType = FfiRemoteUuid?
 
     public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
@@ -5797,7 +7073,31 @@ nonisolated fileprivate struct FfiConverterOptionTypeFfiRemoteUuid: FfiConverter
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
+fileprivate struct FfiConverterOptionSequenceTypeFfiMediaUuid: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiMediaUuid]?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterSequenceTypeFfiMediaUuid.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterSequenceTypeFfiMediaUuid.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
     typealias SwiftType = [String]
 
     public static func write(_ value: [String], into buf: inout [UInt8]) {
@@ -5822,7 +7122,7 @@ nonisolated fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffe
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated fileprivate struct FfiConverterSequenceTypeFfiAlbum: FfiConverterRustBuffer {
+fileprivate struct FfiConverterSequenceTypeFfiAlbum: FfiConverterRustBuffer {
     typealias SwiftType = [FfiAlbum]
 
     public static func write(_ value: [FfiAlbum], into buf: inout [UInt8]) {
@@ -5847,7 +7147,7 @@ nonisolated fileprivate struct FfiConverterSequenceTypeFfiAlbum: FfiConverterRus
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated fileprivate struct FfiConverterSequenceTypeFfiAlbumItem: FfiConverterRustBuffer {
+fileprivate struct FfiConverterSequenceTypeFfiAlbumItem: FfiConverterRustBuffer {
     typealias SwiftType = [FfiAlbumItem]
 
     public static func write(_ value: [FfiAlbumItem], into buf: inout [UInt8]) {
@@ -5872,7 +7172,7 @@ nonisolated fileprivate struct FfiConverterSequenceTypeFfiAlbumItem: FfiConverte
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated fileprivate struct FfiConverterSequenceTypeFfiAlbumUuid: FfiConverterRustBuffer {
+fileprivate struct FfiConverterSequenceTypeFfiAlbumUuid: FfiConverterRustBuffer {
     typealias SwiftType = [FfiAlbumUuid]
 
     public static func write(_ value: [FfiAlbumUuid], into buf: inout [UInt8]) {
@@ -5897,7 +7197,57 @@ nonisolated fileprivate struct FfiConverterSequenceTypeFfiAlbumUuid: FfiConverte
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated fileprivate struct FfiConverterSequenceTypeFfiCrdtOperation: FfiConverterRustBuffer {
+fileprivate struct FfiConverterSequenceTypeFfiApplePhotosCollectionIdentity: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiApplePhotosCollectionIdentity]
+
+    public static func write(_ value: [FfiApplePhotosCollectionIdentity], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiApplePhotosCollectionIdentity.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiApplePhotosCollectionIdentity] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiApplePhotosCollectionIdentity]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiApplePhotosCollectionIdentity.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeFfiApplePhotosResourceDescriptor: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiApplePhotosResourceDescriptor]
+
+    public static func write(_ value: [FfiApplePhotosResourceDescriptor], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiApplePhotosResourceDescriptor.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiApplePhotosResourceDescriptor] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiApplePhotosResourceDescriptor]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiApplePhotosResourceDescriptor.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeFfiCrdtOperation: FfiConverterRustBuffer {
     typealias SwiftType = [FfiCrdtOperation]
 
     public static func write(_ value: [FfiCrdtOperation], into buf: inout [UInt8]) {
@@ -5922,7 +7272,7 @@ nonisolated fileprivate struct FfiConverterSequenceTypeFfiCrdtOperation: FfiConv
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated fileprivate struct FfiConverterSequenceTypeFfiGroup: FfiConverterRustBuffer {
+fileprivate struct FfiConverterSequenceTypeFfiGroup: FfiConverterRustBuffer {
     typealias SwiftType = [FfiGroup]
 
     public static func write(_ value: [FfiGroup], into buf: inout [UInt8]) {
@@ -5947,7 +7297,7 @@ nonisolated fileprivate struct FfiConverterSequenceTypeFfiGroup: FfiConverterRus
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated fileprivate struct FfiConverterSequenceTypeFfiKv: FfiConverterRustBuffer {
+fileprivate struct FfiConverterSequenceTypeFfiKv: FfiConverterRustBuffer {
     typealias SwiftType = [FfiKv]
 
     public static func write(_ value: [FfiKv], into buf: inout [UInt8]) {
@@ -5972,7 +7322,7 @@ nonisolated fileprivate struct FfiConverterSequenceTypeFfiKv: FfiConverterRustBu
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated fileprivate struct FfiConverterSequenceTypeFfiLascoCloudRemote: FfiConverterRustBuffer {
+fileprivate struct FfiConverterSequenceTypeFfiLascoCloudRemote: FfiConverterRustBuffer {
     typealias SwiftType = [FfiLascoCloudRemote]
 
     public static func write(_ value: [FfiLascoCloudRemote], into buf: inout [UInt8]) {
@@ -5997,7 +7347,7 @@ nonisolated fileprivate struct FfiConverterSequenceTypeFfiLascoCloudRemote: FfiC
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated fileprivate struct FfiConverterSequenceTypeFfiLibraryEntry: FfiConverterRustBuffer {
+fileprivate struct FfiConverterSequenceTypeFfiLibraryEntry: FfiConverterRustBuffer {
     typealias SwiftType = [FfiLibraryEntry]
 
     public static func write(_ value: [FfiLibraryEntry], into buf: inout [UInt8]) {
@@ -6022,7 +7372,7 @@ nonisolated fileprivate struct FfiConverterSequenceTypeFfiLibraryEntry: FfiConve
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated fileprivate struct FfiConverterSequenceTypeFfiMediaId: FfiConverterRustBuffer {
+fileprivate struct FfiConverterSequenceTypeFfiMediaId: FfiConverterRustBuffer {
     typealias SwiftType = [FfiMediaId]
 
     public static func write(_ value: [FfiMediaId], into buf: inout [UInt8]) {
@@ -6047,7 +7397,7 @@ nonisolated fileprivate struct FfiConverterSequenceTypeFfiMediaId: FfiConverterR
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated fileprivate struct FfiConverterSequenceTypeFfiMediaItem: FfiConverterRustBuffer {
+fileprivate struct FfiConverterSequenceTypeFfiMediaItem: FfiConverterRustBuffer {
     typealias SwiftType = [FfiMediaItem]
 
     public static func write(_ value: [FfiMediaItem], into buf: inout [UInt8]) {
@@ -6072,7 +7422,7 @@ nonisolated fileprivate struct FfiConverterSequenceTypeFfiMediaItem: FfiConverte
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated fileprivate struct FfiConverterSequenceTypeFfiMediaUuid: FfiConverterRustBuffer {
+fileprivate struct FfiConverterSequenceTypeFfiMediaUuid: FfiConverterRustBuffer {
     typealias SwiftType = [FfiMediaUuid]
 
     public static func write(_ value: [FfiMediaUuid], into buf: inout [UInt8]) {
@@ -6097,7 +7447,7 @@ nonisolated fileprivate struct FfiConverterSequenceTypeFfiMediaUuid: FfiConverte
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated fileprivate struct FfiConverterSequenceTypeFfiRemote: FfiConverterRustBuffer {
+fileprivate struct FfiConverterSequenceTypeFfiRemote: FfiConverterRustBuffer {
     typealias SwiftType = [FfiRemote]
 
     public static func write(_ value: [FfiRemote], into buf: inout [UInt8]) {
@@ -6122,7 +7472,7 @@ nonisolated fileprivate struct FfiConverterSequenceTypeFfiRemote: FfiConverterRu
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-nonisolated fileprivate struct FfiConverterSequenceTypeFfiRemoteUuid: FfiConverterRustBuffer {
+fileprivate struct FfiConverterSequenceTypeFfiRemoteUuid: FfiConverterRustBuffer {
     typealias SwiftType = [FfiRemoteUuid]
 
     public static func write(_ value: [FfiRemoteUuid], into buf: inout [UInt8]) {
@@ -6143,12 +7493,62 @@ nonisolated fileprivate struct FfiConverterSequenceTypeFfiRemoteUuid: FfiConvert
         return seq
     }
 }
-nonisolated private let UNIFFI_RUST_FUTURE_POLL_READY: Int8 = 0
-nonisolated private let UNIFFI_RUST_FUTURE_POLL_MAYBE_READY: Int8 = 1
 
-nonisolated fileprivate let uniffiContinuationHandleMap = UniffiHandleMap<UnsafeContinuation<Int8, Never>>()
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeFfiUploadBenchmarkSample: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiUploadBenchmarkSample]
 
-nonisolated fileprivate func uniffiRustCallAsync<F, T>(
+    public static func write(_ value: [FfiUploadBenchmarkSample], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiUploadBenchmarkSample.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiUploadBenchmarkSample] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiUploadBenchmarkSample]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiUploadBenchmarkSample.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceOptionTypeFfiAlbumUuid: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiAlbumUuid?]
+
+    public static func write(_ value: [FfiAlbumUuid?], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterOptionTypeFfiAlbumUuid.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiAlbumUuid?] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiAlbumUuid?]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterOptionTypeFfiAlbumUuid.read(from: &buf))
+        }
+        return seq
+    }
+}
+private let UNIFFI_RUST_FUTURE_POLL_READY: Int8 = 0
+private let UNIFFI_RUST_FUTURE_POLL_MAYBE_READY: Int8 = 1
+
+fileprivate let uniffiContinuationHandleMap = UniffiHandleMap<UnsafeContinuation<Int8, Never>>()
+
+fileprivate func uniffiRustCallAsync<F, T>(
     rustFutureFunc: () -> UInt64,
     pollFunc: (UInt64, @escaping UniffiRustFutureContinuationCallback, UInt64) -> (),
     completeFunc: (UInt64, UnsafeMutablePointer<RustCallStatus>) -> F,
@@ -6182,7 +7582,7 @@ nonisolated fileprivate func uniffiRustCallAsync<F, T>(
 
 // Callback handlers for an async calls.  These are invoked by Rust when the future is ready.  They
 // lift the return value or error and resume the suspended function.
-nonisolated fileprivate func uniffiFutureContinuationCallback(handle: UInt64, pollResult: Int8) {
+fileprivate func uniffiFutureContinuationCallback(handle: UInt64, pollResult: Int8) {
     if let continuation = try? uniffiContinuationHandleMap.remove(handle: handle) {
         continuation.resume(returning: pollResult)
     } else {
@@ -6190,12 +7590,32 @@ nonisolated fileprivate func uniffiFutureContinuationCallback(handle: UInt64, po
     }
 }
 /**
+ * Add a library that already exists at a fixed local filesystem path.
+ *
+ * Desktop callers must obtain user permission for the path before invoking this API. USB-backed
+ * remotes deliberately use their platform-specific APIs and are not covered here.
+ */
+public func ffiAddExistingLibraryFixedPath(nickname: String, username: String, password: String, newUsername: String?, newPassword: String?, remoteName: String, path: String, appDir: String? = nil)throws  -> FfiLibrary  {
+    return try  FfiConverterTypeFfiLibrary_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_func_ffi_add_existing_library_fixed_path(
+        FfiConverterString.lower(nickname),
+        FfiConverterString.lower(username),
+        FfiConverterString.lower(password),
+        FfiConverterOptionString.lower(newUsername),
+        FfiConverterOptionString.lower(newPassword),
+        FfiConverterString.lower(remoteName),
+        FfiConverterString.lower(path),
+        FfiConverterOptionString.lower(appDir),$0
+    )
+})
+}
+/**
  * Add a library already stored in Lasco Cloud.
  *
  * Cloud account credentials authorize storage discovery. Library credentials
  * decrypt the remote library; they are deliberately separate identities.
  */
-nonisolated public func ffiAddExistingLibraryLascoCloud(config: FfiLascoCloudImportConfig, appDir: String? = nil)throws  -> FfiLibrary  {
+public func ffiAddExistingLibraryLascoCloud(config: FfiLascoCloudImportConfig, appDir: String? = nil)throws  -> FfiLibrary  {
     return try  FfiConverterTypeFfiLibrary_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_func_ffi_add_existing_library_lasco_cloud(
         FfiConverterTypeFfiLascoCloudImportConfig_lower(config),
@@ -6213,7 +7633,7 @@ nonisolated public func ffiAddExistingLibraryLascoCloud(config: FfiLascoCloudImp
  *
  * Returns an error if runtime/app setup, remote connection or authentication, local persistence, or initial synchronization fails.
  */
-nonisolated public func ffiAddExistingLibraryS3(nickname: String, username: String, password: String, newUsername: String?, newPassword: String?, remoteName: String, endpoint: String, bucket: String, region: String, pathPrefix: String, accessKey: String, secretKey: String, appDir: String? = nil)throws  -> FfiLibrary  {
+public func ffiAddExistingLibraryS3(nickname: String, username: String, password: String, newUsername: String?, newPassword: String?, remoteName: String, endpoint: String, bucket: String, region: String, pathPrefix: String, accessKey: String, secretKey: String, appDir: String? = nil)throws  -> FfiLibrary  {
     return try  FfiConverterTypeFfiLibrary_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_func_ffi_add_existing_library_s3(
         FfiConverterString.lower(nickname),
@@ -6233,6 +7653,29 @@ nonisolated public func ffiAddExistingLibraryS3(nickname: String, username: Stri
 })
 }
 /**
+ * Add a library that already exists on an SMB 2/3 remote.
+ */
+public func ffiAddExistingLibrarySmb(nickname: String, username: String, password: String, newUsername: String?, newPassword: String?, remoteName: String, server: String, port: UInt16, share: String, pathPrefix: String, smbUsername: String, smbPassword: String, domain: String?, appDir: String? = nil)throws  -> FfiLibrary  {
+    return try  FfiConverterTypeFfiLibrary_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_func_ffi_add_existing_library_smb(
+        FfiConverterString.lower(nickname),
+        FfiConverterString.lower(username),
+        FfiConverterString.lower(password),
+        FfiConverterOptionString.lower(newUsername),
+        FfiConverterOptionString.lower(newPassword),
+        FfiConverterString.lower(remoteName),
+        FfiConverterString.lower(server),
+        FfiConverterUInt16.lower(port),
+        FfiConverterString.lower(share),
+        FfiConverterString.lower(pathPrefix),
+        FfiConverterString.lower(smbUsername),
+        FfiConverterString.lower(smbPassword),
+        FfiConverterOptionString.lower(domain),
+        FfiConverterOptionString.lower(appDir),$0
+    )
+})
+}
+/**
  * # Errors
  *
  * Returns an error if the app directory/runtime cannot be created or library state, config, or session key cannot be initialized.
@@ -6241,7 +7684,7 @@ nonisolated public func ffiAddExistingLibraryS3(nickname: String, username: Stri
  *
  * Panics if Tokio cannot construct the runtime used to initialize the library.
  */
-nonisolated public func ffiCreateLibrary(nickname: String, username: String, password: String, appDir: String? = nil)throws  -> FfiCreateLibraryResult  {
+public func ffiCreateLibrary(nickname: String, username: String, password: String, appDir: String? = nil)throws  -> FfiCreateLibraryResult  {
     return try  FfiConverterTypeFfiCreateLibraryResult_lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_func_ffi_create_library(
         FfiConverterString.lower(nickname),
@@ -6256,7 +7699,7 @@ nonisolated public func ffiCreateLibrary(nickname: String, username: String, pas
  *
  * Returns an error if the library ID is invalid or local data, session state, or app configuration cannot be removed or updated.
  */
-nonisolated public func ffiDeleteLibrary(libraryId: FfiLibraryId, appDir: String? = nil)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+public func ffiDeleteLibrary(libraryId: FfiLibraryId, appDir: String? = nil)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_func_ffi_delete_library(
         FfiConverterTypeFfiLibraryId_lower(libraryId),
         FfiConverterOptionString.lower(appDir),$0
@@ -6271,7 +7714,7 @@ nonisolated public func ffiDeleteLibrary(libraryId: FfiLibraryId, appDir: String
  *
  * Returns an error if configuration or the session key cannot be read, or opening a cached library fails.
  */
-nonisolated public func ffiOpenCached(nickname: String?, username: String, appDir: String? = nil)throws  -> FfiLibrary?  {
+public func ffiOpenCached(nickname: String?, username: String, appDir: String? = nil)throws  -> FfiLibrary?  {
     return try  FfiConverterOptionTypeFfiLibrary.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_func_ffi_open_cached(
         FfiConverterOptionString.lower(nickname),
@@ -6284,7 +7727,7 @@ nonisolated public func ffiOpenCached(nickname: String?, username: String, appDi
  * Rebuild an unreadable local CRDT snapshot from the encrypted local operation log.
  * This is intentionally separate from opening: clients must obtain explicit user consent first.
  */
-nonisolated public func ffiRecoverLibraryState(nickname: String, username: String, password: String, appDir: String? = nil)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+public func ffiRecoverLibraryState(nickname: String, username: String, password: String, appDir: String? = nil)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_func_ffi_recover_library_state(
         FfiConverterString.lower(nickname),
         FfiConverterString.lower(username),
@@ -6301,7 +7744,7 @@ nonisolated public func ffiRecoverLibraryState(nickname: String, username: Strin
  *
  * Returns an error if the S3 client or runtime cannot be created, or the bucket cannot be listed.
  */
-nonisolated public func ffiTestS3Remote(endpoint: String, bucket: String, region: String, pathPrefix: String, accessKey: String, secretKey: String)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+public func ffiTestS3Remote(endpoint: String, bucket: String, region: String, pathPrefix: String, accessKey: String, secretKey: String)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_func_ffi_test_s3_remote(
         FfiConverterString.lower(endpoint),
         FfiConverterString.lower(bucket),
@@ -6313,11 +7756,27 @@ nonisolated public func ffiTestS3Remote(endpoint: String, bucket: String, region
 }
 }
 /**
+ * Test connectivity and read/write access to an SMB 2/3 share without saving
+ * any credentials. The probe is removed before this function returns.
+ */
+public func ffiTestSmbRemote(server: String, port: UInt16, share: String, pathPrefix: String, username: String, password: String, domain: String?)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_func_ffi_test_smb_remote(
+        FfiConverterString.lower(server),
+        FfiConverterUInt16.lower(port),
+        FfiConverterString.lower(share),
+        FfiConverterString.lower(pathPrefix),
+        FfiConverterString.lower(username),
+        FfiConverterString.lower(password),
+        FfiConverterOptionString.lower(domain),$0
+    )
+}
+}
+/**
  * # Errors
  *
  * Returns an error if the application configuration cannot be read; per-library load failures are returned in each entry.
  */
-nonisolated public func listLibraries(appDir: String? = nil)throws  -> [FfiLibraryEntry]  {
+public func listLibraries(appDir: String? = nil)throws  -> [FfiLibraryEntry]  {
     return try  FfiConverterSequenceTypeFfiLibraryEntry.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_func_list_libraries(
         FfiConverterOptionString.lower(appDir),$0
@@ -6329,7 +7788,7 @@ nonisolated public func listLibraries(appDir: String? = nil)throws  -> [FfiLibra
  *
  * Returns an error if the library ID is invalid or its file-based session cannot be cleared.
  */
-nonisolated public func sessionClear(libraryId: FfiLibraryId, username: String, appDir: String? = nil)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+public func sessionClear(libraryId: FfiLibraryId, username: String, appDir: String? = nil)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
     uniffi_lasco_ffi_fn_func_session_clear(
         FfiConverterTypeFfiLibraryId_lower(libraryId),
         FfiConverterString.lower(username),
@@ -6338,14 +7797,14 @@ nonisolated public func sessionClear(libraryId: FfiLibraryId, username: String, 
 }
 }
 
-nonisolated private enum InitializationResult {
+private enum InitializationResult {
     case ok
     case contractVersionMismatch
     case apiChecksumMismatch
 }
 // Use a global variable to perform the versioning checks. Swift ensures that
 // the code inside is only computed once.
-nonisolated private let initializationResult: InitializationResult = {
+private let initializationResult: InitializationResult = {
     // Get the bindings contract version from our ComponentInterface
     let bindings_contract_version = 29
     // Get the scaffolding contract version by calling the into the dylib
@@ -6353,10 +7812,16 @@ nonisolated private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
+    if (uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_fixed_path() != 41077) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_lasco_cloud() != 61860) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_s3() != 45002) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_func_ffi_add_existing_library_smb() != 13877) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_func_ffi_create_library() != 46039) {
@@ -6372,6 +7837,9 @@ nonisolated private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_func_ffi_test_s3_remote() != 38987) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_func_ffi_test_smb_remote() != 22096) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_func_list_libraries() != 63304) {
@@ -6399,6 +7867,9 @@ nonisolated private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_s3() != 5472) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_smb() != 51856) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_add_remote_usb_android() != 31100) {
@@ -6431,13 +7902,25 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_all_media_ids() != 28671) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_apple_photos_asset_revision_media_ids() != 3343) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_apple_photos_collection_links() != 49566) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_benchmark_remote_upload_async() != 35799) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_clear_lasco_cloud_auth_and_credentials() != 41699) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_configure_lasco_cloud_auth() != 39402) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_confirm_remote_media_async() != 59085) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_confirm_remote_media_async() != 39271) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_confirmed_remote_media_ids() != 41075) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_connect_remote() != 33397) {
@@ -6455,13 +7938,19 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_delete_group() != 44891) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_delete_media() != 3803) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_delete_media() != 50469) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_disconnected_albums_count() != 3821) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_disconnected_albums_range() != 62195) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_empty_trash() != 11047) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_ensure_usb_android_folder_is_uninitialized() != 25647) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_ensure_usb_apple_folder_is_uninitialized() != 1639) {
@@ -6506,10 +7995,16 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_group_list_media() != 51462) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_hard_delete_media() != 43537) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_has_unpushed_changes() != 50625) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_import_media() != 49744) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_import_media_with_metadata() != 23220) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_initialize_remote() != 54402) {
@@ -6623,6 +8118,15 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_using_configured_media_sources_async() != 3322) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_push_remote_using_configured_media_sources_with_options_async() != 2562) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_record_apple_photos_collection_link() != 20088) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_record_apple_photos_resource_origin() != 37582) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_remote_media_shortfall() != 52429) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -6647,6 +8151,9 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_reparent_album() != 42959) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_restore_media() != 64357) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_set_album_thumbnail() != 48225) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -6666,6 +8173,18 @@ nonisolated private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_show_media() != 45030) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_soft_delete_media() != 52124) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_trashed_media_all() != 38098) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_trashed_media_by_date_count() != 41319) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_trashed_media_by_date_range() != 735) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_user_add() != 31541) {
@@ -6693,7 +8212,7 @@ nonisolated private let initializationResult: InitializationResult = {
 
 // Make the ensure init function public so that other modules which have external type references to
 // our types can call it.
-nonisolated public func uniffiEnsureLascoFfiInitialized() {
+public func uniffiEnsureLascoFfiInitialized() {
     switch initializationResult {
     case .ok:
         break

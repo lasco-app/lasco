@@ -1,3 +1,4 @@
+pub mod apple_photos;
 pub mod hash;
 pub mod query;
 pub mod upload;
@@ -30,6 +31,9 @@ pub struct MediaEntry {
     pub gps: Option<GpsCoords>,
     pub apple_aae_media_id: Option<MediaUuid>,
     pub apple_live_photo_media_id: Option<MediaUuid>,
+    pub trashed: bool,
+    pub trashed_by: Option<String>,
+    pub trashed_at: Option<DateTime<Utc>>,
     /// Set when another media references this one as its companion resource. A companion is
     /// never browsed on its own and never has a thumbnail.
     pub companion_kind: Option<CompanionKind>,
@@ -52,6 +56,9 @@ impl MediaEntry {
             gps: entry.gps,
             apple_aae_media_id: entry.apple_aae_media_id,
             apple_live_photo_media_id: entry.apple_live_photo_media_id,
+            trashed: entry.trashed,
+            trashed_by: entry.trashed_by.as_ref().map(|author| author.0.clone()),
+            trashed_at: entry.trashed_at,
             companion_kind: entry.companion_kind,
         }
     }

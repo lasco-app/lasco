@@ -19,6 +19,7 @@ struct NewLibraryWizard: View {
     @State private var showCloudLoginSheet = false
     @State private var showAddS3Sheet = false
     @State private var showAddUsbSheet = false
+    @State private var showAddSmbSheet = false
     @State private var showAddLocalFSSheet = false
     @State private var masterKeyCopied = false
     @State private var masterKey: String?
@@ -145,6 +146,7 @@ struct NewLibraryWizard: View {
                     .buttonStyle(LascoPrimaryButtonStyle())
                     .frame(maxWidth: .infinity)
                 Button("Add USB drive") { showAddUsbSheet = true }
+                Button("Add SMB remote") { showAddSmbSheet = true }
                     .buttonStyle(LascoPrimaryButtonStyle())
                     .frame(maxWidth: .infinity)
                 if expertMode {
@@ -174,6 +176,18 @@ struct NewLibraryWizard: View {
             .sheet(isPresented: $showAddS3Sheet) {
                 if let activeSession = directory.activeSession {
                     AddS3RemoteView {
+                        try await activeSession.refresh()
+                        guard !activeSession.state.remotes.isEmpty else {
+                            throw LibraryDirectoryModelError.remoteUnavailableAfterRefresh
+                        }
+                        advanceFromRemote()
+                    }
+                    .environment(activeSession.repository)
+                }
+            }
+            .sheet(isPresented: $showAddSmbSheet) {
+                if let activeSession = directory.activeSession {
+                    AddSmbRemoteView {
                         try await activeSession.refresh()
                         guard !activeSession.state.remotes.isEmpty else {
                             throw LibraryDirectoryModelError.remoteUnavailableAfterRefresh
@@ -672,7 +686,7 @@ struct NewLibraryWizard: View {
                 Button("Import Now") {
                     if let controller = initialImportController {
                         Task {
-                            await controller.start(remoteID: directory.activeSession?.state.remotes.first?.remoteId)
+                            await controller.start(remoteIDs: directory.activeSession?.state.remotes.map(\.remoteId) ?? [])
                         }
                     }
                 }
@@ -779,7 +793,7 @@ struct NewLibraryWizard: View {
                 .foregroundStyle(Color.Lasco.ink)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text("\(photos) \(photos == 1 ? "photo" : "photos") and \(videos) \(videos == 1 ? "video" : "videos") were successfully imported.")
+            Text("\(photos) \(photos == 1 ? "photo" : "photos") and \(videos) \(videos == 1 ? "video" : "videos") are now available in your Lasco library.")
                 .font(LascoFont.body(16))
                 .foregroundStyle(Color.Lasco.inkSub)
                 .fixedSize(horizontal: false, vertical: true)
@@ -826,7 +840,7 @@ struct NewLibraryWizard: View {
             }
         )
         initialImportController = controller
-        await controller.scanPhotoLibrary()
+        await controller.scanPhotoLibrary(remoteIDs: activeSession.state.remotes.map(\.remoteId))
     }
     #endif
 }

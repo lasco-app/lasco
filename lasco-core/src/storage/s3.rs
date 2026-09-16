@@ -163,6 +163,32 @@ impl Storage for StorageS3 {
         Ok(keys)
     }
 
+    async fn list_recursive(&self, prefix: &str) -> Result<Vec<String>> {
+        // `Bucket::list` follows continuation tokens internally and returns every page. Omitting
+        // the delimiter asks S3 for descendants rather than direct children only.
+        let results = self
+            .bucket
+            .list(self.prefixed_key(prefix), None)
+            .await
+            .map_err(|e| StorageError::Other(Box::new(e)))?;
+
+        let mut keys = Vec::new();
+        for result in results {
+            for obj in result.contents {
+                let key = match &self.path_prefix {
+                    Some(path_prefix) => obj
+                        .key
+                        .strip_prefix(path_prefix)
+                        .map(std::string::ToString::to_string)
+                        .unwrap_or(obj.key),
+                    None => obj.key,
+                };
+                keys.push(key);
+            }
+        }
+        Ok(keys)
+    }
+
     async fn exists(&self, key: &str) -> Result<bool> {
         match self.bucket.head_object(self.prefixed_key(key)).await {
             Ok(_) => Ok(true),

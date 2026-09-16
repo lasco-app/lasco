@@ -1,3 +1,4 @@
+use std::collections::{HashSet, VecDeque};
 use std::path::Path;
 
 use chrono::Utc;
@@ -18,6 +19,37 @@ use super::MediaEntry;
 
 pub type Result<T> = std::result::Result<T, LibraryError>;
 
+/// Finds the undirected companion component for one media item. The reverse
+/// walk handles an asset referenced by a primary; the forward walk handles its
+/// AAE and Live Photo children.
+fn media_companion_closure(state: &crate::crdt::CrdtState, root: MediaUuid) -> Vec<MediaUuid> {
+    let entries = state.media_entries();
+    let mut seen = HashSet::from([root]);
+    let mut pending = VecDeque::from([root]);
+    while let Some(current) = pending.pop_front() {
+        for entry in &entries {
+            let adjacent = entry.media_id == current
+                || entry.apple_aae_media_id == Some(current)
+                || entry.apple_live_photo_media_id == Some(current);
+            if !adjacent {
+                continue;
+            }
+            for candidate in [
+                entry.media_id,
+                entry.apple_aae_media_id.unwrap_or(entry.media_id),
+                entry.apple_live_photo_media_id.unwrap_or(entry.media_id),
+            ] {
+                if seen.insert(candidate) {
+                    pending.push_back(candidate);
+                }
+            }
+        }
+    }
+    let mut result: Vec<_> = seen.into_iter().collect();
+    result.sort_by_key(|id| id.0);
+    result
+}
+
 /// Selects which media entries `Library::media_list` returns.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MediaListScope {
@@ -31,6 +63,9 @@ pub enum MediaListScope {
     /// Primary media with no live album or group membership. Companion resources
     /// referenced by another media item (AAE and Live Photo video) are excluded.
     Orphaned,
+    /// Primary media that was soft-deleted. Trash is a virtual system collection,
+    /// not an ordinary album.
+    Trashed,
     /// Every known media entry, including AAE sidecars and media orphaned from all albums.
     All,
 }
@@ -75,6 +110,12 @@ impl Library {
         }
     }
 
+    /// Returns the number of primary media in Trash.
+    #[must_use]
+    pub fn trashed_media_by_date_count(&self) -> usize {
+        self.inner.state.read().views.home_trashed_newest.len()
+    }
+
     /// Returns the inclusive position range from the canonical home-media order.
     #[must_use]
     pub fn media_by_date_range(
@@ -105,6 +146,50 @@ impl Library {
             .collect()
     }
 
+    /// Returns a date-ordered range from the virtual Trash collection.
+    #[must_use]
+    pub fn trashed_media_by_date_range(
+        &self,
+        pos_start_inclusive: usize,
+        pos_end_inclusive: usize,
+    ) -> Vec<MediaEntry> {
+        if pos_start_inclusive > pos_end_inclusive {
+            return Vec::new();
+        }
+        let state = self.inner.state.read();
+        let Some(range) = inclusive_slice(
+            &state.views.home_trashed_newest,
+            pos_start_inclusive,
+            pos_end_inclusive,
+        ) else {
+            return Vec::new();
+        };
+        range
+            .iter()
+            .filter_map(|media_id| {
+                state
+                    .media(*media_id)
+                    .map(|entry| MediaEntry::from_state(&entry, entry.group_ids.clone()))
+            })
+            .collect()
+    }
+
+    /// Returns every trashed record, including companion resources hidden from
+    /// the normal Trash gallery. This is for maintenance actions such as Empty
+    /// Trash; interactive browsing should use `trashed_media_by_date_range`.
+    #[must_use]
+    pub fn trashed_media_all(&self) -> Vec<MediaEntry> {
+        let state = self.inner.state.read();
+        let mut entries: Vec<_> = state
+            .media_entries()
+            .iter()
+            .filter(|entry| entry.trashed)
+            .map(|entry| MediaEntry::from_state(entry, entry.group_ids.clone()))
+            .collect();
+        entries.sort_by_key(|entry| entry.media_id.0);
+        entries
+    }
+
     /// Returns media entries matching `scope`.
     #[must_use]
     pub fn media_list(&self, scope: MediaListScope) -> Vec<MediaEntry> {
@@ -123,7 +208,7 @@ impl Library {
             MediaListScope::Visible => state
                 .media_entries()
                 .iter()
-                .filter(|entry| entry.companion_kind.is_none())
+                .filter(|entry| entry.companion_kind.is_none() && !entry.trashed)
                 .map(|entry| MediaEntry::from_state(entry, entry.group_ids.clone()))
                 .collect(),
             MediaListScope::Orphaned => state
@@ -131,8 +216,15 @@ impl Library {
                 .iter()
                 .filter(|entry| {
                     entry.companion_kind.is_none()
+                        && !entry.trashed
                         && !state.views.reachable_media_ids.contains(&entry.media_id)
                 })
+                .map(|entry| MediaEntry::from_state(entry, entry.group_ids.clone()))
+                .collect(),
+            MediaListScope::Trashed => state
+                .media_entries()
+                .iter()
+                .filter(|entry| entry.companion_kind.is_none() && entry.trashed)
                 .map(|entry| MediaEntry::from_state(entry, entry.group_ids.clone()))
                 .collect(),
             MediaListScope::All => state
@@ -190,6 +282,10 @@ impl Library {
             .download_media_blob(media_id, year, month, storage)
             .await?;
         let plaintext = self.decrypt_media_blob(media_id, &blob_bytes)?;
+
+        // A Fetch may have tombstoned this media while the remote request was
+        // in flight. Do not recreate a cache entry after that cleanup pass.
+        self.media_year_month(media_id)?;
 
         if let Some(parent) = data_path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -266,6 +362,9 @@ impl Library {
                     .get(&key)
                     .await
                     .map_err(|_remote_media_error| LibraryError::MediaNotFound(media_id))?;
+                // As above, reject a download that lost a race with a hard
+                // delete merged by Fetch while the network request awaited.
+                self.media_year_month(media_id)?;
                 if let Some(parent) = thumb_path.parent() {
                     std::fs::create_dir_all(parent)?;
                 }
@@ -453,6 +552,32 @@ impl Library {
         shortfall
     }
 
+    /// Returns the subset of `media_ids` whose full originals are confirmed on one remote.
+    ///
+    /// This consults the positive-only inventory cached by `confirm_remote_media`; it does not
+    /// perform network I/O. A missing ID is deliberately "not confirmed", never proof that the
+    /// remote lacks the blob.
+    #[must_use]
+    pub fn confirmed_remote_media_ids(
+        &self,
+        remote_id: &str,
+        media_ids: &[MediaUuid],
+    ) -> Vec<MediaUuid> {
+        let remote_media_list = self.inner.local_dirs.remote_media_list(remote_id);
+        let Ok(list) = self.inner.remote_media_list_lock.with_lock(
+            remote_id,
+            &remote_media_list,
+            |remote_media_list| MediaList::load_or_default(&remote_media_list.media_list_path()),
+        ) else {
+            return Vec::new();
+        };
+        media_ids
+            .iter()
+            .copied()
+            .filter(|media_id| list.has_full(media_id))
+            .collect()
+    }
+
     /// Returns the ids of media whose full blob has no known home once `scope` is applied.
     ///
     /// Only the full media file counts, a thumbnail alone is never a backup. Remote knowledge
@@ -482,35 +607,129 @@ impl Library {
             .collect()
     }
 
-    /// Removes `media_id` from every non-deleted album that contains it.
-    /// After this call the media will no longer appear in `media_list(MediaListScope::Reachable)`.
+    /// Moves media and every companion to Trash without removing memberships.
     /// # Errors
     ///
     /// Returns an error if media is absent or the delete operation cannot be persisted.
-    pub async fn media_delete(&self, media_id: MediaUuid) -> Result<()> {
-        let album_ids: Vec<AlbumUuid> = {
+    pub async fn media_soft_delete(&self, media_id: MediaUuid) -> Result<()> {
+        let media_ids = {
             let state = self.inner.state.read();
             state
-                .album_entries()
-                .iter()
-                .filter(|album| album.media_ids.contains(&media_id))
-                .map(|a| a.album_id)
-                .collect()
+                .media(media_id)
+                .ok_or(LibraryError::MediaNotFound(media_id))?;
+            media_companion_closure(&state, media_id)
         };
-        for album_id in album_ids {
-            let observed = self
-                .inner
-                .state
-                .read()
-                .album_member_dots(album_id, media_id);
+        for media_id in media_ids {
             self.record_local_operation(
                 chrono::Utc::now(),
-                OperationContent::AlbumMediaRemove {
-                    album_id,
+                OperationContent::MediaTrashSet {
                     media_id,
-                    observed,
+                    trashed: true,
                 },
             )?;
+        }
+        Ok(())
+    }
+
+    /// Restores media and every companion to their pre-existing memberships.
+    pub async fn media_restore(&self, media_id: MediaUuid) -> Result<()> {
+        let media_ids = {
+            let state = self.inner.state.read();
+            state
+                .media(media_id)
+                .ok_or(LibraryError::MediaNotFound(media_id))?;
+            media_companion_closure(&state, media_id)
+        };
+        for media_id in media_ids {
+            self.record_local_operation(
+                chrono::Utc::now(),
+                OperationContent::MediaTrashSet {
+                    media_id,
+                    trashed: false,
+                },
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Permanently tombstones one already-trashed media item and every trashed
+    /// companion. The tombstone is durable before local cache cleanup begins,
+    /// so a cleanup failure can be retried without resurrecting media.
+    pub async fn media_hard_delete(&self, media_id: MediaUuid) -> Result<()> {
+        let media_ids = {
+            let state = self.inner.state.read();
+            let entry = state
+                .media(media_id)
+                .ok_or(LibraryError::MediaNotFound(media_id))?;
+            if !entry.trashed {
+                return Err(LibraryError::MediaMustBeTrashed(media_id));
+            }
+            media_companion_closure(&state, media_id)
+                .into_iter()
+                .filter(|companion_id| {
+                    state
+                        .media(*companion_id)
+                        .is_some_and(|companion| companion.trashed)
+                })
+                .collect()
+        };
+        self.record_local_operation(
+            chrono::Utc::now(),
+            OperationContent::MediaDeletion { media_ids },
+        )?;
+        // Logical deletion is already durable. Cache cleanup is best-effort and
+        // repeated on fetch/open, so it must not roll back or obscure success.
+        let _ = self.cleanup_hard_deleted_local();
+        Ok(())
+    }
+
+    /// Permanently deletes every trashed record, including companion resources
+    /// that the normal Trash gallery does not display. Each tombstone remains
+    /// an explicit one-item operation.
+    pub async fn media_empty_trash(&self) -> Result<usize> {
+        let media_ids: Vec<_> = self
+            .trashed_media_all()
+            .into_iter()
+            .map(|entry| entry.media_id)
+            .collect();
+        for media_id in &media_ids {
+            self.record_local_operation(
+                chrono::Utc::now(),
+                OperationContent::MediaDeletion {
+                    media_ids: vec![*media_id],
+                },
+            )?;
+        }
+        // Logical deletion is durable for every successfully appended
+        // tombstone. Cleanup is best-effort and retried on fetch/open.
+        let _ = self.cleanup_hard_deleted_local();
+        Ok(media_ids.len())
+    }
+
+    /// Removes cached encrypted blobs for every durable hard tombstone. Missing
+    /// cache files are success. This intentionally reads raw tombstone metadata,
+    /// not `media_year_month`, because tombstoned media are absent from live state.
+    pub fn cleanup_hard_deleted_local(&self) -> Result<()> {
+        let deleted = self.inner.state.read().hard_deleted_media();
+        let media_dir = self.inner.local_dirs.local_state_media_dir();
+        for entry in deleted {
+            let data_path = media_dir.data_path(
+                entry.storage_date.year,
+                entry.storage_date.month,
+                &entry.media_id,
+            );
+            let thumb_path = media_dir.thumb_path(
+                entry.storage_date.year,
+                entry.storage_date.month,
+                &entry.media_id,
+            );
+            for path in [data_path, thumb_path] {
+                match std::fs::remove_file(&path) {
+                    Ok(()) => {}
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(LibraryError::Io(error)),
+                }
+            }
         }
         Ok(())
     }
@@ -593,6 +812,154 @@ mod tests {
 
         let list = lib.media_list(MediaListScope::Reachable);
         assert!(list.iter().any(|e| e.media_id == media_id));
+    }
+
+    #[tokio::test]
+    async fn soft_delete_moves_media_to_trash_without_making_it_an_orphan() {
+        let tmp = TempDir::new().unwrap();
+        let (lib, _) = make_library(&tmp);
+        let (media_id, album_id) = add_media_to_album(&lib, &tmp, "photo.jpg", b"data").await;
+
+        lib.media_soft_delete(media_id).await.unwrap();
+
+        assert!(lib.media_list(MediaListScope::Visible).is_empty());
+        assert!(lib.media_list(MediaListScope::Reachable).is_empty());
+        assert!(lib.media_list(MediaListScope::Orphaned).is_empty());
+        assert_eq!(
+            lib.media_list(MediaListScope::Trashed)[0].media_id,
+            media_id
+        );
+        let trashed = &lib.media_list(MediaListScope::Trashed)[0];
+        assert_eq!(trashed.trashed_by.as_deref(), Some("alice"));
+        assert!(trashed.trashed_at.is_some());
+        assert!(lib.album_list_media(album_id).unwrap().is_empty());
+
+        lib.media_restore(media_id).await.unwrap();
+        assert_eq!(
+            lib.album_list_media(album_id).unwrap()[0].media_id,
+            media_id
+        );
+    }
+
+    #[tokio::test]
+    async fn hard_delete_removes_media_from_live_queries_and_local_cache() {
+        let tmp = TempDir::new().unwrap();
+        let (lib, _) = make_library(&tmp);
+        let (media_id, _) = add_media_to_album(&lib, &tmp, "photo.jpg", b"data").await;
+        let entry = lib.media_show(media_id).unwrap();
+        let data_path = lib.inner.local_dirs.local_state_media_dir().data_path(
+            entry.storage_date.year,
+            entry.storage_date.month,
+            &media_id,
+        );
+        assert!(data_path.exists());
+
+        lib.media_soft_delete(media_id).await.unwrap();
+        lib.media_hard_delete(media_id).await.unwrap();
+
+        assert!(
+            matches!(lib.media_show(media_id), Err(LibraryError::MediaNotFound(id)) if id == media_id)
+        );
+        assert!(lib.media_list(MediaListScope::All).is_empty());
+        assert!(!data_path.exists());
+    }
+
+    #[tokio::test]
+    async fn hard_delete_requires_media_to_be_trashed() {
+        let tmp = TempDir::new().unwrap();
+        let (lib, _) = make_library(&tmp);
+        let (media_id, _) = add_media_to_album(&lib, &tmp, "photo.jpg", b"data").await;
+
+        assert!(matches!(
+            lib.media_hard_delete(media_id).await,
+            Err(LibraryError::MediaMustBeTrashed(id)) if id == media_id
+        ));
+    }
+
+    #[tokio::test]
+    async fn trash_restore_and_hard_delete_include_trashed_companions() {
+        let tmp = TempDir::new().unwrap();
+        let (lib, _) = make_library(&tmp);
+        let companion_path = tmp.path().join("edit.aae");
+        let primary_path = tmp.path().join("photo.jpg");
+        std::fs::write(&companion_path, b"sidecar").unwrap();
+        std::fs::write(&primary_path, b"primary").unwrap();
+        let companion_id = lib
+            .media_add(
+                MediaAddSource::CopyFrom(companion_path),
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap()
+            .id();
+        let primary_id = lib
+            .media_add(
+                MediaAddSource::CopyFrom(primary_path),
+                None,
+                None,
+                Some(companion_id),
+                None,
+            )
+            .await
+            .unwrap()
+            .id();
+
+        lib.media_soft_delete(primary_id).await.unwrap();
+        assert!(lib.inner.state.read().is_media_trashed(companion_id));
+        assert_eq!(
+            lib.media_list(MediaListScope::Trashed)[0].media_id,
+            primary_id
+        );
+
+        lib.media_restore(primary_id).await.unwrap();
+        assert!(!lib.inner.state.read().is_media_trashed(companion_id));
+
+        lib.media_soft_delete(primary_id).await.unwrap();
+        lib.media_hard_delete(primary_id).await.unwrap();
+        assert!(lib.media_show(primary_id).is_err());
+        assert!(lib.media_show(companion_id).is_err());
+        assert!(lib.media_list(MediaListScope::Trashed).is_empty());
+    }
+
+    #[tokio::test]
+    async fn empty_trash_deletes_hidden_trashed_companions() {
+        let tmp = TempDir::new().unwrap();
+        let (lib, _) = make_library(&tmp);
+        let companion_path = tmp.path().join("edit.aae");
+        let primary_path = tmp.path().join("photo.jpg");
+        std::fs::write(&companion_path, b"sidecar").unwrap();
+        std::fs::write(&primary_path, b"primary").unwrap();
+        let companion_id = lib
+            .media_add(
+                MediaAddSource::CopyFrom(companion_path),
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .unwrap()
+            .id();
+        let primary_id = lib
+            .media_add(
+                MediaAddSource::CopyFrom(primary_path),
+                None,
+                None,
+                Some(companion_id),
+                None,
+            )
+            .await
+            .unwrap()
+            .id();
+
+        lib.media_soft_delete(primary_id).await.unwrap();
+        assert_eq!(lib.trashed_media_all().len(), 2);
+        assert_eq!(lib.media_empty_trash().await.unwrap(), 2);
+        assert!(lib.media_show(primary_id).is_err());
+        assert!(lib.media_show(companion_id).is_err());
     }
 
     #[tokio::test]
@@ -949,7 +1316,9 @@ mod tests {
         let (media_id, _) = add_media_to_album(&lib, &tmp, "img.jpg", content).await;
 
         let dest = tmp.path().join("out.jpg");
-        lib.media_get(media_id, &dest, None).await.unwrap();
+        lib.media_materialize_to_path(media_id, &dest, None)
+            .await
+            .unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), content);
     }
 
@@ -1092,7 +1461,9 @@ mod tests {
         lib.album_remove_media(album_id, media_id).await.unwrap();
 
         let dest = tmp.path().join("out.jpg");
-        lib.media_get(media_id, &dest, None).await.unwrap();
+        lib.media_materialize_to_path(media_id, &dest, None)
+            .await
+            .unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), content);
     }
 }

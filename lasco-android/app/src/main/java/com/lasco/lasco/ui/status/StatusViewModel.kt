@@ -77,7 +77,7 @@ class StatusViewModel(
         refreshLocalStateStats()
     }
 
-    suspend fun pushRemote(remoteId: FfiRemoteUuid): PushResult = repo.sync.pushRemote(remoteId)
+    suspend fun syncRemote(remoteId: FfiRemoteUuid): PushResult = repo.sync.syncRemote(remoteId)
 
     suspend fun confirmRemoteMedia(remoteId: FfiRemoteUuid): ConfirmMediaResult =
         repo.sync.confirmRemoteMedia(remoteId)

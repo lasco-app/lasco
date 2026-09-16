@@ -51,11 +51,11 @@ struct FileToPush {
     needs_thumb: bool,
 }
 
-/// The maximum number of independent media transfers a Push drives at once.
+/// The default number of independent media transfers a Push drives at once.
 ///
 /// This is deliberately small: two concurrent S3 PUTs hide request latency without
 /// unnecessarily competing with a mobile device's upload bandwidth or memory.
-const MAX_CONCURRENT_MEDIA_UPLOADS: usize = 2;
+pub const DEFAULT_MAX_CONCURRENT_MEDIA_UPLOADS: usize = 2;
 
 /// The remote-presence facts produced by one completed media transfer.
 ///
@@ -231,6 +231,35 @@ impl Library {
         media_source: PushMediaSource<'_>,
         progress: Option<&dyn PushProgressObserver>,
     ) -> Result<SyncReportPush, LibraryError> {
+        self.push_with_media_source_and_progress_with_concurrency(
+            storage,
+            remote_id,
+            media_source,
+            progress,
+            DEFAULT_MAX_CONCURRENT_MEDIA_UPLOADS,
+        )
+        .await
+    }
+
+    /// Push with an explicit media source, progress observer, and bounded media-transfer
+    /// concurrency. The caller owns cross-remote scheduling; this limit only applies to this
+    /// one target remote.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `max_concurrent_media_uploads` is zero, another push is active,
+    /// remote validation/upload fails, or the selected media source cannot supply required blobs.
+    pub async fn push_with_media_source_and_progress_with_concurrency(
+        &self,
+        storage: &dyn crate::storage::Storage,
+        remote_id: RemoteUuid,
+        media_source: PushMediaSource<'_>,
+        progress: Option<&dyn PushProgressObserver>,
+        max_concurrent_media_uploads: usize,
+    ) -> Result<SyncReportPush, LibraryError> {
+        if max_concurrent_media_uploads == 0 {
+            return Err(SyncError::InvalidUploadConcurrency.into());
+        }
         let runtime = self.inner.cloud_runtime.clone();
         let cloud = runtime
             .has_remote(&remote_id)
@@ -259,6 +288,7 @@ impl Library {
             media_source,
             progress,
             cloud.as_ref(),
+            max_concurrent_media_uploads,
         )
         .await
     }
@@ -274,6 +304,7 @@ impl Library {
         media_source: PushMediaSource<'_>,
         progress: Option<&dyn PushProgressObserver>,
         cloud: Option<&CloudPushContext>,
+        max_concurrent_media_uploads: usize,
     ) -> Result<SyncReportPush, LibraryError> {
         let master_key = &self.inner.master_key;
 
@@ -297,8 +328,9 @@ impl Library {
             }
         };
 
-        // All work before the admission check is read-only. In particular, a rejected
-        // Cloud quota must not publish master keys, operations, or media.
+        // Build transfer estimates from the current live state.  The quota
+        // admission itself happens after deletion cleanup below, so reclaimed
+        // remote storage is available to this same Push.
         let known_media: Vec<KnownMedia> = {
             let state = self.inner.state.read();
             state
@@ -604,6 +636,67 @@ impl Library {
             }
         }
 
+        // A MediaDeletion reaches this remote through the operation batch above.
+        // Only after that durable publication is it safe to reclaim its blobs:
+        // a client fetching between the two phases sees the tombstone and will
+        // not try to render the media. Failed cleanup is returned for retry on a
+        // later Push; the logical deletion remains durable either way.
+        let hard_deleted = self.inner.state.read().hard_deleted_media();
+        if !hard_deleted.is_empty() {
+            for entry in &hard_deleted {
+                let data_key = format!(
+                    "media/{}/{:02}/{}.data",
+                    entry.storage_date.year, entry.storage_date.month, entry.media_id
+                );
+                let thumb_key = format!(
+                    "media/{}/{:02}/{}.thumb",
+                    entry.storage_date.year, entry.storage_date.month, entry.media_id
+                );
+                access
+                    .storage
+                    .delete(&data_key)
+                    .await
+                    .map_err(SyncError::RemoteUnreachable)?;
+                access
+                    .storage
+                    .delete(&thumb_key)
+                    .await
+                    .map_err(SyncError::RemoteUnreachable)?;
+            }
+            self.inner.remote_media_list_lock.with_lock(
+                &remote_id_string,
+                access.remote_media_list,
+                |remote_media_list| -> Result<(), LibraryError> {
+                    let path = remote_media_list.media_list_path();
+                    let mut media_list = MediaList::load_or_default(&path)?;
+                    let changed = hard_deleted
+                        .iter()
+                        .any(|entry| media_list.forget(&entry.media_id));
+                    if changed {
+                        media_list.save(&path)?;
+                    }
+                    Ok(())
+                },
+            )?;
+        }
+
+        if let Some(cloud) = cloud {
+            let usage = cloud
+                .runtime
+                .check_storage_usage(&cloud.remote_id, media_bytes)
+                .await
+                .map_err(|error| SyncError::CloudQuotaExceeded(error.to_string()))?;
+            if !usage.allowed {
+                return Err(SyncError::CloudQuotaExceeded(format!(
+                    "{} bytes requested with {} of {} bytes already indicated",
+                    usage.proposed_media_bytes,
+                    usage.approximate_used_bytes,
+                    usage.storage_quota_bytes
+                ))
+                .into());
+            }
+        }
+
         let media_pending: Vec<FileToPush> = {
             let state = self.inner.state.read();
             state
@@ -641,6 +734,7 @@ impl Library {
             &media_source,
             &relay_source,
             staging_dir.path(),
+            max_concurrent_media_uploads,
         );
 
         let mut first_error = None;
@@ -666,6 +760,7 @@ impl Library {
                             &media_source,
                             &relay_source,
                             staging_dir.path(),
+                            max_concurrent_media_uploads,
                         );
                     }
                 }
@@ -704,8 +799,9 @@ impl Library {
         media_source: &'a PushMediaSource<'a>,
         relay_source: &'a Option<(RemoteUuid, &'a StorageRead<'a>)>,
         staging_dir: &'a std::path::Path,
+        max_concurrent_media_uploads: usize,
     ) {
-        while in_flight.len() < MAX_CONCURRENT_MEDIA_UPLOADS {
+        while in_flight.len() < max_concurrent_media_uploads {
             let Some(item) = pending.next() else {
                 break;
             };

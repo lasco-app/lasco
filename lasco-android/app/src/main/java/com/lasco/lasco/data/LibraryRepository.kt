@@ -76,7 +76,7 @@ class LibraryRepository(
     private val changes = MutableSharedFlow<Change>(extraBufferCapacity = 64)
 
     // Separate from changes, which also fires on remote refreshes (Change.All)
-    // and would wrongly trigger auto push if reused here.
+    // and would wrongly trigger Auto Sync if reused here.
     private val localMutations = MutableSharedFlow<Unit>(extraBufferCapacity = 64)
 
     // Screen ViewModels are activity-scoped, so their StateFlows can outlive the
@@ -105,7 +105,7 @@ class LibraryRepository(
     )
 
     init {
-        scope.launch { localMutations.collect { sync.schedulePush() } }
+        scope.launch { localMutations.collect { sync.scheduleSync() } }
         scope.launch(io) {
             runCatching {
                 lib.configureLascoCloudAuth(DevelopmentCloudEndpoint.activeUrl(appContext))
@@ -206,6 +206,14 @@ class LibraryRepository(
         lib.orphanMediaByDateNeighbors(position.toUInt())
     }
 
+    suspend fun trashedMediaByDateCount(): Int = withContext(io) {
+        lib.trashedMediaByDateCount().toInt()
+    }
+
+    suspend fun trashedMediaByDate(offset: Int, limit: Int): List<FfiMediaItem> = withContext(io) {
+        page(offset, limit, lib::trashedMediaByDateRange)
+    }
+
     suspend fun albumChildrenCount(parentAlbumId: FfiAlbumUuid?): Int = withContext(io) {
         lib.albumAlbumsCount(parentAlbumId).toInt()
     }
@@ -276,6 +284,36 @@ class LibraryRepository(
         changes.emit(Change.MediaList)
         // Membership unknown, so start broad and narrow to
         // mediaContainingAlbumIds(id) later if this proves heavy.
+        changes.emit(Change.AlbumList)
+        localMutations.emit(Unit)
+    }
+
+    suspend fun restoreMedia(mediaId: FfiMediaUuid) {
+        withContext(io) { lib.restoreMedia(mediaId) }
+        notifyMediaLifecycleChanged(mediaId)
+    }
+
+    suspend fun softDeleteMedia(mediaId: FfiMediaUuid) {
+        withContext(io) { lib.softDeleteMedia(mediaId) }
+        notifyMediaLifecycleChanged(mediaId)
+    }
+
+    suspend fun hardDeleteMedia(mediaId: FfiMediaUuid) {
+        withContext(io) { lib.hardDeleteMedia(mediaId) }
+        notifyMediaLifecycleChanged(mediaId)
+    }
+
+    suspend fun emptyTrash(): Int {
+        val deleted = withContext(io) { lib.emptyTrash().toInt() }
+        changes.emit(Change.MediaList)
+        changes.emit(Change.AlbumList)
+        localMutations.emit(Unit)
+        return deleted
+    }
+
+    private suspend fun notifyMediaLifecycleChanged(mediaId: FfiMediaUuid) {
+        changes.emit(Change.Media(mediaId))
+        changes.emit(Change.MediaList)
         changes.emit(Change.AlbumList)
         localMutations.emit(Unit)
     }
@@ -505,6 +543,23 @@ class LibraryRepository(
     ): FfiRemoteUuid {
         val id = withContext(io) {
             lib.addRemoteS3(name, endpoint, bucket, region, pathPrefix, accessKey, secretKey)
+        }
+        refreshSessionState()
+        return id
+    }
+
+    suspend fun addRemoteSmb(
+        name: String,
+        server: String,
+        port: UShort,
+        share: String,
+        pathPrefix: String,
+        username: String,
+        password: String,
+        domain: String?,
+    ): FfiRemoteUuid {
+        val id = withContext(io) {
+            lib.addRemoteSmb(name, server, port, share, pathPrefix, username, password, domain)
         }
         refreshSessionState()
         return id

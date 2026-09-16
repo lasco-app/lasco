@@ -54,6 +54,7 @@ fun LascoField(
     secure: Boolean = false,
     enabled: Boolean = true,
     autoFocus: Boolean = false,
+    testTag: String? = null,
 ) {
     val colors = LascoTheme.colors
     val focusRequester = remember { FocusRequester() }
@@ -74,7 +75,8 @@ fun LascoField(
             visualTransformation = if (secure) PasswordVisualTransformation() else VisualTransformation.None,
             modifier = Modifier
                 .fillMaxWidth()
-                .then(if (autoFocus) Modifier.focusRequester(focusRequester) else Modifier),
+                .then(if (autoFocus) Modifier.focusRequester(focusRequester) else Modifier)
+                .then(if (testTag != null) Modifier.maestroTag(testTag) else Modifier),
             decorationBox = { inner ->
                 Box(
                     modifier = Modifier

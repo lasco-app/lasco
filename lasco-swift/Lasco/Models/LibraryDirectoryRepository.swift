@@ -124,6 +124,10 @@ actor LibraryDirectoryRepository {
         try ffiTestS3Remote(endpoint: endpoint, bucket: bucket, region: region, pathPrefix: pathPrefix, accessKey: accessKey, secretKey: secretKey)
     }
 
+    func testSmbRemote(server: String, port: UInt16, share: String, pathPrefix: String, username: String, password: String, domain: String?) throws {
+        try ffiTestSmbRemote(server: server, port: port, share: share, pathPrefix: pathPrefix, username: username, password: password, domain: domain)
+    }
+
     func storedUsername(libraryID: FfiLibraryId) -> String? {
         UserDefaults.standard.string(forKey: "lasco.lastUsername.\(libraryID.value)")
     }

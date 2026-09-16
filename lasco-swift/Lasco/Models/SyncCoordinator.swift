@@ -44,13 +44,13 @@ final class SyncCoordinator {
     private var activePushes: [FfiRemoteUuid: Set<UUID>] = [:]
     private var activeFetches: Set<UUID> = []
     private(set) var fetchInProgress = false
-    private(set) var nextPushDate: Date?
+    private(set) var nextSyncDate: Date?
     private(set) var lastPushRecords: [FfiRemoteUuid: SyncRecord] = [:]
     private(set) var lastFetchRecords: [FfiRemoteUuid: SyncRecord] = [:]
 
     private let repository: any LibraryRepositoryProtocol
     private let session: LibrarySessionState
-    private var delayedPushTask: Task<Void, Never>?
+    private var delayedSyncTask: Task<Void, Never>?
     private var changeTask: Task<Void, Never>?
 
     init(repository: any LibraryRepositoryProtocol, session: LibrarySessionState) {
@@ -61,17 +61,36 @@ final class SyncCoordinator {
         }
     }
 
-    func isPushAllowed(_ remoteID: FfiRemoteUuid) -> Bool {
-        !busyRemotes.contains(remoteID)
-    }
-
-    func isFetchAllowed(_ remoteID: FfiRemoteUuid) -> Bool {
+    func isSyncAllowed(_ remoteID: FfiRemoteUuid) -> Bool {
         !busyRemotes.contains(remoteID) && !fetchInProgress
     }
 
     func fetchDefaultRemote() async {
+        guard !fetchInProgress else { return }
         guard let remoteID = session.defaultFetchRemoteID else { return }
+        guard !busyRemotes.contains(remoteID) else { return }
         _ = await fetch(remoteID: remoteID)
+    }
+
+    /// A UI sync is deliberately composed from the internal fetch and push operations. Fetching
+    /// first incorporates remote changes before we upload local ones, and core still enforces
+    /// the global fetch slot and per-remote exclusion.
+    func sync(
+        remoteID: FfiRemoteUuid,
+        isAutomatic: Bool = false,
+        onUploadProgress: (@MainActor @Sendable (Double) -> Void)? = nil
+    ) async -> PushResult {
+        if !isAutomatic {
+            cancelScheduledSync()
+        }
+        if let error = await fetch(remoteID: remoteID) {
+            return .failed(error)
+        }
+        return await push(
+            remoteID: remoteID,
+            isAutomatic: isAutomatic,
+            onUploadProgress: onUploadProgress
+        )
     }
 
     func push(
@@ -79,10 +98,10 @@ final class SyncCoordinator {
         isAutomatic: Bool = false,
         onUploadProgress: (@MainActor @Sendable (Double) -> Void)? = nil
     ) async -> PushResult {
-        // A manual push supersedes the pending automatic push. Only the timer is
+        // A manual internal push supersedes the pending automatic sync. Only the timer is
         // cancelled; an upload that has already started is left to finish.
         if !isAutomatic {
-            cancelScheduledPush()
+            cancelScheduledSync()
         }
 
         if isLascoCloudRemote(remoteID), let message = await ClientReleasePolicy.shared.syncBlockMessage() {
@@ -157,40 +176,38 @@ final class SyncCoordinator {
         }
     }
 
-    func schedulePush() {
-        cancelScheduledPush()
+    func scheduleSync() {
+        cancelScheduledSync()
 
-        // Do not advertise (or run) an automatic push when every remote has it
-        // disabled. This also covers local changes made after Auto Push is off.
+        // Do not advertise (or run) an automatic sync when every remote has it
+        // disabled. This also covers local changes made after Auto Sync is off.
         guard session.remotes.contains(where: \.autoPush) else { return }
 
         let date = Date.now.addingTimeInterval(30)
-        nextPushDate = date
-        delayedPushTask = Task { [weak self] in
+        nextSyncDate = date
+        delayedSyncTask = Task { [weak self] in
             do {
                 try await Task.sleep(for: .seconds(30))
                 guard let self, !Task.isCancelled else { return }
 
-                // From here on this task performs uploads, rather than waiting for
-                // a scheduled one. Clearing its handle keeps a manual push from
-                // cancelling an upload already in progress.
-                delayedPushTask = nil
-                nextPushDate = nil
+                // From here on this task performs syncs, rather than waiting for a scheduled
+                // one. Clearing its handle keeps a manual sync from cancelling work already
+                // in progress.
+                delayedSyncTask = nil
+                nextSyncDate = nil
                 let remoteIDs = session.remotes
                     .filter(\.autoPush)
                     .map(\.remoteId)
-                await withTaskGroup(of: Void.self) { group in
-                    for remoteID in remoteIDs {
-                        group.addTask { [weak self] in
-                            guard let self else { return }
-                            _ = await self.push(remoteID: remoteID, isAutomatic: true)
-                        }
-                    }
+                // Fetch is exclusive across all remotes in core. Keep the entire fetch/push
+                // cycle serial so every eligible remote receives a coherent auto sync.
+                for remoteID in remoteIDs {
+                    guard !Task.isCancelled else { return }
+                    _ = await self.sync(remoteID: remoteID, isAutomatic: true)
                 }
             } catch is CancellationError {
                 return
             } catch {
-                AppLogger.log(.error, "scheduled push failed: \(error)")
+                AppLogger.log(.error, "scheduled sync failed: \(error)")
             }
         }
     }
@@ -198,9 +215,9 @@ final class SyncCoordinator {
     func close() async {
         changeTask?.cancel()
         changeTask = nil
-        delayedPushTask?.cancel()
-        delayedPushTask = nil
-        nextPushDate = nil
+        delayedSyncTask?.cancel()
+        delayedSyncTask = nil
+        nextSyncDate = nil
     }
 
     private func beginOperation(remoteID: FfiRemoteUuid, operationID: UUID) {
@@ -259,32 +276,32 @@ final class SyncCoordinator {
         for await change in stream {
             switch change {
             case .localMutation:
-                schedulePush()
+                scheduleSync()
             case .session:
-                await cancelScheduledPushIfNoEligibleRemote()
+                await cancelScheduledSyncIfNoEligibleRemote()
             default:
                 continue
             }
         }
     }
 
-    private func cancelScheduledPushIfNoEligibleRemote() async {
+    private func cancelScheduledSyncIfNoEligibleRemote() async {
         do {
             let snapshot = try await repository.sessionSnapshot()
             guard snapshot.remotes.contains(where: \.autoPush) else {
-                cancelScheduledPush()
+                cancelScheduledSync()
                 return
             }
         } catch is CancellationError {
         } catch {
-            AppLogger.log(.error, "could not check auto push settings: \(error)")
+            AppLogger.log(.error, "could not check auto sync settings: \(error)")
         }
     }
 
-    private func cancelScheduledPush() {
-        delayedPushTask?.cancel()
-        delayedPushTask = nil
-        nextPushDate = nil
+    private func cancelScheduledSync() {
+        delayedSyncTask?.cancel()
+        delayedSyncTask = nil
+        nextSyncDate = nil
     }
 
     /// Restores the per-remote sync history once the session has loaded its remotes.

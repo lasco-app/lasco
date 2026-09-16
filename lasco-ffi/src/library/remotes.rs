@@ -1,3 +1,4 @@
+use futures_util::stream::{FuturesUnordered, StreamExt};
 use lasco_core::crdt::{CrdtOperation, OperationContent};
 use lasco_core::identifiers::RemoteUuid;
 use lasco_core::library::sync::{
@@ -9,12 +10,15 @@ use lasco_core::library_json::{
     RemoteConfig, RemoteKind, UsbAndroidConfig, UsbAppleConfig,
 };
 use lasco_core::operations::{LibraryPassword, LibraryUsername};
+use lasco_core::storage::AtomicWriteMode;
+use rand::RngCore;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 use super::{
     FfiCompactionLockInfo, FfiCrdtOperation, FfiDot, FfiKv, FfiLibrary, FfiMediaItem, FfiOperation,
-    FfiRemote, ffi_count,
+    FfiRemote, FfiUploadBenchmarkSample, ffi_count,
 };
 use crate::error::LascoError;
 use crate::ids::FfiRemoteUuid;
@@ -43,6 +47,91 @@ fn next_media_fetch_priority(remote_count: usize) -> Result<u32, LascoError> {
     u32::try_from(remote_count).map_err(|_| LascoError::Other {
         msg: "remote count exceeds the persisted media-fetch priority range".to_string(),
     })
+}
+
+const DEFAULT_IMPORTER_REMOTE_UPLOAD_CONCURRENCY: usize = 2;
+const MAX_IMPORTER_REMOTE_UPLOAD_CONCURRENCY: usize = 5;
+const MAX_BENCHMARK_BYTES: u64 = 16 * 1024 * 1024;
+const BENCHMARK_UPLOAD_TIMEOUT: Duration = Duration::from_secs(90);
+
+fn validate_benchmark_request(
+    bytes_per_upload: u64,
+    max_parallel_uploads: u8,
+) -> Result<(), LascoError> {
+    if bytes_per_upload == 0 || bytes_per_upload > MAX_BENCHMARK_BYTES {
+        return Err(LascoError::Other {
+            msg: "benchmark upload size must be between 1 byte and 16 MiB".to_string(),
+        });
+    }
+    if !(1..=MAX_IMPORTER_REMOTE_UPLOAD_CONCURRENCY).contains(&usize::from(max_parallel_uploads)) {
+        return Err(LascoError::Other {
+            msg: "benchmark parallel uploads must be between 1 and 5".to_string(),
+        });
+    }
+    Ok(())
+}
+
+async fn push_configured_media_sources(
+    library: &FfiLibrary,
+    target_remote_id: FfiRemoteUuid,
+    app_support_dir: Option<String>,
+    progress: Box<dyn PushProgressSink>,
+    max_concurrent_media_uploads: usize,
+) -> Result<u64, LascoError> {
+    let target: RemoteUuid = target_remote_id.try_into()?;
+    let config = library.load_library_json()?;
+    let resolution = library
+        .inner
+        .resolve_push_media(target, &config.media_source_order)?;
+    if !resolution.unresolved_data.is_empty() {
+        return Err(LascoError::from(lasco_core::error::LibraryError::Sync(
+            lasco_core::error::SyncError::MissingMediaOnConfiguredSources(
+                resolution.unresolved_data,
+            ),
+        )));
+    }
+
+    // Only the remotes the plan names are opened. Push verifies each of them before
+    // reading anything from it.
+    let mut sources: HashMap<RemoteUuid, Box<dyn lasco_core::storage::Storage + Send + Sync>> =
+        HashMap::new();
+    for source_id in resolution.source_remote_ids() {
+        sources.insert(
+            source_id,
+            library.build_storage_for_remote(&source_id, app_support_dir.as_deref())?,
+        );
+    }
+    let target_storage = library.build_storage_for_remote(&target, app_support_dir.as_deref())?;
+    let inner = library.inner.clone();
+    let assignments = resolution.assignments;
+    let progress = FfiPushProgressObserver { sink: progress };
+    // The push runs on the runtime owned by this library, not on the foreign
+    // executor driving this exported async function. Storage backends build
+    // network clients that need a Tokio context.
+    let report = library
+        .rt
+        .spawn(async move {
+            let source_reads = sources
+                .iter()
+                .map(|(id, storage)| (*id, StorageRead::new(storage.as_ref())))
+                .collect();
+            inner
+                .push_with_media_source_and_progress_with_concurrency(
+                    target_storage.as_ref(),
+                    target,
+                    PushMediaSource::Plan(lasco_core::library::sync::PushMediaPlan {
+                        assignments,
+                        sources: source_reads,
+                    }),
+                    Some(&progress),
+                    max_concurrent_media_uploads,
+                )
+                .await
+        })
+        .await
+        .map_err(|e| LascoError::Other { msg: e.to_string() })?
+        .map_err(LascoError::from)?;
+    Ok(ffi_count(report.ops_uploaded))
 }
 
 #[uniffi::export]
@@ -526,6 +615,48 @@ impl FfiLibrary {
         Ok(remote_uuid.into())
     }
 
+    /// Adds an SMB 2/3 share. The password is encrypted with this library's
+    /// master key and is never included in [`FfiRemote`].
+    #[allow(clippy::too_many_arguments, clippy::needless_pass_by_value)]
+    pub fn add_remote_smb(
+        &self,
+        name: String,
+        server: String,
+        port: u16,
+        share: String,
+        path_prefix: String,
+        username: String,
+        password: String,
+        domain: Option<String>,
+    ) -> Result<FfiRemoteUuid, LascoError> {
+        let connection = lasco_core::storage::SmbConnectionConfig::new(
+            &server,
+            port,
+            &share,
+            (!path_prefix.trim().is_empty()).then_some(path_prefix.as_str()),
+            &username,
+            &password,
+            domain.as_deref(),
+        )
+        .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+        let (password_encrypted, password_encryption_description) =
+            lasco_core::smb_secret::encrypt_smb_password(self.inner.master_key(), &password)
+                .map_err(|e| LascoError::Other { msg: e.to_string() })?;
+        self.add_remote_config(
+            name,
+            RemoteKind::Smb(lasco_core::library_json::SmbConfig {
+                server: connection.server,
+                port: connection.port,
+                share: connection.share,
+                path_prefix: connection.path_prefix,
+                username: connection.username,
+                domain: connection.domain,
+                password_encrypted,
+                password_encryption_description,
+            }),
+        )
+    }
+
     /// Removes a remote from the configuration and deletes everything this client cached
     /// about it.
     ///
@@ -812,63 +943,168 @@ impl FfiLibrary {
         app_support_dir: Option<String>,
         progress: Box<dyn PushProgressSink>,
     ) -> Result<u64, LascoError> {
-        let target: RemoteUuid = target_remote_id.try_into()?;
-        let config = self.load_library_json()?;
-        let resolution = self
-            .inner
-            .resolve_push_media(target, &config.media_source_order)?;
-        if !resolution.unresolved_data.is_empty() {
-            return Err(LascoError::from(lasco_core::error::LibraryError::Sync(
-                lasco_core::error::SyncError::MissingMediaOnConfiguredSources(
-                    resolution.unresolved_data,
-                ),
-            )));
-        }
-
-        // Only the remotes the plan names are opened. Push verifies each of them before
-        // reading anything from it.
-        let mut sources: HashMap<RemoteUuid, Box<dyn lasco_core::storage::Storage + Send + Sync>> =
-            HashMap::new();
-        for source_id in resolution.source_remote_ids() {
-            sources.insert(
-                source_id,
-                self.build_storage_for_remote(&source_id, app_support_dir.as_deref())?,
-            );
-        }
-        let target_storage = self.build_storage_for_remote(&target, app_support_dir.as_deref())?;
-        let inner = self.inner.clone();
-        let assignments = resolution.assignments;
-        let progress = FfiPushProgressObserver { sink: progress };
-        // The push runs on the runtime owned by this library, not on the foreign
-        // executor driving this exported async function. Storage backends build
-        // network clients that need a Tokio context.
-        let report = self
-            .rt
-            .spawn(async move {
-                let source_reads = sources
-                    .iter()
-                    .map(|(id, storage)| (*id, StorageRead::new(storage.as_ref())))
-                    .collect();
-                inner
-                    .push_with_media_source_and_progress(
-                        target_storage.as_ref(),
-                        target,
-                        PushMediaSource::Plan(lasco_core::library::sync::PushMediaPlan {
-                            assignments,
-                            sources: source_reads,
-                        }),
-                        Some(&progress),
-                    )
-                    .await
-            })
-            .await
-            .map_err(|e| LascoError::Other { msg: e.to_string() })?
-            .map_err(LascoError::from)?;
-        Ok(ffi_count(report.ops_uploaded))
+        push_configured_media_sources(
+            self,
+            target_remote_id,
+            app_support_dir,
+            progress,
+            DEFAULT_IMPORTER_REMOTE_UPLOAD_CONCURRENCY,
+        )
+        .await
     }
 
-    /// Confirms which media blobs a remote holds and records them in its media inventory,
-    /// without fetching. Returns how many blobs it newly confirmed.
+    /// Push using configured media sources with a bounded number of concurrent full-media
+    /// uploads for this target. A desktop importer should choose this after benchmarking the
+    /// target and schedule several remotes independently.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for a concurrency outside 1 through 5, or for the same failures as
+    /// [`Self::push_remote_using_configured_media_sources_async`].
+    pub async fn push_remote_using_configured_media_sources_with_options_async(
+        &self,
+        target_remote_id: FfiRemoteUuid,
+        app_support_dir: Option<String>,
+        progress: Box<dyn PushProgressSink>,
+        max_concurrent_media_uploads: u8,
+    ) -> Result<u64, LascoError> {
+        let max_concurrent_media_uploads = usize::from(max_concurrent_media_uploads);
+        if !(1..=MAX_IMPORTER_REMOTE_UPLOAD_CONCURRENCY).contains(&max_concurrent_media_uploads) {
+            return Err(LascoError::Other {
+                msg: "media upload concurrency must be between 1 and 5".to_string(),
+            });
+        }
+        push_configured_media_sources(
+            self,
+            target_remote_id,
+            app_support_dir,
+            progress,
+            max_concurrent_media_uploads,
+        )
+        .await
+    }
+
+    /// Measures one remote at each parallelism from one through `max_parallel_uploads`.
+    /// Temporary random benchmark objects are removed before this method returns.
+    ///
+    /// The desktop importer runs this concurrently for selected remotes, then uses the result to
+    /// select an individual remote upload limit and to compare aggregate throughput against the
+    /// sum of isolated remote rates.
+    ///
+    /// # Errors
+    ///
+    /// An individual parallelism sample that times out or fails is discarded so the importer can
+    /// still select from the remaining samples. Returns an error if the request is outside 1
+    /// through 16 MiB or 1 through 5 uploads, storage construction fails, cleanup fails, or no
+    /// sample completes successfully.
+    pub async fn benchmark_remote_upload_async(
+        &self,
+        remote_id: FfiRemoteUuid,
+        app_support_dir: Option<String>,
+        bytes_per_upload: u64,
+        max_parallel_uploads: u8,
+    ) -> Result<Vec<FfiUploadBenchmarkSample>, LascoError> {
+        validate_benchmark_request(bytes_per_upload, max_parallel_uploads)?;
+        let remote_id: RemoteUuid = remote_id.try_into()?;
+        let storage = self.build_storage_for_remote(&remote_id, app_support_dir.as_deref())?;
+        let buffer_size = usize::try_from(bytes_per_upload).map_err(|_| LascoError::Other {
+            msg: "benchmark upload size is too large for this platform".to_string(),
+        })?;
+        let mut payload = vec![0_u8; buffer_size];
+        rand::rngs::OsRng.fill_bytes(&mut payload);
+        let benchmark_id = uuid::Uuid::new_v4();
+
+        self.rt
+            .spawn(async move {
+                let mut samples = Vec::with_capacity(usize::from(max_parallel_uploads));
+                for parallel_uploads in 1..=max_parallel_uploads {
+                    let keys: Vec<String> = (0..parallel_uploads)
+                        .map(|ordinal| {
+                            format!(
+                                "lasco-importer-benchmark/{benchmark_id}/{parallel_uploads}/{ordinal}"
+                            )
+                        })
+                        .collect();
+                    let start = Instant::now();
+                    let mut writes = FuturesUnordered::new();
+                    for key in &keys {
+                        let key = key.clone();
+                        writes.push(async {
+                            let result = tokio::time::timeout(
+                                BENCHMARK_UPLOAD_TIMEOUT,
+                                storage.put_atomic(&key, &payload, AtomicWriteMode::Replace),
+                            )
+                            .await;
+                            (key, result)
+                        });
+                    }
+                    let mut upload_error: Option<String> = None;
+                    while let Some((key, result)) = writes.next().await {
+                        match result {
+                            Ok(Ok(_)) => {}
+                            Ok(Err(error)) => {
+                                upload_error.get_or_insert_with(|| error.to_string());
+                            }
+                            Err(_) => {
+                                upload_error.get_or_insert_with(|| {
+                                    format!(
+                                        "benchmark upload {key} timed out after {} seconds",
+                                        BENCHMARK_UPLOAD_TIMEOUT.as_secs(),
+                                    )
+                                });
+                            }
+                        }
+                    }
+                    let elapsed = start.elapsed();
+
+                    // Attempt every deletion so a failure cannot strand the rest of this sample.
+                    let mut cleanup_error = None;
+                    for key in &keys {
+                        if let Err(error) = storage.delete(key).await {
+                            cleanup_error.get_or_insert(error);
+                        }
+                    }
+                    if let Some(error) = cleanup_error {
+                        return Err(LascoError::Storage {
+                            msg: format!("benchmark cleanup failed: {error}"),
+                        });
+                    }
+                    if upload_error.is_some() {
+                        // A remote can support a lower parallelism while rejecting a higher one.
+                        // Do not let that one sample prevent us from choosing a usable limit.
+                        continue;
+                    }
+
+                    let elapsed_millis = u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX);
+                    let elapsed_nanos = elapsed.as_nanos().max(1);
+                    let total_bytes = bytes_per_upload.saturating_mul(u64::from(parallel_uploads));
+                    let bytes_per_second = u64::try_from(
+                        (u128::from(total_bytes) * 1_000_000_000) / elapsed_nanos,
+                    )
+                    .unwrap_or(u64::MAX);
+                    samples.push(FfiUploadBenchmarkSample {
+                        parallel_uploads,
+                        bytes_per_upload,
+                        elapsed_millis,
+                        bytes_per_second,
+                    });
+                }
+                if samples.is_empty() {
+                    return Err(LascoError::Storage {
+                        msg: "no benchmark upload sample completed successfully".to_string(),
+                    });
+                }
+                Ok::<_, LascoError>(samples)
+            })
+            .await
+            .map_err(|error| LascoError::Other {
+                msg: format!("benchmark task failed: {error}"),
+            })?
+    }
+
+    /// Recursively lists every media blob a remote holds, exhausting backend pagination, and
+    /// replaces its cached media inventory without fetching operations. Returns how many blobs
+    /// were newly observed.
     ///
     /// # Errors
     ///
@@ -1200,54 +1436,115 @@ fn validate_usb_android_folder(
 }
 
 pub(super) fn remote_config_to_ffi(r: &RemoteConfig) -> FfiRemote {
-    let (kind, endpoint, bucket, region, path) = match &r.kind {
-        RemoteKind::S3(s3) => (
-            "s3".to_string(),
-            Some(s3.endpoint.clone()),
-            Some(s3.bucket.clone()),
-            Some(s3.region.clone()),
-            s3.path_prefix.clone(),
-        ),
-        RemoteKind::CloudS3(cloud) => (
-            "lasco_cloud_s3".to_string(),
-            None,
-            None,
-            None,
-            Some(cloud.cloud_storage_id.clone()),
-        ),
-        RemoteKind::FixedPath(fs) => (
-            "fixed_path".to_string(),
-            None,
-            None,
-            None,
-            Some(fs.root_dir.to_string_lossy().into_owned()),
-        ),
-        RemoteKind::UsbAndroid(_) => ("usb_android".to_string(), None, None, None, None),
-        RemoteKind::UsbApple(_) => ("usb_apple".to_string(), None, None, None, None),
-        RemoteKind::DebugLocalApple(cfg) => (
-            "debug_local_apple".to_string(),
-            None,
-            None,
-            None,
-            Some(cfg.local_dir_name.clone()),
-        ),
-        RemoteKind::DebugLocalAndroid(cfg) => (
-            "debug_local_android".to_string(),
-            None,
-            None,
-            None,
-            Some(cfg.local_dir_name.clone()),
-        ),
-    };
-    FfiRemote {
+    let mut remote = FfiRemote {
         remote_id: r.remote_uuid.into(),
         name: r.name.clone(),
         auto_push: r.auto_push,
-        kind,
-        endpoint,
-        bucket,
-        region,
-        path,
+        kind: String::new(),
+        endpoint: None,
+        bucket: None,
+        region: None,
+        path: None,
+        server: None,
+        port: None,
+        share: None,
+        username: None,
+        domain: None,
+    };
+    match &r.kind {
+        RemoteKind::S3(s3) => {
+            remote.kind = "s3".to_string();
+            remote.endpoint = Some(s3.endpoint.clone());
+            remote.bucket = Some(s3.bucket.clone());
+            remote.region = Some(s3.region.clone());
+            remote.path = s3.path_prefix.clone();
+        }
+        RemoteKind::Smb(smb) => {
+            remote.kind = "smb".to_string();
+            remote.server = Some(smb.server.clone());
+            remote.port = Some(smb.port);
+            remote.share = Some(smb.share.clone());
+            remote.path = smb.path_prefix.clone();
+            remote.username = Some(smb.username.clone());
+            remote.domain = smb.domain.clone();
+        }
+        RemoteKind::CloudS3(cloud) => {
+            remote.kind = "lasco_cloud_s3".to_string();
+            remote.path = Some(cloud.cloud_storage_id.clone());
+        }
+        RemoteKind::FixedPath(fs) => {
+            remote.kind = "fixed_path".to_string();
+            remote.path = Some(fs.root_dir.to_string_lossy().into_owned());
+        }
+        RemoteKind::UsbAndroid(_) => remote.kind = "usb_android".to_string(),
+        RemoteKind::UsbApple(_) => remote.kind = "usb_apple".to_string(),
+        RemoteKind::DebugLocalApple(cfg) => {
+            remote.kind = "debug_local_apple".to_string();
+            remote.path = Some(cfg.local_dir_name.clone());
+        }
+        RemoteKind::DebugLocalAndroid(cfg) => {
+            remote.kind = "debug_local_android".to_string();
+            remote.path = Some(cfg.local_dir_name.clone());
+        }
+    }
+    remote
+}
+
+#[cfg(test)]
+mod importer_benchmark_tests {
+    use super::*;
+
+    fn contains_file(path: &std::path::Path) -> bool {
+        std::fs::read_dir(path).unwrap().flatten().any(|entry| {
+            let path = entry.path();
+            path.is_file() || (path.is_dir() && contains_file(&path))
+        })
+    }
+
+    #[test]
+    fn benchmark_uploads_to_a_fixed_path_and_removes_temporary_objects() {
+        let temp = tempfile::tempdir().unwrap();
+        let app_dir = temp.path().join("app");
+        let remote_dir = temp.path().join("remote");
+        std::fs::create_dir_all(&remote_dir).unwrap();
+        let app_dir_string = app_dir.to_string_lossy().into_owned();
+
+        crate::library::ffi_create_library(
+            "importer-benchmark".to_string(),
+            "tester".to_string(),
+            "password".to_string(),
+            Some(app_dir_string.clone()),
+        )
+        .unwrap();
+        let library = FfiLibrary::open(
+            Some("importer-benchmark".to_string()),
+            "tester".to_string(),
+            "password".to_string(),
+            Some(app_dir_string),
+        )
+        .unwrap();
+        let remote = library
+            .add_remote_fixed_path(
+                "benchmark remote".to_string(),
+                remote_dir.to_string_lossy().into_owned(),
+            )
+            .unwrap();
+
+        let samples = library
+            .rt
+            .block_on(library.benchmark_remote_upload_async(remote, None, 1024, 3))
+            .unwrap();
+
+        assert_eq!(samples.len(), 3);
+        assert_eq!(samples[0].parallel_uploads, 1);
+        assert_eq!(samples[2].parallel_uploads, 3);
+        assert!(samples.iter().all(|sample| sample.bytes_per_second > 0));
+        assert!(!contains_file(&remote_dir.join("lasco-importer-benchmark")));
+    }
+
+    #[test]
+    fn benchmark_upload_timeout_is_ninety_seconds() {
+        assert_eq!(BENCHMARK_UPLOAD_TIMEOUT, Duration::from_secs(90));
     }
 }
 
@@ -1262,6 +1559,8 @@ pub(super) fn media_entry_to_ffi(e: lasco_core::library::media::MediaEntry) -> F
         size_bytes: e.size_bytes,
         content_hash: e.content_hash.to_hex(),
         author: e.author,
+        trashed_by: e.trashed_by,
+        trashed_at: e.trashed_at.map(|timestamp| timestamp.to_rfc3339()),
         apple_aae_media_id: e.apple_aae_media_id.map(Into::into),
         apple_live_photo_media_id: e.apple_live_photo_media_id.map(Into::into),
     }
@@ -1310,6 +1609,29 @@ fn operation_to_ffi(op: OperationContent, timestamp: String) -> FfiOperation {
                 kv("size_bytes", &creation.size_bytes),
             ],
         },
+        OperationContent::ApplePhotosResourceOriginAdded(origin) => FfiOperation {
+            kind: "ApplePhotosResourceOriginAdded".to_string(),
+            timestamp: timestamp.clone(),
+            args: vec![
+                kv("media_id", &origin.media_id),
+                kv("cloud_asset_id", &origin.cloud_asset_id),
+                opt_kv(
+                    "modification_date",
+                    origin.modification_date.map(|date| date.to_rfc3339()),
+                ),
+                kv("resource_type", &format!("{:?}", origin.resource_type)),
+                kv("filename", &origin.filename),
+            ],
+        },
+        OperationContent::ApplePhotosCollectionLinkAdded(link) => FfiOperation {
+            kind: "ApplePhotosCollectionLinkAdded".to_string(),
+            timestamp: timestamp.clone(),
+            args: vec![
+                kv("album_id", &link.album_id),
+                kv("cloud_collection_id", &link.cloud_collection_id),
+                kv("kind", &format!("{:?}", link.kind)),
+            ],
+        },
         OperationContent::MediaRename { media_id, name } => FfiOperation {
             kind: "MediaRename".to_string(),
             timestamp: timestamp.clone(),
@@ -1327,6 +1649,19 @@ fn operation_to_ffi(op: OperationContent, timestamp: String) -> FfiOperation {
                 kv("key", &key),
                 kv("value", &value),
             ],
+        },
+        OperationContent::MediaTrashSet { media_id, trashed } => FfiOperation {
+            kind: "MediaTrashSet".to_string(),
+            timestamp: timestamp.clone(),
+            args: vec![kv("media_id", &media_id), kv("trashed", &trashed)],
+        },
+        OperationContent::MediaDeletion { media_ids } => FfiOperation {
+            kind: "MediaDeletion".to_string(),
+            timestamp: timestamp.clone(),
+            args: media_ids
+                .iter()
+                .map(|media_id| kv("media_id", media_id))
+                .collect(),
         },
         OperationContent::AlbumCreation {
             album_id,
@@ -1404,5 +1739,33 @@ fn operation_to_ffi(op: OperationContent, timestamp: String) -> FfiOperation {
             timestamp,
             args: vec![kv("group_id", &group_id)],
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::operation_to_ffi;
+    use lasco_core::crdt::{
+        ApplePhotosCollectionKind, ApplePhotosCollectionLink, OperationContent,
+    };
+    use lasco_core::identifiers::AlbumUuid;
+    use lasco_core::operations::ApplePhotosCloudCollectionId;
+
+    #[test]
+    fn collection_link_operations_are_visible_in_ffi_operation_output() {
+        let operation = operation_to_ffi(
+            OperationContent::ApplePhotosCollectionLinkAdded(ApplePhotosCollectionLink {
+                album_id: AlbumUuid::from_uuid(uuid::Uuid::new_v4()),
+                cloud_collection_id: ApplePhotosCloudCollectionId("icloud-trip".into()),
+                kind: ApplePhotosCollectionKind::Album,
+            }),
+            "2026-09-15T00:00:00Z".into(),
+        );
+
+        assert_eq!(operation.kind, "ApplePhotosCollectionLinkAdded");
+        assert_eq!(operation.args[1].key, "cloud_collection_id");
+        assert_eq!(operation.args[1].value, "icloud-trip");
+        assert_eq!(operation.args[2].key, "kind");
+        assert_eq!(operation.args[2].value, "Album");
     }
 }

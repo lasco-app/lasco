@@ -11,7 +11,7 @@ use crate::error::LibraryError;
 use crate::identifiers::{AlbumUuid, MediaUuid};
 use crate::library::Library;
 use crate::library::media::MediaHash;
-use crate::operations::MediaFilename;
+use crate::operations::{GpsCoords, MediaFilename};
 
 pub type Result<T> = std::result::Result<T, LibraryError>;
 
@@ -27,6 +27,18 @@ pub enum MediaAddResult {
     Added(MediaUuid),
     /// A media with the same content hash already exists. Returns the existing ID.
     AlreadyExists(MediaUuid),
+}
+
+/// Source metadata supplied by an importer alongside a byte-for-byte media copy.
+///
+/// The original file remains authoritative for embedded EXIF/XMP metadata.  These values
+/// populate Lasco's queryable fields without relying on the modification time of a temporary
+/// staging file, which is especially important for PhotoKit and archive imports.
+#[derive(Debug, Clone, Default)]
+pub struct MediaAddMetadata {
+    pub captured_at: Option<DateTime<Utc>>,
+    pub modified_at: Option<DateTime<Utc>>,
+    pub gps: Option<GpsCoords>,
 }
 
 impl MediaAddResult {
@@ -50,6 +62,32 @@ impl Library {
         apple_aae_media_id: Option<MediaUuid>,
         apple_live_photo_media_id: Option<MediaUuid>,
     ) -> Result<MediaAddResult> {
+        self.media_add_with_metadata(
+            source,
+            album_id,
+            original_filename_override,
+            apple_aae_media_id,
+            apple_live_photo_media_id,
+            MediaAddMetadata::default(),
+        )
+        .await
+    }
+
+    /// Adds media and records importer-provided, queryable metadata.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the source cannot be read, media encryption/storage fails, an
+    /// associated album is absent, or the creation operation cannot be persisted.
+    pub async fn media_add_with_metadata(
+        &self,
+        source: MediaAddSource,
+        album_id: Option<AlbumUuid>,
+        original_filename_override: Option<String>,
+        apple_aae_media_id: Option<MediaUuid>,
+        apple_live_photo_media_id: Option<MediaUuid>,
+        import_metadata: MediaAddMetadata,
+    ) -> Result<MediaAddResult> {
         let MediaAddSource::CopyFrom(p) = &source;
         let bytes: Vec<u8> = std::fs::read(p)?;
         let content_hash = MediaHash::from_bytes(&bytes);
@@ -68,7 +106,7 @@ impl Library {
 
         let metadata = std::fs::metadata(p)?;
         let mtime = metadata.modified().unwrap_or_else(|_| SystemTime::now());
-        let datetime: DateTime<Utc> = mtime.into();
+        let datetime: DateTime<Utc> = import_metadata.captured_at.unwrap_or_else(|| mtime.into());
         let filename_original = original_filename_override.unwrap_or_else(|| {
             p.file_name()
                 .and_then(|n| n.to_str())
@@ -104,8 +142,8 @@ impl Library {
                 storage_date,
                 size_bytes,
                 content_hash,
-                modified_at: None,
-                gps: None,
+                modified_at: import_metadata.modified_at,
+                gps: import_metadata.gps,
                 apple_aae_media_id,
                 apple_live_photo_media_id,
             }),

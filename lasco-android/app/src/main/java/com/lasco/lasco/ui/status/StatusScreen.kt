@@ -50,6 +50,7 @@ import com.lasco.lasco.ui.components.LascoPrimaryButton
 import com.lasco.lasco.ui.manage.AddLocalFSRemoteDialog
 import com.lasco.lasco.ui.manage.AddS3RemoteDialog
 import com.lasco.lasco.ui.manage.AddUsbRemoteDialog
+import com.lasco.lasco.ui.manage.AddSmbRemoteDialog
 import com.lasco.lasco.ui.manage.LascoCloudLoginDialog
 import com.lasco.lasco.ui.manage.RemoteTypePickerDialog
 import com.lasco.lasco.ui.theme.LascoTheme
@@ -85,11 +86,12 @@ fun StatusScreen(modifier: Modifier = Modifier) {
     val localStateStats by statusViewModel.localStateStats.collectAsStateWithLifecycle()
     val syncState by statusViewModel.syncState.collectAsStateWithLifecycle()
     val cloudConnected = statusViewModel.isLascoCloudConnected()
-    val pushCountdownSeconds = pushCountdownSeconds(syncState.pushDeadlineElapsedMs)
+    val syncCountdownSeconds = syncCountdownSeconds(syncState.syncDeadlineElapsedMs)
 
     var showRemotePicker by remember { mutableStateOf(false) }
     var showAddS3 by remember { mutableStateOf(false) }
     var showAddUsb by remember { mutableStateOf(false) }
+    var showAddSmb by remember { mutableStateOf(false) }
     var showAddLocalFS by remember { mutableStateOf(false) }
     var showCloudLogin by remember { mutableStateOf(false) }
     var showCleanConfirm by remember { mutableStateOf(false) }
@@ -99,11 +101,11 @@ fun StatusScreen(modifier: Modifier = Modifier) {
     var feedback by remember { mutableStateOf<String?>(null) }
     var pushBlocked by remember { mutableStateOf<PushBlockedState?>(null) }
 
-    // A manual push offers the recovery dialog when preparation could not place some media. An
-    // automatic push has no one to ask, so SyncController reports its failure as a plain error.
-    suspend fun runPush(remote: FfiRemote) {
-        when (val result = statusViewModel.pushRemote(remote.remoteId)) {
-            PushResult.Success -> feedback = "${remote.name}: pushed"
+    // A manual sync offers the recovery dialog when its push phase cannot place some media. An
+    // automatic sync has no one to ask, so SyncController reports its failure as a plain error.
+    suspend fun runSync(remote: FfiRemote) {
+        when (val result = statusViewModel.syncRemote(remote.remoteId)) {
+            PushResult.Success -> feedback = "${remote.name}: synced"
             is PushResult.Failed -> feedback = result.message
             is PushResult.MissingLocalMedia ->
                 feedback = "Some media is not stored on this device or in the configured download sources."
@@ -232,22 +234,16 @@ fun StatusScreen(modifier: Modifier = Modifier) {
                         isDefaultFetch = remote.remoteId == session.defaultFetchRemoteId,
                         isSynced = unpushed[remote.remoteId] != true,
                         shortfall = shortfall[remote.remoteId],
-                        pushCountdownSeconds = pushCountdownSeconds.takeIf {
-                            remote.remoteId in syncState.scheduledAutoPushRemoteIds && remote.autoPush
+                        syncCountdownSeconds = syncCountdownSeconds.takeIf {
+                            remote.remoteId in syncState.scheduledAutoSyncRemoteIds && remote.autoPush
                         },
                         lastPush = pushRecords[remote.remoteId],
                         lastFetch = fetchRecords[remote.remoteId],
-                        pushEnabled = remote.remoteId !in syncState.busyRemoteIds,
-                        fetchEnabled = remote.remoteId !in syncState.busyRemoteIds && !syncState.fetchInProgress,
+                        syncEnabled = remote.remoteId !in syncState.busyRemoteIds && !syncState.fetchInProgress,
+                        isSyncing = remote.remoteId in syncState.busyRemoteIds,
                         isPushing = remote.remoteId in syncState.pushingRemoteIds,
                         pushUploadProgress = syncState.pushUploadProgress[remote.remoteId],
-                        onPush = { scope.launch { runPush(remote) } },
-                        onFetch = {
-                            scope.launch {
-                                val err = statusViewModel.fetchRemote(remote.remoteId)
-                                feedback = err ?: "${remote.name}: fetched"
-                            }
-                        },
+                        onSync = { scope.launch { runSync(remote) } },
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                 }
@@ -266,7 +262,7 @@ fun StatusScreen(modifier: Modifier = Modifier) {
             onRetry = {
                 val target = blocked.target
                 pushBlocked = null
-                scope.launch { runPush(target) }
+                scope.launch { runSync(target) }
             },
             onCancel = { pushBlocked = null },
         )
@@ -279,6 +275,7 @@ fun StatusScreen(modifier: Modifier = Modifier) {
             onCloud = { showRemotePicker = false; showCloudLogin = true },
             onS3 = { showRemotePicker = false; showAddS3 = true },
             onUsb = { showRemotePicker = false; showAddUsb = true },
+            onSmb = { showRemotePicker = false; showAddSmb = true },
             onLocalFS = { showRemotePicker = false; showAddLocalFS = true },
             onDismiss = { showRemotePicker = false },
         )
@@ -297,9 +294,13 @@ fun StatusScreen(modifier: Modifier = Modifier) {
     }
     if (showAddUsb) {
         AddUsbRemoteDialog(
-            onDismiss = {
-                showAddUsb = false
-            },
+            onDismiss = { showAddUsb = false },
+            onResult = { name, error -> feedback = error ?: "$name: initialized" },
+        )
+    }
+    if (showAddSmb) {
+        AddSmbRemoteDialog(
+            onDismiss = { showAddSmb = false },
             onResult = { name, error -> feedback = error ?: "$name: initialized" },
         )
     }
@@ -385,7 +386,7 @@ private fun syncLabel(epochMillis: Long): String {
  * every screen watching sync.
  */
 @Composable
-private fun pushCountdownSeconds(deadlineElapsedMs: Long?): Int? {
+private fun syncCountdownSeconds(deadlineElapsedMs: Long?): Int? {
     var seconds by remember(deadlineElapsedMs) {
         mutableStateOf(deadlineElapsedMs?.let { secondsUntil(it) })
     }
@@ -404,7 +405,7 @@ private fun pushCountdownSeconds(deadlineElapsedMs: Long?): Int? {
     return seconds
 }
 
-// Rounded up so the banner shows 30 the moment a push is scheduled and never
+// Rounded up so the banner shows 30 the moment a sync is scheduled and never
 // sits on 0. Null once the deadline has passed.
 private fun secondsUntil(deadlineElapsedMs: Long): Int? {
     val remaining = deadlineElapsedMs - SystemClock.elapsedRealtime()
@@ -417,15 +418,14 @@ private fun RemoteStatusCard(
     isDefaultFetch: Boolean,
     isSynced: Boolean,
     shortfall: FfiRemoteMediaShortfall?,
-    pushCountdownSeconds: Int?,
+    syncCountdownSeconds: Int?,
     lastPush: SyncRecord?,
     lastFetch: SyncRecord?,
-    pushEnabled: Boolean,
-    fetchEnabled: Boolean,
+    syncEnabled: Boolean,
+    isSyncing: Boolean,
     isPushing: Boolean,
     pushUploadProgress: Float?,
-    onPush: () -> Unit,
-    onFetch: () -> Unit,
+    onSync: () -> Unit,
 ) {
     val colors = LascoTheme.colors
     Column(modifier = Modifier.fillMaxWidth().lascoPanel()) {
@@ -441,10 +441,10 @@ private fun RemoteStatusCard(
         // push landing and unpushed refreshing.
         val shortfallText = shortfall?.let { describeShortfall(it) }
         val bannerText = when {
-            !isSynced && pushCountdownSeconds != null -> "local changes not pushed, pushing in ${pushCountdownSeconds}s"
-            !isSynced -> "local changes not pushed"
+            !isSynced && syncCountdownSeconds != null -> "local changes not synced, syncing in ${syncCountdownSeconds}s"
+            !isSynced -> "local changes not synced"
             shortfallText != null -> shortfallText
-            else -> "all local changes pushed"
+            else -> "all local changes synced"
         }
         val bannerIsWarning = !isSynced || shortfallText != null
         Text(
@@ -456,22 +456,19 @@ private fun RemoteStatusCard(
                 .background(if (bannerIsWarning) colors.error else colors.pink)
                 .padding(horizontal = 16.dp, vertical = 10.dp),
         )
+        val lastActivity = listOfNotNull(
+            lastPush?.let { (if (it.success) "synced" else "sync failed") to it },
+            lastFetch?.let { (if (it.success) "fetched" else "fetch failed") to it },
+        ).maxByOrNull { (_, record) -> record.epochMillis }
         SyncStatusRow(
-            label = "Push",
-            failed = lastPush?.success == false,
-            dateLabel = lastPush?.let { syncLabel(it.epochMillis) } ?: "never",
-            enabled = pushEnabled,
-            isInProgress = isPushing,
-            progress = pushUploadProgress,
-            onClick = onPush,
-        )
-        SyncStatusRow(
-            label = "Fetch",
-            failed = lastFetch?.success == false,
-            dateLabel = lastFetch?.let { syncLabel(it.epochMillis) } ?: "never",
+            label = "Sync",
+            failed = lastActivity?.second?.success == false,
+            dateLabel = lastActivity?.let { (kind, record) -> "$kind ${syncLabel(record.epochMillis)}" } ?: "never",
             isDefaultFetch = isDefaultFetch,
-            enabled = fetchEnabled,
-            onClick = onFetch,
+            enabled = syncEnabled,
+            isInProgress = isSyncing,
+            progress = if (isPushing) pushUploadProgress else null,
+            onClick = onSync,
         )
     }
 }
@@ -535,7 +532,7 @@ private fun SyncStatusRow(
             Box(modifier = Modifier.height(7.dp).width(7.dp).background(colors.error))
             Spacer(modifier = Modifier.width(8.dp))
         }
-        Text(text = if (isInProgress) "Pushing" else label, style = LascoTheme.type.body(), color = colors.inkSub)
+        Text(text = if (isInProgress) "Syncing" else label, style = LascoTheme.type.body(), color = colors.inkSub)
         if (isDefaultFetch) {
             Spacer(modifier = Modifier.width(8.dp))
             Text(

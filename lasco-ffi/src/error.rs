@@ -7,6 +7,8 @@ pub enum LascoError {
     InvalidCredentials,
     #[error("library not found")]
     NotFound,
+    #[error("media must be in Trash before permanent deletion")]
+    MediaMustBeTrashed,
     #[error("sync already in progress")]
     SyncBusy,
     #[error("Lasco Cloud storage quota would be exceeded: {msg}")]
@@ -31,6 +33,7 @@ impl From<LibraryError> for LascoError {
     fn from(e: LibraryError) -> Self {
         match e {
             LibraryError::MediaNotFound(_) | LibraryError::AlbumNotFound(_) => LascoError::NotFound,
+            LibraryError::MediaMustBeTrashed(_) => LascoError::MediaMustBeTrashed,
             LibraryError::Storage(_) => LascoError::Storage { msg: e.to_string() },
             LibraryError::Sync(SyncError::AlreadyRunning) => LascoError::SyncBusy,
             LibraryError::Sync(SyncError::CloudQuotaExceeded(msg)) => {
@@ -78,6 +81,16 @@ mod tests {
             error,
             LascoError::MissingLocalMedia { media_ids }
                 if media_ids.len() == 1 && media_ids[0].value == uuid::Uuid::nil().to_string()
+        ));
+    }
+
+    #[test]
+    fn permanent_delete_requires_trash_is_typed() {
+        let id = MediaUuid::from_uuid(uuid::Uuid::nil());
+
+        assert!(matches!(
+            LascoError::from(LibraryError::MediaMustBeTrashed(id)),
+            LascoError::MediaMustBeTrashed
         ));
     }
 

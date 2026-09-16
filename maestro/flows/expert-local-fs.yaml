@@ -1,0 +1,212 @@
+# A single shared Maestro flow for iOS and Android.
+#
+# The runner grants media-library access, but deliberately does not add media:
+# the target simulator/emulator must already contain at least one image.
+appId: com.lasco.lasco
+name: Expert mode local filesystem remote
+---
+- launchApp:
+    clearState: true
+
+# Debug builds may ask which development endpoint to use after a clean launch.
+# This is platform plumbing, not part of the product journey. The prompt is
+# absent once an emulator has remembered the selected endpoint.
+- runFlow:
+    when:
+      visible: "Use Lasco Cloud"
+    commands:
+      - tapOn: "Use Lasco Cloud"
+      - tapOn: "Use address"
+
+- takeScreenshot: "screenshots/00-onboarding-intro"
+
+# Reach the "Are you new in Lasco?" page, inspect both branches, then skip.
+- tapOn: "Next"
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: "screenshots/01-onboarding-encryption"
+- tapOn: "Next"
+- waitForAnimationToEnd:
+    timeout: 2000
+- takeScreenshot: "screenshots/02-onboarding-safety"
+- tapOn: "Next"
+- extendedWaitUntil:
+    visible: "Are you new in Lasco?"
+    timeout: 10000
+- takeScreenshot: "screenshots/03-library-choice"
+
+- tapOn: "Yes, start fresh"
+- extendedWaitUntil:
+    visible: "Create your library."
+    timeout: 10000
+- takeScreenshot: "screenshots/04-new-library-preview"
+- tapOn: "← Back"
+- extendedWaitUntil:
+    visible: "Are you new in Lasco?"
+    timeout: 10000
+
+- tapOn: "No, I have an existing Lasco library"
+- extendedWaitUntil:
+    visible: "Where is your library?"
+    timeout: 10000
+- takeScreenshot: "screenshots/05-existing-library-choice"
+- tapOn: "← Back"
+- extendedWaitUntil:
+    visible: "Are you new in Lasco?"
+    timeout: 10000
+
+- tapOn: "Skip"
+- extendedWaitUntil:
+    visible:
+      id: "library-list.new-library"
+    timeout: 10000
+- takeScreenshot: "screenshots/06-library-list"
+
+# Enable expert mode immediately after the library-list screen, so the
+# remainder of the journey reflects the expert-only route.
+- tapOn:
+    id: "library-list.settings"
+- extendedWaitUntil:
+    visible: "Expert mode"
+    timeout: 10000
+- tapOn:
+    id: "settings.expert-mode"
+- takeScreenshot: "screenshots/07-expert-mode"
+- tapOn: "Done"
+- extendedWaitUntil:
+    visible:
+      id: "library-list.add-existing"
+    timeout: 10000
+
+# Inspect the existing-library route from the library list, then return.
+- tapOn:
+    id: "library-list.add-existing"
+- extendedWaitUntil:
+    # iOS presents a native confirmation dialog and Android uses a full
+    # source-selection screen; both expose this option.
+    visible: "S3-compatible storage"
+    timeout: 10000
+- takeScreenshot: "screenshots/08-existing-library-source"
+- tapOn: "S3-compatible storage"
+- extendedWaitUntil:
+    visible: "Add an existing library"
+    timeout: 10000
+- takeScreenshot: "screenshots/09-existing-library-form"
+# The currently-installed iOS debug app exposes its native close glyph as
+# "times"; Android exposes a semantic back control. Both return to the same
+# library list.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - tapOn: "times"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn:
+          id: "existing-library.back"
+- extendedWaitUntil:
+    visible:
+      id: "library-list.new-library"
+    timeout: 10000
+
+- tapOn:
+    id: "library-list.new-library"
+- extendedWaitUntil:
+    visible: "Create your library."
+    timeout: 10000
+- takeScreenshot: "screenshots/10-create-library"
+- tapOn:
+    id: "new-library.name"
+- inputText: "Maestro local library"
+- tapOn:
+    id: "new-library.username"
+- inputText: "maestro"
+- tapOn:
+    id: "new-library.password"
+- inputText: "maestro-demo"
+- pressKey: Enter
+- tapOn:
+    id: "new-library.confirm-password"
+- inputText: "maestro-demo"
+- pressKey: Enter
+- tapOn: "Create Library"
+
+- extendedWaitUntil:
+    visible: "Save your master key."
+    timeout: 10000
+- takeScreenshot: "screenshots/11-master-key"
+- tapOn: "I've saved my key"
+
+- extendedWaitUntil:
+    visible: "Add your first remote."
+    timeout: 10000
+- takeScreenshot: "screenshots/12-add-remote"
+- tapOn: "Add local filesystem remote"
+- extendedWaitUntil:
+    visible: "Add local FS remote"
+    timeout: 10000
+- takeScreenshot: "screenshots/13-local-fs-remote"
+- tapOn:
+    id: "local-fs-remote.name"
+- inputText: "Maestro local remote"
+- tapOn: "Add Remote"
+
+- extendedWaitUntil:
+    visible: "Import your device photos?"
+    timeout: 15000
+- takeScreenshot: "screenshots/14-initial-import"
+- tapOn: "Yes, import my photos"
+
+# iOS presents this app screen even when the runner has already granted
+# Photos access. Android advances automatically after its preflight grant.
+- runFlow:
+    when:
+      visible: "Access your photos."
+    commands:
+      - tapOn: "Continue"
+
+- extendedWaitUntil:
+    visible: "Import your photo library?"
+    timeout: 30000
+- takeScreenshot: "screenshots/15-import-library"
+- tapOn:
+    id: "initial-import.start"
+- extendedWaitUntil:
+    visible: "All done."
+    timeout: 60000
+- takeScreenshot: "screenshots/16-import-complete"
+- tapOn: "Continue"
+
+- extendedWaitUntil:
+    visible: "Automatically import new photos?"
+    timeout: 10000
+- takeScreenshot: "screenshots/17-auto-import"
+- tapOn: "No, not now"
+- extendedWaitUntil:
+    visible:
+      id: "tab.home"
+    timeout: 15000
+- takeScreenshot: "screenshots/18-home"
+
+- tapOn:
+    id: "tab.albums"
+- extendedWaitUntil:
+    visible: "ALBUMS"
+    timeout: 10000
+- takeScreenshot: "screenshots/19-albums"
+
+- tapOn:
+    id: "tab.status"
+- extendedWaitUntil:
+    visible: "STATUS"
+    timeout: 10000
+- takeScreenshot: "screenshots/20-status"
+
+- tapOn:
+    id: "tab.manage"
+- extendedWaitUntil:
+    visible: "MANAGE"
+    timeout: 10000
+- takeScreenshot: "screenshots/21-manage"

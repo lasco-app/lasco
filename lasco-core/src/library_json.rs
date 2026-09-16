@@ -29,6 +29,7 @@ pub struct RemoteConfig {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RemoteKind {
     S3(S3Config),
+    Smb(SmbConfig),
     /// Lasco-managed S3 storage. The stable storage identity is persisted here;
     /// resolved S3 credentials live in the encrypted local Cloud runtime cache.
     #[serde(rename = "lasco_cloud_s3", alias = "cloud_s3")]
@@ -52,6 +53,34 @@ pub struct S3Config {
     pub secret_key_encrypted: String,
     /// Human-readable description of the encryption scheme.
     pub secret_key_encryption_description: String,
+}
+
+/// SMB 2/3 remote configuration. The password is encrypted locally with the
+/// library master key and is never written to the remote.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SmbConfig {
+    /// SMB server hostname or IP address, without a scheme or port.
+    pub server: String,
+    /// SMB TCP port. SMB defaults to 445.
+    #[serde(default = "default_smb_port")]
+    pub port: u16,
+    /// Share name, relative to the server.
+    pub share: String,
+    /// Optional directory inside the share used as this library's root.
+    pub path_prefix: Option<String>,
+    /// SMB account name.
+    pub username: String,
+    /// Optional SMB domain or workgroup.
+    pub domain: Option<String>,
+    /// Password encrypted with the library master key, base64 encoded.
+    pub password_encrypted: String,
+    /// Human-readable description of the password encryption scheme.
+    pub password_encryption_description: String,
+}
+
+#[must_use]
+pub const fn default_smb_port() -> u16 {
+    445
 }
 
 /// Persistent identity for one Lasco Cloud storage destination.

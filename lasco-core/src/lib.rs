@@ -16,6 +16,7 @@ pub mod operations;
 pub mod remote;
 pub mod s3_secret;
 pub mod session;
+pub mod smb_secret;
 pub mod state;
 pub mod storage;
 

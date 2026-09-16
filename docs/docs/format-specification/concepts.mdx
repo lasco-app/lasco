@@ -24,9 +24,38 @@ A **Media** represents a single media item (photo or video) stored in the librar
 Each media item is stored as a single encrypted file on the server. 
 Each media item also gets a precomputed thumbnail, also encrypted and stored on the server.
 
+A **companion media** item is a media record referenced by another item's `apple_aae_media_id` or
+`apple_live_photo_media_id`. It stores an Apple `.AAE` edit sidecar or the video component of a
+Live Photo. It is synced like ordinary media but hidden from normal Home, album, group, and Trash
+listings. The lifecycle table below describes primary media.
+
+Media has three lifecycle states:
+
+| State | Browse visibility | Encrypted blobs |
+| --- | --- | --- |
+| Active | Home and its live album/group memberships; Orphans when it has no such membership | Kept and synchronized |
+| Trashed | Virtual Trash only | Kept and synchronized so Restore works on every device |
+| Hard-deleted | Nowhere | Removed from local cache immediately and reclaimed from each remote after a later Push |
+
+Hard deletion is permanent: its CRDT tombstone prevents late operations or a late creation from
+restoring the item.
+
 ---
 
 
+
+## Trash
+
+**Trash** holds soft-deleted media. Moving media to Trash keeps its existing album and group
+memberships, so Restore returns it to those collections automatically. Its encrypted blobs remain
+synchronized until the user permanently deletes it.
+
+Empty Trash permanently deletes every trashed record, including any hidden AAE and Live Photo
+companions.
+
+The full protocol is specified in [Media deletion](./media-deletion).
+
+---
 
 ## Keys
 

@@ -58,7 +58,11 @@ impl Library {
                 album_id: entry.album_id,
                 album_id_parent: entry.album_id_parent,
                 name: entry.name.clone(),
-                media_count: entry.media_ids.len(),
+                media_count: state
+                    .views
+                    .by_album
+                    .get(&entry.album_id)
+                    .map_or(0, Vec::len),
                 thumbnail_media_id: entry.thumbnail_media_id,
             })
             .collect()
@@ -96,7 +100,11 @@ impl Library {
                 album_id: entry.album_id,
                 album_id_parent: entry.album_id_parent,
                 name: entry.name.clone(),
-                media_count: entry.media_ids.len(),
+                media_count: state
+                    .views
+                    .by_album
+                    .get(&entry.album_id)
+                    .map_or(0, Vec::len),
                 thumbnail_media_id: entry.thumbnail_media_id,
             })
             .collect()
@@ -125,6 +133,15 @@ impl Library {
     ///
     /// Returns an error if the album or media is absent, or the membership operation cannot be persisted.
     pub async fn album_add_media(&self, album_id: AlbumUuid, media_id: MediaUuid) -> Result<()> {
+        {
+            let state = self.inner.state.read();
+            if state.media(media_id).is_none() {
+                return Err(LibraryError::MediaNotFound(media_id));
+            }
+            if state.is_media_trashed(media_id) {
+                return Ok(());
+            }
+        }
         self.record_local_operation(
             Utc::now(),
             OperationContent::AlbumMediaAdd { album_id, media_id },
