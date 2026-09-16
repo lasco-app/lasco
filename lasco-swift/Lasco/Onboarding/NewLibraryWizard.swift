@@ -146,6 +146,8 @@ struct NewLibraryWizard: View {
                     .buttonStyle(LascoPrimaryButtonStyle())
                     .frame(maxWidth: .infinity)
                 Button("Add USB drive") { showAddUsbSheet = true }
+                    .buttonStyle(LascoPrimaryButtonStyle())
+                    .frame(maxWidth: .infinity)
                 Button("Add SMB remote") { showAddSmbSheet = true }
                     .buttonStyle(LascoPrimaryButtonStyle())
                     .frame(maxWidth: .infinity)

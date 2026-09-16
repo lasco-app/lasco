@@ -350,6 +350,8 @@ struct RemoteTypePickerSheet: View {
                         .buttonStyle(LascoPrimaryButtonStyle())
                         .frame(maxWidth: .infinity)
                     Button("Add USB drive", action: onUsb)
+                        .buttonStyle(LascoPrimaryButtonStyle())
+                        .frame(maxWidth: .infinity)
                     Button("Add SMB remote", action: onSmb)
                         .buttonStyle(LascoPrimaryButtonStyle())
                         .frame(maxWidth: .infinity)
