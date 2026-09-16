@@ -99,6 +99,7 @@ protocol LibraryRepositoryProtocol: Sendable {
     func addUser(username: String, password: String) async throws
     func addRemoteFixedPath(name: String, path: String) async throws -> FfiRemoteUuid
     func addRemoteUsbApple(name: String, bookmarkBase64: String) async throws -> FfiRemoteUuid
+    func ensureUsbAppleFolderIsUninitialized(bookmarkBase64: String) async throws
     func addRemoteDebugLocalApple(name: String) async throws -> FfiRemoteUuid
     func addRemoteS3(id: String, endpoint: String, bucket: String, region: String, pathPrefix: String, accessKey: String, secretKey: String) async throws -> FfiRemoteUuid
     func removeRemote(id: FfiRemoteUuid) async throws
@@ -750,6 +751,11 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         return id
     }
 
+    func ensureUsbAppleFolderIsUninitialized(bookmarkBase64: String) async throws {
+        try ensureOpen()
+        try library.ensureUsbAppleFolderIsUninitialized(bookmarkBase64: bookmarkBase64)
+    }
+
     func addRemoteDebugLocalApple(name: String) async throws -> FfiRemoteUuid {
         try ensureOpen()
         let id = try library.addRemoteDebugLocalApple(name: name)
@@ -1022,6 +1028,7 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     func addUser(username: String, password: String) async throws { try await storage.addUser(username: username, password: password) }
     func addRemoteFixedPath(name: String, path: String) async throws -> FfiRemoteUuid { try await storage.addRemoteFixedPath(name: name, path: path) }
     func addRemoteUsbApple(name: String, bookmarkBase64: String) async throws -> FfiRemoteUuid { try await storage.addRemoteUsbApple(name: name, bookmarkBase64: bookmarkBase64) }
+    func ensureUsbAppleFolderIsUninitialized(bookmarkBase64: String) async throws { try await storage.ensureUsbAppleFolderIsUninitialized(bookmarkBase64: bookmarkBase64) }
     func addRemoteDebugLocalApple(name: String) async throws -> FfiRemoteUuid { try await storage.addRemoteDebugLocalApple(name: name) }
     func addRemoteS3(id: String, endpoint: String, bucket: String, region: String, pathPrefix: String, accessKey: String, secretKey: String) async throws -> FfiRemoteUuid { try await storage.addRemoteS3(id: id, endpoint: endpoint, bucket: bucket, region: region, pathPrefix: pathPrefix, accessKey: accessKey, secretKey: secretKey) }
     func removeRemote(id: FfiRemoteUuid) async throws { try await storage.removeRemote(id: id) }

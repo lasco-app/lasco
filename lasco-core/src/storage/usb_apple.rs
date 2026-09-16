@@ -32,7 +32,8 @@ pub struct StorageUsbApple {
 }
 
 impl StorageUsbApple {
-    pub(crate) fn new(bookmark_base64: &str) -> Result<Self> {
+    /// Opens the security-scoped folder represented by an Apple document-picker bookmark.
+    pub fn new(bookmark_base64: &str) -> Result<Self> {
         let url = Self::resolve_bookmark(bookmark_base64)?;
 
         // SAFETY: Apple requires the returned security-scoped URL to remain

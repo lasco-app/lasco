@@ -787,6 +787,18 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     func disconnectedAlbumsRange(posStartInclusive: UInt32, posEndInclusive: UInt32) throws  -> [FfiAlbum]
     
     /**
+     * Check whether a selected Apple USB folder has already been initialized
+     * as any Lasco remote. This performs no writes and is intended to run
+     * before a new remote configuration is created.
+     *
+     * # Errors
+     *
+     * Returns an error for an empty or inaccessible bookmark, or if a
+     * `remote_id_*` marker already exists in the selected folder.
+     */
+    func ensureUsbAppleFolderIsUninitialized(bookmarkBase64: String) throws 
+    
+    /**
      * # Errors
      *
      * Returns an error if an ID is invalid or removing a cached media file fails.
@@ -1760,6 +1772,23 @@ nonisolated open func disconnectedAlbumsRange(posStartInclusive: UInt32, posEndI
         FfiConverterUInt32.lower(posEndInclusive),$0
     )
 })
+}
+    
+    /**
+     * Check whether a selected Apple USB folder has already been initialized
+     * as any Lasco remote. This performs no writes and is intended to run
+     * before a new remote configuration is created.
+     *
+     * # Errors
+     *
+     * Returns an error for an empty or inaccessible bookmark, or if a
+     * `remote_id_*` marker already exists in the selected folder.
+     */
+nonisolated open func ensureUsbAppleFolderIsUninitialized(bookmarkBase64: String)throws   {try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_ensure_usb_apple_folder_is_uninitialized(self.uniffiClonePointer(),
+        FfiConverterString.lower(bookmarkBase64),$0
+    )
+}
 }
     
     /**
@@ -6433,6 +6462,9 @@ nonisolated private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_disconnected_albums_range() != 62195) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_ensure_usb_apple_folder_is_uninitialized() != 1639) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_evict_local_data() != 58897) {

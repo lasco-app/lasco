@@ -232,7 +232,9 @@ impl Library {
         progress: Option<&dyn PushProgressObserver>,
     ) -> Result<SyncReportPush, LibraryError> {
         let runtime = self.inner.cloud_runtime.clone();
-        let cloud = runtime.has_remote(&remote_id).then(|| CloudPushContext { runtime, remote_id });
+        let cloud = runtime
+            .has_remote(&remote_id)
+            .then(|| CloudPushContext { runtime, remote_id });
         let remote_id_string = remote_id.to_string();
         let _guard = self
             .try_acquire_remote_sync(&remote_id_string)
@@ -299,37 +301,96 @@ impl Library {
         // Cloud quota must not publish master keys, operations, or media.
         let known_media: Vec<KnownMedia> = {
             let state = self.inner.state.read();
-            state.media_entries().iter().map(|entry| KnownMedia { media_id: entry.media_id, storage_date: entry.storage_date, expects_thumb: entry.companion_kind.is_none() }).collect()
+            state
+                .media_entries()
+                .iter()
+                .map(|entry| KnownMedia {
+                    media_id: entry.media_id,
+                    storage_date: entry.storage_date,
+                    expects_thumb: entry.companion_kind.is_none(),
+                })
+                .collect()
         };
-        confirm_known_media(&access.storage.as_read(), &known_media, &remote_id_string, access.remote_media_list, &self.inner.remote_media_list_lock).await;
-        let media_list = self.inner.remote_media_list_lock.with_lock(&remote_id_string, access.remote_media_list, |remote_media_list| MediaList::load_or_default(&remote_media_list.media_list_path()))?;
+        confirm_known_media(
+            &access.storage.as_read(),
+            &known_media,
+            &remote_id_string,
+            access.remote_media_list,
+            &self.inner.remote_media_list_lock,
+        )
+        .await;
+        let media_list = self.inner.remote_media_list_lock.with_lock(
+            &remote_id_string,
+            access.remote_media_list,
+            |remote_media_list| MediaList::load_or_default(&remote_media_list.media_list_path()),
+        )?;
         let pending_data: Vec<_> = {
             let state = self.inner.state.read();
-            state.media_entries().iter().filter(|entry| !media_list.has_full(&entry.media_id)).map(|entry| (entry.media_id, entry.storage_date)).collect()
+            state
+                .media_entries()
+                .iter()
+                .filter(|entry| !media_list.has_full(&entry.media_id))
+                .map(|entry| (entry.media_id, entry.storage_date))
+                .collect()
         };
         let mut media_bytes = 0_u64;
         for (media_id, storage_date) in pending_data {
-            let data_path = access.local_state_media_dir.data_path(storage_date.year, storage_date.month, &media_id);
+            let data_path = access.local_state_media_dir.data_path(
+                storage_date.year,
+                storage_date.month,
+                &media_id,
+            );
             if let Ok(metadata) = std::fs::metadata(&data_path) {
                 media_bytes = media_bytes.saturating_add(metadata.len());
                 continue;
             }
-            let key = format!("media/{}/{:02}/{}.data", storage_date.year, storage_date.month, media_id);
+            let key = format!(
+                "media/{}/{:02}/{}.data",
+                storage_date.year, storage_date.month, media_id
+            );
             let source = match &media_source {
-                PushMediaSource::Plan(plan) => match plan.assignments.get(&(media_id, MediaBlob::Data)) {
-                    Some(PlannedMediaSource::Remote(source_id)) => plan.sources.get(source_id).ok_or_else(|| SyncError::MissingMediaOnConfiguredSources(vec![media_id]))?,
-                    _ => return Err(SyncError::MissingMediaOnConfiguredSources(vec![media_id]).into()),
-                },
+                PushMediaSource::Plan(plan) => {
+                    match plan.assignments.get(&(media_id, MediaBlob::Data)) {
+                        Some(PlannedMediaSource::Remote(source_id)) => {
+                            plan.sources.get(source_id).ok_or_else(|| {
+                                SyncError::MissingMediaOnConfiguredSources(vec![media_id])
+                            })?
+                        }
+                        _ => {
+                            return Err(
+                                SyncError::MissingMediaOnConfiguredSources(vec![media_id]).into()
+                            );
+                        }
+                    }
+                }
                 PushMediaSource::FromRemote { storage, .. } => storage,
                 PushMediaSource::LocalOnly => continue, // the normal missing-media error is returned below
             };
-            media_bytes = media_bytes.saturating_add(u64::try_from(source.get(&key).await.map_err(SyncError::RemoteUnreachable)?.len()).unwrap_or(u64::MAX));
+            media_bytes = media_bytes.saturating_add(
+                u64::try_from(
+                    source
+                        .get(&key)
+                        .await
+                        .map_err(SyncError::RemoteUnreachable)?
+                        .len(),
+                )
+                .unwrap_or(u64::MAX),
+            );
         }
         if let Some(cloud) = cloud {
-            let usage = cloud.runtime.check_storage_usage(&cloud.remote_id, media_bytes).await
+            let usage = cloud
+                .runtime
+                .check_storage_usage(&cloud.remote_id, media_bytes)
+                .await
                 .map_err(|error| SyncError::CloudQuotaExceeded(error.to_string()))?;
             if !usage.allowed {
-                return Err(SyncError::CloudQuotaExceeded(format!("{} bytes requested with {} of {} bytes already indicated", usage.proposed_media_bytes, usage.approximate_used_bytes, usage.storage_quota_bytes)).into());
+                return Err(SyncError::CloudQuotaExceeded(format!(
+                    "{} bytes requested with {} of {} bytes already indicated",
+                    usage.proposed_media_bytes,
+                    usage.approximate_used_bytes,
+                    usage.storage_quota_bytes
+                ))
+                .into());
             }
         }
 
@@ -622,7 +683,10 @@ impl Library {
         }
 
         if let Some(cloud) = cloud {
-            cloud.runtime.confirm_storage_usage(&cloud.remote_id, media_bytes).await
+            cloud
+                .runtime
+                .confirm_storage_usage(&cloud.remote_id, media_bytes)
+                .await
                 .map_err(|error| SyncError::CloudQuotaExceeded(error.to_string()))?;
         }
         Ok(SyncReportPush {

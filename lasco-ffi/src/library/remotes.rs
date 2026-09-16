@@ -257,6 +257,55 @@ impl FfiLibrary {
         )
     }
 
+    /// Check whether a selected Apple USB folder has already been initialized
+    /// as any Lasco remote. This performs no writes and is intended to run
+    /// before a new remote configuration is created.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for an empty or inaccessible bookmark, or if a
+    /// `remote_id_*` marker already exists in the selected folder.
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "UniFFI exports owned values across the language boundary; borrowed inputs would complicate the generated binding contract."
+    )]
+    pub fn ensure_usb_apple_folder_is_uninitialized(
+        &self,
+        bookmark_base64: String,
+    ) -> Result<(), LascoError> {
+        if bookmark_base64.trim().is_empty() {
+            return Err(LascoError::Other {
+                msg: "USB drive bookmark must not be empty".to_string(),
+            });
+        }
+
+        #[cfg(target_vendor = "apple")]
+        {
+            let storage =
+                lasco_core::storage::StorageUsbApple::new(&bookmark_base64).map_err(|error| {
+                    LascoError::Other {
+                        msg: format!("could not access selected USB folder: {error}"),
+                    }
+                })?;
+            let remote = lasco_core::library::sync::remote_access::StorageRead::new(&storage);
+            self.rt
+                .block_on(lasco_core::library::sync::ensure_remote_identity_absent(
+                    &remote,
+                ))
+                .map_err(|error| LascoError::Other {
+                    msg: error.to_string(),
+                })
+        }
+
+        #[cfg(not(target_vendor = "apple"))]
+        {
+            let _ = bookmark_base64;
+            Err(LascoError::Other {
+                msg: "Apple USB folders are supported only on Apple platforms".to_string(),
+            })
+        }
+    }
+
     /// # Errors
     ///
     /// Returns an error for a duplicate name or failed library-configuration persistence.

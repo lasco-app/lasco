@@ -1,6 +1,8 @@
 use tempfile::TempDir;
+use uuid::Uuid;
 
 use crate::error::{LibraryError, SyncError};
+use crate::identifiers::RemoteUuid;
 use crate::library::library_format_sentinel;
 use crate::storage::{AtomicWriteMode, Storage, StorageMockMemory};
 
@@ -80,6 +82,42 @@ async fn initialize_remote_errors_when_the_remote_sentinel_is_missing() {
     assert!(
         is_unsupported_format(&error),
         "initialize_remote must fail with UnsupportedRemoteFormat, got: {error}"
+    );
+}
+
+#[tokio::test]
+// A fresh remote must never write its marker into a folder already claimed by
+// another remote identity.
+async fn initialize_remote_rejects_an_existing_remote_identity_before_writing() {
+    let storage = StorageMockMemory::new();
+    let tmp = TempDir::new().unwrap();
+    let library = make_library(&tmp).await;
+    let other_remote = RemoteUuid(Uuid::new_v4());
+    storage
+        .put_atomic(
+            &format!("remote_id_{other_remote}"),
+            b"",
+            AtomicWriteMode::Replace,
+        )
+        .await
+        .unwrap();
+
+    let error = library
+        .initialize_remote(&storage, remote_uuid())
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(
+            error,
+            LibraryError::Sync(SyncError::RemoteAlreadyInitialized(_))
+        ),
+        "initialize_remote must reject an existing remote identity, got: {error}"
+    );
+    assert!(
+        !storage
+            .exists(&format!("remote_id_{}", remote_uuid()))
+            .await
+            .unwrap()
     );
 }
 

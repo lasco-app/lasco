@@ -208,6 +208,9 @@ struct AddUsbRemoteView: View {
         Task {
             var addedRemoteID: FfiRemoteUuid?
             do {
+                try await repository.ensureUsbAppleFolderIsUninitialized(
+                    bookmarkBase64: bookmarkBase64
+                )
                 let remoteID = try await repository.addRemoteUsbApple(
                     name: remoteName,
                     bookmarkBase64: bookmarkBase64
