@@ -756,8 +756,9 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
     func configureLascoCloudAuth(baseUrl: String) async throws 
     
     /**
-     * Confirms which media blobs a remote holds and records them in its media inventory,
-     * without fetching. Returns how many blobs it newly confirmed.
+     * Recursively lists every media blob a remote holds, exhausting backend pagination, and
+     * replaces its cached media inventory without fetching operations. Returns how many blobs
+     * were newly observed.
      *
      * # Errors
      *
@@ -1821,8 +1822,9 @@ nonisolated open func configureLascoCloudAuth(baseUrl: String)async throws   {
 }
     
     /**
-     * Confirms which media blobs a remote holds and records them in its media inventory,
-     * without fetching. Returns how many blobs it newly confirmed.
+     * Recursively lists every media blob a remote holds, exhausting backend pagination, and
+     * replaces its cached media inventory without fetching operations. Returns how many blobs
+     * were newly observed.
      *
      * # Errors
      *
@@ -7857,7 +7859,7 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_configure_lasco_cloud_auth() != 39402) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_confirm_remote_media_async() != 59085) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_confirm_remote_media_async() != 39271) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_confirmed_remote_media_ids() != 41075) {

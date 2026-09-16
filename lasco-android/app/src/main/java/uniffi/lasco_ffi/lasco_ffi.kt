@@ -1377,7 +1377,7 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_configure_lasco_cloud_auth(`ptr`: Poin
 ): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_confirm_remote_media_async(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,
 ): Long
-fun uniffi_lasco_ffi_fn_method_ffilibrary_confirmed_remote_media_ids(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`mediaIds`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+fun uniffi_lasco_ffi_fn_method_ffilibrary_confirmed_remote_media_ids(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`mediaIds`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
 fun uniffi_lasco_ffi_fn_method_ffilibrary_connect_remote(`ptr`: Pointer,`remoteId`: RustBuffer.ByValue,`appSupportDir`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
@@ -1820,7 +1820,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_configure_lasco_cloud_auth() != 39402.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_confirm_remote_media_async() != 59085.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_confirm_remote_media_async() != 39271.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_confirmed_remote_media_ids() != 41075.toShort()) {
@@ -2630,14 +2630,14 @@ public object FfiConverterByteArray: FfiConverterRustBuffer<ByteArray> {
 
 
 public interface FfiLibraryInterface {
-
+    
     /**
      * # Errors
      *
      * Returns an error for invalid or absent IDs, or an unpersistable membership operation.
      */
     fun `addMediaToAlbum`(`albumId`: FfiAlbumUuid, `mediaId`: FfiMediaUuid)
-
+    
     /**
      * # Errors
      *
@@ -2816,8 +2816,9 @@ public interface FfiLibraryInterface {
     suspend fun `configureLascoCloudAuth`(`baseUrl`: kotlin.String)
     
     /**
-     * Confirms which media blobs a remote holds and records them in its media inventory,
-     * without fetching. Returns how many blobs it newly confirmed.
+     * Recursively lists every media blob a remote holds, exhausting backend pagination, and
+     * replaces its cached media inventory without fetching operations. Returns how many blobs
+     * were newly observed.
      *
      * # Errors
      *
@@ -2825,7 +2826,7 @@ public interface FfiLibraryInterface {
      * running for this remote, or the remote does not belong to this library.
      */
     suspend fun `confirmRemoteMediaAsync`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): kotlin.ULong
-
+    
     /**
      * Returns which supplied media IDs are confirmed to have a full original on this remote.
      *
@@ -3520,6 +3521,7 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
         }
     }
 
+    
     /**
      * # Errors
      *
@@ -3979,9 +3981,11 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     )
     }
 
+    
     /**
-     * Confirms which media blobs a remote holds and records them in its media inventory,
-     * without fetching. Returns how many blobs it newly confirmed.
+     * Recursively lists every media blob a remote holds, exhausting backend pagination, and
+     * replaces its cached media inventory without fetching operations. Returns how many blobs
+     * were newly observed.
      *
      * # Errors
      *
@@ -4008,6 +4012,7 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     )
     }
 
+    
     /**
      * Returns which supplied media IDs are confirmed to have a full original on this remote.
      *
@@ -4025,8 +4030,9 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     }
     )
     }
+    
 
-
+    
     /**
      * # Errors
      *
@@ -8889,3 +8895,6 @@ public object FfiConverterSequenceOptionalTypeFfiAlbumUuid: FfiConverterRustBuff
         FfiConverterTypeFfiLibraryId.lower(`libraryId`),FfiConverterString.lower(`username`),FfiConverterOptionalString.lower(`appDir`),_status)
 }
     
+    
+
+
