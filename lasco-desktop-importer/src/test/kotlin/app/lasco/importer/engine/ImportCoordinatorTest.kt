@@ -21,8 +21,9 @@ import kotlinx.coroutines.runBlocking
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
-import kotlin.test.assertFails
+import kotlin.test.assertFailsWith
 
 class ImportCoordinatorTest {
     @Test
@@ -74,9 +75,23 @@ class ImportCoordinatorTest {
 
         coordinator.discover(Reader(listOf(asset("one"))), chunkSize = 1)
 
-        assertFails { coordinator.startOrResume(emptyList()) }
+        val failure = assertFailsWith<RemotePushFailure> { coordinator.startOrResume(emptyList()) }
+        assertContains(failure.message.orEmpty(), "Could not upload to remote \"Remote\" (s3).")
+        assertContains(failure.message.orEmpty(), "Remote Remote is unavailable")
         assertEquals(listOf("one"), gateway.imported)
         assertEquals(0, finalizations)
+    }
+
+    @Test
+    fun `a forbidden remote push explains why benchmark success is insufficient`() {
+        val failure = RemotePushFailure(
+            LascoRemote("remote", "Archive", "s3"),
+            IllegalStateException("remote unreachable: storage error: Got HTTP 403 with content \"\""),
+        )
+
+        assertContains(failure.message.orEmpty(), "Archive")
+        assertContains(failure.message.orEmpty(), "HTTP 403 means the storage service denied a request")
+        assertContains(failure.message.orEmpty(), "read/list/write/delete permissions")
     }
 
     @Test

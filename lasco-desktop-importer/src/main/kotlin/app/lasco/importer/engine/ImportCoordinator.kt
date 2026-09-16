@@ -14,6 +14,7 @@ import app.lasco.importer.model.RemoteImportSummary
 import app.lasco.importer.model.ResourceRole
 import app.lasco.importer.source.ImportSourceReader
 import app.lasco.importer.source.ApplePhotosCollectionSourceReader
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -21,6 +22,29 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.nio.file.Files
 import java.nio.file.Path
+
+/** Preserves both the destination identity and the native storage error for the import UI. */
+internal class RemotePushFailure(
+    remote: LascoRemote,
+    cause: Throwable,
+) : IllegalStateException(buildMessage(remote, cause), cause) {
+    private companion object {
+        fun buildMessage(remote: LascoRemote, cause: Throwable): String {
+            val details = cause.message?.trim().orEmpty()
+            return buildString {
+                append("Could not upload to remote \"")
+                append(remote.name)
+                append("\" (")
+                append(remote.kind)
+                append(").")
+                if (details.isNotEmpty()) append("\n\nDetails: ").append(details)
+                if (details.contains("HTTP 403", ignoreCase = true)) {
+                    append("\n\nHTTP 403 means the storage service denied a request. A successful speed test only confirms that a small temporary write and delete worked at that moment; an import later performs additional reads, listings, and writes. This response does not identify which operation was denied. Check the remote credentials, request signing, and read/list/write/delete permissions.")
+                }
+            }
+        }
+    }
+}
 
 /**
  * An importer session lives only for the lifetime of this process. An interrupted import is
@@ -276,8 +300,13 @@ class ImportCoordinator(
     private suspend fun pushAll(remotes: List<LascoRemote>, benchmarks: List<RemoteBenchmark>) = coroutineScope {
         remotes.map { remote -> async {
             val parallelism = benchmarks.firstOrNull { it.remoteId == remote.id }?.selectedParallelism ?: 2
-            gateway.push(remote, parallelism) { fraction ->
-                _progress.value = _progress.value.copy(detail = "Pushing ${remote.name}: ${(fraction * 100).toInt()}%")
+            try {
+                gateway.push(remote, parallelism) { fraction ->
+                    _progress.value = _progress.value.copy(detail = "Pushing ${remote.name}: ${(fraction * 100).toInt()}%")
+                }
+            } catch (failure: Throwable) {
+                if (failure is CancellationException) throw failure
+                throw RemotePushFailure(remote, failure)
             }
         } }.awaitAll()
     }
