@@ -666,7 +666,7 @@ private fun ImporterWizard() {
                 Page.WELCOME -> go(Page.DESTINATION)
                 Page.REMOTE_SYNC -> if (remoteSyncReady) go(Page.SOURCE)
                 Page.LIBRARY_SUMMARY -> if (importPlan?.hasMediaToUpload == true) benchmarkUploadSpeed() else startImport()
-                Page.UPLOAD_ESTIMATE -> if (benchmarks.isEmpty()) benchmarkUploadSpeed() else startImport()
+                Page.UPLOAD_ESTIMATE -> if (benchmarks.isNotEmpty()) startImport()
                 else -> discover()
             } },
         )
@@ -1237,25 +1237,24 @@ private fun WizardFooter(page: Page, source: SourceType?, connecting: Boolean, c
     val picker = page == Page.DESTINATION || page == Page.SOURCE
     val connectPage = page in setOf(Page.CLOUD, Page.S3, Page.SMB)
     val scanning = page == Page.SCANNING || (page == Page.REMOTE_SYNC && !remoteSyncReady)
-    val continueEnabled = page == Page.WELCOME || (page == Page.TAKEOUT && archivesReady) || (page == Page.PHOTOS && photosReady) || (page == Page.LIBRARY_SUMMARY && librarySummaryHasWork) || (page == Page.UPLOAD_ESTIMATE && !benchmarking) || (page == Page.REMOTE_SYNC && remoteSyncReady)
+    val continueEnabled = page == Page.WELCOME || (page == Page.TAKEOUT && archivesReady) || (page == Page.PHOTOS && photosReady) || (page == Page.LIBRARY_SUMMARY && librarySummaryHasWork) || (page == Page.UPLOAD_ESTIMATE && benchmarkReady && !benchmarking) || (page == Page.REMOTE_SYNC && remoteSyncReady)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
         if (page != Page.WELCOME && page != Page.CLOUD_SERVER && page != Page.IMPORT && !scanning) LascoButton("BACK", onBack, primary = false, fillWidth = false)
         Spacer(Modifier.weight(1f))
         if (connectPage) LascoButton(if (connecting) "CONNECTING…" else "CONNECT REMOTE", onConnect, enabled = connectEnabled && !connecting, fillWidth = false)
         if (page == Page.LIBRARY_SUMMARY && !librarySummaryHasWork) {
             Text("Nothing at all to import.", color = InkSub, style = LascoBody)
-        } else if (!picker && !connectPage && !scanning && page != Page.IMPORT) {
+        } else if (!picker && !connectPage && !scanning && page != Page.IMPORT && (page != Page.UPLOAD_ESTIMATE || benchmarkReady)) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 val label = when {
                     discovering -> "DISCOVERING…"
                     page == Page.LIBRARY_SUMMARY && librarySummaryHasMediaToUpload -> "BENCHMARK UPLOAD SPEED"
                     page == Page.LIBRARY_SUMMARY -> "START IMPORT"
-                    page == Page.UPLOAD_ESTIMATE && benchmarkReady -> "START IMPORT"
-                    page == Page.UPLOAD_ESTIMATE -> "TRY BENCHMARK AGAIN"
+                    page == Page.UPLOAD_ESTIMATE -> "START IMPORT"
                     else -> "CONTINUE"
                 }
                 LascoButton(label, onContinue, enabled = continueEnabled && !discovering, fillWidth = false)
-                if (page == Page.UPLOAD_ESTIMATE && source == SourceType.PHOTOS) {
+                if (page == Page.UPLOAD_ESTIMATE && benchmarkReady && source == SourceType.PHOTOS) {
                     Text("(It will not delete your iCloud files.)", color = InkSub, style = LascoBody.copy(fontSize = 12.sp), modifier = Modifier.padding(top = 6.dp))
                 }
             }

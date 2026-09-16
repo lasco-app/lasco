@@ -998,6 +998,8 @@ internal open class UniffiVTableCallbackInterfacePushProgressSink(
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1809,7 +1811,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_apple_photos_collection_links() != 49566.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_benchmark_remote_upload_async() != 31556.toShort()) {
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_benchmark_remote_upload_async() != 35799.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_clear_lasco_cloud_auth_and_credentials() != 41699.toShort()) {
@@ -2628,14 +2630,14 @@ public object FfiConverterByteArray: FfiConverterRustBuffer<ByteArray> {
 
 
 public interface FfiLibraryInterface {
-    
+
     /**
      * # Errors
      *
      * Returns an error for invalid or absent IDs, or an unpersistable membership operation.
      */
     fun `addMediaToAlbum`(`albumId`: FfiAlbumUuid, `mediaId`: FfiMediaUuid)
-    
+
     /**
      * # Errors
      *
@@ -2802,8 +2804,10 @@ public interface FfiLibraryInterface {
      *
      * # Errors
      *
-     * Returns an error if the request is outside 1 through 16 MiB or 1 through 5 uploads,
-     * storage construction fails, or a temporary upload or cleanup fails.
+     * An individual parallelism sample that times out or fails is discarded so the importer can
+     * still select from the remaining samples. Returns an error if the request is outside 1
+     * through 16 MiB or 1 through 5 uploads, storage construction fails, cleanup fails, or no
+     * sample completes successfully.
      */
     suspend fun `benchmarkRemoteUploadAsync`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?, `bytesPerUpload`: kotlin.ULong, `maxParallelUploads`: kotlin.UByte): List<FfiUploadBenchmarkSample>
     
@@ -2821,6 +2825,7 @@ public interface FfiLibraryInterface {
      * running for this remote, or the remote does not belong to this library.
      */
     suspend fun `confirmRemoteMediaAsync`(`remoteId`: FfiRemoteUuid, `appSupportDir`: kotlin.String?): kotlin.ULong
+
     /**
      * Returns which supplied media IDs are confirmed to have a full original on this remote.
      *
@@ -3515,7 +3520,6 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
         }
     }
 
-    
     /**
      * # Errors
      *
@@ -3906,8 +3910,10 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
      *
      * # Errors
      *
-     * Returns an error if the request is outside 1 through 16 MiB or 1 through 5 uploads,
-     * storage construction fails, or a temporary upload or cleanup fails.
+     * An individual parallelism sample that times out or fails is discarded so the importer can
+     * still select from the remaining samples. Returns an error if the request is outside 1
+     * through 16 MiB or 1 through 5 uploads, storage construction fails, cleanup fails, or no
+     * sample completes successfully.
      */
     @Throws(LascoException::class)
     @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
@@ -3973,7 +3979,6 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     )
     }
 
-    
     /**
      * Confirms which media blobs a remote holds and records them in its media inventory,
      * without fetching. Returns how many blobs it newly confirmed.
@@ -4021,7 +4026,7 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     )
     }
 
-    
+
     /**
      * # Errors
      *
@@ -6283,7 +6288,7 @@ public object FfiConverterTypeFfiApplePhotosResourceDescriptor: FfiConverterRust
 
 /**
  * Immutable provenance for one resource of an Apple Photos asset revision.
- * `cloud_asset_id` is the serialized `PHCloudIdentifier.archivalStringValue`.
+ * `cloud_asset_id` is the opaque serialized cloud value supplied by PhotoKit.
  */
 data class FfiApplePhotosResourceOrigin (
     var `mediaId`: FfiMediaUuid, 
@@ -8884,5 +8889,3 @@ public object FfiConverterSequenceOptionalTypeFfiAlbumUuid: FfiConverterRustBuff
         FfiConverterTypeFfiLibraryId.lower(`libraryId`),FfiConverterString.lower(`username`),FfiConverterOptionalString.lower(`appDir`),_status)
 }
     
-    
-

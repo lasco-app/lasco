@@ -744,8 +744,10 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      *
      * # Errors
      *
-     * Returns an error if the request is outside 1 through 16 MiB or 1 through 5 uploads,
-     * storage construction fails, or a temporary upload or cleanup fails.
+     * An individual parallelism sample that times out or fails is discarded so the importer can
+     * still select from the remaining samples. Returns an error if the request is outside 1
+     * through 16 MiB or 1 through 5 uploads, storage construction fails, cleanup fails, or no
+     * sample completes successfully.
      */
     func benchmarkRemoteUploadAsync(remoteId: FfiRemoteUuid, appSupportDir: String?, bytesPerUpload: UInt64, maxParallelUploads: UInt8) async throws  -> [FfiUploadBenchmarkSample]
     
@@ -763,6 +765,15 @@ nonisolated public protocol FfiLibraryProtocol: AnyObject, Sendable {
      * running for this remote, or the remote does not belong to this library.
      */
     func confirmRemoteMediaAsync(remoteId: FfiRemoteUuid, appSupportDir: String?) async throws  -> UInt64
+    
+    /**
+     * Returns which supplied media IDs are confirmed to have a full original on this remote.
+     *
+     * Callers should refresh the remote inventory with `confirm_remote_media_async` first.
+     * The result reflects this client's cached positive-only inventory and never performs a
+     * network request itself.
+     */
+    func confirmedRemoteMediaIds(remoteId: FfiRemoteUuid, mediaIds: [FfiMediaUuid]) throws  -> [FfiMediaUuid]
     
     /**
      * # Errors
@@ -1753,8 +1764,10 @@ nonisolated open func applePhotosCollectionLinks(collections: [FfiApplePhotosCol
      *
      * # Errors
      *
-     * Returns an error if the request is outside 1 through 16 MiB or 1 through 5 uploads,
-     * storage construction fails, or a temporary upload or cleanup fails.
+     * An individual parallelism sample that times out or fails is discarded so the importer can
+     * still select from the remaining samples. Returns an error if the request is outside 1
+     * through 16 MiB or 1 through 5 uploads, storage construction fails, cleanup fails, or no
+     * sample completes successfully.
      */
 nonisolated open func benchmarkRemoteUploadAsync(remoteId: FfiRemoteUuid, appSupportDir: String?, bytesPerUpload: UInt64, maxParallelUploads: UInt8)async throws  -> [FfiUploadBenchmarkSample]  {
     return
@@ -1831,6 +1844,22 @@ nonisolated open func confirmRemoteMediaAsync(remoteId: FfiRemoteUuid, appSuppor
             liftFunc: FfiConverterUInt64.lift,
             errorHandler: FfiConverterTypeLascoError_lift
         )
+}
+    
+    /**
+     * Returns which supplied media IDs are confirmed to have a full original on this remote.
+     *
+     * Callers should refresh the remote inventory with `confirm_remote_media_async` first.
+     * The result reflects this client's cached positive-only inventory and never performs a
+     * network request itself.
+     */
+nonisolated open func confirmedRemoteMediaIds(remoteId: FfiRemoteUuid, mediaIds: [FfiMediaUuid])throws  -> [FfiMediaUuid]  {
+    return try  FfiConverterSequenceTypeFfiMediaUuid.lift(try rustCallWithError(FfiConverterTypeLascoError_lift) {
+    uniffi_lasco_ffi_fn_method_ffilibrary_confirmed_remote_media_ids(self.uniffiClonePointer(),
+        FfiConverterTypeFfiRemoteUuid_lower(remoteId),
+        FfiConverterSequenceTypeFfiMediaUuid.lower(mediaIds),$0
+    )
+})
 }
     
     /**
@@ -7819,7 +7848,7 @@ nonisolated private let initializationResult: InitializationResult = {
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_apple_photos_collection_links() != 49566) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_lasco_ffi_checksum_method_ffilibrary_benchmark_remote_upload_async() != 31556) {
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_benchmark_remote_upload_async() != 35799) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_clear_lasco_cloud_auth_and_credentials() != 41699) {
@@ -7829,6 +7858,9 @@ nonisolated private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_confirm_remote_media_async() != 59085) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_lasco_ffi_checksum_method_ffilibrary_confirmed_remote_media_ids() != 41075) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_lasco_ffi_checksum_method_ffilibrary_connect_remote() != 33397) {

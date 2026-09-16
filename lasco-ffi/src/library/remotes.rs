@@ -14,7 +14,7 @@ use lasco_core::storage::AtomicWriteMode;
 use rand::RngCore;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use super::{
     FfiCompactionLockInfo, FfiCrdtOperation, FfiDot, FfiKv, FfiLibrary, FfiMediaItem, FfiOperation,
@@ -52,6 +52,7 @@ fn next_media_fetch_priority(remote_count: usize) -> Result<u32, LascoError> {
 const DEFAULT_IMPORTER_REMOTE_UPLOAD_CONCURRENCY: usize = 2;
 const MAX_IMPORTER_REMOTE_UPLOAD_CONCURRENCY: usize = 5;
 const MAX_BENCHMARK_BYTES: u64 = 16 * 1024 * 1024;
+const BENCHMARK_UPLOAD_TIMEOUT: Duration = Duration::from_secs(90);
 
 fn validate_benchmark_request(
     bytes_per_upload: u64,
@@ -894,8 +895,10 @@ impl FfiLibrary {
     ///
     /// # Errors
     ///
-    /// Returns an error if the request is outside 1 through 16 MiB or 1 through 5 uploads,
-    /// storage construction fails, or a temporary upload or cleanup fails.
+    /// An individual parallelism sample that times out or fails is discarded so the importer can
+    /// still select from the remaining samples. Returns an error if the request is outside 1
+    /// through 16 MiB or 1 through 5 uploads, storage construction fails, cleanup fails, or no
+    /// sample completes successfully.
     pub async fn benchmark_remote_upload_async(
         &self,
         remote_id: FfiRemoteUuid,
@@ -927,12 +930,31 @@ impl FfiLibrary {
                     let start = Instant::now();
                     let mut writes = FuturesUnordered::new();
                     for key in &keys {
-                        writes.push(storage.put_atomic(key, &payload, AtomicWriteMode::Replace));
+                        let key = key.clone();
+                        writes.push(async {
+                            let result = tokio::time::timeout(
+                                BENCHMARK_UPLOAD_TIMEOUT,
+                                storage.put_atomic(&key, &payload, AtomicWriteMode::Replace),
+                            )
+                            .await;
+                            (key, result)
+                        });
                     }
-                    let mut upload_error = None;
-                    while let Some(result) = writes.next().await {
-                        if let Err(error) = result {
-                            upload_error.get_or_insert(error);
+                    let mut upload_error: Option<String> = None;
+                    while let Some((key, result)) = writes.next().await {
+                        match result {
+                            Ok(Ok(_)) => {}
+                            Ok(Err(error)) => {
+                                upload_error.get_or_insert_with(|| error.to_string());
+                            }
+                            Err(_) => {
+                                upload_error.get_or_insert_with(|| {
+                                    format!(
+                                        "benchmark upload {key} timed out after {} seconds",
+                                        BENCHMARK_UPLOAD_TIMEOUT.as_secs(),
+                                    )
+                                });
+                            }
                         }
                     }
                     let elapsed = start.elapsed();
@@ -949,10 +971,10 @@ impl FfiLibrary {
                             msg: format!("benchmark cleanup failed: {error}"),
                         });
                     }
-                    if let Some(error) = upload_error {
-                        return Err(LascoError::Storage {
-                            msg: format!("benchmark upload failed: {error}"),
-                        });
+                    if upload_error.is_some() {
+                        // A remote can support a lower parallelism while rejecting a higher one.
+                        // Do not let that one sample prevent us from choosing a usable limit.
+                        continue;
                     }
 
                     let elapsed_millis = u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX);
@@ -967,6 +989,11 @@ impl FfiLibrary {
                         bytes_per_upload,
                         elapsed_millis,
                         bytes_per_second,
+                    });
+                }
+                if samples.is_empty() {
+                    return Err(LascoError::Storage {
+                        msg: "no benchmark upload sample completed successfully".to_string(),
                     });
                 }
                 Ok::<_, LascoError>(samples)
@@ -1321,6 +1348,11 @@ mod importer_benchmark_tests {
         assert_eq!(samples[2].parallel_uploads, 3);
         assert!(samples.iter().all(|sample| sample.bytes_per_second > 0));
         assert!(!contains_file(&remote_dir.join("lasco-importer-benchmark")));
+    }
+
+    #[test]
+    fn benchmark_upload_timeout_is_ninety_seconds() {
+        assert_eq!(BENCHMARK_UPLOAD_TIMEOUT, Duration::from_secs(90));
     }
 }
 

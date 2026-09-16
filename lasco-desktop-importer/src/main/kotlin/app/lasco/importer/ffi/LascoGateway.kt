@@ -11,6 +11,9 @@ import java.nio.file.Path
 
 data class LascoRemote(val id: String, val name: String, val kind: String)
 
+/** Keeps each network benchmark lightweight while still producing a stable rate estimate. */
+internal const val BENCHMARK_BYTES_PER_UPLOAD = 2L * 1024L * 1024L
+
 /** The only importer API over the existing generated Kotlin/JNA bindings. */
 interface LascoGateway : AutoCloseable {
     val libraryId: String
@@ -31,6 +34,6 @@ interface LascoGateway : AutoCloseable {
     suspend fun confirmRemoteMedia(remote: LascoRemote)
     /** Media IDs whose full original is confirmed in this remote's local inventory. */
     fun confirmedRemoteMediaIds(remote: LascoRemote, mediaIds: Set<String>): Set<String>
-    suspend fun benchmark(remote: LascoRemote, bytesPerUpload: Long = 4L * 1024 * 1024): RemoteBenchmark
+    suspend fun benchmark(remote: LascoRemote, bytesPerUpload: Long = BENCHMARK_BYTES_PER_UPLOAD): RemoteBenchmark
     suspend fun push(remote: LascoRemote, maxConcurrentMediaUploads: Int, onProgress: (Double) -> Unit)
 }

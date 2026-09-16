@@ -96,6 +96,14 @@ class UniffiLascoGateway(
         ).mapTo(mutableSetOf()) { it.value }
 
     override suspend fun benchmark(remote: LascoRemote, bytesPerUpload: Long): RemoteBenchmark {
+        // Do not spend extra data on parallel tests when one stream cannot sustain 1 MiB/s.
+        // The serial sample is also the selected setting in that case.
+        val single = library.benchmarkRemoteUploadAsync(
+            FfiRemoteUuid(remote.id), appSupportDirectory, bytesPerUpload.toULong(), 1u,
+        ).single()
+        if (shouldRestrictToOneUpload(single.bytesPerSecond.toLong())) {
+            return RemoteBenchmark(remote.id, remote.name, 1, single.bytesPerSecond.toLong())
+        }
         // Four uploads per remote is the highest useful setting for the desktop importer.
         val samples = library.benchmarkRemoteUploadAsync(FfiRemoteUuid(remote.id), appSupportDirectory, bytesPerUpload.toULong(), 4u)
         val best = samples.maxBy { it.bytesPerSecond }
@@ -112,6 +120,12 @@ class UniffiLascoGateway(
 
     override fun close() = library.close()
 }
+
+/** 1 MiB/s, matching the binary MB units used in the desktop importer UI. */
+internal const val MINIMUM_SPEED_FOR_PARALLEL_UPLOADS = 1024L * 1024L
+
+internal fun shouldRestrictToOneUpload(bytesPerSecond: Long): Boolean =
+    bytesPerSecond < MINIMUM_SPEED_FOR_PARALLEL_UPLOADS
 
 private fun ApplePhotosResourceType.toFfi(): FfiApplePhotosResourceType = when (this) {
     ApplePhotosResourceType.PHOTO -> FfiApplePhotosResourceType.PHOTO
