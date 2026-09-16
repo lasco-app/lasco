@@ -27,6 +27,62 @@ struct AndroidRuntime {
 
 static ANDROID_RUNTIME: OnceLock<AndroidRuntime> = OnceLock::new();
 
+/// A provider- and volume-scoped SAF tree location.
+///
+/// Android's external-storage provider encodes a tree document ID as
+/// `<volume-id>:<relative/path>`. Keeping the parsed form lets the FFI reject
+/// two remotes that would address the same folder without ever treating the
+/// `content://` URI as a filesystem path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UsbAndroidTreeIdentity {
+    authority: String,
+    volume_id: String,
+    relative_path: Vec<String>,
+}
+
+impl UsbAndroidTreeIdentity {
+    fn new(authority: String, document_id: String) -> Result<Self> {
+        let (volume_id, raw_path) = document_id.split_once(':').ok_or_else(|| {
+            StorageError::Unavailable(
+                "USB tree URI did not contain an external-storage volume ID".to_string(),
+            )
+        })?;
+        if authority.is_empty() || volume_id.is_empty() {
+            return Err(StorageError::Unavailable(
+                "USB tree URI did not identify a storage volume".to_string(),
+            ));
+        }
+        let relative_path = raw_path
+            .split('/')
+            .filter(|part| !part.is_empty())
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        if relative_path.iter().any(|part| part == "." || part == "..") {
+            return Err(StorageError::Unavailable(
+                "USB tree URI contained an invalid folder path".to_string(),
+            ));
+        }
+        Ok(Self {
+            authority,
+            volume_id: volume_id.to_string(),
+            relative_path,
+        })
+    }
+
+    /// Whether these trees are equal or one is nested inside the other.
+    #[must_use]
+    pub fn overlaps(&self, other: &Self) -> bool {
+        self.authority == other.authority
+            && self.volume_id.eq_ignore_ascii_case(&other.volume_id)
+            && (path_is_prefix(&self.relative_path, &other.relative_path)
+                || path_is_prefix(&other.relative_path, &self.relative_path))
+    }
+}
+
+fn path_is_prefix(prefix: &[String], path: &[String]) -> bool {
+    prefix.len() <= path.len() && prefix.iter().zip(path).all(|(left, right)| left == right)
+}
+
 /// Called once by the FFI JNI entry point with the application context.
 pub fn initialize_android_runtime(vm: JavaVM, context: GlobalRef) -> Result<()> {
     ANDROID_RUNTIME
@@ -50,6 +106,37 @@ impl StorageUsbAndroid {
             ));
         }
         Ok(Self { tree_uri })
+    }
+
+    /// Reads the provider authority and normalized tree document ID used to
+    /// compare persisted Android USB remotes. This deliberately does not
+    /// inspect the raw URI text: equivalent SAF trees can be serialized with
+    /// different URI encodings.
+    pub fn tree_identity(tree_uri: &str) -> Result<UsbAndroidTreeIdentity> {
+        let storage = Self::new(tree_uri)?;
+        storage.with_env(|env| {
+            let tree = storage.parse_uri(env, tree_uri)?;
+            let authority = env
+                .call_method(&tree, "getAuthority", "()Ljava/lang/String;", &[])?
+                .l()?;
+            if authority.is_null() {
+                return Err(jni::errors::Error::NullPtr("tree URI has no authority"));
+            }
+            let authority = Self::string(env, authority)?;
+            let document_id = env
+                .call_static_method(
+                    "android/provider/DocumentsContract",
+                    "getTreeDocumentId",
+                    "(Landroid/net/Uri;)Ljava/lang/String;",
+                    &[JValue::Object(&tree)],
+                )?
+                .l()?;
+            if document_id.is_null() {
+                return Err(jni::errors::Error::NullPtr("tree URI has no document ID"));
+            }
+            UsbAndroidTreeIdentity::new(authority, Self::string(env, document_id)?)
+                .map_err(|_| jni::errors::Error::NullPtr("invalid USB tree identity"))
+        })
     }
 
     fn with_env<T>(&self, f: impl FnOnce(&mut JNIEnv<'_>) -> jni::errors::Result<T>) -> Result<T> {

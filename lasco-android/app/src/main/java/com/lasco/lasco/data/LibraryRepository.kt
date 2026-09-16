@@ -586,6 +586,10 @@ class LibraryRepository(
         return id
     }
 
+    suspend fun ensureUsbAndroidFolderIsUninitialized(treeUri: String) = withContext(io) {
+        lib.ensureUsbAndroidFolderIsUninitialized(treeUri)
+    }
+
     suspend fun addRemoteDebugLocalAndroid(name: String): FfiRemoteUuid {
         val id = withContext(io) { lib.addRemoteDebugLocalAndroid(name) }
         refreshSessionState()

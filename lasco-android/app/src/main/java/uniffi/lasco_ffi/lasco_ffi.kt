@@ -962,6 +962,10 @@ internal open class UniffiVTableCallbackInterfacePushProgressSink(
 
 
 
+
+
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is 
 // rather `InterfaceTooLargeException`, caused by too many methods 
@@ -1050,6 +1054,10 @@ fun uniffi_lasco_ffi_checksum_method_ffilibrary_delete_media(
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_disconnected_albums_count(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_disconnected_albums_range(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_ensure_usb_android_folder_is_uninitialized(
+): Short
+fun uniffi_lasco_ffi_checksum_method_ffilibrary_ensure_usb_apple_folder_is_uninitialized(
 ): Short
 fun uniffi_lasco_ffi_checksum_method_ffilibrary_evict_local_data(
 ): Short
@@ -1309,6 +1317,10 @@ fun uniffi_lasco_ffi_fn_method_ffilibrary_disconnected_albums_count(`ptr`: Point
 ): Long
 fun uniffi_lasco_ffi_fn_method_ffilibrary_disconnected_albums_range(`ptr`: Pointer,`posStartInclusive`: Int,`posEndInclusive`: Int,uniffi_out_err: UniffiRustCallStatus, 
 ): RustBuffer.ByValue
+fun uniffi_lasco_ffi_fn_method_ffilibrary_ensure_usb_android_folder_is_uninitialized(`ptr`: Pointer,`treeUri`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): Unit
+fun uniffi_lasco_ffi_fn_method_ffilibrary_ensure_usb_apple_folder_is_uninitialized(`ptr`: Pointer,`bookmarkBase64`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_evict_local_data(`ptr`: Pointer,`mediaIds`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
 fun uniffi_lasco_ffi_fn_method_ffilibrary_evict_local_thumbnails(`ptr`: Pointer,`mediaIds`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1710,6 +1722,12 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_disconnected_albums_range() != 62195.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_ensure_usb_android_folder_is_uninitialized() != 25647.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_ensure_usb_apple_folder_is_uninitialized() != 1639.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_lasco_ffi_checksum_method_ffilibrary_evict_local_data() != 58897.toShort()) {
@@ -2675,6 +2693,30 @@ public interface FfiLibraryInterface {
      */
     fun `disconnectedAlbumsRange`(`posStartInclusive`: kotlin.UInt, `posEndInclusive`: kotlin.UInt): List<FfiAlbum>
     
+    /**
+     * Check whether a selected Android USB folder has already been initialized
+     * as any Lasco remote. This performs no writes and is intended to run
+     * before a new remote configuration is created.
+     *
+     * # Errors
+     *
+     * Returns an error for an empty or inaccessible tree URI, or if a
+     * `remote_id_*` marker already exists in the selected folder.
+     */
+    fun `ensureUsbAndroidFolderIsUninitialized`(`treeUri`: kotlin.String)
+
+    /**
+     * Check whether a selected Apple USB folder has already been initialized
+     * as any Lasco remote. This performs no writes and is intended to run
+     * before a new remote configuration is created.
+     *
+     * # Errors
+     *
+     * Returns an error for an empty or inaccessible bookmark, or if a
+     * `remote_id_*` marker already exists in the selected folder.
+     */
+    fun `ensureUsbAppleFolderIsUninitialized`(`bookmarkBase64`: kotlin.String)
+
     /**
      * # Errors
      *
@@ -3781,6 +3823,48 @@ open class FfiLibrary: Disposable, AutoCloseable, FfiLibraryInterface
     
 
     
+    /**
+     * Check whether a selected Android USB folder has already been initialized
+     * as any Lasco remote. This performs no writes and is intended to run
+     * before a new remote configuration is created.
+     *
+     * # Errors
+     *
+     * Returns an error for an empty or inaccessible tree URI, or if a
+     * `remote_id_*` marker already exists in the selected folder.
+     */
+    @Throws(LascoException::class)override fun `ensureUsbAndroidFolderIsUninitialized`(`treeUri`: kotlin.String)
+        =
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_ensure_usb_android_folder_is_uninitialized(
+        it, FfiConverterString.lower(`treeUri`),_status)
+}
+    }
+
+
+
+    /**
+     * Check whether a selected Apple USB folder has already been initialized
+     * as any Lasco remote. This performs no writes and is intended to run
+     * before a new remote configuration is created.
+     *
+     * # Errors
+     *
+     * Returns an error for an empty or inaccessible bookmark, or if a
+     * `remote_id_*` marker already exists in the selected folder.
+     */
+    @Throws(LascoException::class)override fun `ensureUsbAppleFolderIsUninitialized`(`bookmarkBase64`: kotlin.String)
+        =
+    callWithPointer {
+    uniffiRustCallWithError(LascoException) { _status ->
+    UniffiLib.INSTANCE.uniffi_lasco_ffi_fn_method_ffilibrary_ensure_usb_apple_folder_is_uninitialized(
+        it, FfiConverterString.lower(`bookmarkBase64`),_status)
+}
+    }
+
+
+
     /**
      * # Errors
      *
@@ -7660,5 +7744,4 @@ public object FfiConverterSequenceTypeFfiRemoteUuid: FfiConverterRustBuffer<List
 }
     
     
-
 

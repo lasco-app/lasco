@@ -61,7 +61,6 @@ import com.lasco.lasco.ui.manage.AddS3RemoteDialog
 import com.lasco.lasco.ui.manage.AddUsbRemoteDialog
 import com.lasco.lasco.ui.manage.LascoCloudLoginDialog
 import com.lasco.lasco.ui.manage.ManageViewModel
-import com.lasco.lasco.ui.manage.rememberUsbTreePicker
 import com.lasco.lasco.ui.theme.LascoTheme
 import com.lasco.lasco.ui.theme.lascoPanel
 
@@ -344,18 +343,8 @@ private fun RemoteStep(onAdvance: () -> Unit) {
 
     var showAddS3 by remember { mutableStateOf(false) }
     var showAddUsb by remember { mutableStateOf(false) }
-    var usbTreeUri by remember { mutableStateOf<String?>(null) }
     var showAddLocalFS by remember { mutableStateOf(false) }
     var showCloudLogin by remember { mutableStateOf(false) }
-    var usbPickerError by remember { mutableStateOf<String?>(null) }
-    val openUsbTreePicker = rememberUsbTreePicker(
-        onSelected = { uri ->
-            usbPickerError = null
-            usbTreeUri = uri
-            showAddUsb = true
-        },
-        onFailure = { message -> usbPickerError = message },
-    )
 
     Column(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -388,10 +377,7 @@ private fun RemoteStep(onAdvance: () -> Unit) {
         ) {
             LascoPrimaryButton(text = "Authenticate with Lasco Cloud", onClick = { showCloudLogin = true })
             LascoPrimaryButton(text = "Add S3-compatible remote", onClick = { showAddS3 = true })
-            LascoPrimaryButton(text = "Add USB drive", onClick = openUsbTreePicker)
-            usbPickerError?.let { message ->
-                Text(text = message, style = LascoTheme.type.body(13), color = colors.error)
-            }
+            LascoPrimaryButton(text = "Add USB drive", onClick = { showAddUsb = true })
             if (expertMode) {
                 LascoSecondaryButton(text = "Add local filesystem remote", onClick = { showAddLocalFS = true })
             }
@@ -417,12 +403,10 @@ private fun RemoteStep(onAdvance: () -> Unit) {
             onResult = { _, _ -> onAdvance() },
         )
     }
-    usbTreeUri?.takeIf { showAddUsb }?.let { treeUri ->
+    if (showAddUsb) {
         AddUsbRemoteDialog(
-            treeUri = treeUri,
             onDismiss = {
                 showAddUsb = false
-                usbTreeUri = null
             },
             onResult = { _, error -> if (error == null) onAdvance() },
         )

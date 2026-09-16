@@ -1,6 +1,10 @@
 package com.lasco.lasco.ui.manage
 
 import android.content.Intent
+import android.net.Uri
+import android.os.Environment
+import android.os.storage.StorageManager
+import android.provider.DocumentsContract
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -36,6 +40,7 @@ import com.lasco.lasco.data.LibraryRepository
 import com.lasco.lasco.ui.components.LascoCheckbox
 import com.lasco.lasco.ui.components.LascoField
 import com.lasco.lasco.ui.components.LascoPrimaryButton
+import com.lasco.lasco.ui.components.LascoSecondaryButton
 import com.lasco.lasco.ui.theme.LascoTheme
 import kotlinx.coroutines.launch
 import uniffi.lasco_ffi.LascoException
@@ -101,12 +106,80 @@ fun RemoteTypePickerDialog(
 }
 
 /**
- * Opens Android's system folder picker and persists the scoped read/write
- * grant before exposing the opaque tree URI to the caller.
+ * A validated removable-volume SAF tree. The labels are intentionally only
+ * add-screen metadata; the persisted remote retains its opaque tree URI.
+ */
+data class UsbTreeSelection(
+    val treeUri: String,
+    val driveName: String,
+    val subfolderPath: String?,
+)
+
+private const val EXTERNAL_STORAGE_DOCUMENTS_AUTHORITY = "com.android.externalstorage.documents"
+
+/**
+ * Validates that a returned tree is on an attached, removable external volume
+ * rather than internal storage or a cloud DocumentsProvider.
+ */
+private fun inspectUsbTree(context: android.content.Context, uri: Uri): UsbTreeSelection {
+    require(uri.scheme == "content" && uri.authority == EXTERNAL_STORAGE_DOCUMENTS_AUTHORITY) {
+        "Select a folder on a connected USB drive, not On this device or a cloud location."
+    }
+    val documentId = try {
+        DocumentsContract.getTreeDocumentId(uri)
+    } catch (_: IllegalArgumentException) {
+        throw IllegalArgumentException("Choose a folder on a connected USB drive.")
+    }
+    val separator = documentId.indexOf(':')
+    require(separator > 0) { "Choose a folder on a connected USB drive." }
+    val volumeId = documentId.substring(0, separator)
+    val pathParts = documentId.substring(separator + 1)
+        .split('/')
+        .filter(String::isNotBlank)
+    require(pathParts.none { it == "." || it == ".." }) {
+        "Choose a folder on a connected USB drive."
+    }
+
+    val storageManager = context.getSystemService(StorageManager::class.java)
+    val volume = storageManager.storageVolumes.firstOrNull { candidate ->
+        candidate.uuid?.equals(volumeId, ignoreCase = true) == true &&
+            candidate.isRemovable &&
+            !candidate.isPrimary &&
+            candidate.state == Environment.MEDIA_MOUNTED
+    } ?: throw IllegalArgumentException(
+        "Select a folder on a connected USB drive, not On this device or a cloud location.",
+    )
+
+    val selectedDocument = DocumentsContract.buildDocumentUriUsingTree(uri, documentId)
+    val selectedName = context.contentResolver.query(
+        selectedDocument,
+        arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+        null,
+        null,
+        null,
+    )?.use { cursor ->
+        if (!cursor.moveToFirst()) null
+        else cursor.getString(cursor.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME))
+    }
+    val subfolderPath = pathParts.takeIf { it.isNotEmpty() }
+        ?.toMutableList()
+        ?.apply { selectedName?.takeIf(String::isNotBlank)?.let { this[lastIndex] = it } }
+        ?.joinToString("/")
+
+    return UsbTreeSelection(
+        treeUri = uri.toString(),
+        driveName = volume.getDescription(context).ifBlank { "USB drive" },
+        subfolderPath = subfolderPath,
+    )
+}
+
+/**
+ * Opens Android's system folder picker, verifies the returned folder belongs
+ * to a removable volume, then persists the scoped read/write grant.
  */
 @Composable
 fun rememberUsbTreePicker(
-    onSelected: (String) -> Unit,
+    onSelected: (UsbTreeSelection) -> Unit,
     onFailure: (String) -> Unit,
 ): () -> Unit {
     val context = LocalContext.current
@@ -115,13 +188,14 @@ fun rememberUsbTreePicker(
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         try {
+            val selection = inspectUsbTree(context, uri)
             context.contentResolver.takePersistableUriPermission(
                 uri,
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
             )
-            currentOnSelected(uri.toString())
-        } catch (error: SecurityException) {
-            currentOnFailure(error.message?.ifBlank { null } ?: "Could not keep access to this USB folder")
+            currentOnSelected(selection)
+        } catch (error: Exception) {
+            currentOnFailure(error.message?.ifBlank { null } ?: "Could not use this USB folder")
         }
     }
     return { picker.launch(null) }
@@ -386,7 +460,6 @@ fun AddLocalFSRemoteDialog(
 
 @Composable
 fun AddUsbRemoteDialog(
-    treeUri: String,
     onDismiss: () -> Unit,
     onResult: (name: String, error: String?) -> Unit,
 ) {
@@ -395,10 +468,21 @@ fun AddUsbRemoteDialog(
     val repo = remember { LibraryRepository.from(context) }
     val scope = rememberCoroutineScope()
 
-    var name by remember { mutableStateOf("USB drive") }
+    var name by remember { mutableStateOf("") }
+    var suggestedName by remember { mutableStateOf<String?>(null) }
+    var selection by remember { mutableStateOf<UsbTreeSelection?>(null) }
     var submitting by remember { mutableStateOf(false) }
     var addError by remember { mutableStateOf<String?>(null) }
-    val isValid = name.isNotBlank() && !submitting
+    val isValid = selection != null && name.isNotBlank() && !submitting
+    val openUsbTreePicker = rememberUsbTreePicker(
+        onSelected = { selected ->
+            if (name.isBlank() || name == suggestedName) name = selected.driveName
+            suggestedName = selected.driveName
+            selection = selected
+            addError = null
+        },
+        onFailure = { message -> addError = message },
+    )
 
     FullSheet(onDismiss = onDismiss) {
         Column(
@@ -407,10 +491,19 @@ fun AddUsbRemoteDialog(
         ) {
             Text(text = "Add USB drive", style = LascoTheme.type.title(26), color = colors.ink)
             Text(
-                text = "Lasco will store data only in the folder you selected on the connected drive.",
-                style = LascoTheme.type.body(13),
+                text = "Choose a folder on a connected USB drive. Lasco will use only that folder.",
+                style = LascoTheme.type.body(16),
                 color = colors.inkMuted,
             )
+            LascoSecondaryButton(text = "Choose USB folder", onClick = openUsbTreePicker)
+            selection?.let { selected ->
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(text = selected.driveName, style = LascoTheme.type.body(13), color = colors.ink)
+                    selected.subfolderPath?.let { path ->
+                        Text(text = path, style = LascoTheme.type.body(13), color = colors.inkMuted)
+                    }
+                }
+            }
             LascoField(
                 label = "Remote name",
                 value = name,
@@ -432,6 +525,8 @@ fun AddUsbRemoteDialog(
                     scope.launch {
                         var addedRemoteId: FfiRemoteUuid? = null
                         try {
+                            val treeUri = checkNotNull(selection).treeUri
+                            repo.ensureUsbAndroidFolderIsUninitialized(treeUri)
                             val remoteId = repo.addRemoteUsbAndroid(name.trim(), treeUri)
                             addedRemoteId = remoteId
                             repo.initializeRemote(remoteId, null)
