@@ -118,6 +118,7 @@ enum LibraryRepositoryError: LocalizedError {
     case closed
     case invalidNativeMediaBuffer
     case invalidUsbFolder
+    case selectedFolderIsNotUsbDrive
     case usbAccessDenied
     case cloudRemoteAlreadyAssociated
     case cloudSignOutRequiresRemoteRemoval
@@ -131,6 +132,8 @@ enum LibraryRepositoryError: LocalizedError {
             "The native media buffer is invalid."
         case .invalidUsbFolder:
             "Choose a folder on the USB drive."
+        case .selectedFolderIsNotUsbDrive:
+            "Select a folder on a connected USB drive, not On My iPhone or a cloud location."
         case .usbAccessDenied:
             "Lasco could not access the selected USB folder."
         case .cloudRemoteAlreadyAssociated:

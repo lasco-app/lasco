@@ -9,10 +9,12 @@ struct AddUsbRemoteView: View {
 
     @State private var name = ""
     @State private var bookmarkBase64: String?
-    @State private var selectedFolderName: String?
+    @State private var selectedDriveName: String?
+    @State private var selectedFolderPath: String?
     @State private var showingFolderPicker = false
     @State private var isAdding = false
     @State private var errorMessage: String?
+    @State private var suggestedName: String?
 
     let onRemoteReady: @MainActor () async throws -> Void
 
@@ -50,13 +52,27 @@ struct AddUsbRemoteView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
-                        Text("Connect the drive, then choose a folder on it. Lasco will use only that folder.")
+                        Text("Choose a folder on a connected USB drive. Lasco will use only that folder.")
                             .font(LascoFont.body())
                             .foregroundStyle(theme.inkMuted)
 
-                        Button(selectedFolderName ?? "Choose USB folder", action: chooseFolder)
+                        Button("Choose USB folder", action: chooseFolder)
                             .buttonStyle(LascoSecondaryButtonStyle())
                             .frame(maxWidth: .infinity)
+
+                        if let selectedDriveName {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(selectedDriveName)
+                                    .font(LascoFont.body(13))
+                                    .foregroundStyle(theme.ink)
+                                if let selectedFolderPath {
+                                    Text(selectedFolderPath)
+                                        .font(LascoFont.body(13))
+                                        .foregroundStyle(theme.inkMuted)
+                                }
+                            }
+                            .accessibilityElement(children: .combine)
+                        }
 
                         VStack(alignment: .leading, spacing: 6) {
                             FieldLabel(text: "Remote name")
@@ -114,7 +130,7 @@ struct AddUsbRemoteView: View {
     private func saveSelectedFolder(_ result: Result<[URL], Error>) {
         do {
             let urls = try result.get()
-            guard let url = urls.first, url.hasDirectoryPath else {
+            guard let url = urls.first else {
                 throw LibraryRepositoryError.invalidUsbFolder
             }
             guard url.startAccessingSecurityScopedResource() else {
@@ -122,19 +138,65 @@ struct AddUsbRemoteView: View {
             }
             defer { url.stopAccessingSecurityScopedResource() }
 
+            let folder = try url.resourceValues(forKeys: [
+                .isDirectoryKey,
+                .volumeURLKey,
+            ])
+            guard folder.isDirectory == true else {
+                throw LibraryRepositoryError.invalidUsbFolder
+            }
+            guard let volumeURL = folder.volume else {
+                throw LibraryRepositoryError.selectedFolderIsNotUsbDrive
+            }
+            let volume = try volumeURL.resourceValues(forKeys: [
+                .volumeIsInternalKey,
+                .volumeIsRemovableKey,
+                .volumeLocalizedNameKey,
+                .volumeNameKey,
+            ])
+            guard volume.volumeIsRemovable == true, volume.volumeIsInternal != true else {
+                throw LibraryRepositoryError.selectedFolderIsNotUsbDrive
+            }
+            let driveName = volume.volumeLocalizedName ?? volume.volumeName ?? "USB drive"
+
             bookmarkBase64 = try url
                 .bookmarkData(options: [.minimalBookmark], includingResourceValuesForKeys: nil, relativeTo: nil)
                 .base64EncodedString()
-            selectedFolderName = url.lastPathComponent
-            if name.isEmpty {
-                name = url.lastPathComponent
+            selectedDriveName = driveName
+            selectedFolderPath = displayFolderPath(url, relativeTo: volumeURL)
+            if name.isEmpty || name == suggestedName {
+                name = driveName
             }
+            suggestedName = driveName
             errorMessage = nil
         } catch is CancellationError {
             return
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    /// Uses File Provider display names instead of URL path components, which
+    /// can contain opaque provider identifiers on iOS.
+    private func displayFolderPath(_ folderURL: URL, relativeTo volumeURL: URL) -> String? {
+        let volumePath = volumeURL.standardizedFileURL.path
+        var current = folderURL.standardizedFileURL
+        var names: [String] = []
+
+        while current.path != volumePath {
+            guard let values = try? current.resourceValues(forKeys: [.nameKey]),
+                  let displayName = values.name,
+                  !displayName.isEmpty else {
+                return nil
+            }
+            names.append(displayName)
+
+            let parent = current.deletingLastPathComponent().standardizedFileURL
+            guard parent.path != current.path else { return nil }
+            current = parent
+        }
+
+        return names.isEmpty ? nil : names.reversed().joined(separator: "/")
     }
 
     private func addRemote() {

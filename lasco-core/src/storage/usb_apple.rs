@@ -10,6 +10,7 @@
 )]
 
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::ptr::NonNull;
 
 use async_trait::async_trait;
@@ -32,6 +33,60 @@ pub struct StorageUsbApple {
 
 impl StorageUsbApple {
     pub(crate) fn new(bookmark_base64: &str) -> Result<Self> {
+        let url = Self::resolve_bookmark(bookmark_base64)?;
+
+        // SAFETY: Apple requires the returned security-scoped URL to remain
+        // retained while access is active; this struct retains it until Drop.
+        if !unsafe { url.startAccessingSecurityScopedResource() } {
+            return Err(StorageError::Unavailable(
+                "USB drive is unavailable or access was denied".to_string(),
+            ));
+        }
+
+        if url.path().is_none() {
+            // SAFETY: this is the matching stop call for the successful start
+            // above; the URL remains retained for the duration of this call.
+            unsafe {
+                url.stopAccessingSecurityScopedResource();
+            };
+            return Err(StorageError::Unavailable(
+                "USB bookmark did not resolve to a filesystem path".to_string(),
+            ));
+        }
+
+        Ok(Self {
+            security_scoped_url: url,
+        })
+    }
+
+    /// Resolves a bookmark just long enough to identify its selected folder.
+    ///
+    /// The FFI layer uses this while adding a remote to reject a folder that
+    /// overlaps an existing USB remote. The scope is always released before
+    /// returning; persistent access is owned by a `StorageUsbApple` instance.
+    pub fn bookmark_folder_path(bookmark_base64: &str) -> Result<PathBuf> {
+        let url = Self::resolve_bookmark(bookmark_base64)?;
+
+        // SAFETY: the URL is retained for this scope and is released only
+        // after its matching `stopAccessingSecurityScopedResource` call.
+        if !unsafe { url.startAccessingSecurityScopedResource() } {
+            return Err(StorageError::Unavailable(
+                "USB drive is unavailable or access was denied".to_string(),
+            ));
+        }
+        let path = url.path().map(|path| PathBuf::from(path.to_string()));
+        // SAFETY: this is the matching stop call for the successful start.
+        unsafe {
+            url.stopAccessingSecurityScopedResource();
+        };
+        path.ok_or_else(|| {
+            StorageError::Unavailable(
+                "USB bookmark did not resolve to a filesystem path".to_string(),
+            )
+        })
+    }
+
+    fn resolve_bookmark(bookmark_base64: &str) -> Result<Retained<NSURL>> {
         let bookmark = base64::engine::general_purpose::STANDARD
             .decode(bookmark_base64)
             .map_err(|e| StorageError::Unavailable(format!("invalid USB bookmark: {e}")))?;
@@ -58,24 +113,7 @@ impl StorageUsbApple {
                 "USB bookmark is stale; select the drive again".to_string(),
             ));
         }
-
-        // SAFETY: Apple requires the returned security-scoped URL to remain
-        // retained while access is active; this struct retains it until Drop.
-        if !unsafe { url.startAccessingSecurityScopedResource() } {
-            return Err(StorageError::Unavailable(
-                "USB drive is unavailable or access was denied".to_string(),
-            ));
-        }
-
-        url.path().ok_or_else(|| {
-            StorageError::Unavailable(
-                "USB bookmark did not resolve to a filesystem path".to_string(),
-            )
-        })?;
-
-        Ok(Self {
-            security_scoped_url: url,
-        })
+        Ok(url)
     }
 
     /// Coordinates a synchronous filesystem operation against the selected

@@ -928,6 +928,11 @@ impl FfiLibrary {
 
         let mut lib_config = library_json.read()?;
 
+        #[cfg(target_vendor = "apple")]
+        if let RemoteKind::UsbApple(config) = &kind {
+            validate_usb_apple_folder(&lib_config, &config.bookmark_base64)?;
+        }
+
         if lib_config.remotes.iter().any(|r| r.name == name) {
             return Err(LascoError::Other {
                 msg: format!("remote '{name}' already exists"),
@@ -1006,6 +1011,51 @@ impl FfiLibrary {
         )
         .map_err(|e| LascoError::Other { msg: e.to_string() })
     }
+}
+
+/// Rejects folders that would make two USB remotes address the same files.
+///
+/// The currently connected bookmark paths are compared component-by-component,
+/// so `/Drive/Lasco` conflicts with `/Drive/Lasco/Archive`, but not with
+/// `/Drive/Lasco-Archive`.
+#[cfg(target_vendor = "apple")]
+fn validate_usb_apple_folder(
+    library: &LibraryJson,
+    candidate_bookmark: &str,
+) -> Result<(), LascoError> {
+    let candidate = lasco_core::storage::StorageUsbApple::bookmark_folder_path(candidate_bookmark)
+        .map_err(|error| LascoError::Other {
+            msg: format!("could not inspect selected USB folder: {error}"),
+        })?;
+
+    for remote in &library.remotes {
+        let RemoteKind::UsbApple(existing) = &remote.kind else {
+            continue;
+        };
+        let existing_path = lasco_core::storage::StorageUsbApple::bookmark_folder_path(
+            &existing.bookmark_base64,
+        )
+        .map_err(|error| LascoError::Other {
+            msg: format!(
+                "could not inspect existing USB remote '{}'; reconnect its drive before adding another USB remote: {error}",
+                remote.name
+            ),
+        })?;
+
+        if candidate == existing_path
+            || candidate.starts_with(&existing_path)
+            || existing_path.starts_with(&candidate)
+        {
+            return Err(LascoError::Other {
+                msg: format!(
+                    "the selected USB folder overlaps existing remote '{}'; choose a separate, non-nested folder",
+                    remote.name
+                ),
+            });
+        }
+    }
+
+    Ok(())
 }
 
 pub(super) fn remote_config_to_ffi(r: &RemoteConfig) -> FfiRemote {
