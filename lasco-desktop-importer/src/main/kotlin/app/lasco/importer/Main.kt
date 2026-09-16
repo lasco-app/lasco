@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.rememberScrollbarAdapter
@@ -570,7 +571,6 @@ private fun ImporterWizard() {
                             onChooseAnotherLibrary = { go(Page.DESTINATION) },
                         )
                         Page.SOURCE -> SourcePicker(
-                            onTakeout = { discoveryFailure = null; sourceType = SourceType.TAKEOUT; go(Page.TAKEOUT) },
                             onPhotos = { discoveryFailure = null; sourceType = SourceType.PHOTOS; go(Page.PHOTOS) },
                         )
                         Page.TAKEOUT -> TakeoutPage(
@@ -742,11 +742,11 @@ private fun WelcomePage() {
         Text("How importing works", color = Ink, style = LascoHeading, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
         Spacer(Modifier.height(24.dp))
         Column(Modifier.widthIn(max = 620.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            HowItWorksItem("1", "You need an existing Lasco library.")
-            HowItWorksItem("2", "Set up the remote or remotes used to connect to it.")
-            HowItWorksItem("3", "Choose Apple Photos / iCloud, or Google Takeout with its ZIP archives.")
-            HowItWorksItem("4", "Review your library and what each remote already contains.")
-            HowItWorksItem("5", "Benchmark each remote, review the expected upload time, then start. You can safely pause and resume it.")
+            HowItWorksItem("You need an existing Lasco library.")
+            HowItWorksItem("Set up the remote or remotes used to connect to it.")
+            HowItWorksItem("Choose Apple Photos / iCloud, or Google Takeout with its ZIP archives.")
+            HowItWorksItem("Summary of the imported library.")
+            HowItWorksItem("Import library.")
         }
     }
 }
@@ -769,9 +769,9 @@ private fun CloudServerPage(
 }
 
 @Composable
-private fun HowItWorksItem(number: String, text: String) {
+private fun HowItWorksItem(text: String) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start, verticalAlignment = Alignment.Top) {
-        Text(number, color = Color.White, style = LascoLabel.copy(fontSize = 13.sp), fontWeight = FontWeight.Bold, modifier = Modifier.background(Accent).border(1.dp, Ink).padding(horizontal = 8.dp, vertical = 4.dp))
+        Box(Modifier.size(28.dp).background(Accent).border(1.dp, Ink))
         Text(text, color = InkSub, style = LascoBody.copy(fontSize = 16.sp), textAlign = TextAlign.Start, modifier = Modifier.padding(start = 12.dp, top = 3.dp).widthIn(max = 500.dp))
     }
 }
@@ -806,9 +806,9 @@ private fun DestinationPicker(
         }
         if (!state.loading) {
             if (state.libraries.isEmpty()) {
-                NewLibrarySetupPanel("ADD NEW LIBRARY", onCloud, onS3, onSmb)
+                NewLibrarySetupPanel(onCloud, onS3, onSmb)
             } else if (addingAnotherLibrary) {
-                NewLibrarySetupPanel("ADD ANOTHER LIBRARY", onCloud, onS3, onSmb)
+                NewLibrarySetupPanel(onCloud, onS3, onSmb)
             } else {
                 LascoButton(
                     "ADD ANOTHER LIBRARY",
@@ -823,7 +823,6 @@ private fun DestinationPicker(
 
 @Composable
 private fun NewLibrarySetupPanel(
-    title: String,
     onCloud: () -> Unit,
     onS3: () -> Unit,
     onSmb: () -> Unit,
@@ -832,7 +831,6 @@ private fun NewLibrarySetupPanel(
         Modifier.widthIn(max = 460.dp).fillMaxWidth().background(Color.White).border(2.dp, Ink).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(title, color = Ink, style = LascoLabel, fontWeight = FontWeight.Bold)
         LascoButton("LASCO CLOUD", onCloud)
         LascoButton("S3-COMPATIBLE STORAGE", onS3)
         LascoButton("SMB NETWORK SHARE", onSmb)
@@ -984,12 +982,12 @@ private fun DestinationDialogHost(
 }
 
 @Composable
-private fun SourcePicker(onTakeout: () -> Unit, onPhotos: () -> Unit) {
-    PageTitle("Where are your photos now?", "Choose a source to open its dedicated setup. This selection continues immediately, with no Continue button on this screen.")
+private fun SourcePicker(onPhotos: () -> Unit) {
+    PageTitle("Where are your photos?")
     Spacer(Modifier.height(24.dp))
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Column(Modifier.widthIn(max = 460.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            LascoButton("GOOGLE TAKEOUT", onTakeout)
+            LascoButton("GOOGLE TAKEOUT (COMING SOON)", {}, enabled = false)
             if (System.getProperty("os.name").lowercase().contains("mac")) LascoButton("APPLE PHOTOS / ICLOUD", onPhotos)
         }
     }
@@ -1011,7 +1009,7 @@ private fun ConnectionForm(
     PageTitle(title)
     Spacer(Modifier.height(20.dp))
     Column(Modifier.widthIn(max = 620.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        LascoField("Library nickname", nickname, setNickname, "family-library")
+        LascoField("Library nickname", nickname, setNickname, if (type == RemoteType.CLOUD) "" else "family-library")
         LascoField("Library username", libraryUser, setLibraryUser)
         LascoField("Library password", libraryPassword, setLibraryPassword, secure = true)
         when (type) {
@@ -1043,7 +1041,7 @@ private fun PhotosPage(
     request: () -> Unit,
     openSettings: () -> Unit,
 ) {
-    PageTitle("Import Apple Photos", "Allow Photos access to discover your library. iCloud-only originals download only into the staging directory when their chunk is imported.")
+    PageTitle("Import Apple Photos", "Allow Photos access to discover your library.")
     Spacer(Modifier.height(24.dp))
     if (granted) {
         Text("PHOTOS ACCESS GRANTED", color = Good, style = LascoPixel, fontWeight = FontWeight.Bold)
@@ -1171,7 +1169,7 @@ private fun LibrarySummaryPage(source: SourceType?, archives: List<String>, plan
                 if (remote.toUpload.resourceCount > 0) {
                     MediaCountSummary("MISSING — TO BE UPLOADED", remote.toUpload, includeTotal = true)
                 } else {
-                    Text("No media blobs missing — nothing to upload.", color = Good, style = LascoBody)
+                    Text("No media files missing.", color = Good, style = LascoBody)
                 }
             }
         }
@@ -1186,7 +1184,6 @@ private fun ImportWorkSummary(plan: ImportPlan) {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text("METADATA / OPERATION LOG", color = InkMuted, style = LascoLabel, fontWeight = FontWeight.Bold)
-        Text("All remotes contain the same metadata state. Nothing to push.", color = Good, style = LascoBody)
         if (plan.metadataToAdd) {
             Text(
                 "Apple Photos collection metadata will be added during import.",
@@ -1194,10 +1191,7 @@ private fun ImportWorkSummary(plan: ImportPlan) {
                 style = LascoBody,
             )
         } else {
-            Text("No Apple Photos metadata changes are needed.", color = InkSub, style = LascoBody)
-        }
-        if (!plan.hasMediaToUpload && !plan.metadataToAdd) {
-            Text("Nothing to do — every remote already has this import.", color = Good, style = LascoBody)
+            Text("No metadata to import.", color = Good, style = LascoBody)
         }
     }
 }
@@ -1286,7 +1280,7 @@ private fun WizardFooter(page: Page, source: SourceType?, connecting: Boolean, c
         Spacer(Modifier.weight(1f))
         if (connectPage) LascoButton(if (connecting) "CONNECTING…" else "CONNECT REMOTE", onConnect, enabled = connectEnabled && !connecting, fillWidth = false)
         if (page == Page.LIBRARY_SUMMARY && !librarySummaryHasWork) {
-            Text("Nothing at all to import.", color = InkSub, style = LascoBody)
+            Text("Nothing to import.", color = InkSub, style = LascoBody)
         } else if (!picker && !connectPage && !scanning && page != Page.IMPORT && (page != Page.UPLOAD_ESTIMATE || benchmarkReady)) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 val label = when {
