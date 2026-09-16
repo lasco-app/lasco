@@ -131,6 +131,20 @@ impl Storage for StorageLascoCloudS3 {
         }
     }
 
+    async fn list_recursive(&self, prefix: &str) -> Result<Vec<String>> {
+        let storage = self.current_storage().await?;
+        match storage.list_recursive(prefix).await {
+            Ok(value) => Ok(value),
+            Err(error) if is_authentication_error(&error) => {
+                self.refresh_after_auth_failure()
+                    .await?
+                    .list_recursive(prefix)
+                    .await
+            }
+            Err(error) => Err(error),
+        }
+    }
+
     async fn exists(&self, key: &str) -> Result<bool> {
         let storage = self.current_storage().await?;
         match storage.exists(key).await {

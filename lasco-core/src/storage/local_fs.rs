@@ -87,6 +87,27 @@ impl Storage for StorageLocalFs {
         Ok(keys)
     }
 
+    async fn list_recursive(&self, prefix: &str) -> Result<Vec<String>> {
+        let base = self.root.join(prefix);
+        if !base.exists() {
+            return Err(StorageError::NotFound);
+        }
+        let mut keys = Vec::new();
+        for entry in WalkDir::new(&base)
+            .min_depth(1)
+            .into_iter()
+            .filter_map(std::result::Result::ok)
+        {
+            if entry.file_type().is_file()
+                && let Ok(rel) = entry.path().strip_prefix(&self.root)
+                && let Some(key) = rel.to_str()
+            {
+                keys.push(key.to_owned());
+            }
+        }
+        Ok(keys)
+    }
+
     async fn exists(&self, key: &str) -> Result<bool> {
         Ok(self.root.join(key).exists())
     }

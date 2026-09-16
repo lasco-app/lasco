@@ -1,7 +1,7 @@
 use tempfile::TempDir;
 use uuid::Uuid;
 
-use crate::identifiers::AlbumUuid;
+use crate::identifiers::{AlbumUuid, MediaUuid};
 use crate::storage::{AtomicWriteMode, Storage, StorageMockMemory};
 
 use super::super::remote_access::StorageReadWrite;
@@ -712,6 +712,78 @@ async fn confirm_remote_media_records_without_fetching() {
         crate::remote::local_state::media_list_json::MediaList::load_or_default(&media_list_path)
             .unwrap()
             .has_full(&media_id)
+    );
+}
+
+#[tokio::test]
+async fn confirm_remote_media_recursively_records_unknown_data_and_thumbnail_blobs() {
+    let storage = StorageMockMemory::new();
+    let tmp = TempDir::new().unwrap();
+    let library = make_library(&tmp).await;
+    library
+        .initialize_remote(&storage, remote_uuid())
+        .await
+        .unwrap();
+
+    // This remote object is deliberately absent from the local CRDT state. A complete physical
+    // scan must still inventory it, otherwise orphaned or not-yet-fetched media is invisible.
+    let media_id = MediaUuid::from_uuid(Uuid::new_v4());
+    let prefix = format!("media/2024/02/{media_id}");
+    storage
+        .put_atomic(
+            &format!("{prefix}.data"),
+            b"ciphertext",
+            AtomicWriteMode::Replace,
+        )
+        .await
+        .unwrap();
+    storage
+        .put_atomic(
+            &format!("{prefix}.thumb"),
+            b"thumbnail",
+            AtomicWriteMode::Replace,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        library
+            .confirm_remote_media(&storage, REMOTE_ID)
+            .await
+            .unwrap(),
+        2
+    );
+    let list = crate::remote::local_state::media_list_json::MediaList::load_or_default(
+        &library
+            .inner
+            .local_dirs
+            .remote_media_list(&REMOTE_ID.to_string())
+            .media_list_path(),
+    )
+    .unwrap();
+    assert!(list.has_full(&media_id));
+    assert!(list.has_thumb(&media_id));
+
+    storage.delete(&format!("{prefix}.thumb")).await.unwrap();
+    assert_eq!(
+        library
+            .confirm_remote_media(&storage, REMOTE_ID)
+            .await
+            .unwrap(),
+        0
+    );
+    let refreshed = crate::remote::local_state::media_list_json::MediaList::load_or_default(
+        &library
+            .inner
+            .local_dirs
+            .remote_media_list(&REMOTE_ID.to_string())
+            .media_list_path(),
+    )
+    .unwrap();
+    assert!(refreshed.has_full(&media_id));
+    assert!(
+        !refreshed.has_thumb(&media_id),
+        "a completed scan must clear a thumbnail observation when the remote no longer lists it"
     );
 }
 

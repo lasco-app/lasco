@@ -1004,8 +1004,9 @@ impl FfiLibrary {
             })?
     }
 
-    /// Confirms which media blobs a remote holds and records them in its media inventory,
-    /// without fetching. Returns how many blobs it newly confirmed.
+    /// Recursively lists every media blob a remote holds, exhausting backend pagination, and
+    /// replaces its cached media inventory without fetching operations. Returns how many blobs
+    /// were newly observed.
     ///
     /// # Errors
     ///
@@ -1423,7 +1424,10 @@ fn operation_to_ffi(op: OperationContent, timestamp: String) -> FfiOperation {
             args: vec![
                 kv("media_id", &origin.media_id),
                 kv("cloud_asset_id", &origin.cloud_asset_id),
-                opt_kv("modification_date", origin.modification_date.map(|date| date.to_rfc3339())),
+                opt_kv(
+                    "modification_date",
+                    origin.modification_date.map(|date| date.to_rfc3339()),
+                ),
                 kv("resource_type", &format!("{:?}", origin.resource_type)),
                 kv("filename", &origin.filename),
             ],
@@ -1550,7 +1554,9 @@ fn operation_to_ffi(op: OperationContent, timestamp: String) -> FfiOperation {
 #[cfg(test)]
 mod tests {
     use super::operation_to_ffi;
-    use lasco_core::crdt::{ApplePhotosCollectionKind, ApplePhotosCollectionLink, OperationContent};
+    use lasco_core::crdt::{
+        ApplePhotosCollectionKind, ApplePhotosCollectionLink, OperationContent,
+    };
     use lasco_core::identifiers::AlbumUuid;
     use lasco_core::operations::ApplePhotosCloudCollectionId;
 

@@ -35,6 +35,12 @@ pub trait Storage: Send + Sync {
     /// left out, so subdirectories are invisible rather than reported as entries. Listing
     /// `media/` therefore yields nothing, since every media key sits under `YYYY/MM/`.
     async fn list(&self, prefix: &str) -> Result<Vec<String>>;
+    /// Returns every object below `prefix`, including objects in nested prefixes.
+    ///
+    /// Backends with paged listing APIs must retrieve every page before returning. Callers use
+    /// this only where a complete inventory is required; returning a partial page would turn an
+    /// unavailable object into a false absence claim.
+    async fn list_recursive(&self, prefix: &str) -> Result<Vec<String>>;
     async fn exists(&self, key: &str) -> Result<bool>;
 }
 
