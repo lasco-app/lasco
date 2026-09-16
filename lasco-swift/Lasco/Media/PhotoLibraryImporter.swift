@@ -32,6 +32,16 @@ actor PhotoLibraryImporter {
     struct PreparedAsset {
         let asset: PHAsset
         let cloudAssetId: String?
+        /// This only exists for the current scan. It lets albums retain membership for assets
+        /// which Photos cannot map to an iCloud identifier.
+        let membershipIdentity: AlbumMembershipIdentity
+    }
+
+    /// A durable cloud identifier when PhotoKit supplies one, otherwise an opaque identifier
+    /// scoped to this scan. Neither variant is written to the Lasco library as media metadata.
+    enum AlbumMembershipIdentity: Hashable {
+        case cloudAsset(String)
+        case session(UUID)
     }
 
     struct IgnoredAsset {
@@ -185,7 +195,7 @@ actor PhotoLibraryImporter {
         let kind: FfiApplePhotosCollectionKind
         let name: String
         let parentCloudCollectionId: String?
-        let memberCloudAssetIds: [String]
+        let memberAssetIdentities: [AlbumMembershipIdentity]
     }
 
     private struct RawAlbumNode {
@@ -201,7 +211,10 @@ actor PhotoLibraryImporter {
     func scanAlbumTree() async -> [AlbumNode] {
         let nodes = rawAlbumTree()
         let cloudIDs = Self.cloudIDs(for: nodes.map(\.localID) + nodes.flatMap(\.memberLocalAssetIDs))
-        return albumNodes(from: nodes, cloudIDs: cloudIDs)
+        let sessionIdentities = Dictionary(uniqueKeysWithValues: Set(nodes.flatMap(\.memberLocalAssetIDs)).map {
+            ($0, AlbumMembershipIdentity.session(UUID()))
+        })
+        return albumNodes(from: nodes, cloudIDs: cloudIDs, sessionIdentities: sessionIdentities)
     }
 
     private func rawAlbumTree() -> [RawAlbumNode] {
@@ -211,7 +224,11 @@ actor PhotoLibraryImporter {
         return nodes
     }
 
-    private func albumNodes(from nodes: [RawAlbumNode], cloudIDs: [String: String]) -> [AlbumNode] {
+    private func albumNodes(
+        from nodes: [RawAlbumNode],
+        cloudIDs: [String: String],
+        sessionIdentities: [String: AlbumMembershipIdentity]
+    ) -> [AlbumNode] {
         func cloudID(_ localID: String) -> String? {
             cloudIDs[localID]
         }
@@ -222,7 +239,12 @@ actor PhotoLibraryImporter {
                 kind: node.kind,
                 name: node.name,
                 parentCloudCollectionId: node.parentLocalID.flatMap(cloudID),
-                memberCloudAssetIds: node.memberLocalAssetIDs.compactMap(cloudID)
+                memberAssetIdentities: node.memberLocalAssetIDs.compactMap { localID in
+                    if let cloudAssetID = cloudID(localID) {
+                        return .cloudAsset(cloudAssetID)
+                    }
+                    return sessionIdentities[localID]
+                }
             )
         }
     }
@@ -260,12 +282,20 @@ actor PhotoLibraryImporter {
         var ignoredAssets: [IgnoredAsset] = []
         var totalBytes: Int64 = 0
         let rawAlbums = rawAlbumTree()
+        let assetLocalIDs = (0..<allAssets.count).map { allAssets.object(at: $0).localIdentifier }
         let cloudIDs = Self.cloudIDs(for:
-            (0..<allAssets.count).map { allAssets.object(at: $0).localIdentifier }
+            assetLocalIDs
                 + rawAlbums.map(\.localID)
                 + rawAlbums.flatMap(\.memberLocalAssetIDs)
         )
-        let albums = albumNodes(from: rawAlbums, cloudIDs: cloudIDs)
+        let sessionIdentities = Dictionary(uniqueKeysWithValues: assetLocalIDs.map {
+            ($0, AlbumMembershipIdentity.session(UUID()))
+        })
+        let albums = albumNodes(
+            from: rawAlbums,
+            cloudIDs: cloudIDs,
+            sessionIdentities: sessionIdentities
+        )
         var assets: [PreparedAsset] = []
         assets.reserveCapacity(allAssets.count)
 
@@ -287,10 +317,20 @@ actor PhotoLibraryImporter {
             switch analysis.kind {
             case .photo:
                 photoCount += 1
-                assets.append(PreparedAsset(asset: asset, cloudAssetId: cloudAssetId))
+                assets.append(PreparedAsset(
+                    asset: asset,
+                    cloudAssetId: cloudAssetId,
+                    membershipIdentity: cloudAssetId.map(AlbumMembershipIdentity.cloudAsset)
+                        ?? sessionIdentities[asset.localIdentifier]!
+                ))
             case .video:
                 videoCount += 1
-                assets.append(PreparedAsset(asset: asset, cloudAssetId: cloudAssetId))
+                assets.append(PreparedAsset(
+                    asset: asset,
+                    cloudAssetId: cloudAssetId,
+                    membershipIdentity: cloudAssetId.map(AlbumMembershipIdentity.cloudAsset)
+                        ?? sessionIdentities[asset.localIdentifier]!
+                ))
             case nil:
                 ignoredAssets.append(IgnoredAsset(mediaType: asset.mediaType, creationDate: asset.creationDate))
                 continue
