@@ -3,7 +3,75 @@ use chrono::Utc;
 use super::operations::{album, assert_every_delivery_order, group, media, operation};
 use crate::crdt::*;
 use crate::library::media::MediaHash;
-use crate::operations::{MediaName, StorageDate};
+use crate::operations::{ApplePhotosCloudCollectionId, MediaName, StorageDate};
+
+#[test]
+fn collection_link_uses_the_earliest_dot_as_its_canonical_album() {
+    let first_album = album(1);
+    let second_album = album(2);
+    let collection_id = ApplePhotosCloudCollectionId("icloud-collection".into());
+    let operations = [
+        operation(
+            Dot { lamport_counter: 2, device_id: DeviceId(1) },
+            OperationContent::ApplePhotosCollectionLinkAdded(ApplePhotosCollectionLink {
+                album_id: second_album,
+                cloud_collection_id: collection_id.clone(),
+                kind: ApplePhotosCollectionKind::Album,
+            }),
+        ),
+        operation(
+            Dot { lamport_counter: 1, device_id: DeviceId(2) },
+            OperationContent::ApplePhotosCollectionLinkAdded(ApplePhotosCollectionLink {
+                album_id: first_album,
+                cloud_collection_id: collection_id,
+                kind: ApplePhotosCollectionKind::Album,
+            }),
+        ),
+    ];
+
+    assert_every_delivery_order(&operations, |state| {
+        let canonical = state
+            .apple_photos_collection_links
+            .iter()
+            .min_by_key(|entry| entry.dot)
+            .unwrap();
+        assert_eq!(canonical.link.album_id, first_album);
+    });
+}
+
+#[test]
+fn collection_links_round_trip_with_their_explicit_operation_kind() {
+    let collection_id = ApplePhotosCloudCollectionId("icloud-folder".into());
+    let operation = operation(
+        Dot { lamport_counter: 7, device_id: DeviceId(3) },
+        OperationContent::ApplePhotosCollectionLinkAdded(ApplePhotosCollectionLink {
+            album_id: album(9),
+            cloud_collection_id: collection_id.clone(),
+            kind: ApplePhotosCollectionKind::Folder,
+        }),
+    );
+
+    let json = serde_json::to_string(&operation).unwrap();
+    let decoded: CrdtOperation = serde_json::from_str(&json).unwrap();
+
+    assert!(json.contains("ApplePhotosCollectionLinkAdded"));
+    assert_eq!(decoded, operation);
+    assert_eq!(collection_id.to_string(), "icloud-folder");
+}
+
+#[test]
+fn an_older_state_without_collection_links_deserializes_to_no_links() {
+    let state = CrdtState::new(DeviceId(1));
+    let mut encoded = serde_json::to_value(state).unwrap();
+    encoded
+        .as_object_mut()
+        .unwrap()
+        .remove("apple_photos_collection_links");
+
+    let decoded: CrdtState = serde_json::from_value(encoded).unwrap();
+
+    assert!(decoded.apple_photos_collection_links.is_empty());
+}
 
 #[test]
 fn a_photo_added_to_an_album_and_group_converges_for_every_delivery_order() {

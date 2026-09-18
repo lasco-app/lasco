@@ -37,11 +37,18 @@ pub fn build_computed_views(state: &CrdtState) -> ComputedViews {
             .push(album.album_id);
     }
 
-    // by_album holds current media_ids for non-deleted albums.
+    // by_album holds active media only. Trashed media retain their raw
+    // membership dots for Restore but must not appear in an album browse view.
     for album in albums.values() {
-        views
-            .by_album
-            .insert(album.album_id, album.media_ids.clone());
+        views.by_album.insert(
+            album.album_id,
+            album
+                .media_ids
+                .iter()
+                .copied()
+                .filter(|media_id| media.get(media_id).is_some_and(|entry| !entry.trashed))
+                .collect(),
+        );
     }
 
     // groups_by_album and by_group contain non-deleted groups only.
@@ -52,10 +59,16 @@ pub fn build_computed_views(state: &CrdtState) -> ComputedViews {
             .entry(group.album_id_parent)
             .or_default()
             .push(group.group_id);
+        let active_media_ids: Vec<_> = group
+            .media_ids
+            .iter()
+            .copied()
+            .filter(|media_id| media.get(media_id).is_some_and(|entry| !entry.trashed))
+            .collect();
         views
             .by_group
-            .insert(group.group_id, group.media_ids.clone());
-        for &media_id in &group.media_ids {
+            .insert(group.group_id, active_media_ids.clone());
+        for media_id in active_media_ids {
             views
                 .media_group_membership
                 .entry(media_id)
@@ -66,8 +79,8 @@ pub fn build_computed_views(state: &CrdtState) -> ComputedViews {
 
     // reachable_media_ids
     // (a) media in non-deleted albums
-    for album in albums.values() {
-        for &media_id in &album.media_ids {
+    for media_ids in views.by_album.values() {
+        for &media_id in media_ids {
             views.reachable_media_ids.insert(media_id);
         }
     }
@@ -75,7 +88,7 @@ pub fn build_computed_views(state: &CrdtState) -> ComputedViews {
     for group in groups.values() {
         let parent_alive = albums.contains_key(&group.album_id_parent);
         if parent_alive {
-            for &media_id in &group.media_ids {
+            for &media_id in views.by_group.get(&group.group_id).into_iter().flatten() {
                 views.reachable_media_ids.insert(media_id);
             }
         }
@@ -94,8 +107,12 @@ pub fn build_computed_views(state: &CrdtState) -> ComputedViews {
         if entry.companion_kind.is_some() {
             continue;
         }
-        views.home_visible_newest.push(entry.media_id);
-        if !views.reachable_media_ids.contains(&entry.media_id) {
+        if entry.trashed {
+            views.home_trashed_newest.push(entry.media_id);
+        } else {
+            views.home_visible_newest.push(entry.media_id);
+        }
+        if !entry.trashed && !views.reachable_media_ids.contains(&entry.media_id) {
             views.home_orphaned_newest.push(entry.media_id);
         }
     }
@@ -113,6 +130,13 @@ pub fn build_computed_views(state: &CrdtState) -> ComputedViews {
             .then_with(|| right.0.cmp(&left.0))
     });
     views.home_orphaned_newest.sort_by(|left, right| {
+        let left_date = media.get(left).map(|entry| entry.date);
+        let right_date = media.get(right).map(|entry| entry.date);
+        right_date
+            .cmp(&left_date)
+            .then_with(|| right.0.cmp(&left.0))
+    });
+    views.home_trashed_newest.sort_by(|left, right| {
         let left_date = media.get(left).map(|entry| entry.date);
         let right_date = media.get(right).map(|entry| entry.date);
         right_date
@@ -144,9 +168,11 @@ pub fn build_computed_views(state: &CrdtState) -> ComputedViews {
     // date is the newest date of its contained media (or the chrono default
     // for an empty/unresolvable group, matching the previous query behavior).
     for album in albums.values() {
-        let mut items: Vec<_> = album
-            .media_ids
-            .iter()
+        let mut items: Vec<_> = views
+            .by_album
+            .get(&album.album_id)
+            .into_iter()
+            .flatten()
             .copied()
             .map(AlbumBrowseItem::Media)
             .collect();

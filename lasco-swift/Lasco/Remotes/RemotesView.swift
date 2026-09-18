@@ -17,6 +17,8 @@ struct RemotesView: View {
 
     @State private var showRemotePicker = false
     @State private var showAddS3 = false
+    @State private var showAddUsb = false
+    @State private var showAddSmb = false
     @State private var showAddLocalFS = false
     @State private var showCloudLogin = false
     @State private var cloudConnected = false
@@ -39,7 +41,7 @@ struct RemotesView: View {
     /// A scheduled push claims the remote when it fires, which would make the removal fail on
     /// timing alone. Refusing up front says so while the countdown is still visible.
     private func isPushScheduled(for remote: FfiRemote) -> Bool {
-        remote.autoPush && syncCoordinator.nextPushDate != nil
+        remote.autoPush && syncCoordinator.nextSyncDate != nil
     }
 
     private func removeRemote(_ remote: FfiRemote) async {
@@ -161,6 +163,8 @@ struct RemotesView: View {
                 showCloud: !cloudConnected,
                 onCloud: { showRemotePicker = false; showCloudLogin = true },
                 onS3: { showRemotePicker = false; showAddS3 = true },
+                onUsb: { showRemotePicker = false; showAddUsb = true },
+                onSmb: { showRemotePicker = false; showAddSmb = true },
                 onLocalFS: { showRemotePicker = false; showAddLocalFS = true },
                 onDismiss: { showRemotePicker = false }
             )
@@ -182,7 +186,7 @@ struct RemotesView: View {
             }
         }
         .alert(
-            "Push scheduled",
+            "Sync scheduled",
             isPresented: Binding(
                 get: { removalBlockedByScheduledPush != nil },
                 set: { if !$0 { removalBlockedByScheduledPush = nil } }
@@ -191,7 +195,7 @@ struct RemotesView: View {
             Button("OK", role: .cancel) {}
         } message: {
             if let remote = removalBlockedByScheduledPush {
-                Text("A push to \(remote.name) is about to run. Let it finish, or turn off Auto Push, then remove the remote.")
+                Text("A sync to \(remote.name) is about to run. Let it finish, or turn off Auto Sync, then remove the remote.")
             }
         }
         .sheet(item: $removalBlocked) { context in
@@ -216,6 +220,18 @@ struct RemotesView: View {
         }
         .sheet(isPresented: $showAddS3) {
             AddS3RemoteView()
+                .environment(repository)
+                .environment(\.lascoTheme, .dark)
+                .preferredColorScheme(.dark)
+        }
+        .sheet(isPresented: $showAddUsb) {
+            AddUsbRemoteView()
+                .environment(repository)
+                .environment(\.lascoTheme, .dark)
+                .preferredColorScheme(.dark)
+        }
+        .sheet(isPresented: $showAddSmb) {
+            AddSmbRemoteView()
                 .environment(repository)
                 .environment(\.lascoTheme, .dark)
                 .preferredColorScheme(.dark)
@@ -292,6 +308,8 @@ struct RemoteTypePickerSheet: View {
     let showCloud: Bool
     let onCloud: () -> Void
     let onS3: () -> Void
+    let onUsb: () -> Void
+    let onSmb: () -> Void
     let onLocalFS: () -> Void
     let onDismiss: () -> Void
     @Environment(\.lascoTheme) var theme
@@ -329,6 +347,12 @@ struct RemoteTypePickerSheet: View {
                             .frame(maxWidth: .infinity)
                     }
                     Button("Add S3-compatible remote", action: onS3)
+                        .buttonStyle(LascoPrimaryButtonStyle())
+                        .frame(maxWidth: .infinity)
+                    Button("Add USB drive", action: onUsb)
+                        .buttonStyle(LascoPrimaryButtonStyle())
+                        .frame(maxWidth: .infinity)
+                    Button("Add SMB remote", action: onSmb)
                         .buttonStyle(LascoPrimaryButtonStyle())
                         .frame(maxWidth: .infinity)
 
@@ -417,7 +441,7 @@ private struct RemoteCard: View {
                         Text(remote.name)
                             .font(LascoFont.body())
                             .foregroundStyle(theme.ink)
-                        Toggle("Auto push", isOn: Binding(
+                        Toggle("Auto sync", isOn: Binding(
                             get: { remote.autoPush },
                             set: onSetAutoPush
                         ))

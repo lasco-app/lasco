@@ -30,6 +30,10 @@ impl<'a> StorageRead<'a> {
         self.storage.list(prefix).await
     }
 
+    pub(crate) async fn list_recursive(&self, prefix: &str) -> Result<Vec<String>> {
+        self.storage.list_recursive(prefix).await
+    }
+
     pub(crate) async fn exists(&self, key: &str) -> Result<bool> {
         self.storage.exists(key).await
     }

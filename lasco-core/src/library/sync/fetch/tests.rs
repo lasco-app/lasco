@@ -1,7 +1,7 @@
 use tempfile::TempDir;
 use uuid::Uuid;
 
-use crate::identifiers::AlbumUuid;
+use crate::identifiers::{AlbumUuid, MediaUuid};
 use crate::storage::{AtomicWriteMode, Storage, StorageMockMemory};
 
 use super::super::remote_access::StorageReadWrite;
@@ -71,6 +71,58 @@ async fn fetch_idempotent() {
     // media_add into an album records two operations, MediaCreation then AlbumMediaAdd.
     assert_eq!(r1.ops_downloaded, 2);
     assert_eq!(r2.ops_downloaded, 0, "second fetch must download nothing");
+}
+
+#[tokio::test]
+async fn fetch_hard_deletion_reclaims_a_previously_downloaded_local_blob() {
+    let storage = StorageMockMemory::new();
+    let tmp_a = TempDir::new().unwrap();
+    let tmp_b = TempDir::new().unwrap();
+    let lib_a = make_library(&tmp_a).await;
+    lib_a
+        .initialize_remote(&storage, remote_uuid())
+        .await
+        .unwrap();
+    let lib_b = make_library_with_same_keys(&tmp_b, &lib_a).await;
+
+    let media_id = lib_a
+        .media_add(
+            crate::library::media::upload::MediaAddSource::CopyFrom(write_file(
+                tmp_a.path(),
+                "delete-on-fetch.jpg",
+                b"data",
+            )),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap()
+        .id();
+    lib_a.push(&storage, REMOTE_ID).await.unwrap();
+    lib_b.fetch(&storage, REMOTE_ID).await.unwrap();
+
+    // Materialize a local encrypted cache copy on B before A deletes it.
+    lib_b
+        .media_get_bytes(media_id, Some(&storage))
+        .await
+        .unwrap();
+    let entry = lib_b.media_show(media_id).unwrap();
+    let cached_data = lib_b.inner.local_dirs.local_state_media_dir().data_path(
+        entry.storage_date.year,
+        entry.storage_date.month,
+        &media_id,
+    );
+    assert!(cached_data.exists());
+
+    lib_a.media_soft_delete(media_id).await.unwrap();
+    lib_a.media_hard_delete(media_id).await.unwrap();
+    lib_a.push(&storage, REMOTE_ID).await.unwrap();
+    lib_b.fetch(&storage, REMOTE_ID).await.unwrap();
+
+    assert!(!cached_data.exists());
+    assert!(lib_b.media_show(media_id).is_err());
 }
 
 #[tokio::test]
@@ -660,6 +712,78 @@ async fn confirm_remote_media_records_without_fetching() {
         crate::remote::local_state::media_list_json::MediaList::load_or_default(&media_list_path)
             .unwrap()
             .has_full(&media_id)
+    );
+}
+
+#[tokio::test]
+async fn confirm_remote_media_recursively_records_unknown_data_and_thumbnail_blobs() {
+    let storage = StorageMockMemory::new();
+    let tmp = TempDir::new().unwrap();
+    let library = make_library(&tmp).await;
+    library
+        .initialize_remote(&storage, remote_uuid())
+        .await
+        .unwrap();
+
+    // This remote object is deliberately absent from the local CRDT state. A complete physical
+    // scan must still inventory it, otherwise orphaned or not-yet-fetched media is invisible.
+    let media_id = MediaUuid::from_uuid(Uuid::new_v4());
+    let prefix = format!("media/2024/02/{media_id}");
+    storage
+        .put_atomic(
+            &format!("{prefix}.data"),
+            b"ciphertext",
+            AtomicWriteMode::Replace,
+        )
+        .await
+        .unwrap();
+    storage
+        .put_atomic(
+            &format!("{prefix}.thumb"),
+            b"thumbnail",
+            AtomicWriteMode::Replace,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        library
+            .confirm_remote_media(&storage, REMOTE_ID)
+            .await
+            .unwrap(),
+        2
+    );
+    let list = crate::remote::local_state::media_list_json::MediaList::load_or_default(
+        &library
+            .inner
+            .local_dirs
+            .remote_media_list(&REMOTE_ID.to_string())
+            .media_list_path(),
+    )
+    .unwrap();
+    assert!(list.has_full(&media_id));
+    assert!(list.has_thumb(&media_id));
+
+    storage.delete(&format!("{prefix}.thumb")).await.unwrap();
+    assert_eq!(
+        library
+            .confirm_remote_media(&storage, REMOTE_ID)
+            .await
+            .unwrap(),
+        0
+    );
+    let refreshed = crate::remote::local_state::media_list_json::MediaList::load_or_default(
+        &library
+            .inner
+            .local_dirs
+            .remote_media_list(&REMOTE_ID.to_string())
+            .media_list_path(),
+    )
+    .unwrap();
+    assert!(refreshed.has_full(&media_id));
+    assert!(
+        !refreshed.has_thumb(&media_id),
+        "a completed scan must clear a thumbnail observation when the remote no longer lists it"
     );
 }
 

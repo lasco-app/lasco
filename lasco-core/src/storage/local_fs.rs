@@ -18,11 +18,8 @@ impl StorageLocalFs {
         let root = root.into();
         Self { root }
     }
-}
 
-#[async_trait]
-impl Storage for StorageLocalFs {
-    async fn put(&self, key: &str, data: &[u8]) -> Result<()> {
+    pub(crate) fn put_sync(&self, key: &str, data: &[u8]) -> Result<()> {
         let path = self.root.join(key);
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).map_err(|e| StorageError::Other(Box::new(e)))?;
@@ -30,7 +27,12 @@ impl Storage for StorageLocalFs {
         fs::write(path, data).map_err(|e| StorageError::Other(Box::new(e)))
     }
 
-    async fn put_atomic(&self, key: &str, data: &[u8], _mode: AtomicWriteMode) -> Result<bool> {
+    pub(crate) fn put_atomic_sync(
+        &self,
+        key: &str,
+        data: &[u8],
+        _mode: AtomicWriteMode,
+    ) -> Result<bool> {
         let path = self.root.join(key);
         let temp_path = path.with_file_name(format!(
             ".{}.{}.temp",
@@ -45,7 +47,7 @@ impl Storage for StorageLocalFs {
         Ok(true)
     }
 
-    async fn get(&self, key: &str) -> Result<Vec<u8>> {
+    pub(crate) fn get_sync(&self, key: &str) -> Result<Vec<u8>> {
         let path = self.root.join(key);
         fs::read(&path).map_err(|e| {
             if e.kind() == io::ErrorKind::NotFound {
@@ -56,7 +58,7 @@ impl Storage for StorageLocalFs {
         })
     }
 
-    async fn delete(&self, key: &str) -> Result<()> {
+    pub(crate) fn delete_sync(&self, key: &str) -> Result<()> {
         let path = self.root.join(key);
         match fs::remove_file(path) {
             Ok(()) => Ok(()),
@@ -65,7 +67,7 @@ impl Storage for StorageLocalFs {
         }
     }
 
-    async fn list(&self, prefix: &str) -> Result<Vec<String>> {
+    pub(crate) fn list_sync(&self, prefix: &str) -> Result<Vec<String>> {
         let base = self.root.join(prefix);
         if !base.exists() {
             return Err(StorageError::NotFound);
@@ -87,8 +89,60 @@ impl Storage for StorageLocalFs {
         Ok(keys)
     }
 
-    async fn exists(&self, key: &str) -> Result<bool> {
+    pub(crate) fn exists_sync(&self, key: &str) -> Result<bool> {
         Ok(self.root.join(key).exists())
+    }
+
+    pub(crate) fn list_recursive_sync(&self, prefix: &str) -> Result<Vec<String>> {
+        let base = self.root.join(prefix);
+        if !base.exists() {
+            return Err(StorageError::NotFound);
+        }
+        let mut keys = Vec::new();
+        for entry in WalkDir::new(&base)
+            .min_depth(1)
+            .into_iter()
+            .filter_map(std::result::Result::ok)
+        {
+            if entry.file_type().is_file()
+                && let Ok(rel) = entry.path().strip_prefix(&self.root)
+                && let Some(key) = rel.to_str()
+            {
+                keys.push(key.to_owned());
+            }
+        }
+        Ok(keys)
+    }
+}
+
+#[async_trait]
+impl Storage for StorageLocalFs {
+    async fn put(&self, key: &str, data: &[u8]) -> Result<()> {
+        self.put_sync(key, data)
+    }
+
+    async fn put_atomic(&self, key: &str, data: &[u8], mode: AtomicWriteMode) -> Result<bool> {
+        self.put_atomic_sync(key, data, mode)
+    }
+
+    async fn get(&self, key: &str) -> Result<Vec<u8>> {
+        self.get_sync(key)
+    }
+
+    async fn delete(&self, key: &str) -> Result<()> {
+        self.delete_sync(key)
+    }
+
+    async fn list(&self, prefix: &str) -> Result<Vec<String>> {
+        self.list_sync(prefix)
+    }
+
+    async fn list_recursive(&self, prefix: &str) -> Result<Vec<String>> {
+        self.list_recursive_sync(prefix)
+    }
+
+    async fn exists(&self, key: &str) -> Result<bool> {
+        self.exists_sync(key)
     }
 }
 

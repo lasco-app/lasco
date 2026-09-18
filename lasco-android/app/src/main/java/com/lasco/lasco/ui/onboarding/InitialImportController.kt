@@ -164,7 +164,7 @@ class InitialImportController(
         // match the MediaStore DATE_ADDED it is compared against.
         val startedAt = System.currentTimeMillis() / 1000
 
-        sync.stopScheduledPush()
+        sync.stopScheduledSync()
         _importState.value = ImportState.Importing(0, total, ImportPhase.PreparingLibrary)
         withContext(io) { importer.clearCache() }
 

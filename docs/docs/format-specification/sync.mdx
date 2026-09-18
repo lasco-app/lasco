@@ -21,7 +21,7 @@ export const AccessCard = ({ children }) => (
 
 ### Summary
 
-Fetch lists and downloads remote operation files missing from the remote's last-known state, verifies that the remote has not lost any previously known CRDT dots, then applies their operations to `CrdtState` and appends them to the local log before rebuilding derived state. It then confirms which media the remote holds and records them in that remote's media inventory. It only adds missing `mk_*.enc` files and does not download media or thumbnails. Fetch never modifies or removes a remote file.
+Fetch lists and downloads remote operation files missing from the remote's last-known state, verifies that the remote has not lost any previously known CRDT dots, then applies their operations to `CrdtState` and appends them to the local log before rebuilding derived state. It removes local cache blobs for newly learned (and previously interrupted) hard deletions, then confirms which non-tombstoned media the remote holds and records them in that remote's media inventory. It only adds missing `mk_*.enc` files and does not download media or thumbnails. Fetch never modifies or removes a remote file.
 
 ### Required access
 
@@ -77,7 +77,12 @@ Fetch lists and downloads remote operation files missing from the remote's last-
     </tr>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>6</td>
-      <td>Run the media availability confirmation described below against this remote. It covers all known media, not only the ones created by the operations merged in this run, so a blob uploaded after its creation operation was merged is still discovered. Every error there is ignored, so it cannot fail an otherwise valid fetch.</td>
+      <td>Remove every locally cached `.data` and `.thumb` file whose known creation metadata is now behind a `MediaDeletion` tombstone. Missing files are already clean; cleanup failure never reverses the durable tombstone and is retried by a later Fetch or library open.</td>
+      <td><span className="tag tag-warn">Delete local media cache file</span></td>
+    </tr>
+    <tr>
+      <td style={{ whiteSpace: 'nowrap' }}>7</td>
+      <td>Run the media availability confirmation described below against this remote. It covers all non-tombstoned media, including trashed media, not only the ones created by the operations merged in this run, so a blob uploaded after its creation operation was merged is still discovered. Every error there is ignored, so it cannot fail an otherwise valid fetch.</td>
       <td><span className="tag tag-ok">List remote media folders</span> <span className="tag tag-warn">Write local media list</span></td>
     </tr>
   </tbody>
@@ -124,7 +129,7 @@ cannot become an implicit fetch.
   <tbody>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>1</td>
-      <td>Select every data blob and every thumbnail known to the reconstructed state that the inventory does not already confirm. A blob stays a candidate until it is confirmed once, and is never probed again after that.</td>
+      <td>Select every data blob and every thumbnail for non-tombstoned media known to the reconstructed state that the inventory does not already confirm. Trashed media remain candidates; a hard-deleted ID never is. A blob stays a candidate until it is confirmed once, and is never probed again after that.</td>
       <td><span className="tag tag-ok">Read local state</span></td>
     </tr>
     <tr>
@@ -146,7 +151,9 @@ cannot become an implicit fetch.
 </table>
 
 Confirmation only ever adds. It never records a blob as absent and never withdraws a
-confirmation, so an unconfirmed blob means unconfirmed, not absent from the remote.
+confirmation, so an unconfirmed blob means unconfirmed, not absent from the remote. A hard-deleted
+ID is excluded from confirmation even if this cache still positively records it; a trashed ID
+remains eligible, because its encrypted blobs must be available for Restore.
 
 ## Push Preparation
 
@@ -195,7 +202,7 @@ usable offline.
   <tbody>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>1</td>
-      <td>Take the data blob and the thumbnail of every media known to the reconstructed state as two separate items, and drop the ones the target's own inventory already confirms. Everything below resolves one blob, never a media: the two blobs of one media are missing, found, and fetched from independently.</td>
+      <td>Take the data blob and the thumbnail of every non-tombstoned media known to the reconstructed state as two separate items, including trashed media, and drop the ones the target's own inventory already confirms. Everything below resolves one blob, never a media: the two blobs of one media are missing, found, and fetched from independently.</td>
       <td><span className="tag tag-ok">Read local state</span> <span className="tag tag-ok">Read local media list</span></td>
     </tr>
     <tr>
@@ -233,9 +240,24 @@ fetching, and preparation is retried. An automatic push has no one to ask and fa
 
 ### Summary
 
-Push brings a target remote up to date with the local library by uploading missing master-key and operation files, then uploading any media and thumbnails referenced by the reconstructed local state that are not already known to be on that remote. When a required media file is absent locally, push can relay it from another remote without first performing a full fetch.
+The lifecycle-specific ordering and recovery rules are specified in
+[Media deletion](./media-deletion).
+
+Push brings a target remote up to date with the local library by uploading missing master-key and operation files, then uploading any active or trashed media and thumbnails referenced by the reconstructed local state that are not already known to be on that remote. When a required media file is absent locally, push can relay it from another remote without first performing a full fetch.
 
 Push uploads all files that are considered missing on the target remote, based on its last known state.
+
+For hard deletion, Push first delivers the ordinary encrypted `MediaDeletion` operation. Only after
+that operation is durable on the target may it delete that media's `.data` and `.thumb` keys. It
+then removes the IDs from that target's local positive inventory. Remote deletion is idempotent:
+an absent key is already reclaimed. A failed cleanup leaves the tombstone durable and is retried on
+the next Push to that remote. This makes physical deletion eventual across remotes, rather than a
+cross-remote transaction.
+
+The media inventory is a positive hint, never authority for a transfer. Current CRDT state decides
+whether an ID is eligible to upload or fetch. Therefore a device may push an active item, skip its
+upload because its target inventory positively remembers the blob, then later Fetch that target's
+tombstone and delete the local cache. Push is intentionally not fetch-first.
 
 For operation files, the client selects operations from the complete local operation log whose dots are not covered by the target remote's cached operation files, then writes them as one immutable compaction file. For media and thumbnail files, since they are downloaded lazily, the client may not have them on disk. Because the last known state of all remotes is stored locally, the push procedure can download the needed files directly from another remote and immediately upload them to the target, without performing a full fetch.
 
@@ -317,12 +339,12 @@ implicit fetch.
     </tr>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>5</td>
-      <td>Run the media availability confirmation described above against the target, so a blob another client uploaded is neither reported missing nor uploaded again.</td>
-      <td><span className="tag tag-ok">List remote media folders</span> <span className="tag tag-warn">Write local media list</span></td>
+      <td>For every hard-deleted media with known creation metadata, delete its `.data` and `.thumb` keys from the target after the tombstone operation has been uploaded. Remove successfully reclaimed IDs from the target's local positive media inventory. Availability confirmation already ran against the current non-tombstoned state, so deletion never causes a hard-deleted blob to become an upload candidate.</td>
+      <td><span className="tag tag-warn">Delete remote media and thumbnail</span> <span className="tag tag-warn">Write local media list</span></td>
     </tr>
     <tr>
       <td style={{ whiteSpace: 'nowrap' }}>6</td>
-      <td>For each blob still unconfirmed in the target's media inventory, read it from the local cache or from the remote the media source names for it, then ensure it exists on the target with a non-overwriting write and record what the target now holds. Each blob is handled on its own, so a media whose data blob is already confirmed is still visited for its thumbnail alone, and a media whose thumbnail is nowhere to be found simply stays unconfirmed for it.</td>
+      <td>After reclamation and cloud-quota admission, for each active or trashed blob still unconfirmed in the target's media inventory, read it from the local cache or from the remote the media source names for it, then ensure it exists on the target with a non-overwriting write and record what the target now holds. Each blob is handled on its own, so a media whose data blob is already confirmed is still visited for its thumbnail alone, and a media whose thumbnail is nowhere to be found simply stays unconfirmed for it.</td>
       <td><span className="tag tag-ok">Read local media</span> <span className="tag tag-warn">Write remote media and thumbnail</span> <span className="tag tag-warn">Write local media list</span></td>
     </tr>
   </tbody>

@@ -11,17 +11,24 @@ FFI_DIR="$WORKSPACE_ROOT/lasco-ffi"
 ARTIFACTS="$FFI_DIR/artifacts"
 XCODE_PROJECT="$WORKSPACE_ROOT/lasco-swift"
 XCODE_SOURCES="$XCODE_PROJECT/Lasco"
+# Keep native code compiled by Rust dependencies (for example BLAKE3's NEON
+# implementation) compatible with the Swift app's minimum iOS version.
+# cc-rs otherwise falls back to the installed Xcode SDK's default target.
+IOS_DEPLOYMENT_TARGET="${IOS_DEPLOYMENT_TARGET:-17.6}"
 
 # ── 1. Build ──────────────────────────────────────────────────────────────────
 
 echo "==> Building for aarch64-apple-ios (device)"
-cargo build -p "$CRATE" --target aarch64-apple-ios --release
+IPHONEOS_DEPLOYMENT_TARGET="$IOS_DEPLOYMENT_TARGET" \
+    cargo build -p "$CRATE" --target aarch64-apple-ios --release
 
 echo "==> Building for aarch64-apple-ios-sim (Apple Silicon simulator)"
-cargo build -p "$CRATE" --target aarch64-apple-ios-sim --release
+IPHONEOS_DEPLOYMENT_TARGET="$IOS_DEPLOYMENT_TARGET" \
+    cargo build -p "$CRATE" --target aarch64-apple-ios-sim --release
 
 echo "==> Building for x86_64-apple-ios (Intel simulator)"
-cargo build -p "$CRATE" --target x86_64-apple-ios --release
+IPHONEOS_DEPLOYMENT_TARGET="$IOS_DEPLOYMENT_TARGET" \
+    cargo build -p "$CRATE" --target x86_64-apple-ios --release
 
 echo "==> Building for aarch64-apple-darwin"
 cargo build -p "$CRATE" --target aarch64-apple-darwin --release

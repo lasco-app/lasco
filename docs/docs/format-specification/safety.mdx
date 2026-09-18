@@ -88,6 +88,13 @@ confirmation, which runs inside fetch, inside push, and on its own when a user a
 by push after a successful ensure-present upload. An unconfirmed blob means unconfirmed, not
 absent from the remote.
 
+The inventory is not authority over lifecycle. Planning first selects IDs from current resolved
+CRDT state: trashed media remains eligible for confirmation and upload, while a hard-deleted ID is
+not eligible even if an old inventory entry positively remembers it. After a durable
+`MediaDeletion` is pushed, Push deletes that target remote's data and thumbnail objects and removes
+the positive inventory entry. This ordering prevents physical reclamation from making a still-live
+item unavailable.
+
 Push preparation is the main reader. It resolves where each blob the target is missing can be
 read from, using nothing but these inventories and the local media cache, which is why an
 incomplete inventory shows up as an unresolved media rather than as a wrong upload.

@@ -17,7 +17,8 @@ use crate::library_json::{
 use crate::operations::{LibraryPassword, LibraryUsername};
 use crate::s3_secret::{encrypt_s3_secret_key, resolve_s3_credentials};
 use crate::session::{session_load_master_key, session_store_master_key};
-use crate::storage::{Storage, StorageLocalFs, StorageS3};
+use crate::smb_secret::resolve_smb_password;
+use crate::storage::{SmbConnectionConfig, Storage, StorageLocalFs, StorageS3, StorageSmb};
 
 /// Constructs the storage backend for an already-selected remote configuration.
 ///
@@ -67,6 +68,23 @@ pub fn build_storage(
                 &access_key,
                 &secret_key,
             )?))
+        }
+        RemoteKind::Smb(smb_cfg) => {
+            let master_key = master_key
+                .ok_or_else(|| anyhow::anyhow!("master key required to decrypt SMB credentials"))?;
+            let password = resolve_smb_password(smb_cfg, master_key)
+                .map_err(|e| anyhow::anyhow!("failed to resolve SMB credentials: {e}"))?;
+            let config = SmbConnectionConfig::new(
+                &smb_cfg.server,
+                smb_cfg.port,
+                &smb_cfg.share,
+                smb_cfg.path_prefix.as_deref(),
+                &smb_cfg.username,
+                &password,
+                smb_cfg.domain.as_deref(),
+            )
+            .map_err(|e| anyhow::anyhow!("invalid SMB configuration: {e}"))?;
+            Ok(Box::new(StorageSmb::new(config)))
         }
         RemoteKind::CloudS3(_) => bail!("Lasco Cloud credentials must be supplied at runtime"),
     }
@@ -422,6 +440,246 @@ pub async fn add_existing_library_s3(
         .await
         .map_err(|e| anyhow::anyhow!("failed to fetch from remote: {e}"))?;
 
+    Ok((library_id, library))
+}
+
+/// Add a library that already exists on an SMB 2/3 remote.
+///
+/// The supplied SMB password is used only to bootstrap the connection. Once the
+/// library master key is recovered, it is encrypted before the remote is saved.
+#[allow(clippy::too_many_arguments)]
+pub async fn add_existing_library_smb(
+    app_dir: &Path,
+    nickname: String,
+    username: LibraryUsername,
+    password: LibraryPassword,
+    new_user: Option<(LibraryUsername, LibraryPassword)>,
+    remote_id: String,
+    server: String,
+    port: u16,
+    share: String,
+    path_prefix: Option<String>,
+    smb_username: String,
+    smb_password: String,
+    domain: Option<String>,
+    session_dir: Option<&Path>,
+) -> Result<(LibraryId, Library)> {
+    let connection = SmbConnectionConfig::new(
+        &server,
+        port,
+        &share,
+        path_prefix.as_deref(),
+        &smb_username,
+        &smb_password,
+        domain.as_deref(),
+    )?;
+    let storage = StorageSmb::new(connection);
+    add_existing_library_from_storage(
+        app_dir,
+        nickname,
+        username,
+        password,
+        new_user,
+        remote_id,
+        &storage,
+        |master_key| {
+            let (password_encrypted, password_encryption_description) =
+                crate::smb_secret::encrypt_smb_password(master_key, &smb_password)
+                    .map_err(|e| anyhow::anyhow!("failed to encrypt SMB password: {e}"))?;
+            Ok(RemoteKind::Smb(crate::library_json::SmbConfig {
+                server,
+                port,
+                share,
+                path_prefix,
+                username: smb_username,
+                domain,
+                password_encrypted,
+                password_encryption_description,
+            }))
+        },
+        session_dir,
+    )
+    .await
+}
+
+/// Add a library that already exists at a trusted local filesystem path.
+///
+/// The caller is responsible for obtaining the user's permission to access the path on platforms
+/// which require it. The path is stored as a fixed-path remote after the library master key has
+/// been recovered.
+pub async fn add_existing_library_fixed_path(
+    app_dir: &Path,
+    nickname: String,
+    username: LibraryUsername,
+    password: LibraryPassword,
+    new_user: Option<(LibraryUsername, LibraryPassword)>,
+    remote_id: String,
+    root_dir: std::path::PathBuf,
+    session_dir: Option<&Path>,
+) -> Result<(LibraryId, Library)> {
+    let storage = StorageLocalFs::new(&root_dir);
+    let remote_root_dir = root_dir.clone();
+    add_existing_library_from_storage(
+        app_dir,
+        nickname,
+        username,
+        password,
+        new_user,
+        remote_id,
+        &storage,
+        |_master_key| {
+            Ok(RemoteKind::FixedPath(
+                crate::library_json::FixedPathConfig {
+                    root_dir: remote_root_dir,
+                },
+            ))
+        },
+        session_dir,
+    )
+    .await
+}
+
+/// Shared bootstrap workflow for storage remotes whose credentials are supplied
+/// by the caller and encrypted only after the library master key is available.
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+async fn add_existing_library_from_storage<F>(
+    app_dir: &Path,
+    nickname: String,
+    username: LibraryUsername,
+    password: LibraryPassword,
+    new_user: Option<(LibraryUsername, LibraryPassword)>,
+    remote_id: String,
+    storage: &dyn Storage,
+    remote_kind: F,
+    session_dir: Option<&Path>,
+) -> Result<(LibraryId, Library)>
+where
+    F: FnOnce(&MasterKey) -> Result<RemoteKind>,
+{
+    let remote_library_dir = storage
+        .list("library/")
+        .await
+        .map_err(|e| anyhow::anyhow!("remote unreachable: {e}"))?;
+    if remote_library_dir.is_empty() {
+        bail!("no library found at this remote");
+    }
+    let remote_library_uuid = remote_library_dir
+        .iter()
+        .find_map(|key| {
+            let name = key.rsplit('/').next().unwrap_or(key);
+            name.strip_prefix("library_id_")
+                .and_then(|value| value.parse::<uuid::Uuid>().ok())
+        })
+        .ok_or_else(|| anyhow::anyhow!("remote is missing library_id_{{uuid}} file"))?;
+    crate::library::sync::verify_remote_library_format_with_keys(&remote_library_dir)?;
+    let library_id = LibraryId(remote_library_uuid);
+    let device_id = crate::crdt::DeviceId::random();
+    let local_dirs = LocalDirs::new(app_dir, &library_id);
+    local_dirs
+        .ensure_state_dirs()
+        .context("failed to create local state directories")?;
+    local_dirs
+        .ensure_sync_dirs()
+        .context("failed to create local sync directories")?;
+
+    let lib_dir = local_dirs.local_state_library_dir();
+    for key in &remote_library_dir {
+        let basename = key.rsplit('/').next().unwrap_or(key);
+        if basename.is_empty() {
+            continue;
+        }
+        let data = storage
+            .get(key)
+            .await
+            .map_err(|e| anyhow::anyhow!("failed to download {key}: {e}"))?;
+        std::fs::write(lib_dir.path().join(basename), &data)
+            .with_context(|| format!("failed to write crypto file {basename}"))?;
+    }
+    let (master_key, active_password_uuid) =
+        find_master_key(lib_dir.path(), &username.0, &password.0)
+            .map_err(|_| anyhow::anyhow!("failed to open library — wrong username or password"))?;
+    let library = Library::open_with_master_key(
+        local_dirs.clone(),
+        master_key.clone(),
+        library_id,
+        device_id,
+        username.clone(),
+    )
+    .map_err(|e| anyhow::anyhow!("failed to open library: {e}"))?;
+    let (effective_username, active_password_uuid, library) = match new_user {
+        Some((new_username, new_password)) => {
+            let new_uuid = library
+                .user_add(new_username.clone(), new_password)
+                .await
+                .map_err(|e| anyhow::anyhow!("failed to add user: {e}"))?;
+            let mk_name = format!("mk_{}_{}.enc", new_username.0, new_uuid);
+            let mk_bytes = std::fs::read(lib_dir.path().join(&mk_name))
+                .with_context(|| format!("failed to read {mk_name}"))?;
+            let remote_key = format!("library/{mk_name}");
+            if storage
+                .exists(&remote_key)
+                .await
+                .map_err(|e| anyhow::anyhow!("failed to check new user key: {e}"))?
+            {
+                let remote_bytes = storage
+                    .get(&remote_key)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("failed to read existing new user key: {e}"))?;
+                if remote_bytes != mk_bytes {
+                    bail!("existing remote master-key file differs: {remote_key}");
+                }
+            } else {
+                storage
+                    .put_atomic(
+                        &remote_key,
+                        &mk_bytes,
+                        crate::storage::AtomicWriteMode::Replace,
+                    )
+                    .await
+                    .map_err(|e| anyhow::anyhow!("failed to upload new user key: {e}"))?;
+            }
+            let library = Library::open_with_master_key(
+                local_dirs,
+                master_key.clone(),
+                library_id,
+                device_id,
+                new_username.clone(),
+            )
+            .map_err(|e| anyhow::anyhow!("failed to reopen library as new user: {e}"))?;
+            (new_username, new_uuid, library)
+        }
+        None => (username, active_password_uuid, library),
+    };
+
+    let remote = crate::library::sync::remote_access::StorageRead::new(storage);
+    let remote_uuid = crate::library::sync::discover_remote_uuid(&remote)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to read remote id: {e}"))?;
+    let remote_config = RemoteConfig {
+        remote_uuid,
+        name: remote_id,
+        auto_push: true,
+        media_fetch_priority: 0,
+        exclude_from_media_fetch: false,
+        kind: remote_kind(&master_key)?,
+    };
+    let library_config = LibraryJson {
+        library_nickname: LibraryNickname(nickname),
+        device_id,
+        default_username: Some(effective_username.clone()),
+        active_password_uuid: Some(active_password_uuid),
+        default_fetch_remote: Some(remote_uuid),
+        auto_import_device_media: false,
+        remotes: vec![remote_config],
+        media_source_order: vec![remote_uuid],
+    };
+    save_library(app_dir, &library_id, &library_config)?;
+    session_store_master_key(library_id, &effective_username, &master_key, session_dir)
+        .context("failed to store session key")?;
+    library
+        .fetch(storage, remote_uuid)
+        .await
+        .map_err(|e| anyhow::anyhow!("failed to fetch from remote: {e}"))?;
     Ok((library_id, library))
 }
 

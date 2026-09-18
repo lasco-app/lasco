@@ -211,9 +211,9 @@ html[class] .navbar__items {
   align-items: center;
 }
 
-/* Always show color mode toggle */
+/* The site uses light mode only. */
 html[class] [class*="colorModeToggle"] {
-  display: flex !important;
+  display: none !important;
 }
 
 /* Sidebar - 220px width, border right */

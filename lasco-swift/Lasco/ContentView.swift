@@ -280,6 +280,9 @@ struct ContentView: View {
                 } label: {
                     Label("Add to album", systemImage: "folder.badge.plus")
                 }
+                Button(role: .destructive, action: moveSelectionToTrash) {
+                    Label("Move to Trash", systemImage: "trash")
+                }
             } label: {
                 Text("...")
                     .font(LascoFont.body())
@@ -417,6 +420,21 @@ struct ContentView: View {
                 selection = []
                 isSelecting = false
                 toastManager.show(ok: "Added \(mediaIds.count) item(s) to \(album.name)")
+            } catch {
+                toastManager.show(error: error.localizedDescription)
+            }
+        }
+    }
+
+    private func moveSelectionToTrash() {
+        let mediaIDs = selection
+        Task {
+            do {
+                for mediaID in mediaIDs {
+                    try await repository.deleteMedia(id: mediaID)
+                }
+                selection = []
+                isSelecting = false
             } catch {
                 toastManager.show(error: error.localizedDescription)
             }

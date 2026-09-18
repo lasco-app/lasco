@@ -13,7 +13,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::identifiers::{AlbumUuid, GroupUuid, MediaUuid};
 use crate::library::media::MediaHash;
 use crate::operations::{
-    AlbumName, GpsCoords, LibraryUsername, MediaFilename, MediaName, StorageDate,
+    AlbumName, ApplePhotosCloudAssetId, ApplePhotosCloudCollectionId, GpsCoords, LibraryUsername, MediaFilename, MediaName,
+    StorageDate,
 };
 use crate::state::{ComputedViews, build_computed_views};
 
@@ -40,10 +41,25 @@ pub struct MediaEntry {
     pub gps: Option<GpsCoords>,
     pub apple_aae_media_id: Option<MediaUuid>,
     pub apple_live_photo_media_id: Option<MediaUuid>,
+    /// A trashed item remains a live media record for sync and Restore, but is
+    /// excluded from ordinary browse views.
+    pub trashed: bool,
+    /// Audit metadata for the operation that placed this item in Trash. It is
+    /// present only while the active trash register is `true`.
+    pub trashed_by: Option<LibraryUsername>,
+    pub trashed_at: Option<DateTime<Utc>>,
     /// Set when another media references this one as its companion resource. It is derived
     /// from the creation payloads of every other media, never stored.
     pub companion_kind: Option<CompanionKind>,
     pub group_ids: Vec<GroupUuid>,
+}
+
+/// Metadata retained for a permanently deleted item so cache and remote cleanup
+/// can find its immutable blob paths without making the item browseable again.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HardDeletedMedia {
+    pub media_id: MediaUuid,
+    pub storage_date: StorageDate,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AlbumEntry {
@@ -136,6 +152,12 @@ pub struct CrdtOperation {
 #[serde(tag = "type")]
 pub enum OperationContent {
     MediaCreation(MediaCreation),
+    /// Records that a Lasco media item represents one resource of an Apple Photos asset revision.
+    /// This is append-only provenance: a later Photos revision emits new origins rather than
+    /// mutating the older one.
+    ApplePhotosResourceOriginAdded(ApplePhotosResourceOrigin),
+    /// Records the Lasco album created or reused for an iCloud Photos folder or album.
+    ApplePhotosCollectionLinkAdded(ApplePhotosCollectionLink),
     MediaRename {
         media_id: MediaUuid,
         name: Option<MediaName>,
@@ -144,6 +166,15 @@ pub enum OperationContent {
         media_id: MediaUuid,
         key: String,
         value: String,
+    },
+    MediaTrashSet {
+        media_id: MediaUuid,
+        trashed: bool,
+    },
+    /// Permanent deletion of the selected trashed media and its trashed
+    /// companion closure. `media_ids` captures the exact IDs at command time.
+    MediaDeletion {
+        media_ids: Vec<MediaUuid>,
     },
     AlbumCreation {
         album_id: AlbumUuid,
@@ -207,9 +238,65 @@ pub struct MediaCreation {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ApplePhotosResourceOrigin {
+    pub media_id: MediaUuid,
+    pub cloud_asset_id: ApplePhotosCloudAssetId,
+    pub modification_date: Option<DateTime<Utc>>,
+    pub resource_type: ApplePhotosResourceType,
+    pub filename: String,
+}
+
+/// The PhotoKit resource roles Lasco currently imports. Unsupported Photos resources are never
+/// represented as an origin, rather than being persisted as an unstable string value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum ApplePhotosResourceType {
+    Photo,
+    FullSizePhoto,
+    Video,
+    FullSizeVideo,
+    AdjustmentData,
+    PairedVideo,
+    FullSizePairedVideo,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ApplePhotosResourceOriginEntry {
+    pub dot: Dot,
+    pub origin: ApplePhotosResourceOrigin,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum ApplePhotosCollectionKind {
+    Folder,
+    Album,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ApplePhotosCollectionLink {
+    pub album_id: AlbumUuid,
+    pub cloud_collection_id: ApplePhotosCloudCollectionId,
+    pub kind: ApplePhotosCollectionKind,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ApplePhotosCollectionLinkEntry {
+    pub dot: Dot,
+    pub link: ApplePhotosCollectionLink,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LastWriteWin<T> {
     pub dot: Dot,
     pub value: T,
+}
+
+/// Audit details paired with a `MediaTrashSet` register write. Keeping this
+/// separate from the boolean register preserves its conflict-resolution
+/// behavior while making the winning trash action available to the UI.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrashMetadata {
+    pub author: LibraryUsername,
+    pub timestamp: DateTime<Utc>,
 }
 
 impl<T> LastWriteWin<T> {
@@ -257,6 +344,12 @@ pub struct CrdtState {
     pub(super) groups: HashMap<GroupUuid, GroupCrdt>,
     pub(super) album_memberships: HashMap<(AlbumUuid, MediaUuid), ObservedRemoveSet>,
     pub(super) group_memberships: HashMap<(GroupUuid, MediaUuid), ObservedRemoveSet>,
+    /// Immutable Apple Photos provenance entries, deduplicated by their CRDT dot.
+    #[serde(default)]
+    pub(crate) apple_photos_resource_origins: Vec<ApplePhotosResourceOriginEntry>,
+    /// Immutable Apple Photos collection provenance entries, deduplicated by their CRDT dot.
+    #[serde(default)]
+    pub(crate) apple_photos_collection_links: Vec<ApplePhotosCollectionLinkEntry>,
     /// Derived, in-memory query indexes. This cache is never serialized.
     #[serde(skip)]
     pub(crate) views: ComputedViews,
@@ -278,6 +371,8 @@ impl Default for CrdtState {
             groups: HashMap::new(),
             album_memberships: HashMap::new(),
             group_memberships: HashMap::new(),
+            apple_photos_resource_origins: Vec::new(),
+            apple_photos_collection_links: Vec::new(),
             views: ComputedViews::default(),
         }
     }
@@ -289,6 +384,12 @@ pub struct MediaCrdt {
     pub author: Option<LastWriteWin<LibraryUsername>>,
     pub name: Option<LastWriteWin<Option<MediaName>>>,
     pub properties: HashMap<String, LastWriteWin<String>>,
+    pub trashed: Option<LastWriteWin<bool>>,
+    pub trash_metadata: Option<LastWriteWin<TrashMetadata>>,
+    /// A media tombstone is irreversible. It remains alongside creation
+    /// metadata so delayed operations cannot resurrect the item and cleanup
+    /// can still derive the immutable storage path.
+    pub tombstone: Option<Dot>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -359,6 +460,32 @@ impl CrdtState {
                 write_optional(&mut media.creation, operation.dot, creation.clone());
                 write_optional(&mut media.author, operation.dot, operation.author.clone());
             }
+            OperationContent::ApplePhotosResourceOriginAdded(origin) => {
+                if !self
+                    .apple_photos_resource_origins
+                    .iter()
+                    .any(|entry| entry.dot == operation.dot)
+                {
+                    self.apple_photos_resource_origins.push(ApplePhotosResourceOriginEntry {
+                        dot: operation.dot,
+                        origin: origin.clone(),
+                    });
+                    self.apple_photos_resource_origins.sort_by_key(|entry| entry.dot);
+                }
+            }
+            OperationContent::ApplePhotosCollectionLinkAdded(link) => {
+                if !self
+                    .apple_photos_collection_links
+                    .iter()
+                    .any(|entry| entry.dot == operation.dot)
+                {
+                    self.apple_photos_collection_links.push(ApplePhotosCollectionLinkEntry {
+                        dot: operation.dot,
+                        link: link.clone(),
+                    });
+                    self.apple_photos_collection_links.sort_by_key(|entry| entry.dot);
+                }
+            }
             OperationContent::MediaRename { media_id, name } => {
                 let media = self.media.entry(*media_id).or_default();
                 write_optional(&mut media.name, operation.dot, name.clone());
@@ -378,6 +505,28 @@ impl CrdtState {
                             value: value.clone(),
                         });
                 register.write(operation.dot, value.clone());
+            }
+            OperationContent::MediaTrashSet { media_id, trashed } => {
+                let media = self.media.entry(*media_id).or_default();
+                write_optional(&mut media.trashed, operation.dot, *trashed);
+                write_optional(
+                    &mut media.trash_metadata,
+                    operation.dot,
+                    TrashMetadata {
+                        author: operation.author.clone(),
+                        timestamp: operation.timestamp,
+                    },
+                );
+            }
+            OperationContent::MediaDeletion { media_ids } => {
+                for media_id in media_ids {
+                    let media = self.media.entry(*media_id).or_default();
+                    media.tombstone = Some(
+                        media
+                            .tombstone
+                            .map_or(operation.dot, |old| old.max(operation.dot)),
+                    );
+                }
             }
             OperationContent::AlbumCreation {
                 album_id,
@@ -522,6 +671,39 @@ impl CrdtState {
             .is_some_and(|album| album.creation.is_some() && album.tombstone.is_none())
     }
 
+    #[must_use]
+    pub fn is_media_trashed(&self, id: MediaUuid) -> bool {
+        self.media.get(&id).is_some_and(|media| {
+            media.tombstone.is_none()
+                && media
+                    .trashed
+                    .as_ref()
+                    .is_some_and(|register| register.value)
+        })
+    }
+
+    /// Returns paths for all tombstoned media whose creation metadata has been
+    /// observed. A deletion may arrive first; it becomes cleanup-eligible when
+    /// the creation operation later arrives.
+    #[must_use]
+    pub fn hard_deleted_media(&self) -> Vec<HardDeletedMedia> {
+        let mut result: Vec<_> = self
+            .media
+            .values()
+            .filter_map(|media| {
+                (media.tombstone.is_some())
+                    .then_some(media.creation.as_ref())
+                    .flatten()
+                    .map(|creation| HardDeletedMedia {
+                        media_id: creation.value.media_id,
+                        storage_date: creation.value.storage_date,
+                    })
+            })
+            .collect();
+        result.sort_by_key(|entry| entry.media_id.0);
+        result
+    }
+
     /// Resolves parents, cycles, and visibility without mutating canonical data.
     ///
     /// # Panics
@@ -597,6 +779,9 @@ impl CrdtState {
         // Creation payloads are immutable, so this reverse index only needs one pass.
         let mut companion_kinds: HashMap<MediaUuid, CompanionKind> = HashMap::new();
         for media in self.media.values() {
+            if media.tombstone.is_some() {
+                continue;
+            }
             let Some(creation) = &media.creation else {
                 continue;
             };
@@ -612,10 +797,18 @@ impl CrdtState {
         }
         let mut media_entries = Vec::new();
         for media in self.media.values() {
+            if media.tombstone.is_some() {
+                continue;
+            }
             let Some(creation) = &media.creation else {
                 continue;
             };
             let value = &creation.value;
+            let trashed_register = media.trashed.as_ref();
+            let is_trashed = trashed_register.is_some_and(|register| register.value);
+            let trash_metadata = media.trash_metadata.as_ref().filter(|metadata| {
+                trashed_register.is_some_and(|register| register.dot == metadata.dot)
+            });
             media_entries.push(MediaEntry {
                 media_id: value.media_id,
                 filename_original: value.filename_original.clone(),
@@ -640,6 +833,13 @@ impl CrdtState {
                 gps: value.gps,
                 apple_aae_media_id: value.apple_aae_media_id,
                 apple_live_photo_media_id: value.apple_live_photo_media_id,
+                trashed: is_trashed,
+                trashed_by: is_trashed
+                    .then(|| trash_metadata.map(|metadata| metadata.value.author.clone()))
+                    .flatten(),
+                trashed_at: is_trashed
+                    .then(|| trash_metadata.map(|metadata| metadata.value.timestamp))
+                    .flatten(),
                 companion_kind: companion_kinds.get(&value.media_id).copied(),
                 group_ids: Vec::new(),
             });

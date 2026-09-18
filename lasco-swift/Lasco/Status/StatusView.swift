@@ -8,6 +8,8 @@ struct StatusView: View {
 
     @State private var showRemotePicker = false
     @State private var showAddS3 = false
+    @State private var showAddUsb = false
+    @State private var showAddSmb = false
     @State private var showAddLocalFS = false
     @State private var showCloudLogin = false
     @State private var cloudConnected = false
@@ -66,7 +68,7 @@ struct StatusView: View {
                 onRetry: {
                     let target = context.target
                     pushBlocked = nil
-                    Task { await push(target) }
+                    Task { await sync(target) }
                 },
                 onCancel: { pushBlocked = nil }
             )
@@ -79,6 +81,8 @@ struct StatusView: View {
                 showCloud: !cloudConnected,
                 onCloud: { showRemotePicker = false; showCloudLogin = true },
                 onS3: { showRemotePicker = false; showAddS3 = true },
+                onUsb: { showRemotePicker = false; showAddUsb = true },
+                onSmb: { showRemotePicker = false; showAddSmb = true },
                 onLocalFS: { showRemotePicker = false; showAddLocalFS = true },
                 onDismiss: { showRemotePicker = false }
             )
@@ -96,6 +100,18 @@ struct StatusView: View {
         }
         .sheet(isPresented: $showAddS3) {
             AddS3RemoteView()
+                .environment(repository)
+                .environment(\.lascoTheme, .dark)
+                .preferredColorScheme(.dark)
+        }
+        .sheet(isPresented: $showAddUsb) {
+            AddUsbRemoteView()
+                .environment(repository)
+                .environment(\.lascoTheme, .dark)
+                .preferredColorScheme(.dark)
+        }
+        .sheet(isPresented: $showAddSmb) {
+            AddSmbRemoteView()
                 .environment(repository)
                 .environment(\.lascoTheme, .dark)
                 .preferredColorScheme(.dark)
@@ -279,33 +295,24 @@ struct StatusView: View {
                         lastFetch: syncCoordinator.lastFetchRecords[remote.remoteId],
                         isSynced: isSynced(remote),
                         shortfall: model.shortfall(remoteID: remote.remoteId),
-                        nextPushDate: remote.autoPush ? syncCoordinator.nextPushDate : nil,
-                        pushEnabled: syncCoordinator.isPushAllowed(remote.remoteId),
-                        fetchEnabled: syncCoordinator.isFetchAllowed(remote.remoteId),
+                        nextSyncDate: remote.autoPush ? syncCoordinator.nextSyncDate : nil,
+                        syncEnabled: syncCoordinator.isSyncAllowed(remote.remoteId),
+                        isSyncing: syncCoordinator.busyRemotes.contains(remote.remoteId),
                         isPushing: syncCoordinator.pushingRemotes.contains(remote.remoteId),
                         pushUploadProgress: syncCoordinator.pushUploadProgress[remote.remoteId],
-                        onPush: { Task { await push(remote) } },
-                        onFetch: {
-                            Task {
-                                if let err = await syncCoordinator.fetch(remoteID: remote.remoteId) {
-                                    toastManager.show(error: err)
-                                } else {
-                                    toastManager.show(ok: "\(remote.name): fetched")
-                                }
-                            }
-                        }
+                        onSync: { Task { await sync(remote) } }
                     )
                 }
             }
         }
     }
 
-    /// A manual push offers the recovery sheet when preparation could not place some media.
-    /// An automatic push has no one to ask, so `SyncCoordinator` reports its failure as is.
-    private func push(_ remote: FfiRemote) async {
-        switch await syncCoordinator.push(remoteID: remote.remoteId) {
+    /// A manual sync offers the recovery sheet when its push phase cannot place some media. An
+    /// automatic sync has no one to ask, so `SyncCoordinator` reports its failure as is.
+    private func sync(_ remote: FfiRemote) async {
+        switch await syncCoordinator.sync(remoteID: remote.remoteId) {
         case .success:
-            toastManager.show(ok: "\(remote.name): pushed")
+            toastManager.show(ok: "\(remote.name): synced")
         case .failed(let message):
             toastManager.show(error: message)
         case .missingLocalMedia:
@@ -341,24 +348,23 @@ private struct RemoteStatusCard: View {
     let lastFetch: SyncRecord?
     let isSynced: Bool
     let shortfall: FfiRemoteMediaShortfall?
-    let nextPushDate: Date?
-    let pushEnabled: Bool
-    let fetchEnabled: Bool
+    let nextSyncDate: Date?
+    let syncEnabled: Bool
+    let isSyncing: Bool
     let isPushing: Bool
     let pushUploadProgress: Double?
-    let onPush: () -> Void
-    let onFetch: () -> Void
+    let onSync: () -> Void
 
     private func pushBannerText(now: Date) -> String {
         guard isSynced else {
-            if let nextPushDate, nextPushDate > now {
-                let seconds = Int(nextPushDate.timeIntervalSince(now).rounded(.up))
-                return "local changes not pushed, pushing in \(seconds)s"
+            if let nextSyncDate, nextSyncDate > now {
+                let seconds = Int(nextSyncDate.timeIntervalSince(now).rounded(.up))
+                return "local changes not synced, syncing in \(seconds)s"
             }
-            return "local changes not pushed"
+            return "local changes not synced"
         }
         if let text = shortfallText { return text }
-        return "all local changes pushed"
+        return "all local changes synced"
     }
 
     /// Reads only once every operation has reached the remote, since media a remote has never
@@ -419,17 +425,20 @@ private struct RemoteStatusCard: View {
 
             Divider().background(theme.inkMuted.opacity(0.2))
 
+            let lastActivity = [
+                lastPush.map { ($0.success ? "synced" : "sync failed", $0) },
+                lastFetch.map { ($0.success ? "fetched" : "fetch failed", $0) },
+            ].compactMap { $0 }.max { $0.1.date < $1.1.date }
             SyncStatusRow(
-                label: "Push",
-                record: lastPush,
-                dateLabel: syncLabel(lastPush),
-                enabled: pushEnabled,
-                isInProgress: isPushing,
-                progress: pushUploadProgress,
-                action: onPush
+                label: "Sync",
+                record: lastActivity?.1,
+                dateLabel: lastActivity.map { "\($0.0) \(syncLabel($0.1))" } ?? "never",
+                isDefaultFetch: isDefaultFetch,
+                enabled: syncEnabled,
+                isInProgress: isSyncing,
+                progress: isPushing ? pushUploadProgress : nil,
+                action: onSync
             )
-            Divider().background(theme.inkMuted.opacity(0.2))
-            SyncStatusRow(label: "Fetch", record: lastFetch, dateLabel: syncLabel(lastFetch), isDefaultFetch: isDefaultFetch, enabled: fetchEnabled, action: onFetch)
         }
         .lascoPanel()
     }
@@ -491,7 +500,7 @@ private struct SyncStatusRow: View {
                             .fill(Color.red)
                             .frame(width: 7, height: 7)
                     }
-                    Text(isInProgress ? "Pushing" : label)
+                    Text(isInProgress ? "Syncing" : label)
                         .font(LascoFont.body())
                         .foregroundStyle(theme.inkSub)
                     if isDefaultFetch {

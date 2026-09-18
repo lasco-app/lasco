@@ -23,6 +23,9 @@ import uniffi.lasco_ffi.FfiAlbumUuid
 @Serializable
 data class AlbumKey(val albumId: String?, val albumName: String? = null) : NavKey
 
+@Serializable
+data object TrashKey : NavKey
+
 internal fun albumBreadcrumbTitle(albumNames: List<String>): String {
     if (albumNames.isEmpty()) return "ALBUMS"
 
@@ -84,6 +87,7 @@ fun AlbumsScreen(
                     backLabel = backLabel,
                     onBack = if (key.albumId != null) { { backStack.removeLastOrNull() } } else null,
                     onOpenChild = { child -> backStack.add(AlbumKey(child.albumId.value, child.name)) },
+                    onOpenTrash = { backStack.add(TrashKey) },
                     onOpenMedia = { position, ascending, target, thumbnail ->
                         key.albumId?.let { albumId ->
                             thumbnailHandoff.offer(thumbnail)
@@ -92,6 +96,9 @@ fun AlbumsScreen(
                     },
                     onPickerVisibleChange = onPickerVisibleChange,
                 )
+            }
+            entry<TrashKey> {
+                TrashScreen(onBack = { backStack.removeLastOrNull() })
             }
             entry<MediaDetailKey> { key ->
                 MediaDetailScreen(

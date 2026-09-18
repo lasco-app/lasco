@@ -97,6 +97,18 @@ impl Storage for StorageMockMemory {
         Ok(keys)
     }
 
+    async fn list_recursive(&self, prefix: &str) -> Result<Vec<String>> {
+        self.check_online()?;
+        self.list_call_count.fetch_add(1, Ordering::SeqCst);
+        Ok(self
+            .data
+            .lock()
+            .keys()
+            .filter(|key| key.starts_with(prefix))
+            .cloned()
+            .collect())
+    }
+
     async fn exists(&self, key: &str) -> Result<bool> {
         self.check_online()?;
         Ok(self.data.lock().contains_key(key))

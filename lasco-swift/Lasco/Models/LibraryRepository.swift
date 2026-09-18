@@ -39,6 +39,8 @@ protocol LibraryRepositoryProtocol: Sendable {
     func orphanMediaByDateCount() async throws -> Int
     func orphanMediaByDate(offset: Int, limit: Int) async throws -> [FfiMediaItem]
     func orphanMediaByDateNeighbors(position: Int) async throws -> FfiMediaNeighbors
+    func trashedMediaByDateCount() async throws -> Int
+    func trashedMediaByDate(offset: Int, limit: Int) async throws -> [FfiMediaItem]
     func albumsCount(parentID: FfiAlbumUuid?) async throws -> Int
     func albums(parentID: FfiAlbumUuid?, offset: Int, limit: Int) async throws -> [FfiAlbum]
     func albums(withIDs ids: Set<FfiAlbumUuid>) async throws -> [FfiAlbum]
@@ -64,6 +66,9 @@ protocol LibraryRepositoryProtocol: Sendable {
 
     func renameMedia(id: FfiMediaUuid, name: String?) async throws
     func deleteMedia(id: FfiMediaUuid) async throws
+    func restoreMedia(id: FfiMediaUuid) async throws
+    func hardDeleteMedia(id: FfiMediaUuid) async throws
+    func emptyTrash() async throws -> Int
     func addMediaToAlbum(albumID: FfiAlbumUuid, mediaID: FfiMediaUuid) async throws
     func addMediaToAlbumWithoutNotification(albumID: FfiAlbumUuid, mediaID: FfiMediaUuid) async throws
     func removeMediaFromAlbum(albumID: FfiAlbumUuid, mediaID: FfiMediaUuid) async throws
@@ -83,6 +88,10 @@ protocol LibraryRepositoryProtocol: Sendable {
 
     func importMedia(source: MediaImportSource, albumID: FfiAlbumUuid?) async throws -> FfiMediaUuid
     func importMediaWithoutNotification(source: MediaImportSource, albumID: FfiAlbumUuid?) async throws -> FfiMediaUuid
+    func applePhotosAssetRevisionMediaIDs(_ revision: FfiApplePhotosAssetRevision) async throws -> [FfiMediaUuid]?
+    func recordApplePhotosResourceOrigin(_ origin: FfiApplePhotosResourceOrigin) async throws
+    func applePhotosCollectionLinks(_ collections: [FfiApplePhotosCollectionIdentity]) async throws -> [FfiAlbumUuid?]
+    func recordApplePhotosCollectionLink(_ link: FfiApplePhotosCollectionLink) async throws
     func importMediaBatch(_ sources: [MediaImportSource], albumID: FfiAlbumUuid?) async throws -> [FfiMediaUuid]
     func setMediaThumbnail(mediaID: FfiMediaUuid, data: Data) async throws
     func evictLocalData(mediaIDs: [FfiMediaUuid]) async throws
@@ -98,8 +107,11 @@ protocol LibraryRepositoryProtocol: Sendable {
     func setAutoImportDeviceMedia(enabled: Bool) async throws
     func addUser(username: String, password: String) async throws
     func addRemoteFixedPath(name: String, path: String) async throws -> FfiRemoteUuid
+    func addRemoteUsbApple(name: String, bookmarkBase64: String) async throws -> FfiRemoteUuid
+    func ensureUsbAppleFolderIsUninitialized(bookmarkBase64: String) async throws
     func addRemoteDebugLocalApple(name: String) async throws -> FfiRemoteUuid
     func addRemoteS3(id: String, endpoint: String, bucket: String, region: String, pathPrefix: String, accessKey: String, secretKey: String) async throws -> FfiRemoteUuid
+    func addRemoteSmb(id: String, server: String, port: UInt16, share: String, pathPrefix: String, username: String, password: String, domain: String?) async throws -> FfiRemoteUuid
     func removeRemote(id: FfiRemoteUuid) async throws
     func initializeRemote(id: FfiRemoteUuid) async throws
     func connectRemote(id: FfiRemoteUuid) async throws
@@ -110,12 +122,16 @@ protocol LibraryRepositoryProtocol: Sendable {
     func push(remoteID: FfiRemoteUuid, progress: any PushProgressSink) async throws -> UInt64
     func fetch(remoteID: FfiRemoteUuid) async throws -> UInt64
     func confirmRemoteMedia(remoteID: FfiRemoteUuid) async throws -> UInt64
+    func confirmedRemoteMediaIDs(remoteID: FfiRemoteUuid, mediaIDs: [FfiMediaUuid]) async throws -> [FfiMediaUuid]
     func close() async
 }
 
 enum LibraryRepositoryError: LocalizedError {
     case closed
     case invalidNativeMediaBuffer
+    case invalidUsbFolder
+    case selectedFolderIsNotUsbDrive
+    case usbAccessDenied
     case cloudRemoteAlreadyAssociated
     case cloudSignOutRequiresRemoteRemoval
     case cloudAlreadyConnected
@@ -126,6 +142,12 @@ enum LibraryRepositoryError: LocalizedError {
             "The library session is closed."
         case .invalidNativeMediaBuffer:
             "The native media buffer is invalid."
+        case .invalidUsbFolder:
+            "Choose a folder on the USB drive."
+        case .selectedFolderIsNotUsbDrive:
+            "Select a folder on a connected USB drive, not On My iPhone or a cloud location."
+        case .usbAccessDenied:
+            "Lasco could not access the selected USB folder."
         case .cloudRemoteAlreadyAssociated:
             "Lasco Cloud storage is already associated with another library"
         case .cloudSignOutRequiresRemoteRemoval:
@@ -296,6 +318,18 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         try ensureOpen()
         guard position >= 0, position <= Int(UInt32.max) else { throw LascoError.NotFound }
         return try library.orphanMediaByDateNeighbors(position: UInt32(position))
+    }
+
+    func trashedMediaByDateCount() async throws -> Int {
+        try ensureOpen()
+        return Int(library.trashedMediaByDateCount())
+    }
+
+    func trashedMediaByDate(offset: Int, limit: Int) async throws -> [FfiMediaItem] {
+        try ensureOpen()
+        return try page(offset: offset, limit: limit) { start, end in
+            try library.trashedMediaByDateRange(posStartInclusive: start, posEndInclusive: end)
+        }
     }
 
     func albumsCount(parentID: FfiAlbumUuid?) async throws -> Int {
@@ -530,6 +564,33 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         await notify(.localMutation)
     }
 
+    func restoreMedia(id: FfiMediaUuid) async throws {
+        try ensureOpen()
+        try library.restoreMedia(mediaId: id)
+        await notify(.media(id))
+        await notify(.mediaList)
+        await notify(.albumList)
+        await notify(.localMutation)
+    }
+
+    func hardDeleteMedia(id: FfiMediaUuid) async throws {
+        try ensureOpen()
+        try library.hardDeleteMedia(mediaId: id)
+        await notify(.media(id))
+        await notify(.mediaList)
+        await notify(.albumList)
+        await notify(.localMutation)
+    }
+
+    func emptyTrash() async throws -> Int {
+        try ensureOpen()
+        let deleted = Int(try library.emptyTrash())
+        await notify(.mediaList)
+        await notify(.albumList)
+        await notify(.localMutation)
+        return deleted
+    }
+
     func addMediaToAlbum(albumID: FfiAlbumUuid, mediaID: FfiMediaUuid) async throws {
         try ensureOpen()
         try library.addMediaToAlbum(albumId: albumID, mediaId: mediaID)
@@ -539,6 +600,26 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
     func addMediaToAlbumWithoutNotification(albumID: FfiAlbumUuid, mediaID: FfiMediaUuid) async throws {
         try ensureOpen()
         try library.addMediaToAlbum(albumId: albumID, mediaId: mediaID)
+    }
+
+    func applePhotosAssetRevisionMediaIDs(_ revision: FfiApplePhotosAssetRevision) async throws -> [FfiMediaUuid]? {
+        try ensureOpen()
+        return try library.applePhotosAssetRevisionMediaIds(revision: revision)
+    }
+
+    func recordApplePhotosResourceOrigin(_ origin: FfiApplePhotosResourceOrigin) async throws {
+        try ensureOpen()
+        try library.recordApplePhotosResourceOrigin(origin: origin)
+    }
+
+    func applePhotosCollectionLinks(_ collections: [FfiApplePhotosCollectionIdentity]) async throws -> [FfiAlbumUuid?] {
+        try ensureOpen()
+        return try library.applePhotosCollectionLinks(collections: collections)
+    }
+
+    func recordApplePhotosCollectionLink(_ link: FfiApplePhotosCollectionLink) async throws {
+        try ensureOpen()
+        try library.recordApplePhotosCollectionLink(link: link)
     }
 
     func removeMediaFromAlbum(albumID: FfiAlbumUuid, mediaID: FfiMediaUuid) async throws {
@@ -733,6 +814,18 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         return id
     }
 
+    func addRemoteUsbApple(name: String, bookmarkBase64: String) async throws -> FfiRemoteUuid {
+        try ensureOpen()
+        let id = try library.addRemoteUsbApple(name: name, bookmarkBase64: bookmarkBase64)
+        await notify(.session)
+        return id
+    }
+
+    func ensureUsbAppleFolderIsUninitialized(bookmarkBase64: String) async throws {
+        try ensureOpen()
+        try library.ensureUsbAppleFolderIsUninitialized(bookmarkBase64: bookmarkBase64)
+    }
+
     func addRemoteDebugLocalApple(name: String) async throws -> FfiRemoteUuid {
         try ensureOpen()
         let id = try library.addRemoteDebugLocalApple(name: name)
@@ -743,6 +836,13 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
     func addRemoteS3(id: String, endpoint: String, bucket: String, region: String, pathPrefix: String, accessKey: String, secretKey: String) async throws -> FfiRemoteUuid {
         try ensureOpen()
         let remoteID = try library.addRemoteS3(name: id, endpoint: endpoint, bucket: bucket, region: region, pathPrefix: pathPrefix, accessKey: accessKey, secretKey: secretKey)
+        await notify(.session)
+        return remoteID
+    }
+
+    func addRemoteSmb(id: String, server: String, port: UInt16, share: String, pathPrefix: String, username: String, password: String, domain: String?) async throws -> FfiRemoteUuid {
+        try ensureOpen()
+        let remoteID = try library.addRemoteSmb(name: id, server: server, port: port, share: share, pathPrefix: pathPrefix, username: username, password: password, domain: domain)
         await notify(.session)
         return remoteID
     }
@@ -814,6 +914,11 @@ private actor LibraryRepositoryStorage: LibraryRepositoryProtocol {
         // The inventory drives push planning and the backup-coverage figures.
         await notify(.all)
         return result
+    }
+
+    func confirmedRemoteMediaIDs(remoteID: FfiRemoteUuid, mediaIDs: [FfiMediaUuid]) async throws -> [FfiMediaUuid] {
+        try ensureOpen()
+        return try library.confirmedRemoteMediaIds(remoteId: remoteID, mediaIds: mediaIDs)
     }
 
     func close() async {
@@ -945,6 +1050,8 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     func orphanMediaByDateCount() async throws -> Int { try await storage.orphanMediaByDateCount() }
     func orphanMediaByDate(offset: Int, limit: Int) async throws -> [FfiMediaItem] { try await storage.orphanMediaByDate(offset: offset, limit: limit) }
     func orphanMediaByDateNeighbors(position: Int) async throws -> FfiMediaNeighbors { try await storage.orphanMediaByDateNeighbors(position: position) }
+    func trashedMediaByDateCount() async throws -> Int { try await storage.trashedMediaByDateCount() }
+    func trashedMediaByDate(offset: Int, limit: Int) async throws -> [FfiMediaItem] { try await storage.trashedMediaByDate(offset: offset, limit: limit) }
     func albumsCount(parentID: FfiAlbumUuid?) async throws -> Int { try await storage.albumsCount(parentID: parentID) }
     func albums(parentID: FfiAlbumUuid?, offset: Int, limit: Int) async throws -> [FfiAlbum] { try await storage.albums(parentID: parentID, offset: offset, limit: limit) }
     func albums(withIDs ids: Set<FfiAlbumUuid>) async throws -> [FfiAlbum] { try await storage.albums(withIDs: ids) }
@@ -972,6 +1079,9 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     }
     func renameMedia(id: FfiMediaUuid, name: String?) async throws { try await storage.renameMedia(id: id, name: name) }
     func deleteMedia(id: FfiMediaUuid) async throws { try await storage.deleteMedia(id: id) }
+    func restoreMedia(id: FfiMediaUuid) async throws { try await storage.restoreMedia(id: id) }
+    func hardDeleteMedia(id: FfiMediaUuid) async throws { try await storage.hardDeleteMedia(id: id) }
+    func emptyTrash() async throws -> Int { try await storage.emptyTrash() }
     func addMediaToAlbum(albumID: FfiAlbumUuid, mediaID: FfiMediaUuid) async throws { try await storage.addMediaToAlbum(albumID: albumID, mediaID: mediaID) }
     func addMediaToAlbumWithoutNotification(albumID: FfiAlbumUuid, mediaID: FfiMediaUuid) async throws { try await storage.addMediaToAlbumWithoutNotification(albumID: albumID, mediaID: mediaID) }
     func removeMediaFromAlbum(albumID: FfiAlbumUuid, mediaID: FfiMediaUuid) async throws { try await storage.removeMediaFromAlbum(albumID: albumID, mediaID: mediaID) }
@@ -990,6 +1100,10 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     func createGroupFromSelectedMedia(mediaIDs: [FfiMediaUuid], albumID: FfiAlbumUuid) async throws { try await storage.createGroupFromSelectedMedia(mediaIDs: mediaIDs, albumID: albumID) }
     func importMedia(source: MediaImportSource, albumID: FfiAlbumUuid?) async throws -> FfiMediaUuid { try await storage.importMedia(source: source, albumID: albumID) }
     func importMediaWithoutNotification(source: MediaImportSource, albumID: FfiAlbumUuid?) async throws -> FfiMediaUuid { try await storage.importMediaWithoutNotification(source: source, albumID: albumID) }
+    func applePhotosAssetRevisionMediaIDs(_ revision: FfiApplePhotosAssetRevision) async throws -> [FfiMediaUuid]? { try await storage.applePhotosAssetRevisionMediaIDs(revision) }
+    func recordApplePhotosResourceOrigin(_ origin: FfiApplePhotosResourceOrigin) async throws { try await storage.recordApplePhotosResourceOrigin(origin) }
+    func applePhotosCollectionLinks(_ collections: [FfiApplePhotosCollectionIdentity]) async throws -> [FfiAlbumUuid?] { try await storage.applePhotosCollectionLinks(collections) }
+    func recordApplePhotosCollectionLink(_ link: FfiApplePhotosCollectionLink) async throws { try await storage.recordApplePhotosCollectionLink(link) }
     func importMediaBatch(_ sources: [MediaImportSource], albumID: FfiAlbumUuid?) async throws -> [FfiMediaUuid] { try await storage.importMediaBatch(sources, albumID: albumID) }
     func setMediaThumbnail(mediaID: FfiMediaUuid, data: Data) async throws { try await storage.setMediaThumbnail(mediaID: mediaID, data: data) }
     func evictLocalData(mediaIDs: [FfiMediaUuid]) async throws { try await storage.evictLocalData(mediaIDs: mediaIDs) }
@@ -1004,8 +1118,11 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     func setAutoImportDeviceMedia(enabled: Bool) async throws { try await storage.setAutoImportDeviceMedia(enabled: enabled) }
     func addUser(username: String, password: String) async throws { try await storage.addUser(username: username, password: password) }
     func addRemoteFixedPath(name: String, path: String) async throws -> FfiRemoteUuid { try await storage.addRemoteFixedPath(name: name, path: path) }
+    func addRemoteUsbApple(name: String, bookmarkBase64: String) async throws -> FfiRemoteUuid { try await storage.addRemoteUsbApple(name: name, bookmarkBase64: bookmarkBase64) }
+    func ensureUsbAppleFolderIsUninitialized(bookmarkBase64: String) async throws { try await storage.ensureUsbAppleFolderIsUninitialized(bookmarkBase64: bookmarkBase64) }
     func addRemoteDebugLocalApple(name: String) async throws -> FfiRemoteUuid { try await storage.addRemoteDebugLocalApple(name: name) }
     func addRemoteS3(id: String, endpoint: String, bucket: String, region: String, pathPrefix: String, accessKey: String, secretKey: String) async throws -> FfiRemoteUuid { try await storage.addRemoteS3(id: id, endpoint: endpoint, bucket: bucket, region: region, pathPrefix: pathPrefix, accessKey: accessKey, secretKey: secretKey) }
+    func addRemoteSmb(id: String, server: String, port: UInt16, share: String, pathPrefix: String, username: String, password: String, domain: String?) async throws -> FfiRemoteUuid { try await storage.addRemoteSmb(id: id, server: server, port: port, share: share, pathPrefix: pathPrefix, username: username, password: password, domain: domain) }
     func removeRemote(id: FfiRemoteUuid) async throws { try await storage.removeRemote(id: id) }
     func initializeRemote(id: FfiRemoteUuid) async throws { try await storage.initializeRemote(id: id) }
     func connectRemote(id: FfiRemoteUuid) async throws { try await storage.connectRemote(id: id) }
@@ -1017,5 +1134,6 @@ final class LibraryRepository: LibraryRepositoryProtocol {
     }
     func fetch(remoteID: FfiRemoteUuid) async throws -> UInt64 { try await storage.fetch(remoteID: remoteID) }
     func confirmRemoteMedia(remoteID: FfiRemoteUuid) async throws -> UInt64 { try await storage.confirmRemoteMedia(remoteID: remoteID) }
+    func confirmedRemoteMediaIDs(remoteID: FfiRemoteUuid, mediaIDs: [FfiMediaUuid]) async throws -> [FfiMediaUuid] { try await storage.confirmedRemoteMediaIDs(remoteID: remoteID, mediaIDs: mediaIDs) }
     func close() async { await storage.close() }
 }

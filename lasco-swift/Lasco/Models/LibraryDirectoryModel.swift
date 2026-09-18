@@ -215,6 +215,10 @@ final class LibraryDirectoryModel {
         try await directory.testS3Remote(endpoint: endpoint, bucket: bucket, region: region, pathPrefix: pathPrefix, accessKey: accessKey, secretKey: secretKey)
     }
 
+    func testSmbRemote(server: String, port: UInt16, share: String, pathPrefix: String, username: String, password: String, domain: String?) async throws {
+        try await directory.testSmbRemote(server: server, port: port, share: share, pathPrefix: pathPrefix, username: username, password: password, domain: domain)
+    }
+
     private func install(
         library: FfiLibrary,
         nickname: String,

@@ -12,9 +12,10 @@ pub(super) mod push;
 use crate::error::{LibraryError, OperationError, SyncError};
 use crate::identifiers::{MediaUuid, RemoteUuid};
 use crate::library::Library;
+use crate::remote::MediaList;
 use crate::storage::{AtomicWriteMode, StorageError};
 use fetch::{FetchAccess, fetch_impl};
-use push::PushAccess;
+use push::{DEFAULT_MAX_CONCURRENT_MEDIA_UPLOADS, PushAccess};
 use remote_access::{StorageRead, StorageReadWrite};
 use std::collections::HashMap;
 
@@ -127,8 +128,9 @@ impl Library {
     /// Confirms which media blobs `remote_id` holds and records them in its media inventory.
     ///
     /// This is media availability confirmation run on its own, which is how a client repairs
-    /// incomplete knowledge of a remote without performing a full fetch. It lists media folders
-    /// only, so it never reads an operation file and cannot become an implicit fetch.
+    /// incomplete knowledge of a remote without performing a full fetch. It recursively lists
+    /// `media/`, exhausting backend pagination, but never reads an operation file and therefore
+    /// cannot become an implicit fetch.
     ///
     /// Returns how many blobs it newly confirmed.
     ///
@@ -148,27 +150,23 @@ impl Library {
         let remote = StorageRead::new(storage);
         verify_remote_identity(&remote, remote_id).await?;
 
-        let known_media: Vec<media_inventory::KnownMedia> = {
-            let state = self.inner.state.read();
-            state
-                .media_entries()
-                .iter()
-                .map(|entry| media_inventory::KnownMedia {
-                    media_id: entry.media_id,
-                    storage_date: entry.storage_date,
-                    expects_thumb: entry.companion_kind.is_none(),
-                })
-                .collect()
-        };
         let remote_media_list = self.inner.local_dirs.remote_media_list(&remote_id_string);
-        Ok(media_inventory::confirm_known_media(
-            &remote,
-            &known_media,
+        let scanned = media_inventory::list_all_remote_media(&remote)
+            .await
+            .map_err(|error| LibraryError::Io(std::io::Error::other(error.to_string())))?;
+        self.inner.remote_media_list_lock.with_lock(
             &remote_id_string,
             &remote_media_list,
-            &self.inner.remote_media_list_lock,
+            |remote_media_list| -> Result<usize, LibraryError> {
+                let path = remote_media_list.media_list_path();
+                let previous = MediaList::load_or_default(&path)?;
+                let newly_confirmed = scanned.newly_confirmed_since(&previous);
+                if scanned != previous {
+                    scanned.save(&path)?;
+                }
+                Ok(newly_confirmed)
+            },
         )
-        .await)
     }
 
     /// Copy local crypto files (`library/`) to the remote if not already present.
@@ -183,6 +181,7 @@ impl Library {
         remote_uuid: RemoteUuid,
     ) -> Result<(), LibraryError> {
         let remote = StorageReadWrite::new(storage);
+        ensure_remote_identity_is_available(&remote.as_read(), remote_uuid).await?;
         let marker_key = format!("remote_id_{remote_uuid}");
         remote
             .put_atomic(&marker_key, b"", AtomicWriteMode::Replace)
@@ -266,6 +265,10 @@ impl Library {
             )
             .await?
         };
+        // The fetch half may have merged media tombstones. Reclaim cache files
+        // before planning the push half; failures are retryable and never undo
+        // the durable logical deletion.
+        let _ = self.cleanup_hard_deleted_local();
         let remote = StorageReadWrite::new(storage);
         let push_report = self
             .push_impl(
@@ -280,6 +283,7 @@ impl Library {
                 PushMediaSource::LocalOnly,
                 None,
                 None,
+                DEFAULT_MAX_CONCURRENT_MEDIA_UPLOADS,
             )
             .await?;
         Ok(SyncReport {
@@ -309,6 +313,50 @@ pub(crate) async fn discover_remote_uuid(
         .ok_or_else(|| {
             SyncError::RemoteIdMismatch("remote is missing remote_id_{uuid} file".to_string())
         })
+}
+
+/// Fails if the remote contains any identity marker.
+///
+/// This is used before a new remote is configured so an already-initialized
+/// folder is rejected before a new marker can be written into it.
+pub async fn ensure_remote_identity_absent(storage: &StorageRead<'_>) -> Result<(), SyncError> {
+    ensure_remote_identity(storage, None).await
+}
+
+/// Allows an existing marker only when it belongs to the remote being
+/// initialized. This makes initialization idempotent for its own remote while
+/// preventing it from writing a second marker into another remote's folder.
+pub async fn ensure_remote_identity_is_available(
+    storage: &StorageRead<'_>,
+    expected: RemoteUuid,
+) -> Result<(), SyncError> {
+    ensure_remote_identity(storage, Some(expected)).await
+}
+
+async fn ensure_remote_identity(
+    storage: &StorageRead<'_>,
+    expected: Option<RemoteUuid>,
+) -> Result<(), SyncError> {
+    let remote_files = storage
+        .list("")
+        .await
+        .map_err(SyncError::RemoteUnreachable)?;
+    let expected_marker = expected.map(|remote_uuid| format!("remote_id_{remote_uuid}"));
+
+    if let Some(marker) = remote_files.iter().find_map(|key| {
+        let name = key.rsplit('/').next().unwrap_or(key);
+        name.strip_prefix("remote_id_").and_then(|_| {
+            if expected_marker.as_deref() == Some(name) {
+                None
+            } else {
+                Some(name.to_string())
+            }
+        })
+    }) {
+        return Err(SyncError::RemoteAlreadyInitialized(marker));
+    }
+
+    Ok(())
 }
 
 /// Verifies that the remote's `library/` directory carries the format sentinel this build
