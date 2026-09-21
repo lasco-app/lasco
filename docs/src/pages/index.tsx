@@ -167,8 +167,8 @@ function WhyLascoSection() {
               {id === 'no-server' && (
                 <ul className={styles.noServerRemoteList}>
                   <li>S3 bucket</li>
-                  <li>NAS <span className={styles.comingSoon}>Coming soon</span></li>
-                  <li>USB drive <span className={styles.comingSoon}>Coming soon</span></li>
+                  <li>NAS (SMB server)</li>
+                  <li>USB drive</li>
                   <li>Lasco Cloud</li>
                 </ul>
               )}
@@ -214,8 +214,8 @@ function GetStartedSection() {
                 <h3>Set up a remote</h3>
                 <ul>
                   <li>S3 bucket</li>
-                  <li>NAS <span className={styles.comingSoon}>Coming soon</span></li>
-                  <li>USB drive <span className={styles.comingSoon}>Coming soon</span></li>
+                  <li>NAS (SMB server)</li>
+                  <li>USB drive</li>
                   <li>Lasco Cloud</li>
                 </ul>
               </div>
