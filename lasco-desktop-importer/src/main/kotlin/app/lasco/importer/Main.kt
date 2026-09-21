@@ -74,6 +74,7 @@ import app.lasco.importer.ffi.ExistingRemote
 import app.lasco.importer.ffi.DEFAULT_LASCO_CLOUD_BASE_URL
 import app.lasco.importer.ffi.LascoGateway
 import app.lasco.importer.ffi.LibraryCredentials
+import app.lasco.importer.ffi.NativeLibraryLocations
 import app.lasco.importer.ffi.OpenResult
 import app.lasco.importer.ffi.RemoteConfig
 import app.lasco.importer.ffi.UniffiImporterLibraryRepository
@@ -181,18 +182,21 @@ private fun clearTransientStaging() {
     }
 }
 
-fun main() = application {
-    Window(
-        onCloseRequest = ::exitApplication,
-        title = "Lasco Desktop Importer",
-        icon = painterResource(Res.drawable.lasco_icon),
-    ) {
-        MaterialTheme(
-            colorScheme = lightColorScheme(
-                primary = Accent, onPrimary = Color.White, background = Plaster,
-                onBackground = Ink, surface = Panel, onSurface = Ink, error = Error,
-            ),
-        ) { FfiReadinessGate { ImporterWizard() } }
+fun main() {
+    NativeLibraryLocations.configureJnaSearchPaths()
+    application {
+        Window(
+            onCloseRequest = ::exitApplication,
+            title = "Lasco Desktop Importer",
+            icon = painterResource(Res.drawable.lasco_icon),
+        ) {
+            MaterialTheme(
+                colorScheme = lightColorScheme(
+                    primary = Accent, onPrimary = Color.White, background = Plaster,
+                    onBackground = Ink, surface = Panel, onSurface = Ink, error = Error,
+                ),
+            ) { FfiReadinessGate { ImporterWizard() } }
+        }
     }
 }
 

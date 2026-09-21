@@ -1,5 +1,6 @@
 package app.lasco.importer.source
 
+import app.lasco.importer.ffi.NativeLibraryLocations
 import app.lasco.importer.model.ImportAsset
 import app.lasco.importer.model.ImportSource
 import app.lasco.importer.model.ResourceRole
@@ -150,7 +151,9 @@ class ApplePhotosReader private constructor(private val bridge: PhotoKitNative) 
     private companion object {
         fun loadBridge(): PhotoKitNative {
             check(System.getProperty("os.name").lowercase().contains("mac")) { "Apple Photos import is macOS-only" }
-            return Native.load("LascoPhotoImportKit", PhotoKitNative::class.java)
+            val library = NativeLibraryLocations.absolutePath("libLascoPhotoImportKit.dylib")
+                ?: "LascoPhotoImportKit"
+            return Native.load(library, PhotoKitNative::class.java)
         }
     }
 }

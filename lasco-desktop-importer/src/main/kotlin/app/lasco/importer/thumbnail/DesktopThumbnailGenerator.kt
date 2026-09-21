@@ -1,5 +1,6 @@
 package app.lasco.importer.thumbnail
 
+import app.lasco.importer.ffi.NativeLibraryLocations
 import com.sun.jna.Library
 import com.sun.jna.Native
 import com.sun.jna.Pointer
@@ -28,7 +29,9 @@ fun generateDesktopThumbnail(path: Path): ByteArray? = macThumbnail(path) ?: ima
 private fun macThumbnail(path: Path): ByteArray? {
     if (!System.getProperty("os.name").lowercase().contains("mac")) return null
     return try {
-        val bridge = Native.load("LascoPhotoImportKit", MacThumbnailNative::class.java)
+        val library = NativeLibraryLocations.absolutePath("libLascoPhotoImportKit.dylib")
+            ?: "LascoPhotoImportKit"
+        val bridge = Native.load(library, MacThumbnailNative::class.java)
         val length = intArrayOf(0)
         val pointer = bridge.lasco_photos_thumbnail_jpeg(path.toString(), length)
         if (pointer == null || length[0] <= 0) null else {
