@@ -6,7 +6,7 @@ import styles from './roadmap.module.css';
 type RoadmapItem = {
   title: string;
   detail?: string;
-  state: 'done' | 'coming';
+  state?: 'done' | 'coming';
 };
 
 type RoadmapMonth = {
@@ -28,8 +28,8 @@ const ROADMAP: RoadmapMonth[] = [
     month: 'September 2026',
     items: [
       {title: 'App Store release', state: 'coming'},
-      {title: 'USB storage support', state: 'coming'},
-      {title: 'NAS support', state: 'coming'},
+      {title: 'USB storage support'},
+      {title: 'NAS support'},
     ],
   },
   {
