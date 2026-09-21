@@ -27,7 +27,7 @@ const ROADMAP: RoadmapMonth[] = [
   {
     month: 'September 2026',
     items: [
-      {title: 'App Store release', state: 'done'},
+      {title: 'App Store release', state: 'coming'},
       {title: 'USB storage support', state: 'coming'},
       {title: 'NAS support', state: 'coming'},
     ],

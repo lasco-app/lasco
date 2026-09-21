@@ -245,7 +245,7 @@ function StoreBadges() {
   return (
     <div className={styles.storeBadges}>
       <GooglePlayBadge />
-      <AppStoreBadge />
+      {/* <AppStoreBadge /> */}
     </div>
   );
 }
@@ -263,6 +263,7 @@ function GooglePlayBadge() {
   );
 }
 
+/*
 function AppStoreBadge() {
   return (
     <a
@@ -275,6 +276,7 @@ function AppStoreBadge() {
     </a>
   );
 }
+*/
 
 // =============================================
 // Lasco Cloud Section
