@@ -26,8 +26,8 @@ android {
         applicationId = "com.lasco.lasco"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.3.0"
+        versionCode = 2
+        versionName = "0.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -49,10 +49,10 @@ android {
             )
         }
         release {
-            // R8 is off until the JNA and uniffi generated bindings have keep rules,
-            // since both rely on reflection that minification would otherwise strip.
+            // Applies R8 code/resource shrinking and optimization. The JNA/UniFFI
+            // reflection boundary is preserved by src/main/keepRules/rules.keep.
             optimization {
-                enable = false
+                enable = true
             }
             buildConfigField("String", "LASCO_CLOUD_URL", "\"https://cloud.getlasco.app\"")
         }

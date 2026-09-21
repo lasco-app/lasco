@@ -193,6 +193,18 @@ impl Storage for StorageMockMemoryFaulty {
         Ok(result)
     }
 
+    async fn list_recursive(&self, prefix: &str) -> Result<Vec<String>> {
+        let fault = self.take_fault(StorageMockOperation::List, prefix);
+        if matches!(fault, Some(FaultTiming::Before)) {
+            return Err(Self::failure(StorageMockOperation::List, prefix));
+        }
+        let result = self.inner.list_recursive(prefix).await?;
+        if matches!(fault, Some(FaultTiming::After)) {
+            return Err(Self::failure(StorageMockOperation::List, prefix));
+        }
+        Ok(result)
+    }
+
     async fn exists(&self, key: &str) -> Result<bool> {
         let fault = self.take_fault(StorageMockOperation::Exists, key);
         if matches!(fault, Some(FaultTiming::Before)) {

@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		8F008CE52FC0EC14003848C1 /* LascoFFI.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8F008CE42FC0EC14003848C1 /* LascoFFI.xcframework */; };
+		AA0000010000000000000020 /* LascoPhotoImportKit in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000010000000000000021 /* LascoPhotoImportKit */; };
+		AA0000010000000000000023 /* LascoPhotoImportKit in Embed Frameworks */ = {isa = PBXBuildFile; productRef = AA0000010000000000000021 /* LascoPhotoImportKit */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -19,6 +21,20 @@
 			remoteInfo = Lasco;
 		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		AA0000010000000000000024 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				AA0000010000000000000023 /* LascoPhotoImportKit in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		8F008CC92FC0E98F003848C1 /* Lasco.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Lasco.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -45,6 +61,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				8F008CE52FC0EC14003848C1 /* LascoFFI.xcframework in Frameworks */,
+				AA0000010000000000000020 /* LascoPhotoImportKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -94,6 +111,7 @@
 			buildPhases = (
 				8F008CC52FC0E98F003848C1 /* Sources */,
 				8F008CC62FC0E98F003848C1 /* Frameworks */,
+				AA0000010000000000000024 /* Embed Frameworks */,
 				8F008CC72FC0E98F003848C1 /* Resources */,
 			);
 			buildRules = (
@@ -105,6 +123,7 @@
 			);
 			name = Lasco;
 			packageProductDependencies = (
+				AA0000010000000000000021 /* LascoPhotoImportKit */,
 			);
 			productName = Lasco;
 			productReference = 8F008CC92FC0E98F003848C1 /* Lasco.app */;
@@ -160,6 +179,9 @@
 				Base,
 			);
 			mainGroup = 8F008CC02FC0E98F003848C1;
+			packageReferences = (
+				AA0000010000000000000022 /* XCLocalSwiftPackageReference "../LascoPhotoImportKit" */,
+			);
 			minimizedProjectReferenceProxies = 1;
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 8F008CCA2FC0E98F003848C1 /* Products */;
@@ -171,6 +193,21 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		AA0000010000000000000022 /* XCLocalSwiftPackageReference "../LascoPhotoImportKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../LascoPhotoImportKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		AA0000010000000000000021 /* LascoPhotoImportKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AA0000010000000000000022 /* XCLocalSwiftPackageReference "../LascoPhotoImportKit" */;
+			productName = LascoPhotoImportKit;
+		};
+/* End XCSwiftPackageProductDependency section */
 
 /* Begin PBXResourcesBuildPhase section */
 		8F008CC72FC0E98F003848C1 /* Resources */ = {
@@ -335,7 +372,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = S9HPF6WF82;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
@@ -361,7 +398,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.3.0;
+				MARKETING_VERSION = 0.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.lasco.lasco;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -386,7 +423,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = S9HPF6WF82;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
@@ -411,7 +448,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.3.0;
+				MARKETING_VERSION = 0.4.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.lasco.lasco;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;

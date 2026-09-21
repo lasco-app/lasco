@@ -3,6 +3,14 @@ node_modules/
 /.pnpm-store/
 docs/.docusaurus/
 /target/
+/lasco-desktop-importer/.gradle/
+/lasco-desktop-importer/build/
+/lasco-desktop-importer/native-photos-bridge/.gradle/
+/lasco-desktop-importer/native-photos-bridge/build/
+
+# Swift Package Manager build products for the shared Apple Photos import package
+/LascoPhotoImportKit/.build/
+/LascoPhotoImportKit/.swiftpm/
 
 # Generated FFI artifacts
 lasco-ffi/artifacts/

@@ -1,0 +1,111 @@
+---
+sidebar_position: 3.5
+sidebar_label: Media deletion
+---
+
+# Media deletion
+
+CRDT operations define whether media is live, trashed, or deleted. Blob files do not: a deleted
+item may still have blobs awaiting remote cleanup, and a live item may be missing its local blob.
+
+## Lifecycle
+
+| State | Home, album, and group views | Orphans | Trash | Blob transfer |
+| --- | --- | --- | --- | --- |
+| Active | Visible | Visible when it has no effective membership | Hidden | Eligible |
+| Trashed | Hidden | Hidden | Visible | Eligible |
+| Hard-deleted | Hidden | Hidden | Hidden | Ineligible; cleanup target |
+
+The table describes primary media in ordinary client views. Companion media is hidden from normal
+Home, album, group, and Trash listings in every state; Empty Trash also enumerates trashed
+companions.
+
+## Soft deletion and Restore
+
+`MediaTrashSet` is a last-write-wins boolean register. `trashed: true` moves media to Trash and
+`trashed: false` restores it. Concurrent Trash and Restore actions resolve to the operation with
+the greater dot: Lamport counter first, then device ID.
+
+Moving media to Trash keeps its album and group memberships. Restore shows it in those collections
+again. An add while it is trashed is retained but remains hidden until Restore.
+
+Soft delete and Restore also apply to every media record connected through AAE or Live Photo
+references. The command writes one `MediaTrashSet` operation for each connected record.
+
+The encrypted full blob and thumbnail remain eligible for confirmation, backup checks, and Push.
+This is required for Restore on a device that has no local cache copy.
+
+## Hard deletion
+
+### Declare hard deletion
+
+`MediaDeletion { media_ids }` is irreversible. A tombstone wins over creation, rename, properties,
+membership, Trash, and Restore. This is also true when deletion arrives before creation. The later
+creation supplies storage metadata for cleanup but never becomes visible.
+
+Permanent deletion is allowed only for an item already in Trash. It tombstones that selected item
+only; it does not expand to AAE or Live Photo companions.
+
+**Empty Trash** enumerates every trashed record, including hidden companions, and permanently
+deletes each one with its own tombstone. It is not a cross-item transaction: if it stops partway
+through, already-written tombstones remain permanent and the remaining records stay in Trash.
+
+Creation metadata for a tombstoned item is retained only to derive:
+
+```text
+media/{storage_year}/{storage_month}/{media_id}.data
+media/{storage_year}/{storage_month}/{media_id}.thumb
+```
+
+It is not part of resolved media state and cannot be returned by a browse or media-read API.
+
+### Local cleanup and reads
+
+After a hard-delete operation is appended to the local operation log and the CRDT snapshot is
+saved, the client removes the local encrypted data and thumbnail cache files. A missing file is
+already clean. Cleanup failure does not roll back the tombstone; Fetch and library open retry the
+same scan.
+
+Every media read first resolves the ID against current live CRDT state. A hard-deleted ID fails
+before it reads local storage or contacts a remote. A remote read that began while an item was live
+must resolve the ID again before caching its response. If Fetch tombstoned the item in the meantime,
+the response is discarded instead of recreating the cache file.
+
+### Propagation by Fetch and Push
+
+Hard deletion propagates as an ordinary encrypted `MediaDeletion` operation. There is no separate
+remote-delete event.
+
+#### Fetch
+
+Fetch downloads and merges remote operations. When that merge adds a tombstone, the media is
+immediately absent from resolved state and Fetch removes its local `.data` and `.thumb` cache
+files. Fetch does not delete blobs from the remote it read; a later Push to that remote performs
+that reclamation.
+
+#### Push
+
+Push first uploads the target remote's missing operations, including `MediaDeletion`. Only after
+the tombstone is durable on that target does Push delete that target's `.data` and `.thumb` keys
+and remove the ID from that target's positive media inventory. It then plans normal blob transfer:
+active and trashed media remain eligible, while hard-deleted media never does.
+
+If operation upload fails, Push deletes no blobs. If remote cleanup fails after the tombstone is
+uploaded, the later Push to that same remote retries idempotently. Thus a device can Fetch a
+tombstone from remote A and clean its own cache while old blobs still exist on remote B; they are
+reclaimed only after a Push reaches B.
+
+### Inventory is a hint
+
+`remotes/{remote_id}/state/media/media_list.json` is positive-only local bookkeeping: it can say
+that a remote was observed to hold a blob, but cannot prove that the object still exists. Current
+CRDT state chooses eligible IDs; inventory only avoids redundant transfer for an eligible ID.
+
+Consequences:
+
+- Trashed media remains uploadable even when it is hidden from ordinary views.
+- A hard-deleted ID is never confirmed, fetched, or uploaded, even if an old inventory entry says
+  the remote has it.
+- Push is not fetch-first. If a local device still considers an item active and its target inventory
+  positively remembers the blob, it can skip uploading it. A later Fetch may learn that target's
+  hard tombstone and reclaim the local copy; no blob repair is required.

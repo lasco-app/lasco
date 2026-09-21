@@ -59,6 +59,8 @@ import com.lasco.lasco.ui.components.LascoSecondaryButton
 import com.lasco.lasco.ui.components.maestroTag
 import com.lasco.lasco.ui.manage.AddLocalFSRemoteDialog
 import com.lasco.lasco.ui.manage.AddS3RemoteDialog
+import com.lasco.lasco.ui.manage.AddUsbRemoteDialog
+import com.lasco.lasco.ui.manage.AddSmbRemoteDialog
 import com.lasco.lasco.ui.manage.LascoCloudLoginDialog
 import com.lasco.lasco.ui.manage.ManageViewModel
 import com.lasco.lasco.ui.theme.LascoTheme
@@ -348,6 +350,8 @@ private fun RemoteStep(onAdvance: () -> Unit) {
     val session by manageViewModel.sessionState.collectAsStateWithLifecycle()
 
     var showAddS3 by remember { mutableStateOf(false) }
+    var showAddUsb by remember { mutableStateOf(false) }
+    var showAddSmb by remember { mutableStateOf(false) }
     var showAddLocalFS by remember { mutableStateOf(false) }
     var showCloudLogin by remember { mutableStateOf(false) }
 
@@ -382,6 +386,8 @@ private fun RemoteStep(onAdvance: () -> Unit) {
         ) {
             LascoPrimaryButton(text = "Authenticate with Lasco Cloud", onClick = { showCloudLogin = true })
             LascoPrimaryButton(text = "Add S3-compatible remote", onClick = { showAddS3 = true })
+            LascoPrimaryButton(text = "Add USB drive", onClick = { showAddUsb = true })
+            LascoPrimaryButton(text = "Add SMB remote", onClick = { showAddSmb = true })
             if (expertMode) {
                 LascoSecondaryButton(text = "Add local filesystem remote", onClick = { showAddLocalFS = true })
             }
@@ -395,6 +401,12 @@ private fun RemoteStep(onAdvance: () -> Unit) {
             onResult = { _, _ -> onAdvance() },
         )
     }
+    if (showAddSmb) {
+        AddSmbRemoteDialog(
+            onDismiss = { showAddSmb = false },
+            onResult = { _, error -> if (error == null) onAdvance() },
+        )
+    }
     if (showCloudLogin) {
         LascoCloudLoginDialog(
             onDismiss = { showCloudLogin = false },
@@ -405,6 +417,14 @@ private fun RemoteStep(onAdvance: () -> Unit) {
         AddLocalFSRemoteDialog(
             onDismiss = { showAddLocalFS = false },
             onResult = { _, _ -> onAdvance() },
+        )
+    }
+    if (showAddUsb) {
+        AddUsbRemoteDialog(
+            onDismiss = {
+                showAddUsb = false
+            },
+            onResult = { _, error -> if (error == null) onAdvance() },
         )
     }
 }

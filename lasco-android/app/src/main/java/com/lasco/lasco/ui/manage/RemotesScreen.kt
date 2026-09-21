@@ -63,6 +63,8 @@ fun RemotesScreen(
 
     var showRemotePicker by remember { mutableStateOf(false) }
     var showAddS3 by remember { mutableStateOf(false) }
+    var showAddUsb by remember { mutableStateOf(false) }
+    var showAddSmb by remember { mutableStateOf(false) }
     var showAddLocalFS by remember { mutableStateOf(false) }
     var showCloudLogin by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<FfiRemote?>(null) }
@@ -81,7 +83,7 @@ fun RemotesScreen(
     suspend fun removeRemote(remote: FfiRemote) {
         // A scheduled push claims the remote when it fires, which would make the removal fail
         // on timing alone. Refusing up front says so while the countdown is still visible.
-        if (remote.remoteId in syncState.scheduledAutoPushRemoteIds) {
+        if (remote.remoteId in syncState.scheduledAutoSyncRemoteIds) {
             removalBlockedByScheduledPush = remote
             return
         }
@@ -207,6 +209,8 @@ fun RemotesScreen(
             showCloud = !cloudConnected,
             onCloud = { showRemotePicker = false; showCloudLogin = true },
             onS3 = { showRemotePicker = false; showAddS3 = true },
+            onUsb = { showRemotePicker = false; showAddUsb = true },
+            onSmb = { showRemotePicker = false; showAddSmb = true },
             onLocalFS = { showRemotePicker = false; showAddLocalFS = true },
             onDismiss = { showRemotePicker = false },
         )
@@ -220,6 +224,18 @@ fun RemotesScreen(
     if (showAddS3) {
         AddS3RemoteDialog(
             onDismiss = { showAddS3 = false },
+            onResult = { name, error -> feedback = error ?: "$name: initialized" },
+        )
+    }
+    if (showAddUsb) {
+        AddUsbRemoteDialog(
+            onDismiss = { showAddUsb = false },
+            onResult = { name, error -> feedback = error ?: "$name: initialized" },
+        )
+    }
+    if (showAddSmb) {
+        AddSmbRemoteDialog(
+            onDismiss = { showAddSmb = false },
             onResult = { name, error -> feedback = error ?: "$name: initialized" },
         )
     }
@@ -249,9 +265,9 @@ fun RemotesScreen(
     }
     removalBlockedByScheduledPush?.let { remote ->
         LascoInfoDialog(
-            title = "Push scheduled",
+            title = "Sync scheduled",
             message = "A push to \"${remote.name}\" is about to run. Let it finish, or turn off " +
-                "Auto Push, then remove the remote.",
+                "Auto Sync, then remove the remote.",
             onDismiss = { removalBlockedByScheduledPush = null },
         )
     }
@@ -405,7 +421,7 @@ private fun RemoteCard(
             Text(text = summary, style = LascoTheme.type.mono(11), color = colors.inkMuted)
         }
         Row {
-            Text(text = "Auto push", style = LascoTheme.type.body(13), color = colors.ink)
+            Text(text = "Auto sync", style = LascoTheme.type.body(13), color = colors.ink)
             Spacer(modifier = Modifier.width(8.dp))
             LascoToggle(checked = remote.autoPush, onCheckedChange = onSetAutoPush)
         }

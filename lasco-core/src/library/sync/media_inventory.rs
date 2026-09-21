@@ -5,6 +5,8 @@ use crate::library::local_dirs::RemoteMediaList;
 use crate::library::remote_media_list_lock::RemoteMediaListLock;
 use crate::operations::StorageDate;
 use crate::remote::MediaList;
+use crate::storage::{Result as StorageResult, StorageError};
+use uuid::Uuid;
 
 use super::remote_access::StorageRead;
 
@@ -14,6 +16,46 @@ pub(crate) struct KnownMedia {
     pub(crate) media_id: MediaUuid,
     pub(crate) storage_date: StorageDate,
     pub(crate) expects_thumb: bool,
+}
+
+/// Returns a complete physical snapshot of every recognized media blob on one remote.
+///
+/// `Storage::list_recursive` is required to exhaust backend pagination before it returns. A
+/// listing error is intentionally propagated: an incomplete scan must never be treated as an
+/// empty remote. Unknown files under `media/` are ignored.
+pub(crate) async fn list_all_remote_media(storage: &StorageRead<'_>) -> StorageResult<MediaList> {
+    let keys = match storage.list_recursive("media/").await {
+        Ok(keys) => keys,
+        // Filesystem-like backends do not create the directory until the first media write.
+        Err(StorageError::NotFound) => Vec::new(),
+        Err(error) => return Err(error),
+    };
+
+    let mut inventory = MediaList::default();
+    for key in keys {
+        let Some((media_id, full, thumb)) = parse_media_key(&key) else {
+            continue;
+        };
+        inventory.record(media_id, full, thumb);
+    }
+    Ok(inventory)
+}
+
+fn parse_media_key(key: &str) -> Option<(MediaUuid, bool, bool)> {
+    let remainder = key.strip_prefix("media/")?;
+    let mut parts = remainder.split('/');
+    let year = parts.next()?.parse::<u16>().ok()?;
+    let month = parts.next()?.parse::<u8>().ok()?;
+    if year == 0 || !(1..=12).contains(&month) || parts.clone().count() != 1 {
+        return None;
+    }
+    let (id, extension) = parts.next()?.rsplit_once('.')?;
+    let media_id = MediaUuid::from_uuid(Uuid::parse_str(id).ok()?);
+    match extension {
+        "data" => Some((media_id, true, false)),
+        "thumb" => Some((media_id, false, true)),
+        _ => None,
+    }
 }
 
 /// Confirms which of the media known to the reconstructed state are present on a remote and

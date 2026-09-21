@@ -60,6 +60,76 @@ pub struct FfiMediaAddResult {
     pub already_existed: bool,
 }
 
+#[derive(uniffi::Enum, Debug, Clone, Copy)]
+pub enum FfiApplePhotosResourceType {
+    Photo,
+    FullSizePhoto,
+    Video,
+    FullSizeVideo,
+    AdjustmentData,
+    PairedVideo,
+    FullSizePairedVideo,
+}
+
+#[derive(uniffi::Record, Debug)]
+pub struct FfiApplePhotosResourceDescriptor {
+    pub resource_type: FfiApplePhotosResourceType,
+    pub filename: String,
+}
+
+#[derive(uniffi::Record, Debug)]
+pub struct FfiApplePhotosAssetRevision {
+    pub cloud_asset_id: String,
+    pub modification_date: Option<String>,
+    pub resources: Vec<FfiApplePhotosResourceDescriptor>,
+}
+
+/// Immutable provenance for one resource of an Apple Photos asset revision.
+/// `cloud_asset_id` is the opaque serialized cloud value supplied by PhotoKit.
+#[derive(uniffi::Record, Debug)]
+pub struct FfiApplePhotosResourceOrigin {
+    pub media_id: FfiMediaUuid,
+    pub cloud_asset_id: String,
+    pub modification_date: Option<String>,
+    pub resource_type: FfiApplePhotosResourceType,
+    pub filename: String,
+}
+
+#[derive(uniffi::Enum, Debug, Clone, Copy)]
+pub enum FfiApplePhotosCollectionKind {
+    Folder,
+    Album,
+}
+
+#[derive(uniffi::Record, Debug)]
+pub struct FfiApplePhotosCollectionIdentity {
+    pub cloud_collection_id: String,
+    pub kind: FfiApplePhotosCollectionKind,
+}
+
+/// Immutable provenance for one Apple Photos folder or album.
+#[derive(uniffi::Record, Debug)]
+pub struct FfiApplePhotosCollectionLink {
+    pub album_id: FfiAlbumUuid,
+    pub cloud_collection_id: String,
+    pub kind: FfiApplePhotosCollectionKind,
+}
+
+/// Optional source metadata supplied by a desktop importer.
+///
+/// Timestamps are RFC 3339 strings. The source file's bytes, including any embedded metadata,
+/// are always copied unchanged; this record exists for Lasco's queryable index fields.
+#[derive(uniffi::Record, Debug)]
+pub struct FfiMediaImportMetadata {
+    pub original_filename: Option<String>,
+    pub captured_at: Option<String>,
+    pub modified_at: Option<String>,
+    pub latitude: Option<f64>,
+    pub longitude: Option<f64>,
+    pub apple_aae_media_id: Option<FfiMediaUuid>,
+    pub apple_live_photo_media_id: Option<FfiMediaUuid>,
+}
+
 /// A media identifier returned to clients when a local-only push cannot find
 /// every required original in this device's cache.
 #[derive(uniffi::Record, Debug, Clone)]
@@ -86,6 +156,10 @@ pub struct FfiMediaItem {
     pub size_bytes: u64,
     pub content_hash: String,
     pub author: String,
+    /// Person who performed the current trash action, when the item is in Trash.
+    pub trashed_by: Option<String>,
+    /// RFC 3339 timestamp of the current trash action, when the item is in Trash.
+    pub trashed_at: Option<String>,
     pub apple_aae_media_id: Option<FfiMediaUuid>,
     pub apple_live_photo_media_id: Option<FfiMediaUuid>,
 }
@@ -148,6 +222,12 @@ pub struct FfiRemote {
     pub bucket: Option<String>,
     pub region: Option<String>,
     pub path: Option<String>,
+    /// SMB server hostname/IP. Credentials are intentionally never exposed.
+    pub server: Option<String>,
+    pub port: Option<u16>,
+    pub share: Option<String>,
+    pub username: Option<String>,
+    pub domain: Option<String>,
 }
 
 #[derive(uniffi::Record, Debug)]
@@ -177,6 +257,18 @@ pub struct FfiLocalStateStats {
 pub struct FfiRemoteMediaShortfall {
     pub missing_full: u64,
     pub missing_thumb: u64,
+}
+
+/// Result from one isolated remote throughput measurement.
+///
+/// `bytes_per_second` is the aggregate rate for all transfers in this sample, not a per-transfer
+/// rate. Benchmark objects are random, temporary objects and are deleted after measurement.
+#[derive(uniffi::Record, Debug)]
+pub struct FfiUploadBenchmarkSample {
+    pub parallel_uploads: u8,
+    pub bytes_per_upload: u64,
+    pub elapsed_millis: u64,
+    pub bytes_per_second: u64,
 }
 
 /// Remote compaction-lock metadata. Absence of this record means no lock is held.

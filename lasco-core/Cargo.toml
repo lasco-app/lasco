@@ -62,6 +62,7 @@ blake3 = "1"
 directories = "6"
 tempfile = "3"
 futures-util = "0.3"
+smb2 = "=0.21.0"
 
 # On Android rust-s3 uses native-tls which links OpenSSL, and there is no system
 # OpenSSL for the android targets. Build OpenSSL from source there via the vendored
@@ -76,10 +77,11 @@ android-native-keyring-store = "1.0.0"
 libc = "0.2"
 objc2 = "0.6"
 objc2-foundation = "0.3"
+block2 = "0.6"
 # Keyring's iOS backend uses the protected-data store; enable its required
 # feature explicitly because keyring's default feature set only enables the
 # macOS-compatible keychain backend.
-apple-native-keyring-store = { version = "1", features = ["protected"] }
+apple-native-keyring-store = { version = "1", features = ["keychain", "protected"] }
 
 [dev-dependencies]
 proptest = "1"

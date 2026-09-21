@@ -22,12 +22,12 @@ data class SyncState(
     val fetchInProgress: Boolean = false,
     val bulkImportProgress: Pair<Int, Int>? = null,
     val incrementalImportState: IncrementalImportState = IncrementalImportState.Idle,
-    // When the scheduled auto push fires, on SystemClock.elapsedRealtime's
+    // When the scheduled auto sync fires, on SystemClock.elapsedRealtime's
     // monotonic clock, or null when none is scheduled. A deadline rather than
     // a remaining count, so this changes twice per schedule instead of once a
     // second, and the UI derives the displayed seconds from it.
-    val pushDeadlineElapsedMs: Long? = null,
-    // Immutable set of Auto push remotes eligible when the active countdown
+    val syncDeadlineElapsedMs: Long? = null,
+    // Immutable set of Auto sync remotes eligible when the active countdown
     // began. Remotes are revalidated against their current setting at expiry.
-    val scheduledAutoPushRemoteIds: Set<FfiRemoteUuid> = emptySet(),
+    val scheduledAutoSyncRemoteIds: Set<FfiRemoteUuid> = emptySet(),
 )
