@@ -660,10 +660,6 @@
   content: '';
 }
 
-.noServerRemoteList .comingSoon {
-  font-size: 9px;
-}
-
 .whyItemTitle {
   font-family: 'Space Grotesk', sans-serif;
   font-size: clamp(22px, 2.8vw, 32px);
@@ -839,7 +835,6 @@
   margin: 0;
 }
 
-.comingSoon,
 .optional {
   display: inline-block;
   margin-left: 0.55rem;
@@ -855,12 +850,6 @@
   text-transform: uppercase;
   vertical-align: middle;
   white-space: nowrap;
-}
-
-.comingSoon {
-  color: var(--lasco-ink);
-  border-color: var(--lasco-warn);
-  background: var(--lasco-warn);
 }
 
 .optional {
