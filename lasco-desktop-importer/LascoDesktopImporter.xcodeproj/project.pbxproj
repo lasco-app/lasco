@@ -1,0 +1,99 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXFileReference section */
+		E00000000000000000000001 /* build.gradle.kts */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.kotlin; path = build.gradle.kts; sourceTree = "<group>"; };
+		E00000000000000000000002 /* AppStore */ = {isa = PBXFileReference; lastKnownFileType = folder; path = AppStore; sourceTree = "<group>"; };
+		E00000000000000000000003 /* src */ = {isa = PBXFileReference; lastKnownFileType = folder; path = src; sourceTree = "<group>"; };
+		E00000000000000000000004 /* package-app-store.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = scripts/package-app-store.sh; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		E00000000000000000000005 = {
+			isa = PBXGroup;
+			children = (
+				E00000000000000000000001 /* build.gradle.kts */,
+				E00000000000000000000003 /* src */,
+				E00000000000000000000002 /* AppStore */,
+				E00000000000000000000004 /* package-app-store.sh */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXLegacyTarget section */
+		E00000000000000000000006 /* Lasco Importer — App Store package */ = {
+			isa = PBXLegacyTarget;
+			buildArgumentsString = "scripts/package-app-store.sh";
+			buildConfigurationList = E00000000000000000000007 /* Build configuration list for PBXLegacyTarget \"Lasco Importer — App Store package\" */;
+			buildPhases = (
+			);
+			buildToolPath = /bin/zsh;
+			buildWorkingDirectory = "$(PROJECT_DIR)";
+			dependencies = (
+			);
+			name = "Lasco Importer — App Store package";
+			passBuildSettingsInEnvironment = 1;
+			productName = "Lasco Importer — App Store package";
+		};
+/* End PBXLegacyTarget section */
+
+/* Begin PBXProject section */
+		E00000000000000000000008 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastUpgradeCheck = 2700;
+			};
+			buildConfigurationList = E00000000000000000000009 /* Build configuration list for PBXProject \"LascoDesktopImporter\" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = E00000000000000000000005;
+			productRefGroup = E00000000000000000000005;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				E00000000000000000000006 /* Lasco Importer — App Store package */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin XCBuildConfiguration section */
+		E0000000000000000000000A /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {}; name = Debug; };
+		E0000000000000000000000B /* Release */ = {isa = XCBuildConfiguration; buildSettings = {}; name = Release; };
+		E0000000000000000000000C /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {}; name = Debug; };
+		E0000000000000000000000D /* Release */ = {isa = XCBuildConfiguration; buildSettings = {}; name = Release; };
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		E00000000000000000000007 /* Build configuration list for PBXLegacyTarget "Lasco Importer — App Store package" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E0000000000000000000000A /* Debug */,
+				E0000000000000000000000B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E00000000000000000000009 /* Build configuration list for PBXProject "LascoDesktopImporter" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E0000000000000000000000C /* Debug */,
+				E0000000000000000000000D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = E00000000000000000000008 /* Project object */;
+}

@@ -12,6 +12,10 @@ plugins {
 group = "app.lasco"
 version = "0.1.0"
 
+val appStoreBuild = providers.gradleProperty("lasco.appStore")
+    .map(String::toBoolean)
+    .getOrElse(false)
+
 kotlin { jvmToolchain(21) }
 
 // UniFFI emits pure JVM/JNA Kotlin. The Android client is the canonical checked-in generated
@@ -35,7 +39,7 @@ compose.desktop {
     application {
         mainClass = "app.lasco.importer.MainKt"
         nativeDistributions {
-            targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb, TargetFormat.Rpm)
+            targetFormats(TargetFormat.Dmg, TargetFormat.Pkg, TargetFormat.Msi, TargetFormat.Deb, TargetFormat.Rpm)
             packageName = "lasco-desktop-importer"
             // macOS requires the first component of its package/build version to be non-zero.
             packageVersion = "1.0.0"
@@ -47,7 +51,15 @@ compose.desktop {
                 // PhotoKit/TCC registers a macOS app bundle, not a Gradle or JDK process.
                 // This text is required for the system permission prompt and privacy list.
                 bundleID = "app.lasco.desktopimporter"
-                entitlementsFile.set(project.file("entitlements.plist"))
+                // Compose delegates to jpackage for the real App Store application bundle.
+                // The Xcode project invokes the same release task rather than wrapping the JVM app.
+                appStore = appStoreBuild
+                entitlementsFile.set(project.file("AppStore/entitlements.plist"))
+                runtimeEntitlementsFile.set(project.file("AppStore/runtime-entitlements.plist"))
+                if (appStoreBuild) {
+                    provisioningProfile.set(project.file("AppStore/embedded.provisionprofile"))
+                    runtimeProvisioningProfile.set(project.file("AppStore/runtime.provisionprofile"))
+                }
                 infoPlist {
                     extraKeysRawXml = """
                         <key>NSPhotoLibraryUsageDescription</key>

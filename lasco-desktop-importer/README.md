@@ -18,6 +18,24 @@ gradle run
 gradle packageDistributionForCurrentOS
 ```
 
+## Mac App Store release
+
+Open `LascoDesktopImporter.xcodeproj` and select the **Lasco Importer — App Store package**
+scheme. Building that target runs the same Compose/jpackage pipeline used in CI and writes a
+signed `.pkg` to `build/compose/binaries/main/pkg/`. Xcode is the release cockpit; the Kotlin
+application itself remains Gradle-built.
+
+Before the first TestFlight build, add the two Mac App Store provisioning profiles to
+`AppStore/` (they are intentionally gitignored):
+
+- `embedded.provisionprofile` for `app.lasco.desktopimporter`
+- `runtime.provisionprofile` for `com.oracle.java.app.lasco.desktopimporter`
+
+The required application and JVM-runtime entitlements are checked in under `AppStore/`. Use a
+JDK 18 or newer, install the Mac App Distribution and Mac Installer Distribution certificates,
+then build the Xcode scheme. The generated package is uploaded with Transporter or the App Store
+Connect API; do not notarize a Mac App Store package.
+
 Before packaging, build `lasco-ffi` for the target and arrange for the generated Kotlin binding
 and native library to be bundled. `src/main/kotlin/app/lasco/importer/ffi/UniffiLascoGateway.kt`
 is the only production boundary that imports UniFFI/JNA types. Generate bindings with:
