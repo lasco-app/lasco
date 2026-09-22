@@ -15,7 +15,7 @@ Each CRDT operation records the username of the user who wrote it. However, this
 
 To add a user, a new `mk_{username}_{password_uuid}.enc` file is written locally. It contains the master key re-encrypted under the new user's KEK, which is derived from their password and the library's `salt.bin`. The new user gets access to the same master key and can therefore decrypt all existing and future content.
 
-The file is propagated to each remote on the next push (see [Sync](./sync)).
+The file is propagated to each remote on the next push (see [Sync](/docs/format-specification/sync/)).
 
 ---
 

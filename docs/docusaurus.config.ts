@@ -20,6 +20,11 @@ const config: Config = {
   // For GitHub pages deployment, it is often '/<projectName>/'
   baseUrl: '/',
 
+  // The production host redirects route URLs to their trailing-slash form.
+  // Generate canonical URLs and sitemap entries in that same form so search
+  // engines do not need to reconcile a redirect with a different canonical.
+  trailingSlash: true,
+
   // GitHub pages deployment config.
   // If you aren't using GitHub pages, you don't need these.
   organizationName: 'lasco', // Usually your GitHub org/user name.
