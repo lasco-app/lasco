@@ -151,4 +151,4 @@ The `kind` field's own `kind` tag selects the remote's storage type:
 
 `media_fetch_priority` controls on-demand media retrieval. A lower value is tried first; equal values retain the configuration order. Set `exclude_from_media_fetch` to `true` for a remote that must not be queried for on-demand media. When media is absent locally, clients try each eligible remote in priority order until one supplies it.
 
-The secret key is never stored in plaintext. It is encrypted with the library master key using AES-256-GCM and held only in the `secret_key_encrypted` field. Local filesystem remotes have no credentials. See [Encryption](./encryption) for details.
+The secret key is never stored in plaintext. It is encrypted with the library master key using AES-256-GCM and held only in the `secret_key_encrypted` field. Local filesystem remotes have no credentials. See [Encryption](/docs/format-specification/encryption/) for details.
