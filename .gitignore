@@ -28,3 +28,6 @@ lasco-swift/Lasco.xcodeproj/project.xcworkspace/xcuserdata/
 
 !lasco-android/app/src/main/res/drawable-xxxhdpi/
 !lasco-android/app/src/main/res/drawable-xxxhdpi/ic_launcher_foreground.png
+
+# Images shown by the repository README on GitHub
+!.github/images/*.png
