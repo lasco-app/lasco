@@ -111,7 +111,7 @@ private fun AddUserDialog(onDismiss: () -> Unit) {
 
     Dialog(onDismissRequest = onDismiss) {
         Column(
-            modifier = Modifier.fillMaxWidth().background(colors.bg).lascoPanel().padding(24.dp),
+            modifier = Modifier.fillMaxWidth().lascoPanel().padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text(text = "Add user", style = LascoTheme.type.title(), color = colors.ink)

@@ -380,6 +380,7 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Lasco;
+				INFOPLIST_KEY_UIUserInterfaceStyle = Dark;
 				INFOPLIST_KEY_ITSEncryptionExportComplianceCode = "d8f76eed-af84-4f9d-881e-d3d75c384d13";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = YES;
 				INFOPLIST_KEY_LASCO_CLOUD_URL = "$(LASCO_CLOUD_URL)";
@@ -433,6 +434,7 @@
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Lasco;
+				INFOPLIST_KEY_UIUserInterfaceStyle = Dark;
 				INFOPLIST_KEY_ITSEncryptionExportComplianceCode = "d8f76eed-af84-4f9d-881e-d3d75c384d13";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = YES;
 				INFOPLIST_KEY_LASCO_CLOUD_URL = "$(LASCO_CLOUD_URL)";

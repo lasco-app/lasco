@@ -22,8 +22,6 @@ struct LascoApp: App {
         AppLogger.setup()
 
         let fonts = [
-            "Jersey10-Regular",
-            "VT323-Regular",
             "SpaceGrotesk-Regular",
             "SpaceGrotesk-Bold",
             "JetBrainsMono-Regular",
@@ -68,16 +66,18 @@ struct LascoApp: App {
                         .toastOverlay(toastManager)
                 }
             }
+            .preferredColorScheme(.dark)
+            .font(LascoFont.body())
             .modifier(RemoveTitleToolbarModifier())
             .hideSystemNavigationBar()
             .environment(directory)
-            .environment(\.lascoTheme, directory.isOpen ? .dark : .plaster)
-            .tint(directory.isOpen ? LascoTheme.dark.pink : LascoTheme.plaster.pink)
+            .environment(\.lascoTheme, .dark)
+            .tint(LascoTheme.dark.pink)
             .task { await directory.start(); await releasePolicy.refresh() }
             #if DEBUG
             .sheet(isPresented: $showDevelopmentEndpointPrompt) {
                 DevelopmentCloudEndpointView(isPresented: $showDevelopmentEndpointPrompt)
-                    .environment(\.lascoTheme, directory.isOpen ? .dark : .plaster)
+                    .environment(\.lascoTheme, .dark)
                     .preferredColorScheme(.dark)
             }
             #endif

@@ -416,11 +416,11 @@ private struct RemoteStatusCard: View {
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 Text(pushBannerText(now: context.date))
                     .font(LascoFont.mono())
-                    .foregroundStyle(.white)
+                    .foregroundStyle(theme.bg)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
-                    .background(bannerIsWarning ? Color.red : theme.pink)
+                    .background(bannerIsWarning ? theme.error : theme.pink)
             }
 
             Divider().background(theme.inkMuted.opacity(0.2))

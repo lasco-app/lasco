@@ -51,6 +51,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -85,6 +86,8 @@ import com.lasco.lasco.media.VideoFileCache
 import com.lasco.lasco.ui.components.AlbumCell
 import com.lasco.lasco.ui.components.LascoTextInputDialog
 import com.lasco.lasco.ui.components.MediaThumbnail
+import com.lasco.lasco.ui.theme.LascoBorder
+import com.lasco.lasco.ui.theme.LascoControlShape
 import com.lasco.lasco.ui.theme.LascoTheme
 import com.lasco.lasco.ui.theme.lascoPanel
 import java.io.File
@@ -164,13 +167,13 @@ fun MediaDetailScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val content = state as? MediaDetailState.Content
     if (content == null) {
-        Box(modifier = modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+        Box(modifier = modifier.fillMaxSize().background(LascoTheme.colors.bg), contentAlignment = Alignment.Center) {
             when (state) {
-                MediaDetailState.Loading -> Text("Loading…", color = Color.White)
-                MediaDetailState.Empty -> Text("This item is no longer available.", color = Color.White)
+                MediaDetailState.Loading -> Text("Loading…", color = LascoTheme.colors.ink)
+                MediaDetailState.Empty -> Text("This item is no longer available.", color = LascoTheme.colors.ink)
                 is MediaDetailState.Error -> Text(
                     "Could not load this item. Tap to retry.",
-                    color = Color.White,
+                    color = LascoTheme.colors.ink,
                     modifier = Modifier.clickable { viewModel.retry() },
                 )
                 is MediaDetailState.Content -> Unit
@@ -220,7 +223,7 @@ fun MediaDetailScreen(
         )
     }
 
-    Box(modifier = modifier.fillMaxSize().background(Color.Black)) {
+    Box(modifier = modifier.fillMaxSize().background(LascoTheme.colors.bg)) {
         HorizontalPager(
             state = pagerState,
             key = { page ->
@@ -251,7 +254,7 @@ fun MediaDetailScreen(
                     modifier = Modifier.fillMaxSize(),
                 )
             } else {
-                Box(modifier = Modifier.fillMaxSize().background(Color.Black))
+                Box(modifier = Modifier.fillMaxSize().background(LascoTheme.colors.bg))
             }
         }
 
@@ -279,12 +282,13 @@ fun MediaDetailScreen(
             Box(
                 modifier = Modifier
                     .size(36.dp)
-                    .background(Color.Black)
-                    .border(2.dp, Color.White)
+                    .clip(LascoControlShape)
+                    .background(LascoTheme.colors.surfaceAlt)
+                    .border(1.dp, LascoBorder, LascoControlShape)
                     .clickable { onBack() },
                 contentAlignment = Alignment.Center,
             ) {
-                Text(text = "←", style = LascoTheme.type.body(18), color = Color.White)
+                Text(text = "←", style = LascoTheme.type.body(18), color = LascoTheme.colors.ink)
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -292,10 +296,11 @@ fun MediaDetailScreen(
                     Text(
                         text = if (showingLivePhotoVideo) "IMG" else "▶",
                         style = LascoTheme.type.pixel(14),
-                        color = Color.White,
+                        color = LascoTheme.colors.ink,
                         modifier = Modifier
-                            .background(Color.Black)
-                            .border(2.dp, Color.White)
+                            .clip(LascoControlShape)
+                            .background(LascoTheme.colors.surfaceAlt)
+                            .border(1.dp, LascoBorder, LascoControlShape)
                             .clickable { viewModel.toggleLivePhotoVideo() }
                             .padding(horizontal = 10.dp, vertical = 6.dp),
                     )
@@ -304,10 +309,11 @@ fun MediaDetailScreen(
                     Text(
                         text = "${neighbors.currentPosition + 1} / ${neighbors.totalCount}",
                         style = LascoTheme.type.pixel(14),
-                        color = Color.White,
+                        color = LascoTheme.colors.ink,
                         modifier = Modifier
-                            .background(Color.Black)
-                            .border(2.dp, Color.White)
+                            .clip(LascoControlShape)
+                            .background(LascoTheme.colors.surfaceAlt)
+                            .border(1.dp, LascoBorder, LascoControlShape)
                             .padding(horizontal = 10.dp, vertical = 6.dp),
                     )
                 }
@@ -454,7 +460,9 @@ fun MediaDetailScreen(
                     Row(
                         modifier = Modifier
                             .padding(top = 12.dp)
-                            .border(1.dp, colors.ink.copy(alpha = 0.4f))
+                            .clip(LascoControlShape)
+                            .background(colors.surface)
+                            .border(1.dp, LascoBorder, LascoControlShape)
                             .clickable(enabled = progress > 0.5f) {
                                 currentDisplayItem?.let { item ->
                                     scope.launch { exportMedia(context, repo, item) }
@@ -522,7 +530,7 @@ private fun MediaPageContent(
         liveVideoItem != null -> liveVideoItem
         else -> null
     }
-    Box(modifier = modifier.background(Color.Black), contentAlignment = Alignment.Center) {
+    Box(modifier = modifier.background(LascoTheme.colors.bg), contentAlignment = Alignment.Center) {
         if (videoItem != null) {
             VideoCell(item = videoItem, repo = repo, isActive = isActive)
         } else {
@@ -587,7 +595,7 @@ private fun ImageCell(item: FfiMediaItem, repo: LibraryRepository, initialThumbn
             else -> Icon(
                 painter = painterResource(R.drawable.ic_tab_image),
                 contentDescription = null,
-                tint = Color.White.copy(alpha = 0.3f),
+                tint = LascoTheme.colors.ink.copy(alpha = 0.3f),
                 modifier = Modifier.size(72.dp),
             )
         }
@@ -693,7 +701,7 @@ private fun GroupThumbnailStrip(
         state = listState,
         modifier = modifier
             .height(66.dp)
-            .background(Color.Black.copy(alpha = 0.6f)),
+            .background(LascoTheme.colors.bg.copy(alpha = 0.6f)),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         contentPadding = PaddingValues(horizontal = 12.dp),
     ) {

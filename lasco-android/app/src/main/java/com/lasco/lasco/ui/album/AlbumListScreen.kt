@@ -659,14 +659,14 @@ private fun AlbumSelectionBar(
         Text(
             text = "✕",
             style = LascoTheme.type.body(18),
-            color = Color.White,
+            color = colors.bg,
             modifier = Modifier.clickable { onClose() },
         )
         if (count > 1) {
             Text(
                 text = "$count selected",
                 style = LascoTheme.type.categorySmall(),
-                color = Color.White,
+                color = colors.bg,
                 modifier = Modifier.padding(start = 8.dp),
             )
         }
@@ -676,7 +676,7 @@ private fun AlbumSelectionBar(
                 Text(
                     text = "...",
                     style = LascoTheme.type.body(18),
-                    color = Color.White,
+                    color = colors.bg,
                     modifier = Modifier.clickable { showActionMenu = true },
                 )
                 DropdownMenu(expanded = showActionMenu, onDismissRequest = { showActionMenu = false }) {

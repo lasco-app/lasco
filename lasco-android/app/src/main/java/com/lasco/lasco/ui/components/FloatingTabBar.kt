@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.lasco.lasco.R
+import com.lasco.lasco.ui.theme.lascoPanel
 import com.lasco.lasco.ui.theme.LascoTheme
 
 /**
@@ -44,8 +45,7 @@ fun FloatingTabBar(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(colors.surfaceAlt)
-            .border(2.dp, colors.ink),
+            .lascoPanel(),
     ) {
         AppTab.entries.forEach { tab ->
             val selected = tab == selectedTab
@@ -60,7 +60,7 @@ fun FloatingTabBar(
                 Image(
                     painter = painterResource(if (selected) tab.selectedIcon else tab.icon),
                     contentDescription = tab.label,
-                    colorFilter = ColorFilter.tint(if (selected) colors.ink else colors.inkMuted),
+                    colorFilter = ColorFilter.tint(if (selected) colors.pink else colors.inkMuted),
                     modifier = Modifier.size(20.dp),
                 )
             }

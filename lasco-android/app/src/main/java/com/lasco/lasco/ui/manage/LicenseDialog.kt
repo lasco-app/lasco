@@ -1,6 +1,5 @@
 package com.lasco.lasco.ui.manage
 
-import android.os.Build
 import android.webkit.WebView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -41,7 +40,7 @@ fun LicenseDialog(onDismiss: () -> Unit) {
 
     Dialog(onDismissRequest = onDismiss) {
         Column(
-            modifier = Modifier.fillMaxWidth().background(colors.bg).lascoPanel().padding(24.dp),
+            modifier = Modifier.fillMaxWidth().lascoPanel().padding(24.dp),
         ) {
             Row(modifier = Modifier.fillMaxWidth()) {
                 Text(text = "Licenses", style = LascoTheme.type.categoryLarge(), color = colors.ink)
@@ -104,7 +103,7 @@ private fun LicensePageDialog(page: LicensePage, onDismiss: () -> Unit) {
                 .fillMaxWidth()
                 .fillMaxHeight(0.9f)
                 .padding(16.dp)
-                .background(colors.bg)
+
                 .lascoPanel()
                 .padding(16.dp),
         ) {
@@ -123,13 +122,21 @@ private fun LicensePageDialog(page: LicensePage, onDismiss: () -> Unit) {
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 factory = { context ->
                     WebView(context).apply {
-                        // The pages carry a prefers-color-scheme dark block. WebView
-                        // only honours it once algorithmic darkening is allowed, which
-                        // arrived in API 33. Older versions fall back to the light page.
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            settings.isAlgorithmicDarkeningAllowed = true
-                        }
-                        loadUrl("file:///android_asset/${page.asset}")
+                        setBackgroundColor(android.graphics.Color.rgb(17, 19, 21))
+                        val appearance = """
+                            <style>
+                              :root { color-scheme: dark !important; }
+                              html, body { background: #111315 !important; color: #f1f0eb !important; font-family: sans-serif !important; }
+                              a { color: #f4b8d5 !important; }
+                              pre, blockquote, .license-text { background: #191c1f !important; color: #b2b8b9 !important; border-radius: 16px; }
+                            </style>
+                        """.trimIndent()
+                        val report = context.assets.open(page.asset).bufferedReader().use { it.readText() }
+                        loadDataWithBaseURL(
+                            "file:///android_asset/",
+                            report.replace("</head>", "$appearance</head>"),
+                            "text/html", "UTF-8", null,
+                        )
                     }
                 },
             )

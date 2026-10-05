@@ -47,7 +47,8 @@ struct AlbumPickerView: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
             .background(theme.surfaceAlt)
-            .overlay(Rectangle().stroke(theme.ink, lineWidth: 2).ignoresSafeArea(edges: .bottom))
+            .clipShape(LascoShape.panel)
+            .overlay(LascoShape.panel.strokeBorder(theme.border, lineWidth: 1).ignoresSafeArea(edges: .bottom))
         }
         .background(theme.bg)
         .environment(model)

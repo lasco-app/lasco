@@ -14,57 +14,25 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.heightIn
+import com.lasco.lasco.ui.theme.LascoControlShape
+import com.lasco.lasco.ui.theme.LascoBorder
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.lasco.lasco.ui.theme.LascoTheme
 
-/**
- * Win98 style bevel, ported from the Swift bevel overlay. A 2dp ink frame with
- * a 1dp highlight on the top and leading edges and a 1dp shadow on the bottom
- * and trailing edges. The highlight and shadow swap when pressed.
- */
-private fun Modifier.lascoBevel(pressed: Boolean, hi: Color, lo: Color, ink: Color): Modifier =
-    drawWithContent {
-        drawContent()
-        val two = 2.dp.toPx()
-        val one = 1.dp.toPx()
-        val w = size.width
-        val h = size.height
-
-        // Ink frame, inset so the 2dp stroke stays inside the bounds.
-        drawRect(
-            color = ink,
-            topLeft = androidx.compose.ui.geometry.Offset(one, one),
-            size = androidx.compose.ui.geometry.Size(w - two, h - two),
-            style = androidx.compose.ui.graphics.drawscope.Stroke(width = two),
-        )
-
-        val topLeftEdge = if (pressed) lo else hi
-        val bottomRightEdge = if (pressed) hi else lo
-        val inset = two
-
-        // Top and leading highlight.
-        drawLine(topLeftEdge, androidx.compose.ui.geometry.Offset(inset, inset), androidx.compose.ui.geometry.Offset(w - inset, inset), one)
-        drawLine(topLeftEdge, androidx.compose.ui.geometry.Offset(inset, inset), androidx.compose.ui.geometry.Offset(inset, h - inset), one)
-        // Bottom and trailing shadow.
-        drawLine(bottomRightEdge, androidx.compose.ui.geometry.Offset(inset, h - inset), androidx.compose.ui.geometry.Offset(w - inset, h - inset), one)
-        drawLine(bottomRightEdge, androidx.compose.ui.geometry.Offset(w - inset, inset), androidx.compose.ui.geometry.Offset(w - inset, h - inset), one)
-    }
-
 @Composable
-private fun BeveledButton(
+private fun RoundedButton(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier,
     enabled: Boolean,
     background: (pressed: Boolean) -> Color,
-    hi: Color,
-    lo: Color,
     contentColor: Color,
     fillWidth: Boolean,
 ) {
-    val colors = LascoTheme.colors
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
 
@@ -72,8 +40,10 @@ private fun BeveledButton(
         modifier = modifier
             .then(if (fillWidth) Modifier.fillMaxWidth() else Modifier)
             .alpha(if (enabled) 1f else 0.45f)
+            .clip(LascoControlShape)
             .background(background(pressed))
-            .lascoBevel(pressed, hi = hi, lo = lo, ink = colors.ink)
+            .border(1.dp, LascoBorder, LascoControlShape)
+            .heightIn(min = 48.dp)
             .clickable(
                 enabled = enabled,
                 interactionSource = interaction,
@@ -86,7 +56,7 @@ private fun BeveledButton(
     }
 }
 
-/** Ported from LascoPrimaryButtonStyle. Dark accent, white label. */
+/** Ported from LascoPrimaryButtonStyle. Pink accent, dark label. */
 @Composable
 fun LascoPrimaryButton(
     text: String,
@@ -96,20 +66,18 @@ fun LascoPrimaryButton(
     fillWidth: Boolean = true,
 ) {
     val colors = LascoTheme.colors
-    BeveledButton(
+    RoundedButton(
         text = text,
         onClick = onClick,
         modifier = modifier,
         enabled = enabled,
         background = { pressed -> if (pressed) colors.accentPress else colors.accent },
-        hi = Color(0xFF2A3060),
-        lo = Color(0xFF000000),
-        contentColor = Color.White,
+        contentColor = colors.bg,
         fillWidth = fillWidth,
     )
 }
 
-/** Ported from LascoSecondaryButtonStyle. Plaster background, ink label. */
+/** Ported from LascoSecondaryButtonStyle. Dark surface, light label. */
 @Composable
 fun LascoSecondaryButton(
     text: String,
@@ -119,14 +87,12 @@ fun LascoSecondaryButton(
     fillWidth: Boolean = true,
 ) {
     val colors = LascoTheme.colors
-    BeveledButton(
+    RoundedButton(
         text = text,
         onClick = onClick,
         modifier = modifier,
         enabled = enabled,
-        background = { pressed -> if (pressed) colors.bgDeep else colors.bg },
-        hi = colors.surfaceAlt,
-        lo = colors.inkSub,
+        background = { pressed -> if (pressed) colors.surfaceAlt else colors.surface },
         contentColor = colors.ink,
         fillWidth = fillWidth,
     )

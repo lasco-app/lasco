@@ -208,7 +208,7 @@ private fun ManageRootScreen(
         Spacer(modifier = Modifier.height(MANAGE_SECTION_SPACING))
 
         if (cloudConnected) {
-            Column(modifier = Modifier.fillMaxWidth().background(colors.pink)) {
+            Column(modifier = Modifier.fillMaxWidth().lascoPanel()) {
                 ManageRow(
                     label = "Lasco Cloud",
                     onClick = onOpenLascoCloud,

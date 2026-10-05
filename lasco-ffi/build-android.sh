@@ -67,10 +67,8 @@ cargo ndk "${ndk_args[@]}" --platform "$MIN_SDK" -o "$JNI_LIBS" \
 # ── 3. Generate Kotlin bindings ───────────────────────────────────────────────
 
 echo "==> Generating Kotlin bindings via uniffi-bindgen"
-# uniffi metadata is platform independent, so we use a host build rather than
-# an android .so. The release profile sets strip = true, which on ELF removes
-# the static symbol table uniffi library mode reads, so a stripped android
-# .so yields zero bindings with no error. The host Mach-O survives stripping.
+# UniFFI metadata is platform independent. Use the host build so generation
+# does not depend on the ELF symbol table surviving Android packaging/stripping.
 echo "==> Building $CRATE for the host to source uniffi metadata"
 cargo build -p "$CRATE" --release
 

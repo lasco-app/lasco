@@ -2,6 +2,8 @@ package com.lasco.lasco.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,7 +12,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -27,9 +28,11 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lasco.lasco.ui.theme.LascoTheme
+import com.lasco.lasco.ui.theme.LascoBorder
+import com.lasco.lasco.ui.theme.LascoControlShape
 import com.lasco.lasco.ui.theme.lascoPanel
 
-/** Ported from the Swift FieldLabel. Uppercased pixel caption above a field. */
+/** Ported from the Swift FieldLabel. Uppercased caption above a field. */
 @Composable
 fun FieldLabel(text: String, size: Int = 11) {
     val colors = LascoTheme.colors
@@ -42,7 +45,7 @@ fun FieldLabel(text: String, size: Int = 11) {
 
 /**
  * A labelled text field styled like the Swift lascoInput. Flat surface with a
- * 2dp ink border, no radius. Used for both plain and secure entry.
+ * subtle border and rounded corners. Used for both plain and secure entry.
  */
 @Composable
 fun LascoField(
@@ -81,8 +84,9 @@ fun LascoField(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .clip(LascoControlShape)
                         .background(colors.surfaceAlt)
-                        .border(2.dp, colors.ink)
+                        .border(1.dp, LascoBorder, LascoControlShape)
                         .padding(horizontal = 10.dp, vertical = 9.dp),
                 ) {
                     if (value.isEmpty() && placeholder.isNotEmpty()) {
@@ -100,7 +104,7 @@ fun LascoField(
 }
 
 /**
- * Ported from the Swift LascoCheckbox. A square box that fills with ink when
+ * Ported from the Swift LascoCheckbox. A rounded box that fills with pink when
  * checked, next to a wrapping label.
  */
 @Composable
@@ -118,8 +122,8 @@ fun LascoCheckbox(
         Box(
             modifier = Modifier
                 .size(20.dp)
-                .background(if (checked) colors.ink else colors.surfaceAlt)
-                .border(2.dp, colors.ink),
+                .background(if (checked) colors.pink else colors.surfaceAlt, RoundedCornerShape(4.dp))
+                .border(1.dp, if (checked) colors.pink else LascoBorder, RoundedCornerShape(4.dp)),
             contentAlignment = Alignment.Center,
         ) {
             if (checked) {
@@ -130,10 +134,7 @@ fun LascoCheckbox(
     }
 }
 
-/**
- * Ported from the Swift LascoToggleStyle. A 36x22 ink bordered track with a
- * 14dp light-pink thumb that slides between leading and trailing when active.
- */
+/** Rounded native switch with the shared pink accent. */
 @Composable
 fun LascoToggle(
     checked: Boolean,
@@ -141,21 +142,19 @@ fun LascoToggle(
     modifier: Modifier = Modifier,
 ) {
     val colors = LascoTheme.colors
-    Box(
-        modifier = modifier
-            .size(width = 36.dp, height = 22.dp)
-            .background(if (checked) colors.ink else colors.surfaceAlt)
-            .border(2.dp, colors.ink)
-            .clickable(interactionSource = null, indication = null) { onCheckedChange(!checked) },
-        contentAlignment = if (checked) Alignment.CenterEnd else Alignment.CenterStart,
-    ) {
-        Box(
-            modifier = Modifier
-                .padding(3.dp)
-                .size(14.dp)
-                .background(if (checked) Color(0xFFFFB8D9) else colors.inkMuted),
-        )
-    }
+    androidx.compose.material3.Switch(
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+        modifier = modifier,
+        colors = androidx.compose.material3.SwitchDefaults.colors(
+            checkedTrackColor = colors.pink,
+            checkedThumbColor = colors.bg,
+            checkedBorderColor = colors.pink,
+            uncheckedTrackColor = colors.surfaceAlt,
+            uncheckedThumbColor = colors.inkSub,
+            uncheckedBorderColor = LascoBorder,
+        ),
+    )
 }
 
 /**
@@ -193,8 +192,9 @@ fun ErrorBanner(message: String, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .clip(LascoControlShape)
             .background(colors.error.copy(alpha = 0.08f))
-            .border(1.dp, colors.error)
+            .border(1.dp, colors.error, LascoControlShape)
             .padding(10.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
