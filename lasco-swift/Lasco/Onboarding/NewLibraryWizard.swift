@@ -614,7 +614,7 @@ struct NewLibraryWizard: View {
                 .foregroundStyle(Color.Lasco.ink)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text("Lasco will import your existing photos and videos and back them up to your remote. No copy is kept on this device.")
+            Text("Lasco will import your existing photos and videos and back them up to your remote. Your original photos and videos will not be deleted.")
                 .font(LascoFont.body(16))
                 .foregroundStyle(Color.Lasco.inkSub)
                 .fixedSize(horizontal: false, vertical: true)
