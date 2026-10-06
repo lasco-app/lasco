@@ -326,6 +326,7 @@ pub async fn ensure_remote_identity_absent(storage: &StorageRead<'_>) -> Result<
 /// Allows an existing marker only when it belongs to the remote being
 /// initialized. This makes initialization idempotent for its own remote while
 /// preventing it from writing a second marker into another remote's folder.
+/// A missing destination has no identity; initialization's first write creates it.
 pub async fn ensure_remote_identity_is_available(
     storage: &StorageRead<'_>,
     expected: RemoteUuid,
@@ -337,10 +338,12 @@ async fn ensure_remote_identity(
     storage: &StorageRead<'_>,
     expected: Option<RemoteUuid>,
 ) -> Result<(), SyncError> {
-    let remote_files = storage
-        .list("")
-        .await
-        .map_err(SyncError::RemoteUnreachable)?;
+    let remote_files = match storage.list("").await {
+        Ok(files) => files,
+        // Only initialization may use a destination that does not exist yet.
+        Err(StorageError::NotFound) if expected.is_some() => Vec::new(),
+        Err(error) => return Err(SyncError::RemoteUnreachable(error)),
+    };
     let expected_marker = expected.map(|remote_uuid| format!("remote_id_{remote_uuid}"));
 
     if let Some(marker) = remote_files.iter().find_map(|key| {

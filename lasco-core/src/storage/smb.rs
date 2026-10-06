@@ -195,11 +195,11 @@ impl StorageSmb {
             };
             let mut client = SmbClient::connect(client_config)
                 .await
-                .map_err(map_smb_error)?;
+                .map_err(map_smb_connection_error)?;
             let tree = client
                 .connect_share(&self.config.share)
                 .await
-                .map_err(map_smb_error)?;
+                .map_err(map_smb_connection_error)?;
             *session = Some(SmbSession { client, tree });
         }
         Ok(session)
@@ -582,6 +582,15 @@ fn should_reset_session(error: &SmbError) -> bool {
     )
 }
 
+fn map_smb_connection_error(error: SmbError) -> StorageError {
+    // A missing share is unavailable storage, not a missing destination folder.
+    if error.kind() == ErrorKind::NotFound {
+        StorageError::Unavailable("SMB server or share was not found".to_string())
+    } else {
+        map_smb_error(error)
+    }
+}
+
 fn map_smb_error(error: SmbError) -> StorageError {
     match error.kind() {
         ErrorKind::NotFound => StorageError::NotFound,
@@ -637,5 +646,23 @@ mod tests {
     fn replacement_buffer_sets_replace_if_exists() {
         let buffer = rename_information("destination");
         assert_eq!(buffer[0], 1);
+    }
+
+    #[test]
+    fn missing_share_is_unavailable_but_missing_folder_is_not_found() {
+        assert!(matches!(
+            map_smb_connection_error(SmbError::Protocol {
+                status: NtStatus::BAD_NETWORK_NAME,
+                command: Command::TreeConnect,
+            }),
+            StorageError::Unavailable(_)
+        ));
+        assert!(matches!(
+            map_smb_error(SmbError::Protocol {
+                status: NtStatus::OBJECT_PATH_NOT_FOUND,
+                command: Command::Create,
+            }),
+            StorageError::NotFound
+        ));
     }
 }

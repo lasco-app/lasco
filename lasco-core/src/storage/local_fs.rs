@@ -69,17 +69,20 @@ impl StorageLocalFs {
 
     pub(crate) fn list_sync(&self, prefix: &str) -> Result<Vec<String>> {
         let base = self.root.join(prefix);
-        if !base.exists() {
-            return Err(StorageError::NotFound);
-        }
+        let entries = fs::read_dir(&base).map_err(|error| {
+            if error.kind() == io::ErrorKind::NotFound {
+                StorageError::NotFound
+            } else {
+                StorageError::Other(Box::new(error))
+            }
+        })?;
         let mut keys = Vec::new();
-        for entry in WalkDir::new(&base)
-            .min_depth(1)
-            .max_depth(1)
-            .into_iter()
-            .filter_map(std::result::Result::ok)
-        {
-            if entry.file_type().is_file()
+        for entry in entries {
+            let entry = entry.map_err(|error| StorageError::Other(Box::new(error)))?;
+            if entry
+                .file_type()
+                .map_err(|error| StorageError::Other(Box::new(error)))?
+                .is_file()
                 && let Ok(rel) = entry.path().strip_prefix(&self.root)
                 && let Some(s) = rel.to_str()
             {
