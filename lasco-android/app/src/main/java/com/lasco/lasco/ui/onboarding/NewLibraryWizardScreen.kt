@@ -709,7 +709,7 @@ private fun ImportStep(
             } else {
                 Text(text = "Import your photo library?", style = LascoTheme.type.title(26), color = colors.ink)
                 Text(
-                    text = "Lasco will import your existing photos and videos and back them up to your remote.",
+                    text = "Lasco will import your existing photos and videos and back them up to your remote. Your original photos and videos will not be deleted.",
                     style = LascoTheme.type.body(16),
                     color = colors.inkSub,
                 )
