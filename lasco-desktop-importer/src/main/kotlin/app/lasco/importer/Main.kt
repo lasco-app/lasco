@@ -76,6 +76,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.application
+import androidx.compose.ui.window.rememberWindowState
 import app.lasco.importer.ffi.ExistingRemote
 import app.lasco.importer.ffi.DEFAULT_LASCO_CLOUD_BASE_URL
 import app.lasco.importer.ffi.LascoGateway
@@ -188,9 +189,16 @@ private fun clearTransientStaging() {
     }
 }
 
-fun main() = application {
+fun main() {
+    configureImporterAppearance()
+    launchImporter()
+}
+
+private fun launchImporter() = application {
+    val windowState = rememberWindowState()
     Window(
         onCloseRequest = ::exitApplication,
+        state = windowState,
         title = "Lasco Desktop Importer",
         icon = painterResource(Res.drawable.lasco_icon),
     ) {
@@ -221,7 +229,11 @@ fun main() = application {
                 )
             },
             shapes = Shapes(medium = PanelShape, large = PanelShape, extraLarge = RoundedCornerShape(24.dp)),
-        ) { FfiReadinessGate { ImporterWizard() } }
+        ) {
+            ImporterWindowFrame(windowState) {
+                FfiReadinessGate { ImporterWizard() }
+            }
+        }
     }
 }
 
