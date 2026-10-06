@@ -24,6 +24,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.lasco.lasco.data.LibraryRepository
+import androidx.compose.ui.draw.clip
+import com.lasco.lasco.ui.theme.LascoPanelShape
 import com.lasco.lasco.ui.theme.LascoTheme
 import com.lasco.lasco.ui.theme.lascoPanel
 import uniffi.lasco_ffi.FfiAlbum
@@ -33,7 +35,7 @@ import uniffi.lasco_ffi.FfiMediaUuid
  * Shared album cell: thumbnail square, name, optional parent info line,
  * and a selection checkmark overlay. Used by the Albums screen grid and by
  * Media Detail's "also in these albums" grid. Mirrors Swift's AlbumCell,
- * a single lascoPanel (surfaceAlt background, 2dp ink border, no rounding).
+ * a rounded album panel. Photo-grid thumbnails stay square.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -108,8 +110,9 @@ fun TrashAlbumCard(
 
     Column(
         modifier = modifier
-            .background(colors.surfaceAlt)
-            .border(2.dp, colors.pink)
+            .clip(LascoPanelShape)
+            .background(colors.surface)
+            .border(1.dp, colors.pink, LascoPanelShape)
             .combinedClickable(onClick = onClick),
     ) {
         Box(

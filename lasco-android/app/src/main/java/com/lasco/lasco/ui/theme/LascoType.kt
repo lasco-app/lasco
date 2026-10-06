@@ -8,11 +8,9 @@ import androidx.compose.ui.unit.sp
 import com.lasco.lasco.R
 
 /**
- * Font families ported from the Swift app. Same four typefaces, so the two
- * apps render the same text. The files live in res/font.
+ * Website font families shared with the Swift and desktop apps.
+ * The files live in res/font.
  */
-val Jersey10 = FontFamily(Font(R.font.jersey10_regular))
-val VT323 = FontFamily(Font(R.font.vt323_regular))
 val SpaceGrotesk = FontFamily(
     Font(R.font.space_grotesk_regular, FontWeight.Normal),
     Font(R.font.space_grotesk_bold, FontWeight.Bold),
@@ -25,13 +23,13 @@ val JetBrainsMono = FontFamily(Font(R.font.jetbrains_mono_regular))
  * and returns a full TextStyle. Defaults match the Swift defaults.
  */
 object LascoType {
-    // Jersey 10, all caps pixel titles.
-    fun categoryLarge(size: Int = 36) = TextStyle(fontFamily = Jersey10, fontSize = size.sp)
-    fun categorySmall(size: Int = 22) = TextStyle(fontFamily = Jersey10, fontSize = size.sp)
+    // Space Grotesk for every heading, label, and paragraph.
+    fun categoryLarge(size: Int = 36) = TextStyle(fontFamily = SpaceGrotesk, fontWeight = FontWeight.Bold, fontSize = size.sp)
+    fun categorySmall(size: Int = 22) = TextStyle(fontFamily = SpaceGrotesk, fontWeight = FontWeight.Bold, fontSize = size.sp)
 
-    // VT323, pixel subtitle, metadata, overlays.
-    fun subtitle(size: Int = 18) = TextStyle(fontFamily = VT323, fontSize = size.sp)
-    fun pixel(size: Int = 15) = TextStyle(fontFamily = VT323, fontSize = size.sp)
+    // Legacy helper names retained for existing screen call sites.
+    fun subtitle(size: Int = 18) = TextStyle(fontFamily = SpaceGrotesk, fontSize = size.sp)
+    fun pixel(size: Int = 15) = TextStyle(fontFamily = SpaceGrotesk, fontSize = size.sp)
 
     // Space Grotesk, statement titles and body.
     fun title(size: Int = 22) =

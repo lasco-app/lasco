@@ -182,7 +182,7 @@ struct MediaDetailView: View {
     private var iOSBody: some View {
         GeometryReader { geo in
             ZStack(alignment: .bottom) {
-                Color.black.ignoresSafeArea()
+                Color.Lasco.bg.ignoresSafeArea()
 
                 // Full-screen pager — upper area is free for L/R swipe
                 StablePageViewController(
@@ -365,7 +365,7 @@ struct MediaDetailView: View {
             .opacity(progress)
             .disabled(progress < 0.5)
         }
-        .background(Color.black)
+        .background(Color.Lasco.bg)
         .sheet(isPresented: $showingExportSheet) {
             if let url = exportURL {
                 ActivityView(activityItems: [url])
@@ -381,11 +381,12 @@ struct MediaDetailView: View {
             Button(action: { dismiss() }) {
                 Image("angle-left").renderingMode(.template).resizable().frame(width: 18, height: 18)
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Color.white)
+                    .foregroundStyle(Color.Lasco.ink)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
-                    .background(Color.black)
-                    .overlay(Rectangle().stroke(Color.white, lineWidth: 2))
+                    .background(Color.Lasco.bg)
+                    .clipShape(LascoShape.control)
+                    .overlay(LascoShape.control.strokeBorder(Color.Lasco.border, lineWidth: 1))
             }
             .accessibilityLabel("Back")
             .accessibilityIdentifier("media-detail.back")
@@ -401,11 +402,12 @@ struct MediaDetailView: View {
                 if showCounter, !positionLabel.isEmpty {
                     Text(positionLabel)
                         .font(LascoFont.pixel())
-                        .foregroundStyle(Color.white)
+                        .foregroundStyle(Color.Lasco.ink)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
-                        .background(Color.black.opacity(0.5))
-                        .overlay(Rectangle().stroke(Color.white.opacity(0.5), lineWidth: 1))
+                        .background(Color.Lasco.bg.opacity(0.5))
+                        .clipShape(LascoShape.control)
+                        .overlay(LascoShape.control.strokeBorder(Color.Lasco.border, lineWidth: 1))
                         .transition(.opacity)
                 }
             }
@@ -419,11 +421,12 @@ struct MediaDetailView: View {
         Button(action: { showingLivePhotoVideo.toggle() }) {
             Image(showingLivePhotoVideo ? "image" : "play").renderingMode(.template).resizable().frame(width: 18, height: 18)
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Color.white)
+                .foregroundStyle(Color.Lasco.ink)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
-                .background(Color.black)
-                .overlay(Rectangle().stroke(Color.white, lineWidth: 2))
+                .background(Color.Lasco.bg)
+                .clipShape(LascoShape.control)
+                    .overlay(LascoShape.control.strokeBorder(Color.Lasco.border, lineWidth: 1))
         }
         .buttonStyle(.plain)
     }
@@ -454,7 +457,9 @@ struct MediaDetailView: View {
             .foregroundStyle(p.ink)
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .overlay(Rectangle().stroke(p.ink.opacity(0.4), lineWidth: 1))
+            .background(p.surface)
+            .clipShape(LascoShape.control)
+            .overlay(LascoShape.control.strokeBorder(p.border, lineWidth: 1))
         }
         .buttonStyle(.plain)
     }
@@ -481,7 +486,7 @@ struct MediaDetailView: View {
             if let m = media[safe: displayIdx] {
                 mediaCell(for: m, at: position, size: size)
             } else {
-                Color.black
+                Color.Lasco.bg
                     .frame(width: size.width, height: size.height)
             }
         }
@@ -491,7 +496,7 @@ struct MediaDetailView: View {
         let isCurrent = position == gallery.selectedPosition
         let liveVideo = (isCurrent && showingLivePhotoVideo) ? assetCache.livePhotoVideoItems[item.mediaId] : nil
         return ZStack {
-            Color.black
+            Color.Lasco.bg
             if assetCache.isVideo(item) {
                 videoCell(for: item, at: position, size: size, isActive: isCurrent)
             } else if let liveVideo {
@@ -510,7 +515,7 @@ struct MediaDetailView: View {
             } else {
                 Image("image").renderingMode(.template).resizable().frame(width: 18, height: 18)
                     .font(.system(size: 72))
-                    .foregroundStyle(Color.white.opacity(0.3))
+                    .foregroundStyle(Color.Lasco.ink.opacity(0.3))
             }
         }
         .frame(width: size.width, height: size.height)
@@ -536,7 +541,7 @@ struct MediaDetailView: View {
                 macOSNarrowLayout(geo: geo)
             }
         }
-        .background(Color.black)
+        .background(Color.Lasco.bg)
         .navigationBarBackButtonHidden(true)
         .navigationTitle("")
         .hideSystemNavigationBar()
@@ -577,7 +582,7 @@ struct MediaDetailView: View {
         let collapsedOffset = panelExpandedHeight - Self.narrowBarHeight
 
         return ZStack(alignment: .bottom) {
-            Color.black
+            Color.Lasco.bg
 
             macOSMediaCell(for: currentItem, size: CGSize(
                 width: geo.size.width, height: geo.size.height
@@ -589,7 +594,7 @@ struct MediaDetailView: View {
                     .frame(height: Self.narrowBarHeight)
                 infoSection
                     .frame(maxWidth: .infinity)
-                Color.black
+                Color.Lasco.bg
             }
             .frame(width: geo.size.width, height: panelExpandedHeight)
             .offset(y: panelOpen ? 0 : collapsedOffset)
@@ -600,7 +605,7 @@ struct MediaDetailView: View {
     private func macOSMediaCell(for item: FfiMediaItem?, size: CGSize) -> some View {
         let liveVideo = showingLivePhotoVideo ? item.flatMap { assetCache.livePhotoVideoItems[$0.mediaId] } : nil
         return ZStack {
-            Color.black
+            Color.Lasco.bg
             if let item {
                 if assetCache.isVideo(item) {
                     videoCell(for: item, at: currentPosition, size: size, isActive: true)
@@ -611,7 +616,7 @@ struct MediaDetailView: View {
                 } else if let thumb = assetCache.thumbnails[item.mediaId] {
                     thumb.resizable().scaledToFit().frame(width: size.width, height: size.height).blur(radius: 4)
                 } else {
-                    Image("image").renderingMode(.template).resizable().frame(width: 72, height: 72).foregroundStyle(Color.white.opacity(0.3))
+                    Image("image").renderingMode(.template).resizable().frame(width: 72, height: 72).foregroundStyle(Color.Lasco.ink.opacity(0.3))
                 }
             }
         }
@@ -637,7 +642,7 @@ struct MediaDetailView: View {
             navPrevButton
             Text(positionLabel)
                 .font(LascoFont.pixel())
-                .foregroundStyle(Color.white.opacity(0.6))
+                .foregroundStyle(Color.Lasco.ink.opacity(0.6))
             navNextButton
             if currentLivePhotoVideoItem != nil {
                 livePhotoToggleButton
@@ -646,9 +651,9 @@ struct MediaDetailView: View {
         .padding(.horizontal, 20)
         .frame(maxWidth: .infinity, alignment: .leading)
         .frame(height: Self.narrowBarHeight)
-        .background(Color.black)
+        .background(Color.Lasco.bg)
         .overlay(alignment: .top) {
-            Rectangle().fill(Color.white.opacity(0.15)).frame(height: 1)
+            Rectangle().fill(Color.Lasco.ink.opacity(0.15)).frame(height: 1)
         }
     }
 
@@ -658,7 +663,7 @@ struct MediaDetailView: View {
             navPrevButton
             Text(positionLabel)
                 .font(LascoFont.pixel())
-                .foregroundStyle(Color.white.opacity(0.6))
+                .foregroundStyle(Color.Lasco.ink.opacity(0.6))
             navNextButton
             if currentLivePhotoVideoItem != nil {
                 livePhotoToggleButton
@@ -673,17 +678,18 @@ struct MediaDetailView: View {
                     .renderingMode(.template)
                     .resizable()
                     .frame(width: 14, height: 14)
-                    .foregroundStyle(Color.white)
+                    .foregroundStyle(Color.Lasco.ink)
                     .frame(width: 36, height: 36)
                     .contentShape(Rectangle())
-                    .overlay(Rectangle().stroke(Color.white, lineWidth: 2))
+                    .clipShape(LascoShape.control)
+                    .overlay(LascoShape.control.strokeBorder(Color.Lasco.border, lineWidth: 1))
             }
             .buttonStyle(.plain)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity)
-        .background(Color.black)
+        .background(Color.Lasco.bg)
     }
 
     private var navPrevButton: some View {
@@ -692,10 +698,11 @@ struct MediaDetailView: View {
         } label: {
             Image("angle-left").renderingMode(.template).resizable().frame(width: 18, height: 18)
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(gallery.selectedPosition > 0 ? Color.white : Color.white.opacity(0.3))
+                .foregroundStyle(gallery.selectedPosition > 0 ? Color.Lasco.ink : Color.Lasco.ink.opacity(0.3))
                 .frame(width: 36, height: 36)
                 .contentShape(Rectangle())
-                .overlay(Rectangle().stroke(Color.white, lineWidth: 2))
+                .clipShape(LascoShape.control)
+                    .overlay(LascoShape.control.strokeBorder(Color.Lasco.border, lineWidth: 1))
         }
         .buttonStyle(.plain)
         .disabled(gallery.selectedPosition == 0)
@@ -704,10 +711,11 @@ struct MediaDetailView: View {
     private var livePhotoToggleButton: some View {
         Button(action: { showingLivePhotoVideo.toggle() }) {
             Image(showingLivePhotoVideo ? "image" : "play").renderingMode(.template).resizable().frame(width: 16, height: 16)
-                .foregroundStyle(Color.white)
+                .foregroundStyle(Color.Lasco.ink)
                 .frame(width: 36, height: 36)
                 .contentShape(Rectangle())
-                .overlay(Rectangle().stroke(Color.white, lineWidth: 2))
+                .clipShape(LascoShape.control)
+                    .overlay(LascoShape.control.strokeBorder(Color.Lasco.border, lineWidth: 1))
         }
         .buttonStyle(.plain)
     }
@@ -718,10 +726,11 @@ struct MediaDetailView: View {
         } label: {
             Image("angle-right").renderingMode(.template).resizable().frame(width: 18, height: 18)
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(gallery.selectedPosition + 1 < gallery.totalCount ? Color.white : Color.white.opacity(0.3))
+                .foregroundStyle(gallery.selectedPosition + 1 < gallery.totalCount ? Color.Lasco.ink : Color.Lasco.ink.opacity(0.3))
                 .frame(width: 36, height: 36)
                 .contentShape(Rectangle())
-                .overlay(Rectangle().stroke(Color.white, lineWidth: 2))
+                .clipShape(LascoShape.control)
+                    .overlay(LascoShape.control.strokeBorder(Color.Lasco.border, lineWidth: 1))
         }
         .buttonStyle(.plain)
         .disabled(gallery.selectedPosition + 1 >= gallery.totalCount)
@@ -978,7 +987,7 @@ struct GroupThumbnailStrip: View {
                 .padding(.horizontal, 12)
             }
             .frame(height: 66)
-            .background(Color.black.opacity(0.6))
+            .background(Color.Lasco.bg.opacity(0.6))
             .onChange(of: selected) { idx in
                 withAnimation { proxy.scrollTo(idx, anchor: .center) }
             }

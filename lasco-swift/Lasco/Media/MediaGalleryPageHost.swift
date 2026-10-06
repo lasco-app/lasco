@@ -23,7 +23,7 @@ struct MediaGalleryPageHost<Content: View>: View {
             case .loaded(let item):
                 content(item)
             case .loading:
-                Color.black
+                Color.Lasco.bg
                     .overlay {
                         ProgressView()
                             .tint(.white)
@@ -38,7 +38,7 @@ struct MediaGalleryPageHost<Content: View>: View {
                         .foregroundStyle(.white)
                     Text(message)
                         .font(.caption)
-                        .foregroundStyle(Color.white.opacity(0.6))
+                        .foregroundStyle(Color.Lasco.ink.opacity(0.6))
                         .multilineTextAlignment(.center)
                     Button("Retry") { gallery.retry(position: position) }
                         .buttonStyle(.bordered)
@@ -46,7 +46,7 @@ struct MediaGalleryPageHost<Content: View>: View {
                 }
                 .padding(24)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.black)
+                .background(Color.Lasco.bg)
             }
         }
     }

@@ -730,8 +730,9 @@ struct AlbumContentView: View {
             selectionActionsMenu
         }
         .padding(.horizontal, 12)
-        .background(theme.pink)
-        .overlay(Rectangle().stroke(theme.ink, lineWidth: 2).ignoresSafeArea(edges: .top))
+        .background(theme.surfaceAlt)
+        .clipShape(LascoShape.panel)
+        .overlay(LascoShape.panel.strokeBorder(theme.border, lineWidth: 1).ignoresSafeArea(edges: .top))
     }
 
     @ViewBuilder
@@ -1222,8 +1223,9 @@ private struct TrashAlbumCard: View {
                     .padding(.horizontal, 8)
                     .padding(.bottom, 8)
             }
-            .background(theme.surfaceAlt)
-            .overlay(Rectangle().stroke(theme.pink, lineWidth: 2))
+            .background(theme.surface)
+            .clipShape(LascoShape.panel)
+            .overlay(LascoShape.panel.strokeBorder(theme.pink, lineWidth: 1))
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Open Trash")

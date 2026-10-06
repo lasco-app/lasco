@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.LocalScrollbarStyle
 import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -15,6 +16,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -32,7 +34,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.lightColorScheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.Typography
+import androidx.compose.material3.Shapes
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -70,6 +76,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.application
+import androidx.compose.ui.window.rememberWindowState
 import app.lasco.importer.ffi.ExistingRemote
 import app.lasco.importer.ffi.DEFAULT_LASCO_CLOUD_BASE_URL
 import app.lasco.importer.ffi.LascoGateway
@@ -149,28 +156,29 @@ internal fun isConnectionFormComplete(
 internal fun isDevelopmentImporterBuild(): Boolean =
     System.getProperty("lasco.importer.release") == "false"
 
-// The Plaster theme used by lasco-android.
-private val Plaster = Color(0xFFE6E2D4)
-private val PlasterDeep = Color(0xFFD2CDBA)
-private val Panel = Color(0xFFF3EFE2)
-private val Ink = Color(0xFF1A1A1A)
-private val InkSub = Color(0xFF4A4A48)
-private val InkMuted = Color(0xFF8A8682)
-private val Accent = Color(0xFF0A0F2E)
-private val Pink = Color(0xFFE84A8A)
-private val Good = Color(0xFF5B8B3E)
-private val Error = Color(0xFFC44A3E)
-private val Jersey10 = FontFamily(Font("jersey10_regular.ttf"))
-private val VT323 = FontFamily(Font("vt323_regular.ttf"))
+// Website palette and typography, matching the mobile clients.
+private val Background = Color(0xFF111315)
+private val Elevated = Color(0xFF22262A)
+private val Panel = Color(0xFF191C1F)
+private val Ink = Color(0xFFF1F0EB)
+private val InkSub = Color(0xFFB2B8B9)
+private val InkMuted = Color(0xFFB2B8B9)
+private val Accent = Color(0xFFF4B8D5)
+private val Pink = Color(0xFFF4B8D5)
+private val Good = Color(0xFFA5D7AA)
+private val Error = Color(0xFFF3A5A5)
+private val Border = Color(0xFF343A3B)
+private val PanelShape = RoundedCornerShape(16.dp)
+private val ControlShape = RoundedCornerShape(9.dp)
 private val SpaceGrotesk = FontFamily(
     Font("space_grotesk_regular.ttf", FontWeight.Normal),
     Font("space_grotesk_bold.ttf", FontWeight.Bold),
 )
 private val JetBrainsMono = FontFamily(Font("jetbrains_mono_regular.ttf"))
-private val LascoHeading = TextStyle(fontFamily = Jersey10, fontSize = 26.sp)
+private val LascoHeading = TextStyle(fontFamily = SpaceGrotesk, fontSize = 26.sp)
 private val LascoBody = TextStyle(fontFamily = SpaceGrotesk, fontSize = 15.sp)
-private val LascoLabel = TextStyle(fontFamily = Jersey10, fontSize = 12.sp, letterSpacing = 1.sp)
-private val LascoPixel = TextStyle(fontFamily = VT323, fontSize = 15.sp)
+private val LascoLabel = TextStyle(fontFamily = SpaceGrotesk, fontSize = 12.sp, letterSpacing = 1.sp)
+private val LascoPixel = TextStyle(fontFamily = SpaceGrotesk, fontSize = 15.sp)
 private val LascoMono = TextStyle(fontFamily = JetBrainsMono, fontSize = 13.sp)
 
 private fun clearTransientStaging() {
@@ -181,18 +189,51 @@ private fun clearTransientStaging() {
     }
 }
 
-fun main() = application {
+fun main() {
+    configureImporterAppearance()
+    launchImporter()
+}
+
+private fun launchImporter() = application {
+    val windowState = rememberWindowState()
     Window(
         onCloseRequest = ::exitApplication,
+        state = windowState,
         title = "Lasco Desktop Importer",
         icon = painterResource(Res.drawable.lasco_icon),
     ) {
         MaterialTheme(
-            colorScheme = lightColorScheme(
-                primary = Accent, onPrimary = Color.White, background = Plaster,
+            colorScheme = darkColorScheme(
+                primary = Accent, onPrimary = Background, background = Background,
                 onBackground = Ink, surface = Panel, onSurface = Ink, error = Error,
+                onError = Background, outline = Border, surfaceVariant = Elevated,
+                onSurfaceVariant = InkSub, surfaceTint = Panel,
             ),
-        ) { FfiReadinessGate { ImporterWizard() } }
+            typography = Typography().run {
+                copy(
+                    displayLarge = displayLarge.copy(fontFamily = SpaceGrotesk),
+                    displayMedium = displayMedium.copy(fontFamily = SpaceGrotesk),
+                    displaySmall = displaySmall.copy(fontFamily = SpaceGrotesk),
+                    headlineLarge = headlineLarge.copy(fontFamily = SpaceGrotesk),
+                    headlineMedium = headlineMedium.copy(fontFamily = SpaceGrotesk),
+                    headlineSmall = headlineSmall.copy(fontFamily = SpaceGrotesk),
+                    titleLarge = titleLarge.copy(fontFamily = SpaceGrotesk),
+                    titleMedium = titleMedium.copy(fontFamily = SpaceGrotesk),
+                    titleSmall = titleSmall.copy(fontFamily = SpaceGrotesk),
+                    bodyLarge = bodyLarge.copy(fontFamily = SpaceGrotesk),
+                    bodyMedium = bodyMedium.copy(fontFamily = SpaceGrotesk),
+                    bodySmall = bodySmall.copy(fontFamily = SpaceGrotesk),
+                    labelLarge = labelLarge.copy(fontFamily = SpaceGrotesk),
+                    labelMedium = labelMedium.copy(fontFamily = SpaceGrotesk),
+                    labelSmall = labelSmall.copy(fontFamily = SpaceGrotesk),
+                )
+            },
+            shapes = Shapes(medium = PanelShape, large = PanelShape, extraLarge = RoundedCornerShape(24.dp)),
+        ) {
+            ImporterWindowFrame(windowState) {
+                FfiReadinessGate { ImporterWizard() }
+            }
+        }
     }
 }
 
@@ -221,11 +262,11 @@ private fun FfiReadinessGate(content: @Composable () -> Unit) {
 
     LaunchedEffect(Unit) { checkFfi() }
     when {
-        checking -> Box(Modifier.fillMaxSize().background(Plaster), contentAlignment = Alignment.Center) {
+        checking -> Box(Modifier.fillMaxSize().background(Background), contentAlignment = Alignment.Center) {
             Text("CHECKING LASCO…", color = InkSub, style = LascoPixel)
         }
         error != null -> Column(
-            Modifier.fillMaxSize().background(Plaster).padding(40.dp),
+            Modifier.fillMaxSize().background(Background).padding(40.dp),
             verticalArrangement = Arrangement.Center,
         ) {
             Text("LASCO IS NOT CONFIGURED", color = Error, style = LascoHeading)
@@ -497,7 +538,7 @@ private fun ImporterWizard() {
         coordinator?.progress?.collect { importProgress = it }
     }
 
-    Column(Modifier.fillMaxSize().background(Plaster).padding(horizontal = 32.dp, vertical = 24.dp)) {
+    Column(Modifier.fillMaxSize().background(Background).padding(horizontal = 32.dp, vertical = 24.dp)) {
         ProgressHeader(page.stage)
         Spacer(Modifier.height(18.dp))
         Surface(Modifier.fillMaxWidth().weight(1f), color = Panel) {
@@ -640,6 +681,7 @@ private fun ImporterWizard() {
                     VerticalScrollbar(
                         adapter = rememberScrollbarAdapter(pageScrollState),
                         modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                        style = LocalScrollbarStyle.current.copy(unhoverColor = Border),
                     )
                 }
             }
@@ -729,9 +771,9 @@ private fun ImporterWizard() {
 @Composable
 private fun ProgressHeader(stage: Int) {
     Text("LASCO", color = Ink, style = LascoHeading.copy(fontSize = 30.sp), fontWeight = FontWeight.Black, letterSpacing = 2.sp)
-    Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+    FlowRow(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         listOf("1. HOW IT WORKS", "2. DESTINATION", "3. SOURCE", "4. LIBRARY SUMMARY", "5. EXPECTED TIME", "6. IMPORT").forEachIndexed { index, label ->
-            Text(label, color = if (index == stage) Pink else InkMuted, style = LascoLabel.copy(fontSize = 16.sp), fontWeight = FontWeight.Bold)
+            Text(label, color = if (index == stage) Pink else InkMuted, style = LascoLabel.copy(fontSize = 13.sp), fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -771,7 +813,7 @@ private fun CloudServerPage(
 @Composable
 private fun HowItWorksItem(text: String) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start, verticalAlignment = Alignment.Top) {
-        Box(Modifier.size(28.dp).background(Accent).border(1.dp, Ink))
+        Box(Modifier.size(28.dp).background(Accent, RoundedCornerShape(8.dp)))
         Text(text, color = InkSub, style = LascoBody.copy(fontSize = 16.sp), textAlign = TextAlign.Start, modifier = Modifier.padding(start = 12.dp, top = 3.dp).widthIn(max = 500.dp))
     }
 }
@@ -828,7 +870,7 @@ private fun NewLibrarySetupPanel(
     onSmb: () -> Unit,
 ) {
     Column(
-        Modifier.widthIn(max = 460.dp).fillMaxWidth().background(Color.White).border(2.dp, Ink).padding(16.dp),
+        Modifier.widthIn(max = 460.dp).fillMaxWidth().clip(PanelShape).background(Panel).border(1.dp, Border, PanelShape).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         LascoButton("LASCO CLOUD", onCloud)
@@ -847,7 +889,7 @@ private fun DestinationCard(
     onRemove: () -> Unit,
 ) {
     Column(
-        Modifier.widthIn(max = 620.dp).fillMaxWidth().background(Color.White).border(2.dp, Ink).padding(16.dp),
+        Modifier.widthIn(max = 620.dp).fillMaxWidth().clip(PanelShape).background(Panel).border(1.dp, Border, PanelShape).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(summary.nickname, color = Ink, style = LascoHeading.copy(fontSize = 20.sp), fontWeight = FontWeight.Bold)
@@ -963,6 +1005,7 @@ private fun DestinationDialogHost(
                     VerticalScrollbar(
                         adapter = rememberScrollbarAdapter(remoteScrollState),
                         modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight(),
+                        style = LocalScrollbarStyle.current.copy(unhoverColor = Border),
                     )
                 }
             }
@@ -1079,8 +1122,8 @@ private fun ScanningPage(
         val fraction = (progress.completed.toFloat() / progress.total).coerceIn(0f, 1f)
         Text("${progress.completed} OF ${progress.total} PHOTOS SCANNED", color = Ink, style = LascoPixel)
         Spacer(Modifier.height(10.dp))
-        Box(Modifier.widthIn(max = 620.dp).fillMaxWidth().height(16.dp).background(PlasterDeep).border(2.dp, Ink)) {
-            Box(Modifier.fillMaxWidth(fraction).height(12.dp).background(Pink))
+        Box(Modifier.widthIn(max = 620.dp).fillMaxWidth().height(16.dp).clip(RoundedCornerShape(8.dp)).background(Elevated)) {
+            Box(Modifier.fillMaxWidth(fraction).height(16.dp).background(Pink))
         }
     } else {
         Text(if (isPhotos) "CONNECTING TO YOUR PHOTOS LIBRARY…" else "READING TAKEOUT ARCHIVES…", color = InkSub, style = LascoPixel)
@@ -1151,7 +1194,7 @@ private fun LibrarySummaryPage(source: SourceType?, archives: List<String>, plan
         it.remotes.forEach { remote ->
             Spacer(Modifier.height(18.dp))
             Column(
-                Modifier.widthIn(max = 680.dp).fillMaxWidth().background(Color.White).border(2.dp, Ink).padding(16.dp),
+                Modifier.widthIn(max = 680.dp).fillMaxWidth().clip(PanelShape).background(Panel).border(1.dp, Border, PanelShape).padding(16.dp),
             ) {
                 Text(
                     "${remote.remoteName} ${importerRemoteTypeLabel(remote.remoteType)}",
@@ -1180,7 +1223,7 @@ private fun LibrarySummaryPage(source: SourceType?, archives: List<String>, plan
 @Composable
 private fun ImportWorkSummary(plan: ImportPlan) {
     Column(
-        Modifier.widthIn(max = 680.dp).fillMaxWidth().background(Color.White).border(2.dp, Ink).padding(16.dp),
+        Modifier.widthIn(max = 680.dp).fillMaxWidth().clip(PanelShape).background(Panel).border(1.dp, Border, PanelShape).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text("METADATA / OPERATION LOG", color = InkMuted, style = LascoLabel, fontWeight = FontWeight.Bold)
@@ -1308,7 +1351,7 @@ private fun PageTitle(title: String, text: String? = null) {
     }
 }
 @Composable private fun Detail(label: String, value: String) { Row(Modifier.padding(vertical = 5.dp)) { Text(label, color = InkMuted, style = LascoLabel, fontWeight = FontWeight.Bold, modifier = Modifier.widthIn(min = 120.dp)); Text(value, color = Ink, style = LascoBody.copy(fontSize = 14.sp)) } }
-@Composable private fun ErrorMessage(text: String) { Text(text, color = Error, style = LascoBody.copy(fontSize = 14.sp), modifier = Modifier.fillMaxWidth().background(Error.copy(alpha = .08f)).border(1.dp, Error).padding(10.dp)) }
+@Composable private fun ErrorMessage(text: String) { Text(text, color = Error, style = LascoBody.copy(fontSize = 14.sp), modifier = Modifier.fillMaxWidth().clip(ControlShape).background(Error.copy(alpha = .08f)).border(1.dp, Error, ControlShape).padding(10.dp)) }
 
 private fun formatDuration(seconds: Long): String = when {
     seconds < 60 -> "$seconds sec"
@@ -1319,20 +1362,21 @@ private fun formatDuration(seconds: Long): String = when {
 @Composable
 private fun LascoButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, primary: Boolean = true, enabled: Boolean = true, fillWidth: Boolean = true) {
     val background = if (enabled) {
-        if (primary) Accent else PlasterDeep
+        if (primary) Accent else Elevated
     } else {
-        PlasterDeep
+        Elevated
     }
-    val border = if (enabled) Ink else InkMuted
+    val border = Border
     val textColor = if (enabled) {
-        if (primary) Color.White else Ink
+        if (primary) Background else Ink
     } else {
         InkMuted
     }
     Box(
         modifier.then(if (fillWidth) Modifier.fillMaxWidth() else Modifier)
+            .clip(ControlShape)
             .background(background)
-            .border(2.dp, border)
+            .border(1.dp, border, ControlShape)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 20.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center,
@@ -1356,7 +1400,7 @@ private fun LascoField(label: String, value: String, onValueChange: (String) -> 
                     focusManager.moveFocus(if (event.isShiftPressed) FocusDirection.Previous else FocusDirection.Next)
                     true
                 } else false
-            }.background(Color.White).border(2.dp, Ink).padding(horizontal = 10.dp, vertical = 10.dp),
+            }.clip(ControlShape).background(Elevated).border(1.dp, Border, ControlShape).padding(horizontal = 10.dp, vertical = 10.dp),
             decorationBox = { inner -> Box { if (fieldValue.text.isEmpty() && placeholder.isNotEmpty()) Text(placeholder, color = InkMuted, style = LascoBody); inner() } },
         )
     }

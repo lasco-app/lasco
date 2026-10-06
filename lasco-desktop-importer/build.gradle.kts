@@ -34,14 +34,23 @@ dependencies {
 compose.desktop {
     application {
         mainClass = "app.lasco.importer.MainKt"
+        if (System.getProperty("os.name").startsWith("Mac", ignoreCase = true)) {
+            // Apply before AWT initializes, including in the packaged macOS launcher.
+            jvmArgs += "-Dapple.awt.application.appearance=NSAppearanceNameDarkAqua"
+        }
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb, TargetFormat.Rpm)
-            packageName = "lasco-desktop-importer"
+            packageName = "Lasco Importer"
             // macOS requires the first component of its package/build version to be non-zero.
             packageVersion = "1.0.0"
             description = "Import Google Takeout and Apple Photos into a Lasco library"
             vendor = "Lasco"
+            linux {
+                // Debian/RPM package identifier; the displayed application name stays Lasco Importer.
+                packageName = "lasco-desktop-importer"
+            }
             macOS {
+                dockName = "Lasco Importer"
                 // Used by the Finder and Dock for the packaged macOS application.
                 iconFile.set(project.file("src/main/resources/lasco.icns"))
                 // PhotoKit/TCC registers a macOS app bundle, not a Gradle or JDK process.

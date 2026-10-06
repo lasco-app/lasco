@@ -26,14 +26,15 @@ const fallbackGroups = [
 function ScreenshotCard({ screen, platform, platformStatus, runId }) {
   const image = `/runs/${runId}/${platform}/screenshots/${screen.file}.png`;
   const [missing, setMissing] = useState(false);
-  const unavailable = missing || platformStatus !== "passed";
+  // A failed run may still contain useful screenshots from completed steps.
+  const unavailable = missing || !platformStatus || platformStatus === "not-run";
 
   return (
     <article className={`screen-card ${platform} ${platformStatus ?? "not-run"}`}>
       <p className="platform-label">{platform === "ios" ? "iOS" : "Android"}</p>
       {unavailable ? (
         <div className="thumbnail-unavailable">
-          {platformStatus === "passed" ? "Screenshot missing" : `Not run on ${platform === "ios" ? "iOS" : "Android"}`}
+          {missing ? "Screenshot not captured" : `Not run on ${platform === "ios" ? "iOS" : "Android"}`}
         </div>
       ) : (
         <img src={image} alt={`${screen.title} on ${platform}`} onError={() => setMissing(true)} />
@@ -170,6 +171,7 @@ export function FlowViewer({ runId }) {
           <p className="eyebrow">Captured flow</p>
           <h1>{graph.title}</h1>
           <p>{graph.screenCount} screens in {graph.groupCount} flow sections · run {runId}</p>
+          {manifest.captureNote && <p>{manifest.captureNote}</p>}
         </div>
         <p className="interaction-hint">Scroll to zoom · drag the canvas to inspect a section</p>
       </section>

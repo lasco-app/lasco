@@ -38,5 +38,11 @@ lto = true
 codegen-units = 1
 panic = "abort"
 
+# Rust's Mach-O stripping can misalign LINKEDIT on macOS 27 and prevent JNA
+# from loading the FFI dylib. Keep this library's symbols until the toolchain
+# fix is available: https://github.com/rust-lang/rust/issues/157750
+[profile.release.package.lasco-ffi]
+strip = false
+
 [profile.bench]
 debug = 1

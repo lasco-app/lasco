@@ -147,7 +147,7 @@ struct ManageView: View {
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
-                            .background(theme.pink)
+                            .lascoPanel()
                         }
 
                         VStack(alignment: .leading, spacing: 0) {

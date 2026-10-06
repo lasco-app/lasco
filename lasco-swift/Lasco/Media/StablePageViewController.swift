@@ -140,7 +140,7 @@ struct StablePageViewController<Content: View>: UIViewControllerRepresentable {
         private func controller(for position: Int) -> UIHostingController<Content> {
             if let controller = controllers[position] { return controller }
             let controller = UIHostingController(rootView: parent.content(position))
-            controller.view.backgroundColor = .black
+            controller.view.backgroundColor = UIColor(Color.Lasco.bg)
             controllers[position] = controller
             return controller
         }

@@ -47,7 +47,7 @@ fun SettingsDialog(onDismiss: () -> Unit) {
     }
 
     Dialog(onDismissRequest = onDismiss) {
-        Column(modifier = Modifier.fillMaxWidth().background(colors.bg).lascoPanel().padding(24.dp)) {
+        Column(modifier = Modifier.fillMaxWidth().lascoPanel().padding(24.dp)) {
             Row(modifier = Modifier.fillMaxWidth()) {
                 Text(text = "Settings", style = LascoTheme.type.title(), color = colors.ink)
                 Spacer(modifier = Modifier.weight(1f))

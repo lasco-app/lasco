@@ -48,8 +48,9 @@ private struct ToastView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(theme.surface)
-        .overlay(Rectangle().stroke(color, lineWidth: 2))
-        .shadow(color: color.opacity(0.25), radius: 0, x: 3, y: 3)
+        .clipShape(LascoShape.panel)
+        .overlay(LascoShape.panel.strokeBorder(color, lineWidth: 1))
+        .shadow(color: Color.black.opacity(0.2), radius: 12, x: 0, y: 4)
     }
 }
 

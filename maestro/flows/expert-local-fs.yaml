@@ -127,10 +127,27 @@ name: Expert mode local filesystem remote
     id: "new-library.password"
 - inputText: "maestro-demo"
 - pressKey: Enter
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - hideKeyboard
+      - scrollUntilVisible:
+          element:
+            id: "new-library.confirm-password"
+          direction: DOWN
 - tapOn:
     id: "new-library.confirm-password"
 - inputText: "maestro-demo"
 - pressKey: Enter
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - hideKeyboard
+      - scrollUntilVisible:
+          element: "Create Library"
+          direction: DOWN
 - tapOn: "Create Library"
 
 - extendedWaitUntil:

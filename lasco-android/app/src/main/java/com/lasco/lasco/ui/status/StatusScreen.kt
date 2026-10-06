@@ -450,7 +450,7 @@ private fun RemoteStatusCard(
         Text(
             text = bannerText,
             style = LascoTheme.type.mono(),
-            color = Color.White,
+            color = colors.bg,
             modifier = Modifier
                 .fillMaxWidth()
                 .background(if (bannerIsWarning) colors.error else colors.pink)

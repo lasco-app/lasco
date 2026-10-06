@@ -211,12 +211,15 @@ struct ContentView: View {
             Text("LIBRARY")
                 .font(LascoFont.categoryLarge())
                 .foregroundStyle(theme.ink)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
             Spacer()
             Toggle(isOn: $model.showingOrphans) {
                 Text(model.showingOrphans ? "Orphan" : "All")
                     .font(LascoFont.body())
                     .foregroundStyle(theme.inkSub)
             }
+                .fixedSize(horizontal: true, vertical: false)
                 .accessibilityLabel("Media filter")
                 .accessibilityValue(model.showingOrphans ? "On" : "Off")
             addMenu
@@ -294,8 +297,9 @@ struct ContentView: View {
             .accessibilityLabel("Selection actions")
         }
         .padding(.horizontal, 12)
-        .background(theme.pink)
-        .overlay(Rectangle().stroke(theme.ink, lineWidth: 2).ignoresSafeArea(edges: .top))
+        .background(theme.surfaceAlt)
+        .clipShape(LascoShape.panel)
+        .overlay(LascoShape.panel.strokeBorder(theme.border, lineWidth: 1).ignoresSafeArea(edges: .top))
     }
 
     // MARK: Media content
@@ -598,7 +602,8 @@ private struct OpenAlbumPickerSheet: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 14)
             .background(theme.surfaceAlt)
-            .overlay(Rectangle().stroke(theme.ink, lineWidth: 2).ignoresSafeArea(edges: .bottom))
+            .clipShape(LascoShape.panel)
+            .overlay(LascoShape.panel.strokeBorder(theme.border, lineWidth: 1).ignoresSafeArea(edges: .bottom))
         }
         .background(theme.bg)
         #if os(macOS)

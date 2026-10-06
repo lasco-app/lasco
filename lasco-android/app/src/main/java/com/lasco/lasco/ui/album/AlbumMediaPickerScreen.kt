@@ -46,6 +46,7 @@ import com.lasco.lasco.data.LibraryRepository
 import com.lasco.lasco.ui.components.LascoToggle
 import com.lasco.lasco.ui.components.MediaThumbnail
 import com.lasco.lasco.ui.media.RecentMediaViewModel
+import com.lasco.lasco.ui.theme.LascoControlShape
 import com.lasco.lasco.ui.theme.LascoTheme
 import kotlinx.serialization.Serializable
 import uniffi.lasco_ffi.FfiAlbumUuid
@@ -106,8 +107,8 @@ private fun PickerTopBar(
     modifier: Modifier = Modifier,
 ) {
     val colors = LascoTheme.colors
-    Column(modifier = modifier.fillMaxWidth().background(colors.pink).padding(horizontal = 20.dp, vertical = 16.dp)) {
-        Text("Select to add to ${destAlbumName.uppercase()}", style = LascoTheme.type.categoryLarge(), color = Color.White, maxLines = 1)
+    Column(modifier = modifier.fillMaxWidth().background(colors.surface).padding(horizontal = 20.dp, vertical = 16.dp)) {
+        Text("Select to add to ${destAlbumName.uppercase()}", style = LascoTheme.type.categoryLarge(), color = colors.ink, maxLines = 1)
         Row(modifier = Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             PickerTab("All media", selectedTab == AddMediaPickerTab.AllMedia) { onTabSelected(AddMediaPickerTab.AllMedia) }
             PickerTab("Albums", selectedTab == AddMediaPickerTab.Albums) { onTabSelected(AddMediaPickerTab.Albums) }
@@ -121,11 +122,9 @@ private fun PickerTab(label: String, selected: Boolean, onClick: () -> Unit) {
     Text(
         text = label,
         style = LascoTheme.type.body(),
-        // The picker header is pink in both themes. `colors.ink` is white in
-        // dark mode, so the active tab needs a fixed dark foreground on white.
-        color = if (selected) Color(0xFF1A1A1A) else Color.White,
+        color = if (selected) colors.bg else colors.inkSub,
         modifier = Modifier
-            .background(if (selected) Color.White else Color.White.copy(alpha = 0.2f))
+            .background(if (selected) colors.pink else colors.surfaceAlt, LascoControlShape)
             .clickable(onClick = onClick)
             .heightIn(min = 48.dp)
             .padding(horizontal = 16.dp, vertical = 12.dp)

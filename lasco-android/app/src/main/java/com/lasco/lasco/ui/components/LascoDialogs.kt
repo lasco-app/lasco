@@ -28,11 +28,7 @@ import com.lasco.lasco.ui.theme.lascoPanel
 import uniffi.lasco_ffi.FfiAlbum
 import uniffi.lasco_ffi.FfiMediaItem
 
-/**
- * Flat, square-cornered dialog shell shared by the ported sheets below.
- * Plain Compose Dialog rather than Material AlertDialog, which defaults to
- * rounded corners that don't match the app's "no radius, ever" panel look.
- */
+/** Rounded dark dialog shell shared by the ported sheets below. */
 @Composable
 fun LascoDialogShell(onDismiss: () -> Unit, content: @Composable () -> Unit) {
     val colors = LascoTheme.colors
@@ -40,7 +36,7 @@ fun LascoDialogShell(onDismiss: () -> Unit, content: @Composable () -> Unit) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(colors.bg)
+
                 .lascoPanel()
                 .padding(24.dp),
         ) {
